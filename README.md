@@ -26,7 +26,7 @@ anyone can ask about.
 copy, nothing leaving your perimeter. Measures and results are Unity Catalog assets, so tags, lineage, row
 filters and column masks apply to them like any other table.
 
-## Example Applications
+## Example applications
 
 FHIR standardized how clinical data is shared. CQL on Databricks standardizes how clinical knowledge is
 shared, on a platform most organizations already operate. It follows HL7's own architecture (narrative
@@ -58,7 +58,7 @@ flowchart LR
 
 This project does not replace your existing HEDIS vendor. Its goal is getting CQL running on Databricks. What gets built on top of it is up to you and the community.
 
-## Measure Verification
+## Measure verification
 
 The repository ships one sample measure, written for it, with synthetic test patients. It is deliberately
 small: it shows how a measure is laid out, included, run and checked, not a clinical result.
@@ -89,7 +89,7 @@ its own terms.
 | [Agent](agent/README.md) | MCP tools and skills over the results |
 | [Loader](loader/README.md) | Imports FHIR content, and generates synthetic patients |
 
-## Get Started
+## Get started
 
 In a Databricks notebook, after deploying the bundle ([deploy guide](docs/deploy.md)), which publishes the
 client wheel to a Volume:
@@ -215,5 +215,5 @@ bugbounty@databricks.com, without real patient data, PHI or credentials.
 
 ## License
 
-[LICENSE](LICENSE). Third-party components and terminology notices, including the AMA CPT notice,
-are in [NOTICE](NOTICE).
+[LICENSE](LICENSE.md). Third-party components and terminology notices, including the AMA CPT notice,
+are in [NOTICE](NOTICE.md).
