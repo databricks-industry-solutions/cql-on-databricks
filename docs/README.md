@@ -29,7 +29,7 @@ Each feature's docs sit next to its code. Start with the feature you need.
 
 ## Conventions
 
-- File names are kebab-case. Only `README.md`, `LICENSE`, `NOTICE` and similar are upper case.
+- File names are kebab-case. Only `README.md`, `LICENSE.md`, `NOTICE.md` and similar are upper case.
 - Every ID is a descriptive mnemonic, `<TYPE>-<SLUG>`, never a number (`PROC-DESCRIPTIVE-ID`). Order goes
   in an "after" column, never in the name.
 - A requirement that stops being true becomes a one-line "Retired" row. It's never deleted, so old

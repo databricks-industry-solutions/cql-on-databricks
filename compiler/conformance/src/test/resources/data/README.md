@@ -36,6 +36,6 @@ The `measures/`, `qicore/` and `valuesets/` data use only the synthetic code sys
 `http://example.org/fhir/CodeSystem/cql-test`. The `fhir/` data references a few standard codes (SNOMED CT, LOINC, RxNorm, UCUM and HL7 code systems),
 used **solely to exercise logic against synthetic patients**. This directory is **not a terminology
 distribution**: no code system is reproduced in whole or in part. Full attribution is in
-[`NOTICE`](../../../../../../NOTICE).
+[`NOTICE`](../../../../../../NOTICE.md).
 
 **Value set definitions are not vendored.** Only the expansions each test needs are here.

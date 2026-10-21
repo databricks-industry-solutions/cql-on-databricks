@@ -121,7 +121,7 @@ tasks.named('test') {
     // Pin the test worker JVM to UTC (CONF-GROUND-TRUTH). The cqframework reference interprets an
     // offset-less DateTime literal (the date-only Measurement Period default `@2026-01-01T00:00:00`) at
     // the host JVM's default zone; the engine reads Spark `timestamp_ntz` (zone-agnostic, wall-clock ==
-    // UTC for this all-`+00:00` corpus, matching the MADiE expected reports). Under a non-UTC host (e.g.
+    // UTC for this all-`+00:00` corpus). Under a non-UTC host (e.g.
     // EDT) a day-boundary instant like a screening `effective` of `2026-01-01T01:00:00+00:00`
     // shifts a day on the reference side only, flipping `overlaps day of MP` and diverging from the engine.
     systemProperty 'user.timezone', 'UTC'
