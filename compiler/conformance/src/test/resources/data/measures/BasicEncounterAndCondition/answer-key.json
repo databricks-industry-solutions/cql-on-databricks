@@ -1,0 +1,61 @@
+{
+  "measure": "BasicEncounterAndCondition",
+  "version": "1.0.0",
+  "measurementPeriod": "Interval[@2026-01-01T00:00:00.000, @2026-12-31T23:59:59.999]",
+  "populations": {"Initial Population": "initial-population"},
+  "about": "Written by hand. For each patient, the value of each population define (1 true, 0 false or null) and why.",
+  "patients": {
+    "enc-inside-with-cond": {
+      "initial-population": 1,
+      "why": "Encounter during period (2026-03-15) and has condition."
+    },
+    "enc-start-exact-with-cond": {
+      "initial-population": 1,
+      "why": "Encounter starts exactly at period start (2026-01-01T00:00:00) and has condition."
+    },
+    "enc-end-exact-with-cond": {
+      "initial-population": 1,
+      "why": "Encounter ends exactly at period end (2026-12-31T23:59:59.999) and has condition."
+    },
+    "enc-straddle-after-with-cond": {
+      "initial-population": 0,
+      "why": "Encounter ends after period ends (2027-01-01), so not during period."
+    },
+    "enc-before-start-with-cond": {
+      "initial-population": 0,
+      "why": "Encounter starts before period starts (2025-12-31), so not during period."
+    },
+    "enc-entirely-before-with-cond": {
+      "initial-population": 0,
+      "why": "Encounter entirely before period; no qualifying encounter."
+    },
+    "enc-entirely-after-with-cond": {
+      "initial-population": 0,
+      "why": "Encounter entirely after period; no qualifying encounter."
+    },
+    "enc-no-period-with-cond": {
+      "initial-population": 0,
+      "why": "Encounter has no period element, so does not count as during period."
+    },
+    "no-enc-no-cond": {
+      "initial-population": 0,
+      "why": "No encounter and no condition."
+    },
+    "no-enc-yes-cond": {
+      "initial-population": 0,
+      "why": "Has condition but no encounter during period."
+    },
+    "yes-enc-no-cond": {
+      "initial-population": 0,
+      "why": "Has encounter during period but no condition."
+    },
+    "multi-enc-one-qualifies-with-cond": {
+      "initial-population": 1,
+      "why": "One encounter qualifies (2026-05-20, during period) and has condition."
+    },
+    "no-birthdate-enc-cond": {
+      "initial-population": 1,
+      "why": "Encounter during period (2026-09-10) and has condition; birthDate absent but irrelevant."
+    }
+  }
+}

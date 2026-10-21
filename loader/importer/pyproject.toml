@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cql-databricks-content-ingest"
+version = "0.1.0"
+description = "Ingest public CQL measure content + synthetic FHIR data into Unity Catalog (CONTENT-INGEST)"
+requires-python = ">=3.10"
+license = { text = "Databricks License" }
+authors = [{ name = "Databricks, Inc." }]
+dependencies = [
+    "requests>=2.25",
+    # pyspark is NOT a base dep — it comes from either the [spark] extra (local Spark, for tests) or
+    # databricks-connect (Databricks path). The two are mutually exclusive (SVC-RUN-DBCONNECT).
+    # CONTENT-IMPORT-TARGET-TAG — the tag keys and statement live with the resolver that reads them,
+    # `cql_databricks.data_bindings`, shipped by the client (BINDINGS-INTO-CLIENT).
+    "cql-databricks",
+]
+
+[project.urls]
+Homepage = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+Repository = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+# Local open-source Spark, for development and tests: adds pyspark. Mutually exclusive with [databricks].
+spark = ["pyspark>=4.0"]
+# databricks-connect ships its own pyspark; do NOT combine with [spark].
+databricks = ["databricks-connect"]
+
+[project.scripts]
+cql-content-ingest = "content_ingest.__main__:main"
+
+# src layout (PyPA's recommendation), matching every other component in this repository -- the JVM
+# projects and the web bundle all keep their sources under `src/`. It also closes a real bug class: with a
+# flat layout, `import content_ingest` from the repository root resolves the WORKING TREE rather than the
+# installed distribution, so the tests can pass while the built wheel is broken. Stated EXPLICITLY rather
+# than left to setuptools auto-discovery, so the layout is a declared decision rather than an inference
+# that changes if a stray directory appears beside `src/`.
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["content_ingest*"]
+
+# RUNTIME DATA. `population.py` reads `resource-schemas.json` for its `__resource` DDL — the importer's OWN
+# copy (CONTENT-IMPORTER-FHIR-SCHEMAS): the compiler no longer writes it.
+[tool.setuptools.package-data]
+content_ingest = ["*.json"]

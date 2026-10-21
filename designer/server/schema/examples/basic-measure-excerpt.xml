@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  An excerpt of a Specification for BasicEncounterAndCondition, the basic measure written for
+  this repository (examples/measures). Synthetic: the measure and its prose are this repository's own.
+  It shows the document shape the Designer reads.
+-->
+<Specification xmlns="https://cql-databricks.databricks.com/spec/1.0" schemaVersion="1.0">
+  <Identity library="BasicEncounterAndCondition" version="1.0.0" fhirVersion="4.0.1"
+            scoring="proportion" context="patients">
+    <Title>Patients with an encounter during the measurement period who have any condition</Title>
+  </Identity>
+  <Provenance>
+    <LibraryPin library="BasicEncounterAndCondition" version="1.0.0"/>
+    <LibraryPin library="EncounterDuringPeriod" version="1.0.0"/>
+  </Provenance>
+  <Overview>
+    <Description provenance="authored" author="cql-databricks" sourceTag="description">The share of patients
+      with an encounter during the measurement period who have at least one condition recorded.</Description>
+    <Intent>
+      <Statement provenance="authored" author="cql-databricks" sourceTag="intent">Show how many patients in
+        active care have recorded conditions, to identify patients with clinical context.</Statement>
+    </Intent>
+    <ScopeNonGoals>
+      <InScope provenance="authored" author="cql-databricks" sourceTag="scope">Encounters and conditions of any
+        status and type.</InScope>
+    </ScopeNonGoals>
+  </Overview>
+  <PopulationCriteria>
+    <Population kind="initial-population" define="Initial Population"
+                library="BasicEncounterAndCondition" stableId="pop-initial-population" id="pop-IP">
+      <Narrative provenance="authored" author="cql-databricks" sourceTag="description">Patients who had
+        <ConceptRef library="EncounterDuringPeriod"
+        define="Has Encounter During Period">an encounter during the measurement period</ConceptRef> and have
+        <ConceptRef library="BasicEncounterAndCondition"
+        define="Has Any Condition">at least one condition on record</ConceptRef>.</Narrative>
+      <Concept define="Has Encounter During Period" library="EncounterDuringPeriod"
+               stableId="concept-encounter-period" id="c-encounter-period" provenance="derived"/>
+      <Concept define="Has Any Condition" library="BasicEncounterAndCondition"
+               stableId="concept-any-condition" id="c-any-condition" provenance="derived"/>
+    </Population>
+  </PopulationCriteria>
+</Specification>

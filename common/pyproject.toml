@@ -1,0 +1,35 @@
+# COMMON-LIBRARY (`DEC-COMMON-HOME`) — shared server infrastructure for the Designer, the agent and the local
+# tools. Not part of Foundation's public interface; the client does not depend on it.
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cql-databricks-common"
+version = "0.1.0"
+description = "CQL on Databricks shared server infrastructure: config, the workspace client, the compiler's HTTP client."
+requires-python = ">=3.10"
+license = { text = "Databricks License" }
+authors = [{ name = "Databricks, Inc." }]
+dependencies = [
+    "requests>=2.25",
+    # The Databricks SDK: the process-wide workspace client (`workspace.py`), imported lazily.
+    "databricks-sdk>=0.122",
+    # `compiler.compile_provider` builds the client's `RemoteProvider` (imported lazily).
+    "cql-databricks",
+]
+
+[project.urls]
+Homepage = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+Repository = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+
+[project.optional-dependencies]
+# `test_obo.py` drives the forwarded-identity middleware through a FastAPI test client.
+test = ["pytest>=8", "fastapi>=0.115", "httpx>=0.27"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cql_databricks_common*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

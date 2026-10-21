@@ -1,0 +1,59 @@
+# The assistant / agent area (APP-ASSISTANT, SVC-MCP-TOOLS).
+#
+# Extracted from the app's backend rather than left inside it, because this is where agentic IP lands and
+# an area is easier to reason about than a subdirectory someone carves out later under deadline. The
+# extraction was cheap now for one reason: the tool layer was already transport-agnostic, with an MCP
+# server beside it rather than wired into HTTP handlers.
+#
+# The dependency direction is agent -> app, and only that way. The agent's tools read measure
+# specifications, data sources, and results through the app's server package; the app calls the agent
+# through `wiring.py` and mounts its MCP surface. Nothing in the app imports an agent internal.
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cql-databricks-agent"
+version = "0.1.0"
+description = "The CQL on Databricks assistant: tool surface, skills, and MCP server."
+requires-python = ">=3.10"
+license = { text = "Databricks License" }
+authors = [{ name = "Databricks, Inc." }]
+dependencies = [
+    # COMMON-LIBRARY — config, the workspace client (SEC-OBO), the compiler's HTTP client.
+    "cql-databricks-common",
+    # SDP-DEPLOY-ADDRESS — the results address (`cql_databricks.result.address`), read through the client
+    # (RESULT-INTO-CLIENT) rather than its internals.
+    "cql-databricks",
+    # SVC-MCP-TOOLS — the transport-agnostic tool surface, mounted at /mcp. `fastmcp` alone, which brings
+    # the official `mcp` SDK transitively: two pins that must stay mutually compatible is a version
+    # puzzle with no upside.
+    "fastmcp>=2.0",
+    # The Foundation Model API endpoint the tool loop calls, reached with the signed-in user's identity.
+    "databricks-sdk>=0.122",
+]
+
+[project.urls]
+Homepage = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+Repository = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+# src layout (PyPA's recommendation), matching every other component in this repository -- the JVM
+# projects and the web bundle all keep their sources under `src/`. It also closes a real bug class: with a
+# flat layout, `import <pkg>` from the repository root resolves the WORKING TREE rather than the installed
+# distribution, so the tests can pass while the built wheel is broken. This project has already shipped a
+# wheel missing declared package data once.
+# BUILD-CLIENT-NAMESPACE: the agent's package is `cql_databricks.agent`, under the PEP 420 namespace every
+# feature's public package shares; `cql_databricks/` has no `__init__.py`.
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cql_databricks.agent*"]
+namespaces = true
+
+# The skill bodies are DATA, and they must be installed, not just present in a checkout: `get_skill`
+# returns the file verbatim, so a wheel that omitted them would leave the assistant answering from an
+# empty contract rather than failing loudly.
+[tool.setuptools.package-data]
+"cql_databricks.agent" = ["skills/**/*.md"]

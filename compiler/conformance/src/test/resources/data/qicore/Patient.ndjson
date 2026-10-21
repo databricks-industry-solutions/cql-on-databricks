@@ -1,0 +1,16 @@
+{"resourceType":"Patient","id":"q1","gender":"female","birthDate":"1980-01-01"}
+{"resourceType":"Patient","id":"q2","gender":"male","birthDate":"1980-01-01"}
+{"resourceType":"Patient","id":"q3","gender":"female","birthDate":"1980-01-01"}
+{"resourceType":"Patient","id":"q4","gender":"male","birthDate":"1980-01-01"}
+{"resourceType":"Patient","id":"a1","gender":"female","birthDate":"1986-01-01"}
+{"resourceType":"Patient","id":"a2","gender":"male","birthDate":"1985-12-31"}
+{"resourceType":"Patient","id":"a3","gender":"female","birthDate":"1987-01-01"}
+{"resourceType":"Patient","id":"a4","gender":"male","birthDate":"1990-06-15"}
+{"resourceType":"Patient","id":"a5","gender":"female"}
+{"resourceType":"Patient","id":"v1","gender":"female","birthDate":"1970-02-01"}
+{"resourceType":"Patient","id":"v2","gender":"male","birthDate":"1965-08-12"}
+{"resourceType":"Patient","id":"v3","gender":"female","birthDate":"1980-11-30"}
+{"resourceType":"Patient","id":"v4","gender":"male","birthDate":"1975-04-04"}
+{"resourceType":"Patient","id":"c1","gender":"female","birthDate":"1990-01-15"}
+{"resourceType":"Patient","id":"c2","gender":"male","birthDate":"1988-07-07"}
+{"resourceType":"Patient","id":"c3","gender":"female","birthDate":"1979-09-09"}

@@ -1,0 +1,6 @@
+{"resourceType":"Encounter","id":"e1","status":"finished","subject":{"reference":"Patient/p1"},"period":{"start":"2023-03-01T08:00:00","end":"2023-03-05T12:00:00"}}
+{"resourceType":"Encounter","id":"e1b","status":"arrived","subject":{"reference":"Patient/p1"},"period":{"start":"2022-01-01T08:00:00","end":"2022-01-05T12:00:00"}}
+{"resourceType":"Encounter","id":"e2","status":"planned","subject":{"reference":"Patient/p2"},"period":{"start":"2023-06-01T08:00:00","end":"2023-06-10T12:00:00"}}
+{"resourceType":"Encounter","id":"e4","status":"finished","subject":{"reference":"Patient/p3"},"period":{"start":"2021-01-01T08:00:00","end":"2021-01-05T12:00:00"}}
+{"resourceType":"Encounter","id":"ep6","status":"finished","subject":{"reference":"Patient/p6"},"period":{"start":"2023-06-01T00:00:00","end":"2023-06-30T23:59:59"}}
+{"resourceType":"Encounter","id":"ep7","status":"finished","subject":{"reference":"Patient/p7"},"period":{"start":"2023-01-01T00:00:00","end":"2023-12-31T23:59:59"}}

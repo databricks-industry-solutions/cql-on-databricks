@@ -1,0 +1,10 @@
+{"valueset_id": "http://example.org/fhir/ValueSet/cql-test-pilot-condition", "system": "http://example.org/fhir/CodeSystem/cql-test", "code": "pilot-condition-1", "display": "Pilot condition 1"}
+{"valueset_id": "http://example.org/fhir/ValueSet/cql-test-pilot-condition", "system": "http://example.org/fhir/CodeSystem/cql-test", "code": "pilot-condition-2", "display": "Pilot condition 2"}
+{"valueset_id": "http://example.org/fhir/ValueSet/cql-test-pilot-condition", "system": "http://example.org/fhir/CodeSystem/cql-test", "code": "pilot-condition-3", "display": "Pilot condition 3"}
+{"valueset_id": "http://example.org/fhir/ValueSet/cql-test-pilot-condition", "system": "http://example.org/fhir/CodeSystem/cql-test", "code": "pilot-condition-4", "display": "Pilot condition 4"}
+{"valueset_id": "http://example.org/fhir/ValueSet/cql-test-pilot-condition", "system": "http://example.org/fhir/CodeSystem/cql-test", "code": "pilot-condition-5", "display": "Pilot condition 5"}
+{"valueset_id": "http://example.org/fhir/ValueSet/cql-test-pilot-condition", "system": "http://example.org/fhir/CodeSystem/cql-test", "code": "pilot-condition-6", "display": "Pilot condition 6"}
+{"valueset_id": "http://example.org/fhir/ValueSet/cql-test-pilot-condition", "system": "http://example.org/fhir/CodeSystem/cql-test", "code": "pilot-condition-7", "display": "Pilot condition 7"}
+{"valueset_id": "http://example.org/fhir/ValueSet/cql-test-pilot-condition", "system": "http://example.org/fhir/CodeSystem/cql-test", "code": "pilot-condition-8", "display": "Pilot condition 8"}
+{"valueset_id": "http://example.org/fhir/ValueSet/cql-test-pilot-condition", "system": "http://example.org/fhir/CodeSystem/cql-test", "code": "pilot-condition-9", "display": "Pilot condition 9"}
+{"valueset_id": "http://example.org/fhir/ValueSet/cql-test-pilot-condition", "system": "http://example.org/fhir/CodeSystem/cql-test", "code": "pilot-condition-10", "display": "Pilot condition 10"}

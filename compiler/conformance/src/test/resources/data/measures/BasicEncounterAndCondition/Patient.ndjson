@@ -1,0 +1,13 @@
+{"resourceType":"Patient","id":"enc-inside-with-cond","gender":"female","birthDate":"1990-05-15"}
+{"resourceType":"Patient","id":"enc-start-exact-with-cond","gender":"male","birthDate":"1985-03-22"}
+{"resourceType":"Patient","id":"enc-end-exact-with-cond","gender":"female","birthDate":"1995-07-10"}
+{"resourceType":"Patient","id":"enc-straddle-after-with-cond","gender":"male","birthDate":"1980-01-01"}
+{"resourceType":"Patient","id":"enc-before-start-with-cond","gender":"female","birthDate":"1988-11-30"}
+{"resourceType":"Patient","id":"enc-entirely-before-with-cond","gender":"male","birthDate":"1992-04-18"}
+{"resourceType":"Patient","id":"enc-entirely-after-with-cond","gender":"female","birthDate":"1997-09-25"}
+{"resourceType":"Patient","id":"enc-no-period-with-cond","gender":"male","birthDate":"1983-06-12"}
+{"resourceType":"Patient","id":"no-enc-no-cond","gender":"female","birthDate":"1991-02-14"}
+{"resourceType":"Patient","id":"no-enc-yes-cond","gender":"male","birthDate":"1986-08-27"}
+{"resourceType":"Patient","id":"yes-enc-no-cond","gender":"female","birthDate":"1994-12-03"}
+{"resourceType":"Patient","id":"multi-enc-one-qualifies-with-cond","gender":"male","birthDate":"1989-10-19"}
+{"resourceType":"Patient","id":"no-birthdate-enc-cond","gender":"female"}

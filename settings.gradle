@@ -1,0 +1,55 @@
+// Gradle layout for the single build (ARCH-PURITY, BUILD-MODULES).
+//
+// The repository is organized as FEATURES and their COMPONENTS (docs/structure.md, BUILD-TAXONOMY); each
+// Gradle project is one of them and its directory name is its project name. Published artifacts are
+// named `cql-databricks-<name>` via
+// `archivesBaseName` in build.gradle, so a jar is identifiable outside the repo while the paths
+// inside it stay short.
+//
+//   compiler/core — CQL→ELM front end + the multi-pass compiler over a typed IR + CQL operator
+//                 semantics + the SQL back end that lowers the optimized IR to a Spark SQL script,
+//                 plus the neutral `describe`/`LibraryGraph` metadata. CQL+ELM → SQL text.
+//                 NO execution: the compiler DESCRIBES a pipeline, it never runs one.
+//   compiler/runtime/udf — the versioned opaque JVM UDF catalog JAR the emitted SQL references by name
+//                 (EXEC-OPAQUE-UDF). Deliberately minimal-dependency (scala-library + Spark
+//                 `compileOnly`), because its classes ship to the Connect server via
+//                 `spark.addArtifact` and any transitive dep a UDF closure captured would ship too.
+//                 Depends on NOTHING else here — the emit-to-UDF wire contract is duplicated as a
+//                 documented constant, never a compiler import.
+//   compiler/service — the compile-service boundary + a local host for development and tests (BUILD-COMPILE-SERVICE):
+//                 {/compile-sql, /describe} over a zero-dependency JDK HttpServer. Spark-free.
+//   compiler/server — the same service hosted as a Databricks App (installDist, a bundled JRE, jlink).
+//                 A host with logic in it is a host that has gone wrong.
+//   compiler/conformance — the single testing component: the authored CQL corpus, CQL→ELM translation, the
+//                 Java ground-truth reference, golden snapshots, and every differential test. Runs
+//                 the compiled script against a Connect server — a LOCAL OSS one for the fast loop
+//                 (`./gradlew :compiler:conformance:connectServer`), so correctness is provable with no
+//                 platform involved.
+//
+// The neutrality wall (decision 1) covers `compiler/core` and `compiler/runtime/udf`: no Databricks
+// dependency resolves into either, and CI fails if one does. The Python client is deliberately outside it.
+// MERGE-COMPILER-FEATURE moved runtime, client and conformance under compiler/ (the compiler feature);
+// the wall is per-project, so the move changes nothing about it.
+rootProject.name = 'cql-on-databricks'
+
+include 'compiler:core'
+include 'compiler:service'
+include 'compiler:server'
+include 'compiler:runtime:udf'
+include 'compiler:runtime:uc'
+include 'compiler:conformance'
+include 'compiler:cqf'
+
+// Components. A feature gets subdirectories only when it has more than one component (BUILD-TAXONOMY).
+//   compiler/runtime/{udf,uc} — make the emitted SQL's `cql_*` calls resolvable on a compute surface: `udf` is the
+//                      implementation plus OSS `spark.udf.register`; `uc` is the Unity Catalog
+//                      registration of the same functions. Two backends of one concern.
+//   compiler/{core,service,server} — the library, the service boundary plus a zero-dependency local
+//                      host (so the whole correctness gate runs with no platform involved), and the
+//                      Databricks App host. The host earns a component because it has a real BUILD
+//                      (installDist, a bundled JRE, jlink), not because hosting is complex.
+//
+// This replaces a single `platform/` bucket. That bucket claimed to hold everything Databricks-specific
+// and held 5 of the repository's 85 platform-coupled files — the app and client alone hold 48 — so it
+// named a layer it did not actually contain. The neutrality wall it was standing in for is enforced by
+// `./gradlew checkNeutrality`, which is per-project and needs no directory to be true.

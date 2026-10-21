@@ -1,0 +1,17 @@
+{
+  "name": "@cql-databricks/cql-grammar",
+  "version": "0.0.0-phase-s0",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "Databricks, Inc.",
+  "homepage": "https://github.com/databricks-industry-solutions/cql-on-databricks",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/databricks-industry-solutions/cql-on-databricks.git"
+  },
+  "type": "module",
+  "description": "Monaco Monarch grammar for CQL (APP-GRAMMAR): client-side syntax highlighting, no round-trip. Real diagnostics come from the sidecar (APP-DIAGNOSTICS).",
+  "exports": {
+    "./cql.monarch": "./src/cql.monarch.ts"
+  }
+}

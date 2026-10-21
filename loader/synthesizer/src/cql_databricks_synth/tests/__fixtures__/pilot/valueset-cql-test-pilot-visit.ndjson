@@ -1,0 +1,2 @@
+{"valueset_id": "http://example.org/fhir/ValueSet/cql-test-pilot-visit", "system": "http://example.org/fhir/CodeSystem/cql-test", "code": "pilot-visit-office", "display": "Pilot office visit"}
+{"valueset_id": "http://example.org/fhir/ValueSet/cql-test-pilot-visit", "system": "http://example.org/fhir/CodeSystem/cql-test", "code": "pilot-visit-virtual", "display": "Pilot virtual visit"}

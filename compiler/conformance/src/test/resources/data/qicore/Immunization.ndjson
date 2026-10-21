@@ -1,0 +1,2 @@
+{"resourceType":"Immunization","id":"c2-immunization","status":"completed","vaccineCode":{"coding":[{"system":"http://example.org/fhir/CodeSystem/cql-test","code":"example-vaccine"}]},"patient":{"reference":"Patient/c2"},"occurrenceDateTime":"2026-03-01T10:00:00+00:00"}
+{"resourceType":"Immunization","id":"c3-immunization","status":"completed","vaccineCode":{"coding":[{"system":"http://example.org/fhir/CodeSystem/cql-test","code":"example-vaccine"}]},"patient":{"reference":"Patient/c3"},"occurrenceDateTime":"2026-03-01T10:00:00+00:00"}

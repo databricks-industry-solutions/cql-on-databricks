@@ -1,0 +1,46 @@
+# The Designer App — runtime deps (SVC-APP-TOPOLOGY, APP-PER-FEATURE).
+# MUST stay in lockstep with `[project] dependencies` of the distributions this App runs — these are two
+# declarations of one dependency set, and a drift between them is what DEPLOY-APP-GRANTS records as the
+# `ModuleNotFoundError: psycopg_pool` class of live crash. `test_deploy_requirements.py` compares them.
+fastapi>=0.115
+# PERF-RESPONSE-GZIP — starlette is named here in its OWN right, not left to fastapi's pin, and the floor
+# is the release that stopped `GZipMiddleware` compressing `text/event-stream` (0.46, "Don't compress on
+# server sent events"). Below it the middleware gzips the SSE progress streams; `GZipResponder` never
+# flushes per chunk, so every `/api/run-stream` event sits in zlib's buffer until the stream closes and
+# the Designer's compute gauge reads "connecting…" for the whole of a Job that is running normally
+# (SVC-RUN-STAGE, RUN-PROGRESS-TASKS). This is the databricks-sdk failure mode below, exactly: the Apps
+# base image preinstalls an older starlette, `fastapi>=0.115` is satisfied by the image's fastapi, pip
+# skips the upgrade, and local dev — which resolves a current starlette — never sees it.
+starlette>=0.46
+uvicorn[standard]>=0.30
+requests>=2.25
+# Databricks SDK for Lakebase OAuth token generation (generate_database_credential).
+# Floor is the release carrying `WorkspaceClient.postgres` (PostgresAPI) — lakebase.py calls
+# `w.postgres.generate_database_credential(endpoint)`. A lower floor is satisfied by whatever SDK the
+# Apps image preinstalls, so pip skips the upgrade and every Lakebase read fails with
+# `'WorkspaceClient' object has no attribute 'postgres'`.
+databricks-sdk>=0.122
+# SVC-MCP-TOOLS — the MCP SDK. The assistant drawer dispatches through the agent's FastMCP server object
+# in process (`create_app` builds it on its startup path), so a missing package is an App that never binds
+# its port, not a degraded feature. Brings the official `mcp` SDK transitively.
+fastmcp>=2.0
+# APP-ASSISTANT — the assistant drawer's tool loop against the Databricks Foundation Model API
+# (agent/README.md). Model serving is an OpenAI-SHAPED surface, so this is the client
+# for a Databricks endpoint reached with the App's own service principal — not a second model
+# provider, and no API key. MUST stay in lockstep with pyproject.toml, per the note at the top.
+openai>=1.40
+# SVC-PACKAGING — the OSS cql() client (cql-databricks): the compiler client and the compile shims every
+# feature here uses. It is NOT on PyPI, so the App installs the WHEEL from the runtime UC Volume, the one
+# documented way a Databricks App gets a private package (relative paths in requirements.txt are not
+# supported; the full /Volumes path must be hard-coded, so stage-app.sh substitutes
+# __CQL_DATABRICKS_ARTIFACT_VOLUME__ and refuses to stage a payload where it survives).
+# The wheel is built + uploaded by scripts/deploy/deploy-runtime-artifacts.sh (deploy.sh step 4), which runs
+# BEFORE the App is started (step 7) and therefore before pip reads this file.
+# Reading it needs the App's `runtime_artifacts` uc_securable READ_VOLUME grant (DEPLOY-APP-GRANTS).
+# pyspark is deliberately ABSENT: measure computation runs on a SQL warehouse, not in this process,
+# and every pyspark import in the client is lazy.
+# The VERSION is a placeholder too (SVC-WHEEL-VERSION): it is part of the wheel filename, and the deploy
+# stamps it with a hash of the wheel's contents, so a changed client always installs over the App's venv.
+__CQL_DATABRICKS_ARTIFACT_VOLUME__/wheels/cql_databricks-__CQL_SPARK_CLIENT_VERSION__-py3-none-any.whl
+# The agent (cql_databricks.agent) is staged as SOURCE by stage-app.sh, not installed from its wheel: the
+# wheel declares cql-databricks-common, which is not on PyPI, so pip here could not resolve it.

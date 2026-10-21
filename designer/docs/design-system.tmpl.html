@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="CQL on Databricks design system and style guide — color, type, icons, controls, dark/light. Realizes APP-DESIGN-SYSTEM / APP-STYLE-GUIDE.">
+<title>CQL on Databricks — Design System & Style Guide</title>
+<style>
+  :root {
+    /* brand primitives */
+    --lava:#FF3621; --lava-700:#BD2B26;
+    --navy:#1B3139; --navy-900:#0B2026; --navy-700:#143D4A; --navy-500:#618794; --navy-400:#90A5B1; --navy-300:#C4CCD6;
+    --oat:#EEEDE9; --oat-light:#F9F7F4; --paper:#FFFFFF;
+    --green:#00875C; --blue:#2272B4; --maroon:#98102A; --yellow:#FFAB00;
+
+    /* type roles (self-hosted in the SPA; system fallback here, per the guide) */
+    --f-serif:ui-serif,"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+    --f-ui:"DM Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --f-mono:"DM Mono","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+
+    /* semantic roles — light */
+    --ground:var(--oat-light); --panel:var(--paper); --panel-2:#F1F0EC; --panel-3:#E9E8E3;
+    --ink:var(--navy); --ink-2:#5A6F77; --ink-3:var(--navy-400);
+    --line:#DCE0E2; --line-2:#EAE9E4;
+    --acc:var(--lava); --acc-h:var(--lava-700); --acc-w:color-mix(in oklch,var(--lava) 10%,var(--paper)); --acc-i:var(--lava-700);
+    --good:var(--green); --good-w:color-mix(in oklch,var(--green) 12%,var(--paper));
+    --info:var(--blue); --info-w:color-mix(in oklch,var(--blue) 12%,var(--paper));
+    --warn:#7D5319; --warn-w:color-mix(in oklch,var(--yellow) 16%,var(--paper));
+    --crit:var(--maroon); --crit-w:color-mix(in oklch,var(--maroon) 10%,var(--paper));
+    --shadow:0 1px 2px rgba(27,49,57,.05),0 8px 24px -12px rgba(27,49,57,.14);
+    --pshadow:0 6px 16px -6px rgba(27,49,57,.2),0 18px 48px -18px rgba(27,49,57,.34);
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --ground:var(--navy-900); --panel:var(--navy); --panel-2:var(--navy-700); --panel-3:#1d4655;
+      --ink:var(--oat-light); --ink-2:var(--navy-300); --ink-3:var(--navy-400);
+      --line:color-mix(in oklch,var(--oat-light) 14%,transparent); --line-2:color-mix(in oklch,var(--oat-light) 8%,transparent);
+      --acc:#FF5F46; --acc-h:#FF9E94; --acc-w:color-mix(in oklch,var(--lava) 26%,var(--navy-900)); --acc-i:#FF9E94;
+      --good:#42BA91; --good-w:color-mix(in oklch,#42BA91 22%,var(--navy-900));
+      --info:#4299E0; --info-w:color-mix(in oklch,#4299E0 22%,var(--navy-900));
+      --warn:#FCBA33; --warn-w:color-mix(in oklch,#FCBA33 20%,var(--navy-900));
+      --crit:#BF7080; --crit-w:color-mix(in oklch,#BF7080 24%,var(--navy-900));
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px -14px rgba(0,0,0,.6);
+      --pshadow:0 8px 20px -6px rgba(0,0,0,.5),0 22px 54px -18px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="light"]{
+    --ground:var(--oat-light); --panel:var(--paper); --panel-2:#F1F0EC; --panel-3:#E9E8E3;
+    --ink:var(--navy); --ink-2:#5A6F77; --ink-3:var(--navy-400);
+    --line:#DCE0E2; --line-2:#EAE9E4;
+    --acc:var(--lava); --acc-h:var(--lava-700); --acc-w:color-mix(in oklch,var(--lava) 10%,var(--paper)); --acc-i:var(--lava-700);
+    --good:var(--green); --good-w:color-mix(in oklch,var(--green) 12%,var(--paper));
+    --info:var(--blue); --info-w:color-mix(in oklch,var(--blue) 12%,var(--paper));
+    --warn:#7D5319; --warn-w:color-mix(in oklch,var(--yellow) 16%,var(--paper));
+    --crit:var(--maroon); --crit-w:color-mix(in oklch,var(--maroon) 10%,var(--paper));
+    --shadow:0 1px 2px rgba(27,49,57,.05),0 8px 24px -12px rgba(27,49,57,.14);
+    --pshadow:0 6px 16px -6px rgba(27,49,57,.2),0 18px 48px -18px rgba(27,49,57,.34);
+  }
+  :root[data-theme="dark"]{
+    --ground:var(--navy-900); --panel:var(--navy); --panel-2:var(--navy-700); --panel-3:#1d4655;
+    --ink:var(--oat-light); --ink-2:var(--navy-300); --ink-3:var(--navy-400);
+    --line:color-mix(in oklch,var(--oat-light) 14%,transparent); --line-2:color-mix(in oklch,var(--oat-light) 8%,transparent);
+    --acc:#FF5F46; --acc-h:#FF9E94; --acc-w:color-mix(in oklch,var(--lava) 26%,var(--navy-900)); --acc-i:#FF9E94;
+    --good:#42BA91; --good-w:color-mix(in oklch,#42BA91 22%,var(--navy-900));
+    --info:#4299E0; --info-w:color-mix(in oklch,#4299E0 22%,var(--navy-900));
+    --warn:#FCBA33; --warn-w:color-mix(in oklch,#FCBA33 20%,var(--navy-900));
+    --crit:#BF7080; --crit-w:color-mix(in oklch,#BF7080 24%,var(--navy-900));
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px -14px rgba(0,0,0,.6);
+    --pshadow:0 8px 20px -6px rgba(0,0,0,.5),0 22px 54px -18px rgba(0,0,0,.7);
+  }
+
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:var(--f-ui);background:var(--ground);color:var(--ink);
+    font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1060px;margin:0 auto;padding:0 28px 120px;}
+
+  /* ── header ── */
+  header.masthead{padding:64px 0 40px;border-bottom:1px solid var(--line);margin-bottom:12px;}
+  .eyebrow{font-family:var(--f-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);margin:0 0 14px;}
+  h1.title{font-family:var(--f-serif);font-weight:400;font-size:clamp(38px,6vw,60px);line-height:1.04;letter-spacing:-.02em;margin:0;text-wrap:balance;}
+  h1.title .dot{color:var(--acc);}
+  .lede{font-size:18px;line-height:1.6;color:var(--ink-2);max-width:62ch;margin:20px 0 0;}
+  .metabar{display:flex;flex-wrap:wrap;gap:8px 10px;margin-top:26px;align-items:center;}
+
+  /* ── theme toggle (fixed) ── */
+  .themebtn{position:fixed;top:18px;right:18px;z-index:50;display:inline-flex;align-items:center;gap:7px;
+    font-family:var(--f-mono);font-size:11px;letter-spacing:.04em;color:var(--ink-2);
+    background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:7px 13px;cursor:pointer;box-shadow:var(--shadow);}
+  .themebtn:hover{border-color:var(--ink-3);color:var(--ink);}
+
+  /* ── section scaffolding ── */
+  section{padding:46px 0;border-bottom:1px solid var(--line-2);}
+  .sec-no{font-family:var(--f-mono);font-size:12px;color:var(--acc);letter-spacing:.04em;}
+  h2{font-family:var(--f-serif);font-weight:400;font-size:30px;letter-spacing:-.015em;margin:8px 0 6px;text-wrap:balance;}
+  .sec-note{color:var(--ink-2);max-width:66ch;margin:0 0 26px;font-size:15px;line-height:1.6;}
+  h3{font-size:13px;font-weight:700;letter-spacing:.02em;color:var(--ink);margin:30px 0 12px;}
+  .microlabel{font-family:var(--f-mono);font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--ink-3);}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:22px 24px;}
+  .grid{display:grid;gap:14px;}
+  .callout{display:flex;gap:13px;align-items:flex-start;background:var(--acc-w);border:1px solid color-mix(in oklch,var(--acc) 32%,transparent);
+    border-radius:12px;padding:14px 16px;margin:24px 0 0;}
+  .callout .k{flex:none;width:22px;height:22px;border-radius:6px;background:var(--acc);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:700;}
+  .callout p{margin:0;font-size:13.5px;color:var(--ink);line-height:1.55;}
+  .callout b{color:var(--acc-i);}
+
+  code.tok{font-family:var(--f-mono);font-size:.86em;background:var(--panel-2);border:1px solid var(--line-2);border-radius:5px;padding:1px 6px;color:var(--ink);}
+
+  /* ── tables ── */
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel);}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:520px;}
+  th{text-align:left;font-family:var(--f-mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);
+    font-weight:400;padding:12px 16px;border-bottom:1px solid var(--line);}
+  td{padding:11px 16px;border-bottom:1px solid var(--line-2);vertical-align:top;color:var(--ink-2);}
+  tr:last-child td{border-bottom:none;}
+  td b,td strong{color:var(--ink);}
+  .mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums;}
+
+  /* ── the generated specification (scripts/build-design-doc.mjs) ──
+     Scoped to `.spec-md` so the markdown's own heading levels do not fight the showcase's, where `h2` is a
+     30px serif section title paired with a number in the margin. Inside here a heading is a heading in a
+     document, so the scale steps down: the markdown's `##` sections read as subheads under one section
+     title rather than as six more page sections. Tables, `code.tok` and the callout treatments are the
+     page's own and are deliberately NOT restated — one declaration, cited from both halves. */
+  .spec-md{color:var(--ink-2);font-size:14px;line-height:1.65;}
+  .spec-md h2{font-family:var(--f-ui);font-size:19px;font-weight:700;letter-spacing:normal;
+    color:var(--ink);margin:44px 0 10px;padding-top:20px;border-top:1px solid var(--line-2);}
+  .spec-md h3{font-size:14px;font-weight:700;margin:26px 0 8px;}
+  .spec-md h4{font-size:12px;font-weight:700;color:var(--ink-2);margin:20px 0 6px;
+    text-transform:uppercase;letter-spacing:.06em;}
+  .spec-md p{margin:0 0 12px;max-width:84ch;}
+  .spec-md ul,.spec-md ol{margin:0 0 14px;padding-left:20px;max-width:84ch;}
+  .spec-md li{margin:0 0 6px;}
+  .spec-md b,.spec-md strong{color:var(--ink);}
+  .spec-md .tablewrap{margin:0 0 16px;}
+  /* Inline `code` in the markdown gets the page's own token chip, so a requirement id reads the same
+     whether it was hand-written above or generated here. */
+  .spec-md code{font-family:var(--f-mono);font-size:.86em;background:var(--panel-2);
+    border:1px solid var(--line-2);border-radius:5px;padding:1px 6px;color:var(--ink);}
+  .spec-md pre{overflow-x:auto;background:var(--panel-2);border:1px solid var(--line-2);
+    border-radius:10px;padding:12px 14px;margin:0 0 14px;}
+  .spec-md pre code{background:none;border:0;padding:0;font-size:12.5px;}
+  .spec-md blockquote{margin:0 0 14px;padding:2px 0 2px 14px;border-left:2px solid var(--line);
+    color:var(--ink-3);}
+  .spec-md hr{border:0;border-top:1px solid var(--line-2);margin:26px 0;}
+  .spec-md a{color:var(--acc);text-decoration:none;}
+  .spec-md a:hover{text-decoration:underline;}
+
+  /* ── type specimens ── */
+  .spec{display:flex;align-items:baseline;gap:20px;padding:12px 0;border-bottom:1px dashed var(--line-2);flex-wrap:wrap;}
+  .spec:last-child{border-bottom:none;}
+  .spec .meta{flex:none;width:150px;}
+  .spec .meta .nm{font-family:var(--f-mono);font-size:12px;color:var(--ink);}
+  .spec .meta .px{font-family:var(--f-mono);font-size:11px;color:var(--ink-3);}
+  .spec .sample{min-width:0;color:var(--ink);}
+
+  .roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-top:6px;}
+  .role{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;box-shadow:var(--shadow);}
+  .role .tag{font-family:var(--f-mono);font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--acc-i);}
+  .role .demo{margin:10px 0 8px;color:var(--ink);}
+  .role .use{font-size:12.5px;color:var(--ink-2);line-height:1.5;}
+
+  /* ── swatches ── */
+  .swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:12px;}
+  .sw{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel);box-shadow:var(--shadow);}
+  .sw .chip{height:62px;}
+  .sw .body{padding:10px 12px 12px;}
+  .sw .role{all:unset;display:block;font-size:12.5px;font-weight:600;color:var(--ink);}
+  .sw .tokname{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-3);margin-top:2px;}
+  .sw .hex{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-2);margin-top:5px;text-transform:uppercase;}
+
+  /* ── live control gallery ── */
+  .gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;}
+  .demo-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:18px 18px 20px;display:flex;flex-direction:column;gap:14px;}
+  .demo-card > .microlabel{margin-bottom:-2px;}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+  .desc{font-size:12.5px;color:var(--ink-2);line-height:1.5;margin:0;}
+
+  /* the actual components, faithfully reproduced from the SPA CSS */
+  .btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:7px 13px;font:inherit;font-weight:600;font-size:13px;color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:7px;}
+  .btn:hover{background:var(--panel-2);}
+  .btn.primary{background:var(--acc);border-color:var(--acc-h);color:#fff;}
+  .btn.primary:hover{background:var(--acc-h);}
+  .btn.ghost{border-color:transparent;background:transparent;color:var(--ink-2);}
+  .btn.ghost:hover{background:var(--panel-2);color:var(--ink);}
+  .clearchip{display:inline-flex;align-items:center;gap:4px;font:inherit;font-size:11px;font-weight:600;color:var(--ink-3);padding:2px 8px 2px 6px;border-radius:999px;border:0;background:transparent;cursor:pointer;}
+  .clearchip:hover{background:var(--acc-w);color:var(--acc-i);}
+  .clearchip.disabled{opacity:.45;cursor:default;}
+
+  a.link{color:var(--acc);font-weight:600;text-decoration:none;font-size:13px;}
+  a.link:hover{text-decoration:underline;}
+
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;border-radius:999px;padding:3px 9px;}
+  .pill.good{color:var(--good);background:var(--good-w);}
+  .pill.crit{color:var(--crit);background:var(--crit-w);}
+  .pill.wait{color:var(--ink-3);background:var(--panel-2);}
+  .pill.info{color:var(--info);background:var(--info-w);}
+  .pill.warn{color:var(--warn);background:var(--warn-w);}
+  .dot{width:7px;height:7px;border-radius:50%;background:currentColor;}
+
+  .chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:6px 12px;font-size:12px;color:var(--ink-2);cursor:pointer;}
+  .chip:hover{border-color:var(--acc);color:var(--acc-i);background:var(--acc-w);}
+
+  /* tabs */
+  .tabbar{display:flex;align-items:flex-end;gap:3px;padding:6px 8px 0;background:var(--panel-2);border-radius:10px 10px 0 0;border:1px solid var(--line);border-bottom:none;}
+  .tab{display:flex;align-items:center;gap:7px;border:1px solid transparent;border-bottom:none;border-radius:8px 8px 0 0;margin-bottom:-1px;padding:8px 12px 9px;font-size:13px;color:var(--ink-3);cursor:pointer;background:transparent;}
+  .tab .kind{width:16px;height:16px;border-radius:4px;display:grid;place-items:center;font-size:10px;font-weight:700;color:#fff;background:var(--acc);}
+  .tab.active{background:var(--panel);border-color:var(--line);color:var(--ink);font-weight:600;}
+  .tabbody{border:1px solid var(--line);border-top:none;border-radius:0 0 10px 10px;padding:16px;font-size:13px;color:var(--ink-2);background:var(--panel);}
+
+  /* lens bar */
+  .lensbar{display:inline-flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:2px;}
+  .lens{position:relative;font:inherit;font-size:13px;color:var(--ink-2);padding:7px 13px 8px;border-radius:0;background:none;border:0;cursor:pointer;}
+  .lens:hover{color:var(--ink);}
+  .lens.on{color:var(--ink);}
+  .lens.on::after{content:"";position:absolute;left:9px;right:9px;bottom:0;height:2px;border-radius:2px 2px 0 0;background:var(--acc);}
+  .lens.util{font-family:var(--f-mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);}
+
+  /* selector pill (the fixed Data Source PillMenu) — an OUTLINE, the bar's one control material: no
+     resting fill, hairline, 9px. --panel-2 in the bar is reserved for the artifact selector, the one
+     control that is genuinely raised. */
+  .mode{position:relative;display:inline-flex;align-items:center;gap:7px;min-width:148px;height:30px;
+    background:none;border:1px solid var(--line);border-radius:9px;padding:0 8px 0 10px;color:var(--ink);cursor:pointer;}
+  .mode::after{content:"";position:absolute;left:10px;right:10px;bottom:0;height:2px;border-radius:2px 2px 0 0;background:var(--acc);}
+  .mode .mdot{width:7px;height:7px;border-radius:50%;background:var(--acc);flex:none;}
+  .mode .lbl{font-family:var(--f-ui);font-size:13px;font-weight:600;letter-spacing:-.01em;}
+  .mode .car{margin-left:auto;display:grid;place-items:center;color:var(--ink-2);font-size:11px;}
+
+  /* filter popover */
+  .pop{width:300px;background:var(--panel);border:1px solid var(--line);border-radius:11px;box-shadow:var(--pshadow);padding:4px 7px 7px;}
+  .pop-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 6px 6px 9px;border-bottom:1px solid var(--line-2);margin-bottom:5px;}
+  .pop-head .ttl{font-family:var(--f-mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);}
+  .fgroup-t{font-family:var(--f-mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);padding:5px 8px 3px;}
+  .fopt{display:flex;align-items:center;gap:6px;width:100%;text-align:left;font:inherit;font-size:12px;color:var(--ink);padding:5px 8px;border-radius:7px;border:0;background:none;cursor:pointer;}
+  .fopt:hover{background:var(--panel-2);}
+  .fopt.on{background:var(--acc-w);color:var(--acc-i);font-weight:600;}
+  .fopt .ck{margin-left:auto;color:var(--acc-i);}
+
+  /* nav selection bar */
+  .navlist{display:flex;flex-direction:column;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px;width:100%;max-width:320px;}
+  .node{position:relative;display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:8px;font-size:12px;color:var(--ink);cursor:pointer;}
+  .node .k{font-family:var(--f-mono);font-size:9.5px;text-transform:uppercase;width:34px;text-align:center;padding:2px 0;border-radius:4px;color:var(--ink-2);background:var(--line-2);flex:none;}
+  .node .k.pop{color:var(--warn);background:var(--warn-w);}
+  .node .k.vs{color:var(--info);background:var(--info-w);}
+  .node:hover{background:var(--panel-2);}
+  .node.active{background:var(--acc-w);}
+  .node.active::before{content:"";position:absolute;left:0;top:5px;bottom:5px;width:2px;background:var(--acc);}
+  .node.active .lab{color:var(--acc-i);font-weight:600;}
+  .node.rel::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:2px;background:color-mix(in oklch,var(--info) 55%,transparent);}
+
+  /* before/after */
+  .ba{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media(max-width:560px){.ba{grid-template-columns:1fr;}}
+  .ba .panel{border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--panel);}
+  .ba .panel .badge{font-family:var(--f-mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;display:inline-block;}
+  .ba .before .badge{color:var(--crit);}
+  .ba .after .badge{color:var(--good);}
+  .oldclear{font-size:11px;color:var(--acc-i);cursor:pointer;background:none;border:0;font-family:var(--f-ui);}
+  .oldmode .lbl{font-family:var(--f-mono);font-size:11px;font-weight:600;letter-spacing:.02em;}
+
+  /* checklist */
+  .checklist{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:2px;}
+  .checklist li{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:10px;font-size:13.5px;line-height:1.5;color:var(--ink-2);border:1px solid var(--line-2);background:var(--panel);}
+  .checklist li .box{flex:none;width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-size:12px;font-weight:700;margin-top:1px;}
+  .checklist li.done .box{background:var(--good-w);color:var(--good);}
+  .checklist li.todo .box{background:var(--panel-2);color:var(--ink-3);border:1px solid var(--line);}
+  .checklist li b{color:var(--ink);}
+
+  .foot{margin-top:34px;font-size:12.5px;color:var(--ink-3);line-height:1.6;}
+  :focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:4px;}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;}}
+
+  /* ── print (PDF) — force the light document, drop chrome-only affordances ── */
+  @media print {
+    .themebtn{display:none!important;}
+    :root{ --ground:#FFFFFF; --panel:#FFFFFF; --panel-2:#F1F0EC; --panel-3:#E9E8E3;
+      --ink:#1B3139; --ink-2:#5A6F77; --ink-3:#90A5B1; --line:#DCE0E2; --line-2:#EAE9E4;
+      --acc:#FF3621; --acc-h:#BD2B26; --acc-w:#FDEBE9; --acc-i:#BD2B26;
+      --good:#00875C; --good-w:#E0F0EB; --info:#2272B4; --info-w:#E3EFF8;
+      --warn:#7D5319; --warn-w:#FFF3DD; --crit:#98102A; --crit-w:#F5E1E5; }
+    body{background:#fff;font-size:12.5px;}
+    .wrap{max-width:none;padding:0 8px 20px;}
+    header.masthead{padding:12px 0 22px;}
+    h1.title{font-size:40px;}
+    section{padding:22px 0;break-inside:auto;}
+    h2{break-after:avoid;} h3{break-after:avoid;}
+    .card,.demo-card,.role,.sw,.panel,.checklist li,.callout,.tablewrap{break-inside:avoid;}
+    .gallery,.swatches,.roles{gap:10px;}
+    a.link{color:#BD2B26;}
+  }
+</style>
+</head>
+<body>
+
+<button class="themebtn" id="themebtn" aria-label="Toggle light/dark theme">◑ Theme</button>
+
+<div class="wrap">
+  <header class="masthead">
+    <p class="eyebrow">CQL on Databricks · APP-DESIGN-SYSTEM · APP-STYLE-GUIDE</p>
+    <h1 class="title">Design System<span class="dot">.</span><br>Style Guide</h1>
+    <p class="lede">One visual language for CQL on Databricks — color, type, icons, controls, and dark/light.
+      Where the code disagrees with itself, this guide decides, and picks the best style. Rendered in the
+      system's own tokens, so the page is a live swatch of what it documents.</p>
+    <div class="metabar">
+      <span class="pill info"><span class="dot"></span>Living reference</span>
+      <span class="pill wait">Light &amp; dark</span>
+      <code class="tok">theme.css</code>
+      <code class="tok">measures.css</code>
+      <code class="tok">docs/designer/design-system.md</code>
+    </div>
+  </header>
+
+  <section>
+    <span class="sec-no">00</span>
+    <h2>One system, two implementations</h2>
+    <p class="sec-note">The SPA grew two parallel token sets plus a duplicate. They mostly agree on
+      color because both build on the same brand primitives — but they name everything twice, and only
+      one has a designed dark theme. That split is why a filter popover and a dropdown can feel like
+      different apps.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Implementation</th><th>Scope</th><th>Token prefix</th><th>Dark?</th></tr></thead>
+        <tbody>
+          <tr><td><code class="tok">:root</code> in theme.css</td><td>Canonical token <b>values</b> + global resets, nothing else</td><td class="mono">--surface --ink --accent</td><td>n/a — values</td></tr>
+          <tr><td><code class="tok">.mw</code> in measures.css</td><td>The whole app — every screen</td><td class="mono">--panel --tink --tacc</td><td><b>Yes</b> — OS + 3-state choice</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout"><span class="k">!</span>
+      <p><b>The decision.</b> New code uses one semantic vocabulary (section&nbsp;2). The <code class="tok">.mw</code>
+      set is the dark reference; the classic <code class="tok">:root</code> set grows dark values, not the reverse.
+      Mono is for code and data only. A fixed type scale replaces the 26 ad-hoc sizes shipping today.</p>
+    </div>
+  </section>
+
+  <section>
+    <span class="sec-no">01</span>
+    <h2>Type</h2>
+    <p class="sec-note">Three registers, one job each. The one rule that fixes the "different app" feeling:
+      <b>DM Mono is for code and data only</b> — CQL, counts, OIDs, versions. Anything a person reads as a
+      word (a button, a tab, a dropdown's value) is DM&nbsp;Sans. Uppercase micro-labels may stay mono as an
+      eyebrow — that's the one sanctioned chrome use.</p>
+
+    <div class="roles">
+      <div class="role"><span class="tag">spec / display</span>
+        <div class="demo" style="font-family:var(--f-serif);font-size:26px;letter-spacing:-.01em;">Example Condition: Reading A Control</div>
+        <p class="use">Serif. Headlines, titles, big live numbers — the published-spec voice.</p></div>
+      <div class="role"><span class="tag">ui — chrome</span>
+        <div class="demo" style="font-family:var(--f-ui);font-size:16px;">Run the test deck · Filters · Save</div>
+        <p class="use">DM Sans. Everything chrome: body, controls, labels, menus, tabs.</p></div>
+      <div class="role"><span class="tag">code / data</span>
+        <div class="demo" style="font-family:var(--f-mono);font-size:15px;">1,284 · OID 2.16.840.1 · v3.2.0</div>
+        <p class="use">DM Mono. CQL, counts, OIDs, versions, receipts, tabular figures.</p></div>
+    </div>
+
+    <h3>Type scale — 8 steps (was 26)</h3>
+    <div class="card" style="padding:8px 24px;">
+      <div class="spec"><div class="meta"><div class="nm">display</div><div class="px">30px · 700/400</div></div><div class="sample" style="font-family:var(--f-serif);font-size:30px;letter-spacing:-.015em;">Population &amp; outcomes</div></div>
+      <div class="spec"><div class="meta"><div class="nm">title</div><div class="px">21px · 700/400</div></div><div class="sample" style="font-family:var(--f-serif);font-size:21px;">Denominator criteria</div></div>
+      <div class="spec"><div class="meta"><div class="nm">subtitle</div><div class="px">16px · 600</div></div><div class="sample" style="font-size:16px;font-weight:600;">Initial population</div></div>
+      <div class="spec"><div class="meta"><div class="nm">body</div><div class="px">14px · 400</div></div><div class="sample" style="font-size:14px;">Default prose and the base font size for the app.</div></div>
+      <div class="spec"><div class="meta"><div class="nm">control</div><div class="px">13px · 500–600</div></div><div class="sample" style="font-size:13px;font-weight:600;">Buttons · tabs · menu items · dropdown labels</div></div>
+      <div class="spec"><div class="meta"><div class="nm">meta</div><div class="px">12px · 500</div></div><div class="sample" style="font-size:12px;">Secondary meta, chips, table cells</div></div>
+      <div class="spec"><div class="meta"><div class="nm">caption</div><div class="px">11px · 500–600</div></div><div class="sample" style="font-size:11px;">Counts, fine print, badges</div></div>
+      <div class="spec"><div class="meta"><div class="nm">micro</div><div class="px">9.5px · 700 caps</div></div><div class="sample microlabel" style="font-size:9.5px;">POPULATION CRITERIA</div></div>
+    </div>
+  </section>
+
+  <section>
+    <span class="sec-no">02</span>
+    <h2>Color &amp; roles</h2>
+    <p class="sec-note">Neutrals are navy-biased warm greys, never pure grey — built on the Databricks
+      primitives (lava, navy, oat, green, blue, maroon). Components never touch a primitive directly; they
+      use the semantic roles below. Swatches are live — toggle the theme to see both.</p>
+
+    <h3>Neutrals &amp; surfaces</h3>
+    <div class="swatches">
+      <div class="sw"><div class="chip" style="background:var(--ground)"></div><div class="body"><span class="role">ground</span><div class="tokname">--canvas / --ground</div><div class="hex">app background</div></div></div>
+      <div class="sw"><div class="chip" style="background:var(--panel)"></div><div class="body"><span class="role">surface</span><div class="tokname">--panel / --surface</div><div class="hex">document / card</div></div></div>
+      <div class="sw"><div class="chip" style="background:var(--panel-2)"></div><div class="body"><span class="role">surface-2</span><div class="tokname">--panel-2</div><div class="hex">hover / inset</div></div></div>
+      <div class="sw"><div class="chip" style="background:var(--ink)"></div><div class="body"><span class="role" style="color:var(--ink)">ink</span><div class="tokname">--tink / --ink</div><div class="hex">primary text</div></div></div>
+      <div class="sw"><div class="chip" style="background:var(--ink-2)"></div><div class="body"><span class="role">ink-2</span><div class="tokname">--tink-2 / --ink-2</div><div class="hex">secondary text</div></div></div>
+      <div class="sw"><div class="chip" style="background:var(--ink-3)"></div><div class="body"><span class="role">ink-3</span><div class="tokname">--tink-3 / --ink-3</div><div class="hex">labels / hints</div></div></div>
+    </div>
+
+    <h3>Accent &amp; semantic state</h3>
+    <div class="swatches">
+      <div class="sw"><div class="chip" style="background:var(--acc)"></div><div class="body"><span class="role">accent</span><div class="tokname">--tacc / --accent</div><div class="hex">lava · in reserve</div></div></div>
+      <div class="sw"><div class="chip" style="background:var(--good)"></div><div class="body"><span class="role">good</span><div class="tokname">--tgood / --good</div><div class="hex">numerator · met</div></div></div>
+      <div class="sw"><div class="chip" style="background:var(--info)"></div><div class="body"><span class="role">info</span><div class="tokname">--tvio / --violet</div><div class="hex">denominator · dep</div></div></div>
+      <div class="sw"><div class="chip" style="background:var(--warn)"></div><div class="body"><span class="role">warn</span><div class="tokname">--twarn / --warn</div><div class="hex">exceptions · caution</div></div></div>
+      <div class="sw"><div class="chip" style="background:var(--crit)"></div><div class="body"><span class="role">crit</span><div class="tokname">--tfail / --crit</div><div class="hex">exclusions · fail</div></div></div>
+      <div class="sw"><div class="chip" style="background:var(--acc-w)"></div><div class="body"><span class="role">wash</span><div class="tokname">--*-w / --*-soft</div><div class="hex">chip / active fill</div></div></div>
+    </div>
+
+    <div class="callout"><span class="k">1</span>
+      <p><b>Accent is spent once per view.</b> Lava marks the single most important thing — the live pin,
+      the primary CTA, the active bar — and nothing else. Semantic colors encode
+      population/prediction/validation <b>state</b>, never decoration, and never count as the accent.
+      When you need a calm second color, use <b>info</b> (blue).</p>
+    </div>
+  </section>
+
+  <section>
+    <span class="sec-no">03</span>
+    <h2>Controls — when to use what</h2>
+    <p class="sec-note">The catalog, rendered live from the same CSS the SPA ships. Every example works in
+      both themes.</p>
+
+    <div class="gallery">
+      <div class="demo-card">
+        <span class="microlabel">Buttons</span>
+        <div class="row">
+          <button class="btn primary">Run</button>
+          <button class="btn">Open</button>
+          <button class="btn ghost">Cancel</button>
+        </div>
+        <div class="row">
+          <button class="clearchip"><span aria-hidden="true">✕</span>Clear all</button>
+          <button class="clearchip disabled"><span aria-hidden="true">✕</span>Clear all</button>
+        </div>
+        <p class="desc"><b>Primary</b> (accent) once per view · <b>secondary</b> for ordinary actions ·
+          <b>ghost</b> for chrome · <b>ghost chip</b> (X + label) for tertiary resets like Clear all.</p>
+      </div>
+
+      <div class="demo-card">
+        <span class="microlabel">Pills · status</span>
+        <div class="row">
+          <span class="pill good"><span class="dot"></span>Pass</span>
+          <span class="pill crit"><span class="dot"></span>Fail</span>
+          <span class="pill wait"><span class="dot"></span>Waiting</span>
+          <span class="pill info"><span class="dot"></span>Live</span>
+        </div>
+        <div class="row">
+          <span class="chip">Proportion</span><span class="chip">eCQM</span><span class="chip">Draft</span>
+        </div>
+        <p class="desc">State labels use a semantic wash + ink, never the accent. Chips are filters or
+          metadata tokens; hover raises the accent.</p>
+      </div>
+
+      <div class="demo-card">
+        <span class="microlabel">Links</span>
+        <div class="row" style="font-size:13px;color:var(--ink-2);">
+          Uses <a class="link" href="#">Encounters During Period</a> · <a class="link" href="#">3 dependents ↑</a>
+        </div>
+        <p class="desc">Accent, underline on hover. Links navigate or reveal — never a primary or
+          destructive action.</p>
+      </div>
+
+      <div class="demo-card">
+        <span class="microlabel">Lens bar</span>
+        <div class="lensbar">
+          <button class="lens on">Define</button>
+          <button class="lens">Analyze</button>
+          <button class="lens">Validate</button>
+          <button class="lens util">CQL</button>
+        </div>
+        <p class="desc">Active differs by color + a <b>straight accent underline</b> only — weight is
+          constant so switching never reflows. Utility lenses use the mono micro-label.</p>
+      </div>
+
+      <div class="demo-card">
+        <span class="microlabel">Tabs</span>
+        <div class="tabbar">
+          <div class="tab active"><span class="kind">M</span>Reading A Control</div>
+          <div class="tab"><span class="kind" style="background:var(--info)">L</span>FHIRHelpers</div>
+        </div>
+        <div class="tabbody">The active tab shares the surface fill + border and bridges into the body.</div>
+      </div>
+
+      <div class="demo-card">
+        <span class="microlabel">Compute pill</span>
+        <div class="mode" style="min-width:96px;position:relative;">
+          <span class="mdot"></span>
+          <span class="lbl" style="font-variant-numeric:tabular-nums;">CY 2025</span>
+          <span class="lbl" style="font-size:10.5px;opacity:.6;margin-left:-4px;">+2</span>
+          <span class="car" aria-hidden="true">▾</span>
+        </div>
+        <p class="desc">Reusable selector pill (<b>PillMenu</b>): status <b>dot</b> · value · <b>+n</b> ·
+          chevron, on the shared toolbar control surface (no resting fill + hairline + 9px). Its value
+          is the first <b>execution parameter</b> — what must be legible without opening anything, because
+          every number on the page is scoped to it; the earlier <b>icon-only</b> variant (dot + chevron,
+          no text) is retired, a wordless trigger made the pill's whole state a tooltip. A trigger prints
+          <b>one</b> value and counts the rest: printing them all makes a toolbar control that resizes with
+          whatever measure is open. Opens a <b>three-group</b> popover — <b>Data Source</b> and
+          <b>Updates</b> as single-select rows, then <b>Parameters</b> last, one <b>‹ value ›</b> stepper
+          row per parameter (a parameter is a value on an ordered domain: the arrows say which way is "more" and
+          are disabled at its ends, and stepping does not close the pill). The dot is gray at rest and
+          accent once a data source engages compute; it does not animate. Open state is a straight accent
+          bar.</p>
+      </div>
+
+      <div class="demo-card">
+        <span class="microlabel">Filter popover</span>
+        <div class="pop">
+          <div class="pop-head"><span class="ttl">Filters</span>
+            <button class="clearchip"><span aria-hidden="true">✕</span>Clear all</button></div>
+          <div class="fgroup-t">Type</div>
+          <button class="fopt on">Populations <span class="ck" aria-hidden="true">✓</span></button>
+          <button class="fopt">Defines</button>
+          <button class="fopt">Value sets</button>
+        </div>
+        <p class="desc">One popover language: micro-label head + a ghost-chip Clear all, single-select
+          rows, selected row on an accent wash with a check.</p>
+      </div>
+
+      <div class="demo-card">
+        <span class="microlabel">Nav · selection</span>
+        <div class="navlist">
+          <div class="node active"><span class="k pop">pop</span><span class="lab">Initial Population</span></div>
+          <div class="node rel"><span class="k">def</span><span class="lab">Encounters During Period</span></div>
+          <div class="node"><span class="k vs">vs</span><span class="lab">Example Condition value set</span></div>
+        </div>
+        <p class="desc">Selection is a <b>true straight bar</b> (accent) + a wash fill — never a ring or an
+          inset shadow that curves. Related rows get a thinner tinted bar (info), no fill.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <span class="sec-no">04</span>
+    <h2>What we fixed</h2>
+    <p class="sec-note">The two controls that triggered this guide, before and after — each now cites
+      <code class="tok">APP-STYLE-GUIDE</code>.</p>
+
+    <h3>Clear all — a modern ghost chip</h3>
+    <div class="ba">
+      <div class="panel before"><span class="badge">Before</span><br>
+        <button class="oldclear">Clear all</button>
+        <p class="desc" style="margin-top:12px;">Plain accent text, 11px, no icon — read as a stray label.</p></div>
+      <div class="panel after"><span class="badge">After</span><br>
+        <button class="clearchip"><span aria-hidden="true">✕</span>Clear all</button>
+        <p class="desc" style="margin-top:12px;">Small ghost chip: X icon, muted until hover, accent
+          wash on hover. Reads as a reset.</p></div>
+    </div>
+
+    <h3>Exec-mode dropdown — chrome, not code</h3>
+    <div class="ba">
+      <div class="panel before"><span class="badge">Before</span><br>
+        <div class="mode oldmode" style="min-width:0;padding-right:10px;"><span class="mdot"></span><span class="lbl">Test Deck</span><span class="car" aria-hidden="true">▾</span></div>
+        <p class="desc" style="margin-top:12px;">Label in DM Mono — the reason the dropdown felt like a
+          different app from the sans chrome beside it.</p></div>
+      <div class="panel after"><span class="badge">After</span><br>
+        <div class="mode" style="min-width:0;padding-right:10px;position:relative;"><span class="mdot"></span><span class="lbl">Test Deck</span><span class="car" aria-hidden="true">▾</span></div>
+        <p class="desc" style="margin-top:12px;">Value in DM Sans, on the shared toolbar context-control
+          surface (matches the Period stepper: filled + hairline + 9px). This later became the
+          <b>compute pill</b> above, whose value is now its first execution parameter.</p></div>
+    </div>
+  </section>
+
+  <section style="border-bottom:none;">
+    <span class="sec-no">05</span>
+    <h2>Migration checklist</h2>
+    <p class="sec-note">Tracked in <code class="tok">docs/designer/design-system.md</code> Two done, four
+      queued — the reconciliation work to make every surface match this guide.</p>
+    <ul class="checklist">
+      <li class="done"><span class="box">✓</span><div><b>Exec-mode dropdown label</b> → sans chrome (was DM Mono).</div></li>
+      <li class="done"><span class="box">✓</span><div><b>"Clear all"</b> → small ghost chip with an X icon.</div></li>
+      <li class="todo"><span class="box"></span><div>Audit remaining chrome uses of DM Mono; keep only the sanctioned uppercase eyebrow, move word-like chrome to sans.</div></li>
+      <li class="todo"><span class="box"></span><div>Collapse the 26 shipped font sizes onto the 8-step scale.</div></li>
+      <li class="done"><span class="box">✓</span><div><b>Token vocabulary unified</b> — the classic shell is deleted (<code class="tok">DESIGNER-TOP-BAR</code>), so <code class="tok">:root</code> holds values only and every screen renders inside <code class="tok">.mw</code>. No second subtree to grow dark for.</div></li>
+      <li class="done"><span class="box">✓</span><div><b><code class="tok">.mw-tokens</code> folded</b> — by removing the reason it existed: the module switcher is now the one top bar's breadcrumb segment, always inside <code class="tok">.mw</code>.</div></li>
+      <li class="todo"><span class="box"></span><div><code class="tok">.mw-seg-btn</code> is mono at weight 700 — DM Mono ships nothing above 500, so this is a synthesized bold. Fix at the source: weight 500 + an ink step.</div></li>
+    </ul>
+
+    <p class="foot">Source of truth for values: <code class="tok">web/src/theme.css</code> +
+      <code class="tok">src/measures/measures.css</code>. Spec &amp; decision record:
+      <code class="tok">docs/designer/design-system.md</code> (<code class="tok">APP-DESIGN-SYSTEM</code>,
+      <code class="tok">APP-STYLE-GUIDE</code>). Change the CSS and reconcile the doc in the same change.</p>
+  </section>
+
+  <!-- The specification in full, GENERATED from design-system.md on every build. Everything above this
+       point is the hand-authored showcase: live components that cannot be derived from prose. Everything
+       below is the decision record, which used to be hand-copied here and is why this page went stale. -->
+  <section style="border-bottom:none;">
+    <span class="sec-no">06</span>
+    <h2>The specification, in full</h2>
+    <p class="sec-note">Generated from <code class="tok">docs/designer/design-system.md</code> — the spec and the
+      decision record — every time this page is built (<code class="tok">npm run doc:design</code>). Edit the
+      markdown, never this page.</p>
+<!-- SPEC -->
+  </section>
+</div>
+
+<script>
+  (function(){
+    var btn=document.getElementById('themebtn');
+    function cur(){var s=document.documentElement.getAttribute('data-theme');
+      if(s)return s;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+    btn.addEventListener('click',function(){
+      var next=cur()==='dark'?'light':'dark';
+      document.documentElement.setAttribute('data-theme',next);
+      btn.textContent=(next==='dark'?'◐':'◑')+' Theme';
+    });
+  })();
+</script>
+</body>
+</html>

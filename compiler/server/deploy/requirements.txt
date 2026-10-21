@@ -1,0 +1,5 @@
+# CQL on Databricks Compiler Service App — Python deps for bootstrap.py (SVC-PACKAGING). The App runs a JVM; the only
+# Python need is the launcher, which uses the Databricks SDK to pull the JRE + oversized jars from the
+# runtime UC Volume (CQL_DATABRICKS_ARTIFACT_VOLUME), authed as the ambient App identity. If the SDK/volume are
+# unavailable the launcher falls back to the public URLs (stdlib urllib), so this stays a soft dependency.
+databricks-sdk>=0.20

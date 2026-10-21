@@ -1,0 +1,94 @@
+{
+  "measure": "BasicEncounterAndCondition",
+  "version": "1.0.0",
+  "measurementPeriod": {
+    "start": "2026-01-01",
+    "end": "2026-12-31"
+  },
+  "populations": {
+    "Initial Population": "initial-population"
+  },
+  "about": "Example patient data with diverse encounter and condition patterns.",
+  "patients": {
+    "pat-001": {
+      "initial-population": 1,
+      "why": "Has encounters during period (Feb, Aug 2026) and hypertension diagnosis."
+    },
+    "pat-002": {
+      "initial-population": 1,
+      "why": "Has encounters during period (Mar, Nov 2026) and asthma diagnosis."
+    },
+    "pat-003": {
+      "initial-population": 1,
+      "why": "Has encounter during period (May 2026) and diabetes diagnosis."
+    },
+    "pat-004": {
+      "initial-population": 1,
+      "why": "Has encounters during period (Jan, Sep 2026) and hypertension diagnosis."
+    },
+    "pat-005": {
+      "initial-population": 1,
+      "why": "Has encounter during period (Apr 2026) and hyperlipidemia diagnosis."
+    },
+    "pat-006": {
+      "initial-population": 1,
+      "why": "Has encounter during period (Jun 2026) and asthma diagnosis."
+    },
+    "pat-007": {
+      "initial-population": 0,
+      "why": "Has encounter during period (Jul 2026) but no condition."
+    },
+    "pat-008": {
+      "initial-population": 1,
+      "why": "Has encounter during period (Feb 2026) and diabetes diagnosis."
+    },
+    "pat-009": {
+      "initial-population": 0,
+      "why": "Has encounter during period (Oct 2026) but no condition."
+    },
+    "pat-010": {
+      "initial-population": 1,
+      "why": "Has encounter during period (May 2026) and hypertension diagnosis."
+    },
+    "pat-011": {
+      "initial-population": 0,
+      "why": "No encounter during period (only Nov 2025) and no condition."
+    },
+    "pat-012": {
+      "initial-population": 1,
+      "why": "Has encounter during period (Aug 2026) and asthma diagnosis."
+    },
+    "pat-013": {
+      "initial-population": 1,
+      "why": "Has encounter during period (Dec 2026) and hyperlipidemia diagnosis."
+    },
+    "pat-014": {
+      "initial-population": 1,
+      "why": "Has encounters during period (Jan, Jun 2026) and diabetes diagnosis."
+    },
+    "pat-015": {
+      "initial-population": 1,
+      "why": "Has encounter during period (Nov 2026) and hypertension diagnosis."
+    },
+    "pat-016": {
+      "initial-population": 1,
+      "why": "Has encounter during period (Mar 2026) and asthma diagnosis."
+    },
+    "pat-017": {
+      "initial-population": 1,
+      "why": "Has encounter during period (Sep 2026) and hyperlipidemia diagnosis."
+    },
+    "pat-018": {
+      "initial-population": 1,
+      "why": "Has encounter during period (Apr 2026) and diabetes diagnosis."
+    },
+    "pat-019": {
+      "initial-population": 0,
+      "why": "No encounter during period (only Aug 2025) and no condition."
+    },
+    "pat-020": {
+      "initial-population": 1,
+      "why": "Has encounter during period (Jul 2026) and hypertension diagnosis."
+    }
+  }
+}

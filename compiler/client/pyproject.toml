@@ -1,0 +1,65 @@
+# The cql-databricks client (BUILD-CLIENT): the runtime-compiled `cql()` plan builder, peer to spark.sql.
+#
+# ONE distribution (decision 10). It was two — a neutral core plus a Databricks plugin joined by an
+# entry-point group — because the two halves lived in separate repositories and the plugin seam was how
+# they reached each other. In one repository that indirection buys nothing.
+#
+# `databricks-sdk` is therefore a BASE dependency, not an extra: zero-config authoring on a workspace
+# (SVC-ZERO-CONFIG-NOTEBOOK) is this package's reason to exist, and a "Databricks client that might not be
+# able to talk to Databricks" is a worse artifact than an honest one. The platform-neutrality wall is
+# enforced over the COMPILER and its runtime, by `./gradlew checkNeutrality`. The explicit `CqlClient` +
+# `RemoteProvider` path here needs no SDK at all, which is what the local end-to-end conformance lane uses.
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cql-databricks"
+# 0.1.1 (BINDINGS-INTO-CLIENT) ships cql_databricks.data_bindings. The deploy builds the wheel as
+# `<this version>+src<content hash>` (SVC-WHEEL-VERSION), so a changed client reaches an App's kept venv
+# without a bump here.
+version = "0.1.1"
+description = "CQL on Databricks client: the runtime-compiled cql() plan builder for Spark (peer to spark.sql), durable calculations and their results."
+readme = "README.md"
+# 3.10 is the floor: the public wire dataclasses are keyword-only (BUILD-CLIENT-COMPAT), which needs
+# `dataclasses.KW_ONLY`. 3.9 is end-of-life.
+requires-python = ">=3.10"
+license = { text = "Databricks License" }
+authors = [{ name = "Databricks, Inc." }]
+dependencies = [
+    "requests>=2.25",
+    # Workspace App registry, UC tag discovery, and ambient identity — the platform tiers of BUILD-RESOLVE.
+    # Floor 0.122 is data-bindings' `warehouse_runner` (BINDINGS-INTO-CLIENT), now shipped here.
+    "databricks-sdk>=0.122",
+]
+
+[project.urls]
+Homepage = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+Repository = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+
+[project.optional-dependencies]
+# pyspark is NOT a base dependency: it comes from either this extra (local open-source Spark, for
+# development and tests) or from databricks-connect (the Databricks path), and the two are mutually
+# exclusive. The unit tests need neither — they run on the stdlib with `requests` mocked.
+spark = ["pyspark>=4.1"]
+test = ["pytest>=7"]
+
+# src layout (PyPA's recommendation), matching every other component in this repository -- the JVM
+# projects and the web bundle all keep their sources under `src/`. It also closes a real bug class: with a
+# flat layout, `import <pkg>` from the repository root resolves the WORKING TREE rather than the installed
+# distribution, so the tests can pass while the built wheel is broken. This project has already shipped a
+# wheel missing declared package data once.
+#
+# BUILD-CLIENT-NAMESPACE (`DEC-CLIENT-PER-FEATURE`): this distribution owns `cql_databricks.compiler` and,
+# since BINDINGS-INTO-CLIENT (`DEC-BINDINGS-IN-CLIENT`), `cql_databricks.data_bindings` — the UC-tag
+# lookup, layout checks, corpus and SQL runner (CONTENT-RESOLVER). The separate
+# `cql-databricks-data-bindings` distribution is gone. Since RESULT-INTO-CLIENT it also owns `cql_databricks.result`:
+# durable bulk calculations, result reading and the result views; the `cql-databricks-evaluator` distribution is
+# gone.
+# `cql_databricks` is a PEP 420 namespace shared by every feature's public package, so it has no
+# `__init__.py` here or anywhere (`tests/test_namespace.py`), and `namespaces = true` is what lets
+# setuptools find a package under a directory without one.
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cql_databricks.compiler*", "cql_databricks.data_bindings*", "cql_databricks.result*"]
+namespaces = true

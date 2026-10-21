@@ -1,0 +1,187 @@
+{
+  "demo": {
+    "library": "Demo",
+    "version": "1.0.0",
+    "translatorOptions": "EnableLocators,DisableListDemotion,DisableListPromotion",
+    "includes": [
+      {
+        "localIdentifier": "FHIRHelpers",
+        "path": "FHIRHelpers",
+        "version": "4.0.1"
+      }
+    ],
+    "declared": {
+      "valueSets": [
+        {
+          "name": "Screening",
+          "id": "urn:oid:1.2.3"
+        }
+      ],
+      "codes": [],
+      "parameters": []
+    },
+    "defines": [
+      {
+        "name": "Initial Population",
+        "library": "Demo",
+        "returns": null,
+        "locator": "8:1-9:18",
+        "bodyLines": 0,
+        "body": "",
+        "metric": null,
+        "references": [],
+        "reads": [
+          {
+            "resourceType": "Patient",
+            "profile": "Patient",
+            "line": 1
+          }
+        ],
+        "valueSets": [],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "Denominator",
+        "library": "Demo",
+        "returns": null,
+        "locator": "11:1-12:22",
+        "bodyLines": 0,
+        "body": "",
+        "metric": null,
+        "references": [
+          {
+            "name": "Initial Population",
+            "line": 1
+          }
+        ],
+        "reads": [],
+        "valueSets": [],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "Has Screening",
+        "library": "Demo",
+        "returns": null,
+        "locator": "17:1-18:35",
+        "bodyLines": 0,
+        "body": "",
+        "metric": null,
+        "references": [],
+        "reads": [
+          {
+            "resourceType": "Observation",
+            "profile": "Observation",
+            "valueSet": "Screening",
+            "codeProperty": "code",
+            "line": 1
+          }
+        ],
+        "valueSets": [
+          {
+            "name": "Screening",
+            "library": "Demo",
+            "line": 1
+          }
+        ],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "Numerator",
+        "library": "Demo",
+        "returns": null,
+        "locator": "14:1-15:17",
+        "bodyLines": 0,
+        "body": "",
+        "metric": null,
+        "references": [
+          {
+            "name": "Has Screening",
+            "line": 1
+          }
+        ],
+        "reads": [],
+        "valueSets": [],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "Orphan Helper",
+        "library": "Demo",
+        "returns": null,
+        "locator": "20:1-21:6",
+        "bodyLines": 0,
+        "body": "",
+        "metric": null,
+        "references": [],
+        "reads": [],
+        "valueSets": [],
+        "codes": [],
+        "parameters": []
+      }
+    ]
+  },
+  "helpers": {
+    "library": "Helpers",
+    "version": "1.0.0",
+    "translatorOptions": "EnableLocators,DisableListDemotion,DisableListPromotion",
+    "includes": [
+      {
+        "localIdentifier": "FHIRHelpers",
+        "path": "FHIRHelpers",
+        "version": "4.0.1"
+      }
+    ],
+    "declared": {
+      "valueSets": [],
+      "codes": [],
+      "parameters": []
+    },
+    "defines": [
+      {
+        "name": "ToString",
+        "library": "Helpers",
+        "returns": null,
+        "locator": "6:1-7:13",
+        "bodyLines": 0,
+        "body": "",
+        "metric": null,
+        "references": [],
+        "reads": [],
+        "valueSets": [],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "ToString",
+        "library": "Helpers",
+        "returns": null,
+        "locator": "9:1-10:13",
+        "bodyLines": 0,
+        "body": "",
+        "metric": null,
+        "references": [],
+        "reads": [],
+        "valueSets": [],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "ToQuantity",
+        "library": "Helpers",
+        "returns": null,
+        "locator": "12:1-13:10",
+        "bodyLines": 0,
+        "body": "",
+        "metric": null,
+        "references": [],
+        "reads": [],
+        "valueSets": [],
+        "codes": [],
+        "parameters": []
+      }
+    ]
+  }
+}

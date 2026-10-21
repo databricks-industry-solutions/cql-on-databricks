@@ -1,0 +1,71 @@
+{
+ "BasicEncounterAndCondition": {
+  "config": {
+   "path": "examples/measures/BasicEncounterAndCondition.synth.json",
+   "sha256": "b1119c5f6eb6427a2a24294b00ce713458aa78fd811f26a33b1ba264c9e2647b"
+  },
+  "cql": [
+   {
+    "emitElm": true,
+    "path": "examples/measures/BasicEncounterAndCondition.cql",
+    "sha256": "5249d5d1019c47b2633687145c741f20253dd4887b4ae88881eb09c0e792f804"
+   },
+   {
+    "emitElm": true,
+    "path": "examples/measures/EncounterDuringPeriod.cql",
+    "sha256": "93e7786968c98dec72a6fad56af6c2883c2ca1b7ec6274b95e400dfb1072dff1"
+   }
+  ],
+  "elm": {
+   "BasicEncounterAndCondition": "c4d76c05ae5e7056c06968c9b437f7cc424690a8a65c18b143701d2f55c38e08",
+   "EncounterDuringPeriod": "7637703fb47d22eb0c19ad1d1bb4da81f7d54f7d8e828227c8c461312eb0c3f1"
+  },
+  "root": "BasicEncounterAndCondition",
+  "valuesets": {
+   "files": [],
+   "source": "repo"
+  }
+ },
+ "pilot": {
+  "config": {
+   "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/pilot/SynthesizerPilot.synth.json",
+   "sha256": "a1546b27436149c79ba7ec7c6aea71ce7140e9cd2b7b962299621744a24c8f67"
+  },
+  "cql": [
+   {
+    "emitElm": true,
+    "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/pilot/SynthesizerPilot.cql",
+    "sha256": "4ed470bf78e3a1898a607489c49e73a8839a5c65752caf31bbb90af283d6da97"
+   }
+  ],
+  "elm": {
+   "SynthesizerPilot": "1a9ec28849f00874417a1507e2267f9216a2acee108271867308ec9e296b55ff"
+  },
+  "root": "SynthesizerPilot",
+  "valuesets": {
+   "files": [
+    {
+     "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/pilot/valueset-cql-test-pilot-condition.ndjson",
+     "sha256": "746622ff174fa29635ec1bb3ae8b94fc6aad94f964804bab15590a43268793e5"
+    },
+    {
+     "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/pilot/valueset-cql-test-pilot-exclusion-a.ndjson",
+     "sha256": "0a3911366c3bf49a6654587b09f24d4a2627dd628c61068e9b549c4de13cf940"
+    },
+    {
+     "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/pilot/valueset-cql-test-pilot-exclusion-b.ndjson",
+     "sha256": "71fdba7445734d3e45a871656672a3d181dd7b9baa376a7e88bc453e6b1045e4"
+    },
+    {
+     "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/pilot/valueset-cql-test-pilot-lab-test.ndjson",
+     "sha256": "51718217fc89f5e6021767423d1d9151082b568b986432e163716eaab0d7b54b"
+    },
+    {
+     "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/pilot/valueset-cql-test-pilot-visit.ndjson",
+     "sha256": "1a1d169277ffdb210c8042f98f6b69feabbf5247e3837fe4f7c4b435aab5810c"
+    }
+   ],
+   "source": "repo"
+  }
+ }
+}
