@@ -121,6 +121,16 @@ define "BirthYears": { 1990, 2010, 1975 }
 The magic shows the result. `--df ages` also binds it as a DataFrame, and each define is a temp view that
 `%sql` can query (`SELECT * FROM BirthYears`).
 
+A cell or `cql()` string with no `library` header joins the session library, like a view in a SQL
+notebook. A later cell sees its defines by name, and redefining a name replaces it:
+
+```
+%%cql
+define "Oldest": Min("BirthYears")
+```
+
+`cql('define "Youngest": Max("BirthYears")').exec("Youngest")` works the same way.
+
 To run a measure from a folder of `.cql` files:
 
 ```python

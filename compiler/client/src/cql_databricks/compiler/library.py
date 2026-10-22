@@ -127,6 +127,9 @@ class Library:
     #: ``None`` for the bare ``retrieve_<Type>`` convention. Not compared: two bindings of one library are
     #: the same library.
     binder: Optional[object] = field(default=None, compare=False)
+    #: SVC-NOTEBOOK-SESSION-SCOPE — when this is the session library, the defines of the fragment that bound
+    #: it: what ``exec()`` with no targets runs. ``None`` for any other library.
+    fragment_defines: Optional[Tuple[str, ...]] = None
 
     def with_parameter(self, name: str, value) -> "Library":
         """Bind CQL parameter ``name`` to ``value`` (`BUILD-CLIENT-SESSION`, extends `LANG-PARAMETER`).
@@ -200,9 +203,9 @@ def load_library(resource: Optional[str] = None, *, elm: Optional[str] = None,
 
     ``resolve_closure`` (default on) walks the root's ``include``s through the library provider and ships
     the dependency closure with the compile (`BUILD-COMPILE-LINK`) — what makes a real multi-library eCQM
-    compile. This covers raw ``cql`` TEXT as well: an inline body that DECLARES a library header is a root
-    like any other, so a multi-library measure typed into a cell resolves its deps off the search path
-    (a headerless snippet has no identity, no includes, and needs no source). Set it off to send the root
+    compile. This covers raw ``cql`` TEXT as well: an inline body is a root like any other, so a
+    multi-library measure typed into a cell resolves its deps off the search path. A headerless body has no
+    identity, but its ``include``s resolve the same way (`SVC-NOTEBOOK-SESSION-SCOPE`). Set it off to send the root
     alone (an under-supplied closure then fails loudly at the service, never silently).
     ``library_provider`` injects a provider directly, bypassing config resolution — the seam a host or a
     test supplies its own source from. ``binder`` chooses the data each compile binds to
@@ -236,7 +239,7 @@ def load_library(resource: Optional[str] = None, *, elm: Optional[str] = None,
         # "Could not load source for library <X>". No `origin` — there is no directory to scope siblings
         # to, so the file provider falls through to the wider search path.
         name, version = identity_of(cql)
-        if name:                            # a headerless snippet has no identity and no includes
+        if name:
             root = LibrarySource(name=name, version=version, cql=cql)
     elif elm is not None:
         elm_text = elm
@@ -260,6 +263,9 @@ def load_library(resource: Optional[str] = None, *, elm: Optional[str] = None,
     deps: Tuple[LibrarySource, ...] = ()
     if resolve_closure and root is not None and lib_prov is not None:
         deps = tuple(lib_prov.closure(root))
+    elif resolve_closure and cql is not None and lib_prov is not None:
+        # A headerless body is walked under a placeholder name; it is never sent as a dependency itself.
+        deps = tuple(lib_prov.closure(LibrarySource(name="<inline>", cql=cql)))
 
     prov = provider or resolve_provider(resolved_conf, endpoint=endpoint)
     # NO compiled-in default (`LANG-CONTEXT-DEFAULT`): an unset context resolves to None and is sent UNSET,

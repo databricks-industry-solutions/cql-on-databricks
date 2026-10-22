@@ -22,7 +22,7 @@ from typing import Dict, Iterable, Optional, Union
 
 from . import config
 from .cql import CqlQuery, describe as _describe
-from .libraries import LibraryProvider, LibraryRef, resolve_library_provider
+from .libraries import LibraryProvider, LibraryRef, identity_of, resolve_library_provider
 from .library import Library, load_library
 from .providers import CompileError, CompileProvider, LibraryGraph, ResourceSchema, resolve_provider
 
@@ -35,7 +35,7 @@ class CqlClient:
     def __init__(self, conf: Dict[str, str], *, provider: Optional[CompileProvider] = None,
                  spark=None, endpoint: Optional[str] = None,
                  sources: Optional[Dict[str, Dict[str, str]]] = None,
-                 library_provider: Optional[LibraryProvider] = None, binder=None):
+                 library_provider: Optional[LibraryProvider] = None, binder=None, session_scope=None):
         self._conf = dict(conf)
         self._spark = spark
         # BIND-MANIFEST: the session's retrieve binding table (fhirType -> {function, catalog?}), carried
@@ -49,6 +49,9 @@ class CqlClient:
                                   else resolve_library_provider(self._conf))
         # CLIENT-EXEC-DISCOVERY: chooses the data each compile binds to, or None for the convention.
         self._binder = binder
+        # SVC-NOTEBOOK-SESSION-SCOPE: the session library header-less CQL joins, or None for a client whose
+        # every string is its own library.
+        self._session_scope = session_scope
         # CLIENT-RESOURCE-SCHEMA: the model's schema is fixed for a compiler version, so it is read once.
         self._resource_schemas: Optional[Dict[str, ResourceSchema]] = None
 
@@ -158,6 +161,11 @@ class CqlClient:
                 elm = source
             else:
                 cql = source
+        if self._session_scope is not None and cql is not None and identity_of(cql)[0] is None:
+            # SVC-NOTEBOOK-SESSION-SCOPE: header-less CQL is a fragment of the session library.
+            return self._session_scope.join(cql, self._provider, lambda text: self.with_library(
+                resource, cql=text, context=context, data_model=data_model, engine=engine,
+                data_source=data_source, recompute=recompute))
         return self.with_library(resource, cql=cql, elm=elm, library=library, context=context,
                                  data_model=data_model, engine=engine, data_source=data_source,
                                  recompute=recompute)
@@ -182,6 +190,7 @@ class CqlClientBuilder:
         self._conf: Dict[str, str] = {}
         self._provider: Optional[CompileProvider] = None
         self._library_provider: Optional[LibraryProvider] = None
+        self._session_scope = None
         self._spark = None
         self._endpoint: Optional[str] = None
         self._sources: Dict[str, Dict[str, str]] = {}
@@ -246,6 +255,13 @@ class CqlClientBuilder:
         ``cql_databricks.libraries`` entry-point group and be selected by
         :meth:`library_provider_kind`, with no code change here at all."""
         self._library_provider = provider
+        return self
+
+    def session_scope(self, scope) -> "CqlClientBuilder":
+        """Make header-less CQL join ``scope``, a session library (`SVC-NOTEBOOK-SESSION-SCOPE`), instead of
+        each string being its own library. :func:`~cql_databricks.compiler.connect` sets this; a client built
+        without it keeps every string separate."""
+        self._session_scope = scope
         return self
 
     def library_provider_kind(self, kind: str) -> "CqlClientBuilder":
@@ -373,4 +389,5 @@ class CqlClientBuilder:
 
     def build(self) -> CqlClient:
         return CqlClient(self._conf, provider=self._provider, spark=self._spark, endpoint=self._endpoint,
-                         sources=self._sources, library_provider=self._library_provider, binder=self._binder)
+                         sources=self._sources, library_provider=self._library_provider, binder=self._binder,
+                         session_scope=self._session_scope)

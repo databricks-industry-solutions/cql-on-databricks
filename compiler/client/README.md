@@ -39,6 +39,29 @@ result = (client.cql(library="HypertensionBPControl")
 `exec("X")` returns one DataFrame. `exec()` or `exec("X", "Y")` returns a dict of define name to
 DataFrame. `describe()` returns the library's defines, their shapes and dependencies.
 
+## The session library
+
+CQL with no `library` header joins one library per Spark session (`SVC-NOTEBOOK-SESSION-SCOPE`). This
+covers both `%%cql` cells and `cql("...")` strings. It works like views in a SQL notebook: a later
+fragment sees earlier defines by name, and redeclaring a name replaces it.
+
+```python
+cql('define "Two": 2').exec("Two")
+cql('define "Four": "Two" * 2').exec("Four")   # sees Two
+cql('define "Two": 3').exec("Two")             # replaces Two; Four is now 6
+```
+
+- `exec()` with no targets runs only the new fragment's defines.
+- Each run re-creates the views of every define in the session library.
+- `using` works as it does for a file: the same line twice is fine, a second FHIR version fails.
+- A fragment joins only if the whole library still compiles. If it breaks an earlier define, it fails,
+  and the session library stays as it was.
+- Each fragment starts in the default context. The compiler lowers a whole library in one context: once
+  any fragment declares `context Patient`, every define in the session library runs per patient.
+- `include` works in a fragment, so a fragment can use a library from your folder or from a cell.
+- CQL with a `library` header is its own library, as before.
+- `reset(spark)` clears the session library.
+
 ## Which data a run reads
 
 `exec()` and `materialize()` read the same data source (`CLIENT-EXEC-DISCOVERY`): a schema tagged
@@ -75,7 +98,8 @@ mount(spark, FhirJson("acme.bronze.fhir_raw", column="resource"))               
 - A retrieve of a type you didn't mount fails, naming the mounted types.
 - `data_source=` still names a tagged data source instead. `materialize()` refuses a mount: kept results
   belong to a data source.
-- `reset(spark)` drops the mount and the libraries your `%%cql` cells declared (`CLIENT-SESSION-RESET`).
+- `reset(spark)` drops the mount, the libraries your `%%cql` cells declared, and the session library
+  (`CLIENT-SESSION-RESET`).
 
 Files under `/Volumes` are read by Spark. Other files are read on the driver, up to 64 MiB per mount.
 

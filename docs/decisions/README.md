@@ -3,8 +3,8 @@
 
 Code cites these IDs. This file says what each one decided, so a citation always leads somewhere.
 Requirements are in [`../requirements.md`](../requirements.md) and
-[`../compiler/requirements.md`](../compiler/requirements.md). Open decisions are kept outside this
-repository, in the roadmap.
+[`../compiler/requirements.md`](../compiler/requirements.md). Open decisions are in the
+[roadmap](../roadmap.md).
 
 | ID | What it decided |
 |---|---|

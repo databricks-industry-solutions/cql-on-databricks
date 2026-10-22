@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets
   *   POST /describe  {elm, deps?, context?, overrides?, grainFirst?}
   *                -> {"defines":[...], "dependencies":{...}, "boundaries":[...],
   *                    "materializedDefines":[...], "compilerVersion":"…", "terminologyVersion":…}
+  *   POST /merge-cql {fragments:[cql, ...]} -> {"cql":"…", "defines":[...]}  (SVC-NOTEBOOK-SESSION-SCOPE)
   *   GET  /capabilities -> {"compilerVersion":"…"}
   *   GET  /health -> {"status":"ok"}
   *
@@ -38,6 +39,9 @@ final class OssCompileHost(service: CompileService, port: Int = 0) {
   })
   server.createContext("/describe", new HttpHandler {
     def handle(ex: HttpExchange): Unit = OssCompileHost.this.handleDescribe(ex)
+  })
+  server.createContext("/merge-cql", new HttpHandler {
+    def handle(ex: HttpExchange): Unit = OssCompileHost.this.handleMergeCql(ex)
   })
   server.createContext("/capabilities", new HttpHandler {
     def handle(ex: HttpExchange): Unit = OssCompileHost.this.handleCapabilities(ex)
@@ -169,6 +173,18 @@ final class OssCompileHost(service: CompileService, port: Int = 0) {
           "retrieveTypes"       -> ujson.Arr.from(g.retrieveTypes))
         respond(ex, 200, ujson.write(out))
       }
+    } catch {
+      case t: Throwable =>
+        respond(ex, 400, ujson.write(ujson.Obj("error" -> s"${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")}")))
+    }
+
+  /** POST /merge-cql → header-less fragments merged into one library ([[MergeCql]],
+    * SVC-NOTEBOOK-SESSION-SCOPE). A header or a syntax error is a loud 400. */
+  private def handleMergeCql(ex: HttpExchange): Unit =
+    try {
+      if (ex.getRequestMethod != "POST") respond(ex, 405, """{"error":"POST only"}""")
+      else respond(ex, 200, ujson.write(MergeCql.handle(
+        new String(ex.getRequestBody.readAllBytes(), StandardCharsets.UTF_8))))
     } catch {
       case t: Throwable =>
         respond(ex, 400, ujson.write(ujson.Obj("error" -> s"${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")}")))

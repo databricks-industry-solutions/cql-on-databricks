@@ -70,8 +70,7 @@ Instructions for any AI coding agent working in this repository.
   - Reuse an existing type prefix (see the registries below) before inventing a new one.
 - New work with no requirement adds one, in the same change, to its topic doc and its system's
   registry.
-- `DEC-<SLUG>` is an open decision, never a requirement. Open ones live in the roadmap, which is kept outside
-  this repository. Once
+- `DEC-<SLUG>` is an open decision, never a requirement. Open ones live in `docs/roadmap.md`. Once
   settled, it amends or creates a requirement, and the ID is listed in `docs/decisions/README.md`.
 - A requirement that stops being true is marked RESOLVED or SUPERSEDED in place, with the reason.
   Never delete it: old code that cites the ID must still lead somewhere.
@@ -89,4 +88,5 @@ Instructions for any AI coding agent working in this repository.
 | Compiler requirements | `docs/compiler/requirements.md` |
 | All other requirements | `docs/requirements.md` |
 | Decision records | `docs/decisions/` |
+| Plan, open decisions, known compiler gaps | `docs/roadmap.md` |
 | Deploying | `docs/deploy.md` |

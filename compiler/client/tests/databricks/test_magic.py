@@ -79,12 +79,43 @@ class CellMagicTest(unittest.TestCase):
         """Registration is unconditional, so a measure cell is both runnable and includable with no
         second syntax."""
         with mock.patch("cql_databricks.compiler.magic._run_cql") as run:
-            run.return_value.populations.return_value = ["Denominator"]
+            run.return_value.default_targets.return_value = ["Denominator"]
             self.magic.cql("", COMMON)
 
         run.assert_called_once()
         self.assertEqual([r.name for r in session_mod.session_provider(spark=self.spark).declared()],
                          ["DiabetesCommon"])
+
+
+    def test_a_headerless_cell_runs_its_own_defines(self):
+        """SVC-NOTEBOOK-SESSION-SCOPE — the cell joins the session library and shows only what it declared."""
+        with mock.patch("cql_databricks.compiler.magic._run_cql") as run:
+            run.return_value.default_targets.return_value = ["bar"]
+            self.magic.cql("--df out", 'define "bar": "foo" + 1')
+
+        run.return_value.exec.assert_called_once_with("bar")
+        self.assertIs(self.magic.shell.user_ns["out"], run.return_value.exec.return_value)
+
+    def test_several_targets_run_in_one_exec(self):
+        with mock.patch("cql_databricks.compiler.magic._run_cql") as run:
+            run.return_value.exec.return_value = {"a": mock.Mock(), "b": mock.Mock()}
+            self.magic.cql("--target a --target b", 'define "a": 1\ndefine "b": 2')
+
+        run.return_value.exec.assert_called_once_with("a", "b")
+
+    def test_a_cell_of_declarations_alone_runs_nothing(self):
+        with mock.patch("cql_databricks.compiler.magic._run_cql") as run:
+            run.return_value.default_targets.return_value = []
+            self.magic.cql("", "valueset \"VS\": 'urn:x'")
+
+        run.return_value.exec.assert_not_called()
+
+    def test_df_on_a_cell_with_no_defines_is_a_usage_error(self):
+        from IPython.core.error import UsageError
+        with mock.patch("cql_databricks.compiler.magic._run_cql") as run:
+            run.return_value.default_targets.return_value = []
+            with self.assertRaises(UsageError):
+                self.magic.cql("--df out", "valueset \"VS\": 'urn:x'")
 
 
 if __name__ == "__main__":

@@ -120,6 +120,15 @@ class CqlQuery:
         enrichment). Empty for an ad-hoc library with no populations."""
         return _population_defaults(self.describe().defines)
 
+    def default_targets(self) -> List[str]:
+        """What :meth:`exec` with no targets runs: the :meth:`populations`, else every define. For the
+        session library, the same rule over only the defines of the fragment that bound it — a cell shows
+        its own result, not the whole session's (`SVC-NOTEBOOK-SESSION-SCOPE`)."""
+        own = getattr(self._lib, "fragment_defines", None)
+        if own is not None:
+            return _population_defaults(own) or list(own)
+        return self.populations() or self.defines()
+
     def compile_pipeline(self, *, boundaries: Optional[Iterable[str]] = None,
                          grain_first: bool = False, durable: bool = False) -> PipelinePlan:
         """The compile-once :class:`~.providers.PipelinePlan` (`PIPE-SQL-DAG-REUSE`) — one dataset recipe per
@@ -145,28 +154,37 @@ class CqlQuery:
         must provide the ``retrieve_<Type>`` functions the plan references: the library's binder chooses
         them (`CLIENT-EXEC-DISCOVERY`), else they are the bare convention names."""
         single = len(targets) == 1                    # the CALL shape, not the resolved set's size
+        session = getattr(self._lib, "fragment_defines", None) is not None
+        if session and not targets:
+            targets = tuple(self.default_targets())
+            if not targets:
+                raise ValueError("nothing to evaluate: the fragment declares no defines")
         engine = getattr(self._lib, "engine", config.LOCAL_ENGINE) or config.LOCAL_ENGINE
         if engine != config.LOCAL_ENGINE:
             # The engine compiles the closure itself, so it also picks the default targets: a local describe
             # would need the closure on this session's library path, which the engine does not use.
             frames = self._exec_on(engine, list(targets), boundaries=boundaries, persist_as=persist_as)
             return frames[targets[0]] if single else frames
-        tset = list(targets) or self.populations() or self.defines()
+        tset = list(targets) or self.default_targets()
         if not tset:
             raise ValueError("nothing to evaluate: the library has no defines")
         sp = self._spark or _active_spark()
         _ship_udf_catalog(sp, self._lib)
-        if single:
+        if single and not session:
             result = self._compile(tset[0], boundaries)
             _run_statements(sp, result)
             return _select(sp, result.target, persist_as)
-        if persist_as is not None:
+        if persist_as is not None and not single:
             raise TypeError("persist_as is only valid when exec() names exactly one target")
         # Multiple targets: compile the WHOLE library ONCE (shared view DAG), run it, then hand back a lazy
         # SELECT per requested define. Views are lazy, so a define is only computed when its frame is
         # actioned; the cost-chosen barriers (materialized once) are shared across the populations.
+        # The session library always takes this path: every run re-creates every session view, so a view
+        # built on a name a later fragment redefined is never stale (SVC-NOTEBOOK-SESSION-SCOPE).
         result = self._compile(None, boundaries)
         _run_statements(sp, result)
+        if single:
+            return _select(sp, _object_for(tset[0], result), persist_as)
         return {t: _select(sp, _object_for(t, result), None) for t in tset}
 
     def _exec_on(self, engine: str, targets: List[str], *, boundaries, persist_as) -> dict:

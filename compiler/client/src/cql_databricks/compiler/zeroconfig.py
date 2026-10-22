@@ -33,6 +33,7 @@ from .compile_shim import CqlDatabricksCompileProvider, discover_udf_schema
 from .discovery import DatabricksDataBinder
 from .provider import CONF_APP_NAME, make_provider
 from .session_libraries import session_provider
+from .session_scope import SessionScope
 from .session_state import SessionRecord
 
 
@@ -66,6 +67,10 @@ def connect(spark=None, *, app_name: Optional[str] = None, data_catalog: Optiona
     measure can be written across cells and a later cell's ``include`` finds an earlier cell's library. One
     lookup order, cells first — a cell shadows a published library of the same name, which is what makes it
     an override while you draft.
+
+    CQL with NO ``library`` header — a ``%%cql`` cell or a ``client.cql("...")`` string — joins the session
+    library instead (`SVC-NOTEBOOK-SESSION-SCOPE`): a later fragment sees an earlier one's defines unqualified,
+    and redeclaring a name replaces it. Every client on the session shares it, like the cells.
 
     ``spark`` is the session runs execute against (else the active one). The keyword overrides are only for
     a NON-convention deployment: ``app_name`` (a Compiler Service App not named the default),
@@ -118,6 +123,8 @@ def connect(spark=None, *, app_name: Optional[str] = None, data_catalog: Optiona
         # provider below is built from these same roots, never from a second source of truth.
         builder = builder.library_path(*roots)
     builder = builder.library_provider(_library_provider(roots, spark, scopes))
+    # SVC-NOTEBOOK-SESSION-SCOPE: header-less CQL joins the session library, kept beside the cells.
+    builder = builder.session_scope(SessionScope(SessionRecord(spark)))
     client = builder.build()
     # SVC-RUNTIME-UDF: register the opaque-UDF catalog on a JVM-backed classic session. Since
     # SVC-NOTEBOOK-RUNTIME-BIND qualifies every emitted `cql_*` call against the UC catalog, nothing the

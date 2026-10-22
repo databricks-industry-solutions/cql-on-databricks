@@ -58,7 +58,7 @@ class CompilerRouterSpec extends AnyFunSuite {
     assert(r.status == 200)
     val o = ujson.read(r.body)
     // Method names advertise the served URL paths — lowercase kebab-case (BUILD-URL-KEBAB).
-    val expected = Set("translate", "compile-sql", "compile-pipeline", "describe", "resource-schema")
+    val expected = Set("translate", "compile-sql", "compile-pipeline", "describe", "resource-schema", "merge-cql")
     assert(o("methods").arr.map(_.str).toSet == expected)
     assert(o("sparkFreeMethods").arr.map(_.str).toSet == expected)
   }
@@ -133,6 +133,21 @@ class CompilerRouterSpec extends AnyFunSuite {
     assert(!o("ok").bool)
     assert(o("elm") == ujson.Null)
     assert(o("diagnostics").arr.nonEmpty)
+  }
+
+  test("SVC-NOTEBOOK-SESSION-SCOPE: /merge-cql merges fragments and names the last one's defines") {
+    val body = ujson.write(ujson.Obj("fragments" -> ujson.Arr("define \"foo\": 1", "define \"bar\": \"foo\" + 1")))
+    val r = post("/merge-cql", body)
+    assert(r.status == 200, r.body)
+    val o = ujson.read(r.body)
+    assert(o("defines").arr.map(_.str) == Seq("bar"))
+    assert(o("cql").str.contains("define \"foo\": 1"))
+  }
+
+  test("SVC-NOTEBOOK-SESSION-SCOPE: /merge-cql refuses a fragment with a library header (400)") {
+    val r = post("/merge-cql", ujson.write(ujson.Obj("fragments" -> ujson.Arr(smokeCql))))
+    assert(r.status == 400)
+    assert(r.body.contains("library Smoke"))
   }
 
   test("/compile-sql of a data-free measure returns a SQL script (Spark-free, EXEC-SQL-BACKEND)") {

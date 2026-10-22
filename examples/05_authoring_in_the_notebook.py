@@ -15,6 +15,9 @@
 # MAGIC name, exactly as it would include something out of a Git Folder. The last section publishes the draft
 # MAGIC to a folder and runs it from there unchanged, which is the whole point of drafting this way.
 # MAGIC
+# MAGIC A cell *without* a header joins the notebook's session library instead (notebook 1, section 8). That
+# MAGIC is for exploring. A header is what makes logic a named library you can include, version and publish.
+# MAGIC
 # MAGIC **Runs on serverless — no cluster to attach.** Just **Run All**.
 
 # COMMAND ----------

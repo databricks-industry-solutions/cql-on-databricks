@@ -12,7 +12,7 @@ import java.util.zip.GZIPInputStream
 object UcCompiler {
   private val MaxRequestBytes = 64 * 1024 * 1024
   private val Operations = Set("translate", "compile-sql", "compile-pipeline", "describe",
-                               "resource-schema", "capabilities")
+                               "resource-schema", "merge-cql", "capabilities")
 
   /** SVC-COMPILER-UC — artifact-derived, independent of environment and sandbox lifetime. */
   lazy val version: String = {
