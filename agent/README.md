@@ -56,6 +56,8 @@ variable `assistant_endpoint` to choose it; there is no default. Any chat endpoi
 The drawer is read-only, like the tools. It overlays the Designer's reading column, so opening it doesn't
 resize the document (`APP-STABLE-LAYOUT`).
 
+The agent's requirements are in [docs/requirements.md](docs/requirements.md).
+
 ## Build and test
 
 ```bash

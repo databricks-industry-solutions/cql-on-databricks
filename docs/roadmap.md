@@ -2,7 +2,7 @@
 
 The plan, open decisions (`DEC-*`) and known gaps. The rest of `docs/` says what is true now; this file says
 what is not done yet. Requirement IDs in it (`CLIENT-*`, `LANG-*`, `DATA-*` and the rest) are defined in
-[requirements.md](requirements.md) and [compiler/requirements.md](compiler/requirements.md).
+[requirements.md](requirements.md) and the feature registries it lists.
 
 The main scenario is a customer running CQL through the Python client in their own notebooks and Jobs.
 The Designer is an extra. The steps below are in the order they're done.

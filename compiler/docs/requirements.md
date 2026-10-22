@@ -1,6 +1,6 @@
-# Requirements Registry
+# Compiler requirements
 
-The single index of every referenceable requirement. IDs are mnemonic and decoupled from document section numbers. The one-line statement here is the index entry; the full claim and rejected alternatives live in the linked source. Cite ids per `PROC-CITE-REQ`. When you add or change a requirement, update both its topic doc and this table.
+The compiler's requirements, including its client (`cql-databricks`). Requirements that span features, and the rule for where a requirement lives, are in [`docs/requirements.md`](../../docs/requirements.md). IDs are mnemonic and decoupled from document section numbers. The one-line statement here is the index entry; the full claim and rejected alternatives live in the linked source, relative to this folder. Cite ids per `PROC-CITE-REQ`. When you add or change a requirement, update both its topic doc and this table.
 
 ## CORE — non-negotiable product invariants
 
@@ -223,17 +223,6 @@ The single index of every referenceable requirement. IDs are mnemonic and decoup
 | `CONF-SCALE-REMOTE` | Same Connect client targets always-on/serverless Databricks endpoint for warm loop and L4 scale. | `testing-and-conformance.md` |
 | `CONF-TEST-ARTIFACTS` | Per-operator test cases capture inspectable artifacts under `build/test-artifacts/`. | `testing-and-conformance.md` |
 
-## PROC — implementation-process requirements
-
-| id | statement | source |
-|----|-----------|--------|
-| `PROC-DESCRIPTIVE-ID` | Every referenceable label is a descriptive mnemonic, never a bare sequence. Sequence goes in explicit `after` column. | `../README.md` |
-| `PROC-CITE-REQ` | Every change cites the requirement id(s) it realizes in code, commits, PRs, and tests. | `overview.md` |
-| `PROC-TDD` | Each new kernel primitive ships with operator-level + desugaring/lowering tests before done. | `roadmap.md` |
-| `PROC-DRY` | Every piece of knowledge has one authoritative representation; callers reference it, never restate. | `engineering-principles.md` |
-| `PROC-SOLID` | Single-responsibility modules, extension via seams not edits, substitutable providers, minimal interfaces. | `engineering-principles.md` |
-| `PROC-DATA-PROVENANCE` | A data element reachable from a measure boundary but not used by any measure define (dead code) is not part of the measure. Reachability walks the compiler's describe graph. | `execute-model.md` |
-
 ## BIND — data binding / adapter layer
 
 | id | statement | source |
@@ -272,7 +261,7 @@ The single index of every referenceable requirement. IDs are mnemonic and decoup
 | `PIPE-READS-SORTED` | A recipe's `reads` (published siblings it reads) is emitted sorted, not in walk order. | `pipeline-runtime.md` |
 | `PIPE-MULTI-LIB` | `/compile-pipeline` accepts `libraries` manifest (array of `{elm, deps}`); produces single merged PipelinePlan. | `pipeline-runtime.md` |
 | `PIPE-MULTI-DESCRIBE` | `/describe` accepts same `libraries` manifest and returns merged LibraryGraph. | `pipeline-runtime.md` |
-| `PIPE-EMIT-SQL` | `/compile-pipeline` emits ready-to-deploy SQL file per recipe (`CREATE OR REFRESH MATERIALIZED/VIEW`). | `pipeline-runtime.md` |
+| `PIPE-EMIT-SQL` | `/compile-pipeline` returns complete, deploy-ready SQL for each recipe in its `sqlFile` field (`CREATE OR REFRESH MATERIALIZED VIEW`), so it runs with no runtime compile. | `pipeline-runtime.md` |
 
 ## EMIT — emit + interchange surface
 
@@ -300,13 +289,11 @@ The single index of every referenceable requirement. IDs are mnemonic and decoup
 
 | id | statement | source |
 |----|-----------|--------|
-| `BUILD-TAXONOMY` | Feature → component → module. Feature is deployable, functional unit with own docs; component is build unit; no product level. Dependencies one way, HTTP counts. Four features: loader, compiler, agent, designer. | `structure.md` |
-| `BUILD-SYSTEMS` | Per-feature: owns, does not own, interface. One-way order held; HTTP counts. Common library `cql_databricks_common` is own distribution at `common/`. | `systems.md` |
-| `BUILD-CLIENT-NAMESPACE` | `cql-databricks` ships `cql_databricks.compiler` and `cql_databricks.data_bindings`. | `systems.md` |
-| `BUILD-CLIENT-SCOPES` | The client holds `compile`, `run` and `materialize` (`cql_databricks.result`); its mode is fixed when constructed. The data a compile binds to is chosen at each compile (`CLIENT-EXEC-DISCOVERY`), so a client built before a mount reads it. Amended 2026-10-11. | `systems.md` |
+| `BUILD-CLIENT-NAMESPACE` | `cql-databricks` ships `cql_databricks.compiler` and `cql_databricks.data_bindings`. | `../../docs/systems.md` |
+| `BUILD-CLIENT-SCOPES` | The client holds `compile`, `run` and `materialize` (`cql_databricks.result`); its mode is fixed when constructed. The data a compile binds to is chosen at each compile (`CLIENT-EXEC-DISCOVERY`), so a client built before a mount reads it. Amended 2026-10-11. | `../../docs/systems.md` |
 | `BUILD-MODULES` | Gradle projects: `compiler/{core,service,server,runtime}`, conformance, `common`, cql-databricks Python. | `modules.md` |
 | `BUILD-COMPILE-SERVICE` | Compiler-service logic + OSS host live in-repo; `/compile-sql`, `/compile-pipeline`, `/describe`. | `pipeline-runtime.md` |
-| `BUILD-COMPILE-LINK` | Compile endpoints accept root ELM + dependency array; flatten via `LibraryLinker`. | `pipeline-runtime.md` Amended 2026-10-11 by `EMIT-ROOT-INDEPENDENT`: the linked library records each merged name's owning library and version (`Library.owners`). |
+| `BUILD-COMPILE-LINK` | Compile endpoints accept the root ELM and a `deps` array of dependency ELM, and flatten them via `LibraryLinker`. The caller resolves the include closure from the registry and sends it on each compile request. | `pipeline-runtime.md` Amended 2026-10-11 by `EMIT-ROOT-INDEPENDENT`: the linked library records each merged name's owning library and version (`Library.owners`). |
 | `BUILD-CLIENT` | Python `cql-databricks` exposes `cql(library, target, boundaries)` + `load_library` + provider. | `pipeline-runtime.md` |
 | `BUILD-RESOLVE` | Client resolves every setting by one precedence: explicit arg → spark.cqldatabricks.* → CQL_DATABRICKS_* env → compiled-in default → fail. No setting is discovered: the data a run reads is chosen at compile time by the library's binder (`CLIENT-EXEC-DISCOVERY`). Amended 2026-10-11: the UC role-tag (`cqldatabricks.role`) and default-name (`fhir`, `fhir.valueset_expansion`) tiers are removed. Amended 2026-10-11: serverless refuses to set a custom Spark conf key (`CONFIG_NOT_AVAILABLE`), so notebooks and Jobs pass settings as `connect()` keywords or env. A new setting gets a keyword and an env var, never a `spark.cqldatabricks.*` key. | `pipeline-runtime.md` |
 | `BUILD-ENV` | Client session is CQL builder; each binding dual-represented. | `pipeline-runtime.md` |
@@ -321,6 +308,101 @@ The single index of every referenceable requirement. IDs are mnemonic and decoup
 | `BUILD-CLIENT-COMPAT` | Client↔service wire bidirectionally tolerant; Python surface append-only. | `client-compatibility.md` |
 | `BUILD-META` | Client returns first-class metadata: `describe(lib) → LibraryGraph`. | `pipeline-runtime.md` |
 | `BUILD-URL-KEBAB` | Every HTTP endpoint path lowercase kebab-case (no camelCase or underscores in path segments). | `pipeline-runtime.md` |
+
+## SVC — compile service, notebooks and runtime functions
+
+| id | statement |
+|----|-----------|
+| `ACC-NAMESPACE-ALIGN` | Accelerator code under com.databricks.cql.platform with distinct product tokens; engine rename to add com. prefix is engine-led. |
+| `SVC-API-HOST` | The Compiler Service provides a network endpoint hosting the engine's compile APIs via HTTP. |
+| `SVC-BINDING-RUNTIME` | Data and terminology are bound at execution time in the client session, not at compile time. |
+| `SVC-COMPILE-BATCH` | One compile request per durable preparation, with dependency ELM retained and callers identified explicitly. |
+| `SVC-COMPILE-CACHE` | Process-local LRU cache for successful compilation responses, keyed by build, operation, and request content. |
+| `SVC-COMPILE-ENDPOINT` | One HTTP endpoint for both interactive authoring compiles (translate, validate, plan, explain) and runtime compiles. |
+| `SVC-COMPILER-IDENTITY` | Version identifier for the deployed compiler, published to signal when recomputation is needed after compiler updates. |
+| `SVC-COMPILER-M2M` | SUPERSEDED by `SVC-EXCHANGE-RETRY`. A Job reaches the Compiler App with its own identity through the token exchange, which retries the intermittent `invalid_grant` M2M was a way around. The deploy provisions no compiler caller, and the client rejects the retired `compilerAuth`, `compilerClientId`, `compilerSecretScope` and `compilerSecretKey` settings. The caller lookup also never matched: the workspace SCIM API does not keep `externalId`, so every deploy created another caller and OAuth secret. |
+| `SVC-DISCOVERY-PLUGIN` | Databricks plugin that resolves the client's compiler discovery, using app naming convention and OAuth token exchange. |
+| `SVC-EXCHANGE-RETRY` | The Databricks plugin's App token exchange retries `invalid_grant` with backoff for up to 3 minutes, logging one warning per retry with the error code only, then fails with the usual error. A workaround for an intermittent platform failure in Jobs; the generic exchange does not retry unless a plugin opts in. |
+| `SVC-NOTEBOOK-CELL-LIBRARY` | A measure can be authored across notebook cells via a `%%cql` cell magic and mounted library directories. The declared cells belong to the Spark session (`CLIENT-SESSION-STATE`), not the Python process. A cell with a `library` header is its own library; one without joins the session library (`SVC-NOTEBOOK-SESSION-SCOPE`). Amended 2026-10-21. |
+| `SVC-NOTEBOOK-CQL-MAGIC` | Cell magic `%%cql` registers with the Python extension and enables measure authoring in notebooks. A cell with no `library` header joins the session library and runs only its own defines (`SVC-NOTEBOOK-SESSION-SCOPE`). Amended 2026-10-21. |
+| `SVC-NOTEBOOK-LIBRARY-FOLDER` | A notebook mounts one or more directories of .cql files as its library source via `connect(library_path=...)`. Library references resolve in one order: `%%cql` cells, then the mounted directories, then tagged knowledge in the session's catalog scopes, earliest scope first (`CLIENT-KNOWLEDGE-INCLUDES`). A library from tagged knowledge resolves its includes in tagged knowledge only. |
+| `SVC-NOTEBOOK-RUNTIME-BIND` | Runtime bindings: discover UDF schema from the registry, rewrite serverless barriers, no `%scala` cell needed. |
+| `SVC-NOTEBOOK-SESSION-SCOPE` | CQL with no `library` header, from a `%%cql` cell or a `cql("...")` string, joins one library per Spark session. A later fragment sees earlier defines unqualified, and redeclaring a name replaces it. `using` follows the translator: an identical repeat is accepted; a second version of a model is an error. A fragment joins only if the whole library still compiles. `reset(spark)` clears it. The compiler merges the fragments (`merge-cql`). |
+| `SVC-REF-PROVIDERS` | Supply reference-only DataProvider and TerminologyProvider to the compile service. |
+| `SVC-RESOURCE-SCHEMA` | Compiler exposes POST /resource-schema to query the modeled structure of FHIR types. |
+| `SVC-RUN-SERVERLESS-BARRIER` | On serverless, rewrite cache table statements to temporary views before execution. |
+| `SVC-RUNTIME-UDF` | Deploy cql_* UC catalog and register on the runtime cluster as cluster-scoped libraries. |
+| `SVC-RUNTIME-UDF-IDENTITY` | Tracks which build of the engine's `cql_*` UC functions is registered, triggering full refresh when UDFs are re-registered despite unchanged compilation output. |
+| `SVC-RUNTIME-UDF-UC` | CQL operators register as UC Scala functions on serverless, SQL warehouses, and all compute types via manifest-derived DDL and dependencies staged in a runtime volume. |
+| `SVC-SPLIT` | Authoring compile is Spark-free and interactive; runtime compile is Spark-free and per-pipeline-update. |
+| `SVC-STATELESS` | The Compiler Service is a pure function: no session, no user data, no state held between requests. |
+| `SVC-ZERO-CONFIG-NOTEBOOK` | Open a notebook and run cql("...") with no configuration when a single deployment matches the default naming. |
+
+## CLIENT — client sessions, data binding and knowledge
+
+| id | statement |
+|----|-----------|
+| `CLIENT-EXEC-DISCOVERY` | `exec()` and `materialize()` read data the way a durable calculation does: the schema tagged `cql_databricks_data_source`, in the caller's catalog scopes, sent to the compiler as its routines (`SVC-COMPILE-BATCH`), with value sets from the runtime `valuesets` view. The source is the one named by `data_source=` or `spark.cqldatabricks.dataSource`, else the only one in scope; several in scope fail, naming them. CQL that retrieves nothing resolves nothing (`EMIT-DESCRIBE-RETRIEVE-TYPES`), and a source missing a retrieved type fails before the run. An explicit `source_binding` or `data_catalog` is used instead. Amended 2026-10-11 by `RUN-CLIENT-RESULT-IDENTITY`: `materialize()` refuses an explicit `source_binding` or `data_catalog` when the CQL retrieves data, because a kept result is identified by a tagged source's address. |
+| `CLIENT-RESOURCE-SCHEMA` | The client exposes the compiler's FHIR model: `CqlClient.resource_schema(fhir_type=None)` returns each modeled type's `__resource` struct as a PySpark `StructType` and DDL, and whether it is in the Patient compartment. It reads them from `/resource-schema` (`SVC-RESOURCE-SCHEMA`) once per client and never derives a schema itself. An unmodeled type raises, naming it. |
+| `CLIENT-SESSION-MOUNT` | `mount(spark, fhir, valuesets=None)` puts FHIR data and value sets on a Spark session with no catalog writes. `fhir` is a folder of `<Type>.ndjson`, a `{type: DataFrame or table}` dict, a `FhirJson` relation of mixed types, or a list of these; a string is a path only if it contains `/`, and a table name must be `catalog.schema.table`. Each type is checked (`BIND-SCHEMA-CHECK`), reshaped (`BIND-RESHAPE`) and registered as a `TEMPORARY` function named `retrieve_<Type>__cqlmount`. Every client on the session reads the mount at each compile, and it replaces discovery; an explicit `data_source=` or `source_binding` beats it. A retrieve of an unmounted type fails, naming the mounted types. Mounting again replaces it, and a compile cached against the old mount is not reused. A durable calculation refuses it. |
+| `CLIENT-SESSION-RESET` | `reset(spark)` drops the mount, its temp functions and views, and the libraries `%%cql` cells declared, then the session record. Safe to call twice. Define result views are left alone. |
+| `CLIENT-SESSION-STATE` | The `%%cql` cells and the mount are rows of one temp view, `__cqldatabricks_session`, in the Spark session, so they end together and never disagree. Reading with no Spark session finds nothing; declaring a cell with none raises. The client writes no session conf. |
+| `CONTENT-RESOLVER` | ContentResolver finds all tagged schemas (knowledge, terminology, data-source) in caller's ordered catalog scopes in one query; earliest scope wins for duplicates. Data-bindings package in compiler/client/; shipped in cql-databricks wheel. |
+| `DATA-BIND-PROGRESS` | Knowledge views are bound step by step; each step's outcome is streamed to the caller. |
+| `DATA-BINDINGS` | The knowledge views `{catalog}.runtime.measures`, `.libraries` and `.valuesets` union the layout tables of every schema tagged `cql_databricks_knowledge` or `cql_databricks_terminology`. The deploy creates them, and only their owner can rebind them. |
+| `DATA-CHANGE-LOG` | A data source declares a `change_data_log` relation with per-FHIR-type change timestamps. The compiler reads it once per run to compute a data fingerprint for every barrier statement, detecting when data moved and triggering recompute. |
+| `DATA-CHANGE-LOG-PERIODS` | A data source may declare a `change_log(parameters, changed_at)` relation to signal which evaluation periods changed. The compiler uses it to refresh only those periods; without it, every open period refreshes every run. |
+| `DATA-CONFORMANCE-MEASURE-SELECT` | Measure selection lives in the retrieve UDTF via the root library id passed as a named parameter, not in the source or bind step. One measure-agnostic Conformance source filters the shared corpus by measure. Amended 2026-10-11 by `EMIT-ROOT-INDEPENDENT`: the first sentence no longer holds. Measure selection is the data-source binding: the deploy provisions one conformance source per covered measure, schema `conformance_<measure>` tagged `conformance-<measure>`, whose UDTFs fix the measure filter in their bodies over the shared corpus tables, and retires the single `conformance` source. The emitted SQL names no library. SUPERSEDED 2026-10-21 by `DATA-SAMPLE-SOURCE`: there is no per-measure conformance source left to select. The sample patients are one source every sample measure runs over. |
+| `DATA-INSIGHT-EXTRACTION` | A curated declaration of `(data model, resource type) -> elements worth surfacing`. Queries generated from catalog, feeding Terminology sections and Demographics cuts. Model is part of key; uncurated pairs yield nothing. |
+| `DATA-SOURCE-BIND` | One compiled plan binds to any target with no recompile. Customer sources are UC-precreated functions in a tagged schema (`CLIENT-EXEC-DISCOVERY`), or a schema named outright with `connect(data_catalog="cat.schema")`; conformance uses session-scoped temporary views. Both produce the same fixed `retrieve_<Type>` names for the engine. Amended 2026-10-11: the `USE CATALOG`/`USE SCHEMA` route is the explicit `data_catalog=`. |
+| `DATA-SOURCE-BINDING-MODE` | Each FHIR data binding operates in UDTF mode (passthrough wrapper) or Relation mode (auto-filtering); both resolve through a unified `retrieve_<Type>` interface. |
+| `KNOWLEDGE-CORPUS-REFRESH` | Measure resources load lazily on first access behind an LRU cache; library metadata loads eagerly and refreshes on Delta version movement. Manual reload is available via API. |
+| `KNOWLEDGE-RESOLVE-API` | Measure/Library resolve through one resolver composing external content by reference, never by copy. The notebook client and the app resolve byte-identically from tagged knowledge, feeding the returned closure ELM into the engine as `deps`. Amended 2026-10-20: an include that pins a version resolves only to that version. Another version of the same name never stands in; a missing pin is reported unresolved. |
+| `PERF-CLOSURE-TRANSLATE` | Include closure compilation passes each library only its own declared includes to the compiler, avoiding quadratic re-parsing of accumulated sources. |
+| `REG-SOURCE-PROVIDER` | One registry-backed LibrarySourceProvider resolves includes and hands the closure to the engine as input; one resolution path, no gap between publishing and runtime. |
+
+## RUN — durable calculations and results
+
+| id | statement |
+|----|-----------|
+| `CLIENT-DISCOVERY-SCOPE` | Clients discover data sources, knowledge, and results in an ordered list of catalog scopes; the earliest scope containing a name wins, and every query searches only the specified scopes. The default scope is `*` (every catalog the caller can see). Results are written only to the caller's destination and read from the destination first, then from the `catalog.schema` entries of the scopes in order; whole catalogs and `*` are never read for results. The scopes are the trust boundary: a result in a listed schema is reused when it is the same calculation, compiler and shape over the same upstream generations, with no check of its table owner or publisher. A shared result schema grants write access only to its publishers (`DEC-RESULT-SCOPE`, amended 2026-10-11). Amended 2026-10-11 by `RUN-CLIENT-RESULT-IDENTITY`: a result in a listed schema is found by its table name, which is its identity, and reused when its fingerprint tag matches; there is no calculation-hash lookup, compiler or shape check, or upstream-generation check. |
+| `PIPE-BARRIER-HASH` | SQL hash per materialization barrier determines recompute scope; compiler identity determines recompile scope; UDF identity provides third determinant covering runtime semantic changes. |
+| `PIPE-CROSS-SCHEMA-QUALIFY` | When a pipeline's SQL references materialized views owned by different libraries, the BFF fully qualifies those references with `{catalog}.{schema}.{view}` before uploading, handling both `sql_file` (pipeline) and `query` (SQL warehouse). |
+| `PIPE-PER-LIBRARY-SCHEMA` | Each published library version writes its own schema `{catalog}.{library}_{version}` with one table per define; CQL that is not published writes to `cql__drafts`; evaluation sets are keyed as rows by `__eval_id`. |
+| `PIPE-RESULT-DERIVATIONS` | The client (`cql_databricks.result`) computes derived fields from base results (e.g., numerator flag, result type) during calculation rather than storing them separately. |
+| `RUN-CLIENT-ASYNC-CHECKPOINTS` | Bound background tag work; invalidate synchronously, respect completion ordering, drain on exit and propagate errors. |
+| `RUN-CLIENT-CATALOG-CHECKPOINTS` | Store compact per-table UC success tags with computation-start time and fingerprint; bulk discovery and synchronous invalidation. |
+| `RUN-CLIENT-COMPLETION` | Publish reuse evidence only after successful physical write; pin artifacts, reject partial results, separate execution state from discovery. Amended 2026-10-11 by `RUN-CLIENT-RESULT-IDENTITY`: a reused result is no longer pinned to the generations of the results it read; freshness is the data source's (`DEC-RESULT-IDENTITY`). |
+| `RUN-CLIENT-DURABLE` | Durable materialization is explicit and caller-authorized; ordinary notebook execution retains its released behavior. |
+| `RUN-CLIENT-FACTORED-IDENTITY` | Separate discovery, exact compatibility/storage identity and execution provenance; expose bounded scalar metadata without confusing completion time with freshness. SUPERSEDED 2026-10-11 by `RUN-CLIENT-RESULT-IDENTITY`: one identity, the fingerprint, serves discovery, compatibility and the table name; the calculation and execution hashes are removed, and `search_results` filters only by fingerprint and completion time. |
+| `RUN-CLIENT-IDENTITY` | Versioned identity covers definition logic, bound addresses, parameters, compiler version and owner scope; unrelated definitions do not invalidate results. SUPERSEDED 2026-10-11 by `RUN-CLIENT-RESULT-IDENTITY`: the identity no longer covers the destination, the owner or the compiler version, so one calculation is reused across schemas and users; a compiler change that matters changes the emitted SQL. |
+| `RUN-CLIENT-LIFECYCLE` | Automatic successful-computation-age expiry replaces manual archive; private and published storage have separate lifecycles. |
+| `RUN-CLIENT-OPTIMISTIC` | Trust completion metadata and owner-serialized writes; actual SQL errors propagate instead of defensive verification. |
+| `RUN-CLIENT-PUBLISHED` | Publishing is the implementer's, not this repository's: it ships no publishing Job or schedule. A result's UC tags are the contract. An implementer's Job that publishes shared definitions tags them, and other clients discover and reuse them read-only under their grants. |
+| `RUN-CLIENT-REFRESH` | Refresh an owner-scoped calculation in the same Delta table, retain only current completion, preserve pinned versions within retention. Amended 2026-10-11 by `RUN-CLIENT-RESULT-IDENTITY`: the calculation is no longer owner-scoped; its identity carries no owner. |
+| `RUN-CLIENT-REFRESH-RESUME` | Explicit recompute saves one UTC computed-since cutoff; retries reuse matching defines completed since it. |
+| `RUN-CLIENT-REQUEST-REOPEN` | Reconstruct the request, batch compile, discover UC completion tags; current-table reads use caller grants. |
+| `RUN-CLIENT-RESULT-IDENTITY` | Replaces `RUN-CLIENT-IDENTITY`. A result's identity, and the fingerprint digits in its table name, is one hash of: an identity format version, the define's emitted SQL, the parameter values it uses, the identities of the defines it reads, and the address of the bound data source. The destination, the user, the compiler version, the library and define names and the population label are not part of it; the library and define appear only in the readable part of the table name (`RUN-CLIENT-TABLE-NAMES`). So one calculation has one table name in every schema, and a result in another scope is found by that name (`CLIENT-DISCOVERY-SCOPE`). Data freshness is the data source's: it serves as-of data. A release that changes the runtime functions tells callers to refresh everything. A non-deterministic define is never reused (`DEC-RESULT-IDENTITY`). The hash is the `fingerprint`, and a result table carries four tags: `cql_result_format`, `cql_result_state`, `cql_computed_at` and `cql_fingerprint`. The calculation, upstream, shape, publisher, compiler, library, version, define and scope hashes and the generation tag are dropped. The compiler computes the fingerprint (`PIPE-DURABLE-IDENTITY`); the address is the bound data source's `catalog.schema`, so a durable compile that retrieves data must bind a tagged data source, not an explicit per-type binding or the bare `retrieve_<Type>` convention. Results stored before this identity are a different result format and are computed again once. |
+| `RUN-CLIENT-RESUME` | Extend calculations in the same session and resolve authorized results in new sessions without depending on Python objects or caches. |
+| `RUN-CLIENT-REUSE` | Completion metadata and matching inputs govern reuse; skip if computed and recompute are the only modes. |
+| `RUN-CLIENT-TABLE-NAMES` | Result tables are named `<library>_<define>_<first 16 fingerprint hex digits>`: lowercase, digits and single underscores only. |
+| `RUN-CONTEXT-BY-ID` | Goal, not built: a request names its patient context as one or more subject IDs or the whole data source. |
+| `RUN-EVAL-ID-INPUTS` | Result table columns include `__eval_id` marker and input fingerprints for debugging; future enhancements can populate data term columns. |
+| `RUN-EVENTS` | The executor records each dataset attempt with run id, fingerprint, decision and timestamps. |
+| `RUN-EXECUTOR` | Datasets start execution when their upstream dependencies have committed, not level-by-level, with per-warehouse concurrency caps and transient failure retries. |
+| `RUN-JOB-OWNER` | Every run uses the service principal's identity; the requester check is performed on the durable calculation request before submission. |
+| `RUN-JOB-RECOVERY` | A Job deleted out of band is recreated, not treated as a permanent error. |
+| `RUN-LEASE` | Durable evaluation identity is independent of whether a lease table exists; correctness depends only on deterministic fingerprinting of inputs. |
+| `RUN-NOTHING-TO-DO` | A run is skipped only when no barrier SQL changed and every result table exists and is current. |
+| `RUN-ONE-WRITER` | One writer per evaluation; a new run cancels the old and waits for in-flight statements to finish. |
+| `RUN-POINT-CALC` | Goal, not built: single-patient lookup returns precomputed answers; single-patient calculation runs the same SQL as batch with one patient. |
+| `RUN-PROVENANCE` | Every result table is stamped with library, version, define, data source and period in tags and schema comments. |
+| `RUN-READ-BARRIER` | A filtered retrieve becomes a materialized barrier with its own table, task and content-addressed name. |
+| `RUN-RECOMPUTE-OVERRIDE` | Setting `recompute: true` on a run request forces full evaluation of the entire closure regardless of cache state. |
+| `RUN-RESULTS-BY-EVAL` | Result table shape is standardized: one table per evaluation set, clustered by `(__eval_id, __subject_id)`, containing `__eval_id` marker for REPLACE semantics. |
+| `RUN-RESULTS-WRITER` | Only the evaluator's service identity writes to the results store, and only through versioned evaluation logic. |
+| `RUN-SCHEMA-NAME` | Result table names encode library and data source; multiple evaluations can write into one schema under distinct result tables addressed by evaluation ID. |
+| `RUN-STANDING-COST` | Goal, not built: a standing request serves multiple subscribers from the evaluator's warehouse without charge splits. |
 
 ## Retired / superseded requirements
 
@@ -342,7 +424,7 @@ Ids kept so existing code/commit citations still resolve, but NOT live — do no
 | `BUILD-COMPILE-SPARK-URL` | Retired — compile service no longer requires reachable Spark (choice member schemas from static model). | `pipeline-runtime.md` |
 | `PIPE-REFERENCE-RUNTIME` | Retired — Enzyme gets no incrementality through opaque UDF catalog; full-refresh orchestration does identical work without planner. | `pipeline-runtime.md` |
 | `PIPE-RUNTIME-COMPILE` | Survives as documented principle; SDP runtime retired. `cql()` runtime-compiles to Spark SQL. | `pipeline-runtime.md` |
-| `PIPE-SDP` | Retired — reference deploy artifact was OSS Spark Declarative Pipeline. | `pipeline-runtime.md` |
+| `PIPE-SDP` | Retired — reference deploy artifact was OSS Spark Declarative Pipeline. SDP and Lakeflow pipeline orchestration are removed. | `pipeline-runtime.md` |
 | `PIPE-PACKAGE` | Retired with SDP runtime. | `pipeline-runtime.md` |
 | `PIPE-APPLY` | Retired with SDP runtime. | `pipeline-runtime.md` |
 | `BIND-HINT-ENVELOPE` | Retired — `fn(context VARIANT, hints VARIANT)` envelope pair. Replaced by `BIND-EXPLICIT-PARAMS`. | `data-binding.md` |
@@ -357,14 +439,18 @@ Ids kept so existing code/commit citations still resolve, but NOT live — do no
 | `EVAL-EVAL-TREE-SHARED` | Applies only to fallback `EVAL-DEFINE-EVALUATOR`; the ELM tree built once per executor JVM. | `execution-model.md` |
 | `EXEC-SQL-TEMPORAL-RUNTIME-UNIT` | Known gap on native `make_interval` path (runtime unit dispatch costs 14–17x plan size). Honored on opaque-UDF path. | `execution-model.md` |
 | `PIPE-READ-DATASET` | A materialized retrieve read published as its own `DatasetRecipe`; name CONTENT-ADDRESSED, `read_<type>[_<filter>]_<hash8>`. | `pipeline-runtime.md` |
-| `PHASE-0` | Old roadmap phase. Retired: old roadmap phase. | `roadmap.md` |
-| `PHASE-1` | Old roadmap phase. Retired: old roadmap phase. | `roadmap.md` |
-| `PHASE-2` | Old roadmap phase. Retired: old roadmap phase. | `roadmap.md` |
-| `PHASE-3` | Old roadmap phase. Retired: old roadmap phase. | `roadmap.md` |
-| `PHASE-4` | Old roadmap phase. Retired: old roadmap phase. | `roadmap.md` |
-| `PHASE-5` | Old roadmap phase. Retired: old roadmap phase. | `roadmap.md` |
-| `PHASE-6` | Old roadmap phase. Retired: old roadmap phase. | `roadmap.md` |
-| `PHASE-7` | Old roadmap phase. Retired: old roadmap phase. | `roadmap.md` |
-| `PHASE-8` | Old roadmap phase. Retired: old roadmap phase. | `roadmap.md` |
-| `PHASE-9` | Old roadmap phase. Retired: old roadmap phase. | `roadmap.md` |
-| `PHASE-10` | Old roadmap phase. Retired: old roadmap phase. | `roadmap.md` |
+| `PHASE-0` | Old roadmap phase. Retired: old roadmap phase. | `../../docs/roadmap.md` |
+| `PHASE-1` | Old roadmap phase. Retired: old roadmap phase. | `../../docs/roadmap.md` |
+| `PHASE-2` | Old roadmap phase. Retired: old roadmap phase. | `../../docs/roadmap.md` |
+| `PHASE-3` | Old roadmap phase. Retired: old roadmap phase. | `../../docs/roadmap.md` |
+| `PHASE-4` | Old roadmap phase. Retired: old roadmap phase. | `../../docs/roadmap.md` |
+| `PHASE-5` | Old roadmap phase. Retired: old roadmap phase. | `../../docs/roadmap.md` |
+| `PHASE-6` | Old roadmap phase. Retired: old roadmap phase. | `../../docs/roadmap.md` |
+| `PHASE-7` | Old roadmap phase. Retired: old roadmap phase. | `../../docs/roadmap.md` |
+| `PHASE-8` | Old roadmap phase. Retired: old roadmap phase. | `../../docs/roadmap.md` |
+| `PHASE-9` | Old roadmap phase. Retired: old roadmap phase. | `../../docs/roadmap.md` |
+| `PHASE-10` | Old roadmap phase. Retired: old roadmap phase. | `../../docs/roadmap.md` |
+| `RUN-CLIENT-BATCH-METADATA` | Retired: bulk discovery remains. See `RUN-CLIENT-CATALOG-CHECKPOINTS`. |  |
+| `RUN-CLIENT-OPERATIONS` | Retired: publishing and scheduling are the implementer's. See `RUN-CLIENT-PUBLISHED`. |  |
+| `RUN-CLIENT-PORTABLE-HANDLE` | Retired: request reopening no longer uses compiled-plan handles. See `RUN-CLIENT-REQUEST-REOPEN`. |  |
+| `SVC-COMPILER-UC` | Retired with SVC-COMPILER-M2M. |  |

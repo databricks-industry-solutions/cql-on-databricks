@@ -59,6 +59,8 @@ The output is FHIR NDJSON and a manifest of expected results. The
 [Synthetic data](docs/synthetic-data.md) is the step-by-step guide to generating and landing the synthetic
 data sources.
 
+The loader's requirements are in [docs/requirements.md](docs/requirements.md).
+
 ## Build and test
 
 ```bash

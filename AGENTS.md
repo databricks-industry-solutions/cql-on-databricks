@@ -85,8 +85,8 @@ Instructions for any AI coding agent working in this repository.
 | A feature: what it does, components, build and test | `<feature>/README.md`, then `<feature>/docs/` |
 | Repo layout and feature names | `docs/structure.md`, `docs/systems.md` |
 | Code conventions (read before writing code) | `docs/coding-standards.md` |
-| Compiler requirements | `docs/compiler/requirements.md` |
-| All other requirements | `docs/requirements.md` |
+| Requirements that span features, and where each registry is | `docs/requirements.md` |
+| A feature's requirements | `<feature>/docs/requirements.md` |
 | Decision records | `docs/decisions/` |
 | Plan, open decisions, known compiler gaps | `docs/roadmap.md` |
 | Deploying | `docs/deploy.md` |

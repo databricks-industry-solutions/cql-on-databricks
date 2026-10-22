@@ -2,9 +2,8 @@
 
 
 Code cites these IDs. This file says what each one decided, so a citation always leads somewhere.
-Requirements are in [`../requirements.md`](../requirements.md) and
-[`../compiler/requirements.md`](../compiler/requirements.md). Open decisions are in the
-[roadmap](../roadmap.md).
+Requirements are in [`../requirements.md`](../requirements.md) and the feature registries it lists. Open
+decisions are in the [roadmap](../roadmap.md).
 
 | ID | What it decided |
 |---|---|

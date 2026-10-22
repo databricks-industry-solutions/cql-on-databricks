@@ -22,8 +22,7 @@ Each feature's docs sit next to its code. Start with the feature you need.
 | [structure.md](structure.md) | How the repository is organized, and naming |
 | [systems.md](systems.md) | What each feature owns and the dependency rules |
 | [coding-standards.md](coding-standards.md) | Code conventions. Read before writing code |
-| [requirements.md](requirements.md) | Requirements for every feature except the compiler |
-| [compiler/requirements.md](compiler/requirements.md) | The compiler's requirements |
+| [requirements.md](requirements.md) | Requirements that span features, and where each feature's registry is |
 | [decisions/](decisions/README.md) | An index of decision IDs cited in code |
 | [roadmap.md](roadmap.md) | The plan, open decisions and known compiler gaps |
 

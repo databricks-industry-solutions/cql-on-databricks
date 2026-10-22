@@ -66,7 +66,7 @@ Read in this order.
 | [engineering-principles.md](docs/engineering-principles.md) | Code-quality rules |
 | [glossary.md](docs/glossary.md) | Terms |
 
-Requirements are in [docs/compiler/requirements.md](../docs/compiler/requirements.md).
+Requirements are in [docs/requirements.md](docs/requirements.md).
 
 ## Known gaps
 

@@ -7,7 +7,7 @@ CQL semantics go through the compiler's own lowering rules, never straight onto 
 Spark's defaults differ from CQL on nulls, dates and units.
 
 Sections carry `LANG-*` IDs. The registry is
-[docs/compiler/requirements.md](../../docs/compiler/requirements.md).
+[requirements.md](requirements.md).
 
 ## 1. Three-valued logic — `LANG-3VL`
 

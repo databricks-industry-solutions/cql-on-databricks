@@ -68,4 +68,4 @@ gitignored.
 | [docs/narrative-tags.md](docs/narrative-tags.md) | The CQL annotation tags behind the Specification's prose, and their precedence |
 | [docs/run-log.md](docs/run-log.md) | The run log tables and their grants |
 
-The Designer's requirements are the `APP-*` and `SPEC-*` rows in [requirements](../docs/requirements.md).
+The Designer's requirements are in [docs/requirements.md](docs/requirements.md).

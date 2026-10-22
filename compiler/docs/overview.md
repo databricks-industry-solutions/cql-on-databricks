@@ -52,7 +52,7 @@ Out of scope:
 ## Where things are
 
 The reading order is in [the compiler README](../README.md). Requirement IDs are in
-[docs/compiler/requirements.md](../../docs/compiler/requirements.md). Other features' requirements are in
+[requirements.md](requirements.md). Requirements that span features are in
 [docs/requirements.md](../../docs/requirements.md), and [docs/systems.md](../../docs/systems.md) maps the
 features. Terms are defined in [glossary.md](glossary.md).
 
