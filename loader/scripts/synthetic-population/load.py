@@ -18,7 +18,8 @@ landed, and creates the ``change_log`` table if it is missing, for when the layo
 ``retrieve_<Type>_ids`` twins an earlier load created (``BIND-RETRIEVE-SUBJECT``, retired).
 
 Run it with the repository venv, which has the loader installed. Uploads the emitted ``<Type>.ndjson`` bulk-data files to a UC
-Volume under ``cohorts/<label>/``, reshapes them onto the canonical mount contract
+Volume under ``cohorts/<label>/``, gzipped as ``<Type>.ndjson.gz`` (the synthetic NDJSON shrinks about 38 times, so the
+upload is no longer the slow step), reshapes them onto the canonical mount contract
 ``(__subject_id, __resource)`` (``DATA-CONTRACT``), and provisions one
 ``retrieve_<Type>`` UDTF per type so the source binds through the only supported bind
 path (``BIND-RETRIEVE-UDF``).
@@ -44,13 +45,18 @@ member of the same expansion the run binds (SYNTH-PDS-TERMINOLOGY).
 from __future__ import annotations
 
 import argparse
+import gzip
 import logging
 import os
+import shutil
 import sys
+import tempfile
 
 log = logging.getLogger("synthetic_population.load")
 
 SEED_VOLUME = "seed"
+#: The one form a cohort's resources and manifest take in the volume (DATA-SYNTH-LARGE).
+GZIP_SUFFIX = ".gz"
 
 
 def _source():
@@ -85,19 +91,29 @@ def _upload(ndjson_dir: str, cohort_path: str, generated: list[str]) -> None:
     w = service_principal_client()
     # The manifest and coverage report travel WITH the cohort (SYNTH-PDS-ORACLE): the
     # per-patient expected results are the provenance that distinguishes this source.
-    provenance = [n for n in ("manifest.jsonl", "coverage.md")
-                  if os.path.exists(os.path.join(ndjson_dir, n))]
-    for name in [f"{t}.ndjson" for t in generated] + provenance:
-        local = os.path.join(ndjson_dir, name)
-        remote = f"{cohort_path}/{name}"
-        with open(local, "rb") as f:
-            w.files.upload(remote, f, overwrite=True)
-        log.info("uploaded %s (%.1f MB)", remote, os.path.getsize(local) / 1e6)
+    # The resources and the manifest are gzipped; the coverage report is a few KB and stays readable.
+    packed = [f"{t}.ndjson" for t in generated] + \
+        [n for n in ("manifest.jsonl",) if os.path.exists(os.path.join(ndjson_dir, n))]
+    with tempfile.TemporaryDirectory() as scratch:
+        for name in packed:
+            local = os.path.join(ndjson_dir, name)
+            gzipped = os.path.join(scratch, name + GZIP_SUFFIX)
+            with open(local, "rb") as src, gzip.open(gzipped, "wb", compresslevel=6) as dst:
+                shutil.copyfileobj(src, dst, 1 << 20)
+            remote = f"{cohort_path}/{name}{GZIP_SUFFIX}"
+            with open(gzipped, "rb") as f:
+                w.files.upload(remote, f, overwrite=True)
+            log.info("uploaded %s (%.1f MB, %.1f MB gzipped)", remote, os.path.getsize(local) / 1e6,
+                     os.path.getsize(gzipped) / 1e6)
+    if os.path.exists(os.path.join(ndjson_dir, "coverage.md")):
+        with open(os.path.join(ndjson_dir, "coverage.md"), "rb") as f:
+            w.files.upload(f"{cohort_path}/coverage.md", f, overwrite=True)
 
 
 def _landed_types(cohorts_path: str) -> set[str]:
     """The FHIR types present in ANY landed cohort directory — what the cumulative
-    mounts must carry rows for."""
+    mounts must carry rows for. A cohort landed uncompressed (by a load.py from before the gzip form) fails the
+    load rather than drop out of the population unread."""
     from content_ingest.population import RESOURCE_TYPES
     from cql_databricks_common.workspace import service_principal_client
     w = service_principal_client()
@@ -108,7 +124,10 @@ def _landed_types(cohorts_path: str) -> set[str]:
         for file in w.files.list_directory_contents(entry.path):
             name = os.path.basename(file.path or "")
             if name.endswith(".ndjson"):
-                present.add(name.removesuffix(".ndjson"))
+                raise RuntimeError(f"{file.path} is uncompressed — re-land cohort {os.path.basename(entry.path)} "
+                                   f"so it is stored as {name}{GZIP_SUFFIX}")
+            if name.endswith(".ndjson" + GZIP_SUFFIX):
+                present.add(name.removesuffix(".ndjson" + GZIP_SUFFIX))
     return present & set(RESOURCE_TYPES)
 
 
@@ -138,7 +157,7 @@ def load(*, profile: str | None, catalog: str, ndjson_dir: str, cohort: str) -> 
 
     cohorts_path = f"/Volumes/{catalog}/{source.schema}/{SEED_VOLUME}/cohorts"
     _upload(ndjson_dir, f"{cohorts_path}/{cohort}", _generated_types(ndjson_dir))
-    raw = {fhir_type: spark.read.text(f"{cohorts_path}/*/{fhir_type}.ndjson")
+    raw = {fhir_type: spark.read.text(f"{cohorts_path}/*/{fhir_type}.ndjson{GZIP_SUFFIX}")
            for fhir_type in sorted(_landed_types(cohorts_path))}
     return land(spark, catalog=catalog, source=source, raw_by_type=raw,
                 valid_from="2026-01-01", valid_to="2026-12-31")
