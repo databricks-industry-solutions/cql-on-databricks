@@ -66,16 +66,16 @@ Read in this order.
 | [engineering-principles.md](docs/engineering-principles.md) | Code-quality rules |
 | [glossary.md](docs/glossary.md) | Terms |
 
-Requirements are in [docs/compiler/requirements.md](../docs/compiler/requirements.md). Open work is in
-[docs/roadmap.md](../docs/roadmap.md).
+Requirements are in [docs/compiler/requirements.md](../docs/compiler/requirements.md).
 
 ## Known gaps
 
 - CQL operator coverage is incomplete. Four of the sixteen upstream operator test files are vendored:
   logical, nullological, comparison and arithmetic.
-- The measure corpus is one small measure written for this repository (`BasicEncounterAndCondition`, an
-  encounter during the period and any condition, 13 synthetic patients with a hand-written answer key). It
-  runs under the differential (`CONF-GATE-MEASURE`) and the scorekey (`CONF-GATE-SCOREKEY`). The compiler's
+- The measure corpus is the four sample measures written for this repository (`HypertensionBPControl`,
+  `DiabetesHighOrMissingA1c`, `AdultFluImmunization`, `ColorectalScreening`), copies of those in `examples/`,
+  over 48 synthetic patients with expected results per patient. They run under the differential
+  (`CONF-GATE-MEASURE`) and the scorekey (`CONF-GATE-SCOREKEY`). The compiler's
   harder patterns are covered by small fixtures instead. Continuous-variable and encounter-based measures
   are not in the corpus.
 - Where the compiler differs from the reference engine, the difference is documented and tested.

@@ -80,7 +80,7 @@ loading. The client does not depend on it.
 - Each feature folder has a `README.md`: what it does, its components, how to build and test it, and
   links to its other docs. Longer feature docs sit beside it in `<feature>/docs/`.
 - `docs/` holds what covers the whole repository: the map, this file, `systems.md`, coding standards,
-  the roadmap, the deploy guide, the requirement registries and `decisions/`.
+  the deploy guide, the requirement registries and `decisions/`.
 - The compiler's requirements stay in `docs/compiler/requirements.md`, next to the other registry.
 
 ## Names

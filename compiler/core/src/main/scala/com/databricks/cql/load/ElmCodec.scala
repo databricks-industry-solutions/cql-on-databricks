@@ -256,6 +256,12 @@ object ElmCodec {
         Last(field(v, "source").map(loadExpr).getOrElse(throw ElmLoadError("Last missing 'source'")))
       case "Count" =>
         Count(field(v, "source").map(loadExpr).getOrElse(throw ElmLoadError("Count missing 'source'")))
+      // LANG-AGGREGATE-FUNCTIONS: the list is in `source`. An ELM `path` (aggregate a property of each element)
+      // is never emitted for CQL source, so it is refused rather than dropped.
+      case _ if AggregateOp.byElmType.contains(t) =>
+        if (field(v, "path").isDefined) throw ElmLoadError(s"'$t' with a 'path' is not modeled")
+        AggregateFunction(AggregateOp.byElmType(t),
+          field(v, "source").map(loadExpr).getOrElse(throw ElmLoadError(s"$t missing 'source'")))
       case "Split" =>
         Split(field(v, "stringToSplit").map(loadExpr).getOrElse(throw ElmLoadError("Split missing 'stringToSplit'")),
               field(v, "separator").map(loadExpr).getOrElse(throw ElmLoadError("Split missing 'separator'")))
@@ -597,10 +603,11 @@ object ElmCodec {
         ujson.Obj("type" -> ujson.Str("Literal"),
           "valueType" -> ujson.Str("{urn:hl7-org:elm-types:r1}String"), "value" -> ujson.Str(toUnit))))
 
-    // First/Last/Count carry their list in `source`, not `operand`.
+    // First/Last/Count and the aggregate functions carry their list in `source`, not `operand`.
     case First(source) => ujson.Obj("type" -> ujson.Str("First"), "source" -> emitExpr(source))
     case Last(source)  => ujson.Obj("type" -> ujson.Str("Last"), "source" -> emitExpr(source))
     case Count(source) => ujson.Obj("type" -> ujson.Str("Count"), "source" -> emitExpr(source))
+    case AggregateFunction(op, source) => ujson.Obj("type" -> ujson.Str(op.elmType), "source" -> emitExpr(source))
 
     // SameAs carries an optional `precision` name; emit it before the generic binary case.
     case SameAs(left, right, precision) =>

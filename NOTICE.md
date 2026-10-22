@@ -14,19 +14,16 @@ issue and the team will review on a best-effort basis.
 
 All patient data in this repository is synthetic. There are no real patients and no PHI.
 
-| Data | Location | How it was made |
-|---|---|---|
-| Small fixtures and sample patients | `compiler/conformance/src/test/resources/data`, `examples/data` | Written for this repository. |
-| Synthetic populations | Not stored in this repository | Generated in your workspace from measure logic, by `loader/synthesizer` and `loader/scripts/synthetic-population`. |
-
 ## Value sets and terminology
 
 Value-set definitions are not included. The small fixtures include the few expansions their tests need, as
-`valueset-*.ndjson` files written for this repository.
+`valueset-*.ndjson` files written for this repository. The sample measures' value sets in `examples/valuesets`
+are also written for this repository: they are not published value sets, and they hold codes only from
+code systems that are free to use (no CPT and no SNOMED CT).
 
-The fixtures list codes from the code systems below. They hold only the codes that the tests need. This
-repository is not a terminology distribution, and use of these codes is subject to each code system's
-license.
+The fixtures and sample value sets list codes from the code systems below. They hold only the codes that the
+tests and samples need. This repository is not a terminology distribution, and use of these codes is subject
+to each code system's license.
 
   - CPT® is copyright American Medical Association. All rights reserved. CPT is a
     registered trademark of the American Medical Association. Fee schedules,
@@ -38,8 +35,12 @@ license.
     Metathesaurus License; use may require a UMLS Terminology Services account.
   - LOINC® is copyright Regenstrief Institute, Inc. and the LOINC Committee, and
     is available at no cost under the LOINC license.
-  - ICD-10-CM and HCPCS are published by the U.S. Centers for Medicare & Medicaid
-    Services and the National Center for Health Statistics.
+  - ICD-10-CM, ICD-10-PCS and HCPCS are published by the U.S. Centers for Medicare &
+    Medicaid Services and the National Center for Health Statistics.
+  - CVX (vaccines administered) is published by the U.S. Centers for Disease Control
+    and Prevention.
+  - HL7 terminology (terminology.hl7.org) is licensed by HL7 under Creative Commons
+    "No Rights Reserved" (CC0).
   - RxNorm is produced by the U.S. National Library of Medicine.
   - UCUM (Unified Code for Units of Measure) is copyright Regenstrief Institute,
     Inc. and the UCUM Organization.
@@ -50,13 +51,14 @@ license.
 |---|---|---|
 | CQL operator tests | `compiler/conformance/src/test/resources/cql-tests/` | Four files from [cqframework/cql-tests](https://github.com/cqframework/cql-tests) at commit `06667083335f645e46e6f88bbd3b4d8d232574df`, unmodified. Apache License 2.0. |
 | FHIR R4 schemas | `compiler/core/model-schemas/fhir-r4/` | HL7 FHIR R4 XML schemas. Creative Commons "No Rights Reserved" (CC0). |
+| FHIRHelpers 4.0.1 | `examples/measures/FHIRHelpers.cql` | `org/hl7/fhir/FHIRHelpers-4.0.1.cql` from the cqframework `quick` 4.8.0 artifact ([cqframework/clinical_quality_language](https://github.com/cqframework/clinical_quality_language)), unmodified. Apache License 2.0. |
 
 Third-party libraries this repository depends on are listed, with their licenses, in `README.md`.
 
 ## Measure content
 
 This repository contains no published eCQM content. Its measures and libraries are written for this
-repository.
+repository, apart from FHIRHelpers (above).
 
 ## HL7 standards
 

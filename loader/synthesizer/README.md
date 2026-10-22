@@ -12,9 +12,9 @@ Service's `/translate` ahead of time. Value-set expansions come from the termino
 ## Fixtures
 
 Measure fixtures (per-library ELM and expansions) are generated, never committed
-(`SYNTH-PDS-FIXTURE-PINS`). `src/cql_databricks_synth/pins.json` pins their hashes for the sample measure
-(`BasicEncounterAndCondition`, from `examples/measures`) and `pilot`, a measure written for the synthesizer's
-own tests (`tests/__fixtures__/pilot/`, with its synthetic value sets).
+(`SYNTH-PDS-FIXTURE-PINS`). `src/cql_databricks_synth/pins.json` pins their hashes for `pilot`, a measure written for the synthesizer's
+own tests (`tests/__fixtures__/pilot/`, with its synthetic value sets). The sample measures in
+`examples/measures` are not pinned yet.
 
 ```bash
 python -m cql_databricks_synth fixtures                     # all pinned measures

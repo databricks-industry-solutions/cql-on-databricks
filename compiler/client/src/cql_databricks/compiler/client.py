@@ -134,7 +134,7 @@ class CqlClient:
 
         This classification is FROZEN (`BUILD-CLIENT-COMPAT`): a released string form can never change
         meaning. A library NAME is therefore addressed by the explicit ``library=`` kwarg and is never
-        inferred from a bare string — otherwise ``cql("BasicEncounterAndCondition")`` would have to change from "raw CQL that
+        inferred from a bare string — otherwise ``cql("HypertensionBPControl")`` would have to change from "raw CQL that
         fails to translate" into "resolve a library", which is exactly the kind of silent re-binding this
         rule exists to prevent."""
         # Two bodies is a MISTAKE, not a precedence question — silently honoring one and dropping the

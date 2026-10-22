@@ -1,0 +1,1 @@
+{"valueset_id": "http://example.org/fhir/ValueSet/sample-flexible-sigmoidoscopy", "system": "https://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets", "code": "G0104", "display": "Colorectal cancer screening; flexible sigmoidoscopy"}

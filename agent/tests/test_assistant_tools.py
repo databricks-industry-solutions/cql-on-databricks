@@ -21,7 +21,7 @@ from agent.tests.durable_fixture import RESULT_SET, reference
 CATALOG = "acme_results"
 
 ADDRESS = NodeAddress(
-    library="BasicEncounterAndCondition", version="1.0.0", define="Initial Population",
+    library="HypertensionBPControl", version="1.0.0", define="Initial Population",
     data_source_id="acme-prod", period_start="2026-01-01", period_end="2026-12-31")
 
 #: What the evaluator answers for ADDRESS (`DEC-EVALUATOR-OPAQUE`): the stored table and the set's filter.

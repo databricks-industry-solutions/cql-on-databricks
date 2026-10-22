@@ -50,7 +50,7 @@ def test_the_shipped_examples_load(tmp_path):
     """The real `examples/`: every CQL file a Library, every sample measure a Measure naming its library."""
     content = read_samples(EXAMPLES)
     libraries = {json.loads(r.resource_json)["name"] for r in content.knowledge.libraries}
-    assert {"BasicEncounterAndCondition", "EncounterDuringPeriod"} <= libraries
+    assert {"HypertensionBPControl", "SampleMeasureCommon", "SampleSupplementalData", "FHIRHelpers"} <= libraries
     measure_libraries = {ref for r in content.knowledge.measures for ref in json.loads(r.resource_json)["library"]}
     assert measure_libraries <= {r.url for r in content.knowledge.libraries}
     assert content.patients["Patient"]

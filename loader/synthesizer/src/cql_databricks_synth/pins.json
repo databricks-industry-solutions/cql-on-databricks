@@ -1,31 +1,4 @@
 {
- "BasicEncounterAndCondition": {
-  "config": {
-   "path": "examples/measures/BasicEncounterAndCondition.synth.json",
-   "sha256": "b1119c5f6eb6427a2a24294b00ce713458aa78fd811f26a33b1ba264c9e2647b"
-  },
-  "cql": [
-   {
-    "emitElm": true,
-    "path": "examples/measures/BasicEncounterAndCondition.cql",
-    "sha256": "5249d5d1019c47b2633687145c741f20253dd4887b4ae88881eb09c0e792f804"
-   },
-   {
-    "emitElm": true,
-    "path": "examples/measures/EncounterDuringPeriod.cql",
-    "sha256": "93e7786968c98dec72a6fad56af6c2883c2ca1b7ec6274b95e400dfb1072dff1"
-   }
-  ],
-  "elm": {
-   "BasicEncounterAndCondition": "c4d76c05ae5e7056c06968c9b437f7cc424690a8a65c18b143701d2f55c38e08",
-   "EncounterDuringPeriod": "7637703fb47d22eb0c19ad1d1bb4da81f7d54f7d8e828227c8c461312eb0c3f1"
-  },
-  "root": "BasicEncounterAndCondition",
-  "valuesets": {
-   "files": [],
-   "source": "repo"
-  }
- },
  "pilot": {
   "config": {
    "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/pilot/SynthesizerPilot.synth.json",

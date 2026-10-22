@@ -204,6 +204,15 @@ object Corpus {
     scalar("IntervalOpenClosed", "IntervalOpenClosed: open bounds normalize to closed via discrete successor/predecessor (LANG-INTERVAL)"),
     scalar("SetUnion", "SetUnion: list union has set semantics (dedup by identity), not UNION ALL (LANG-LIST)"),
     scalar("AggregateFold", "AggregateFold: query aggregate is a left fold -> Spark aggregate HOF (LANG-QUERY-AGGREGATE)"),
+    scalar("AggregateFunctions", "AggregateFunctions: Sum/Min/Max/Avg/Median/Mode/Variance/StdDev/Product/GeometricMean/AllTrue/AnyTrue ignore nulls, are null over no non-null element, order dates precision-aware and convert quantity units (LANG-AGGREGATE-FUNCTIONS)",
+      // CONF-REF-DEVIATION. The CQL Reference defines Product over the non-null elements; the reference's
+      // ProductEvaluator returns null as soon as it meets a null element.
+      Seq(Differential.ValueFor("ProductIgnoresNulls", SystemColumns.UnfilteredSubject,
+        "CQF 4.8.0 ProductEvaluator returns null on a null element; the CQL Reference ignores nulls (Product)")) ++
+      // The reference squares a quantity's unit through UCUM, which normalizes to SI base units (`0.0001 'm2'`);
+      // the engine keeps the operands' unit (`1.0 'cm2'`), as its quantity Multiply does (`Multiply1CMBy2CM`).
+      Seq(Differential.ValueFor("VarianceQuantity", SystemColumns.UnfilteredSubject,
+        "CQF reference normalizes the squared unit to SI base (m2); the engine keeps cm2, as quantity Multiply does"))),
     scalar("Quantities", "Quantities: UCUM cross-unit comparison + arithmetic diff clean (LANG-QUANTITY)"),
     scalar("Temporal", "Temporal: precision-aware date comparison + Measurement-Period math diff clean (LANG-INTERVAL)"),
     scalar("TemporalPartialPrecision", "TemporalPartialPrecision: partial-precision DateTime comparison truth table vs a static bound — coarse prefix-equal -> NULL (alignment-moot), equal-precision decided (LANG-INTERVAL)"),
@@ -237,6 +246,7 @@ object Corpus {
     fhir("FhirConditional", withTerminology = false, "FhirConditional: if/case over different-source retrieve branches diff clean (ARCH-CONDITIONAL)"),
     fhir("FhirConditionalUnion", withTerminology = false, "FhirConditionalUnion: list-valued if/case lowers to a relation UNION (no collect_list/posexplode) and diffs clean vs the boxed self + Java reference (ARCH-COND-UNION)"),
     fhir("FhirNullableList", withTerminology = false, "FhirNullableList: list-valued if with a NULL else branch keeps the null/empty/non-empty tri-state via the per-subject nullity sidecar (no collect to subject grain) and diffs clean vs the boxed self + Java reference (ARCH-LIST-NULL-SIDECAR/LANG-LIST-NULL-STATE)"),
+    fhir("FhirAggregateMostRecent", withTerminology = false, "FhirAggregateMostRecent: Max over the date-times a query over a retrieve returns, inline and through a list define; a patient with none is null (LANG-AGGREGATE-FUNCTIONS)"),
     fhir("FhirListCount", withTerminology = false, "FhirListCount: a grain-first list define consumed by Count is reduced at SUBJECT GRAIN (countDistinct, no collect_list box) and diffs clean vs the Java reference (ARCH-RELATION-REDUCE)"),
     fhir("FhirConditionalUnionHet", withTerminology = false, "FhirConditionalUnionHet: HETEROGENEOUS list-valued if/case unions into a Choice-tagged relation (no boxing) and diffs clean vs the Java reference (ARCH-COND-UNION Phase B)"),
     fhir("FhirChoiceRetrieve", withTerminology = false, "FhirChoiceRetrieve: FHIR value[x] choice projection/test (as/is) diff clean (LANG-CHOICE)"),

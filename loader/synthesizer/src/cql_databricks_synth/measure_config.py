@@ -6,7 +6,7 @@ plausible range of a reading it compares, which members of its value sets are co
 in ``<Measure>.synth.json`` beside its CQL, and pinned with it (``pins.json``, SYNTH-PDS-FIXTURE-PINS)::
 
     {
-      "measure": "BasicEncounterAndCondition",
+      "measure": "HypertensionBPControl",
       "version": "1.0.0",
       "populations": {"Initial Population": 0.70},
       "routes": {"Denominator Exclusions": {"Has Exclusion Condition": 0.8, "Has Excluding Encounter": 0.2}},

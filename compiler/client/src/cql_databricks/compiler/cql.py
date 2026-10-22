@@ -41,7 +41,7 @@ def cql(source=None, *, resource: Optional[str] = None, cql: Optional[str] = Non
     configure the bind (string form only).
 
     ``library=`` addresses a library by NAME (optionally ``"Name|version"``) through the session's
-    :class:`~.libraries.LibraryProvider` — ``cql(library="BasicEncounterAndCondition")``. It is a
+    :class:`~.libraries.LibraryProvider` — ``cql(library="HypertensionBPControl")``. It is a
     SEPARATE kwarg, never an overload of the ``source`` string: the string classification (path / ELM / raw
     CQL) is frozen (`BUILD-CLIENT-COMPAT`), so a bare name would otherwise be raw CQL forever.
 

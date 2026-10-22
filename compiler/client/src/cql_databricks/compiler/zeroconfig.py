@@ -14,7 +14,7 @@ or, holding the session explicitly (fluent) and mounting a Git Folder of CQL as 
 
     from cql_databricks.compiler import connect
     client = connect(spark, library_path="/Workspace/Users/me/measure-content/input/cql")
-    client.cql(library="BasicEncounterAndCondition") \\
+    client.cql(library="HypertensionBPControl") \\
           .with_measurement_period("2026-01-01", "2026-12-31").exec("Initial Population")
 
 The endpoint + OAuth are resolved ON INIT (at ``connect()`` / the first ``cql()``), inside the notebook or
@@ -56,7 +56,7 @@ def connect(spark=None, *, app_name: Optional[str] = None, data_catalog: Optiona
     ``library_path`` mounts one or more directories of CQL as the session's library source
     (`SVC-NOTEBOOK-LIBRARY-FOLDER`) — typically a Databricks **Git Folder** under ``/Workspace``, or a UC
     Volume. Roots are ORDERED and earlier wins, so an override directory shadows a vendored content repo.
-    With it set, ``client.cql(library="BasicEncounterAndCondition")`` resolves that library BY NAME and ships its whole
+    With it set, ``client.cql(library="HypertensionBPControl")`` resolves that library BY NAME and ships its whole
     ``include`` closure with the compile (`BUILD-LIBRARY-PROVIDER`, `BUILD-COMPILE-LINK`). Omit it and the
     folder still resolves from ``spark.cqldatabricks.libraryPath`` / ``CQL_DATABRICKS_LIBRARY_PATH``, which is how the
     ``%%cql`` magic and the module-level :func:`cql`, which build their own client, see the same folder

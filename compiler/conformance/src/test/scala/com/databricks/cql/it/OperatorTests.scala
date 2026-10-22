@@ -35,13 +35,14 @@ object OperatorTests {
   }
 
   /** The vendored files in this slice, aligned to operators already built + gated elsewhere
-    * (arithmetic / comparison / logical / nullological). Expanded file-by-file as the engine grows
+    * (arithmetic / comparison / logical / nullological / aggregate). Expanded file-by-file as the engine grows
     * (the doc's "iterate on UnsupportedNode" loop). */
   val Files: Seq[String] = Seq(
     "CqlLogicalOperatorsTest",
     "CqlNullologicalOperatorsTest",
     "CqlComparisonOperatorsTest",
-    "CqlArithmeticFunctionsTest")
+    "CqlArithmeticFunctionsTest",
+    "CqlAggregateFunctionsTest")
 
   /** Capabilities this slice does not yet claim: cases requiring them are skipped (not failed), so
     * the gate measures real coverage without false reds. Documented frontier, narrowed as support

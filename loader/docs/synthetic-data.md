@@ -38,7 +38,7 @@ M=<measure>; F=~/.synth/fixtures/$M
 scripts/with-local-env.sh .venv/bin/python loader/scripts/synthetic-population/load.py --ndjson-dir /tmp/$M --cohort $M
 ```
 
-Repeat the last four lines for each pinned measure (`BasicEncounterAndCondition` today; `pilot` is the
+Repeat the last four lines for each pinned measure (none of the sample measures is pinned yet; `pilot` is the
 synthesizer's own test fixture, not a measure to land). `--measurement-period` is required for a measure that
 declares its period with no default, as the sample measure does. Use a different `--seed` for each measure:
 patient IDs are `pds-<seed>-<n>`, so two cohorts with the same seed collide. The data source holds every

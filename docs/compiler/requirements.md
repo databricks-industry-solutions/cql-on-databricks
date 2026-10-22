@@ -20,8 +20,11 @@ The single index of every referenceable requirement. IDs are mnemonic and decoup
 | `LANG-LIST` | CQL lists are ordered and allow duplicates; default `Relation` encoding carries `__ordinal`. | `language-semantics.md` |
 | `LANG-LIST-NULL` | Empty vs null list conflated for now as a tested invariant, with a reserved escape hatch. | `language-semantics.md` |
 | `LANG-LIST-NULL-STATE` | A list's null/empty/non-empty state is distinguished only for observing operators; every other consumer conflates null and empty. | `language-semantics.md` |
+| `LANG-AGGREGATE-FUNCTIONS` | The CQL aggregate functions (`Sum`, `Min`, `Max`, `Avg` and the rest) reduce a list per CQL: nulls ignored; null for an empty or all-null list except `Count` (0), `AllTrue` (true) and `AnyTrue` (false); CQL ordering for `Min`/`Max`; quantity units converted. Added and built 2026-10-21. | `language-semantics.md` |
 | `LANG-INTERVAL` | Precision-aware temporal comparison and full interval (Allen-relation) algebra. | `language-semantics.md` |
 | `LANG-INTERVAL-PRECISION` | An Allen relation naming a precision truncates both operands to it before comparing. | `language-semantics.md` |
+| `LANG-DATETIME-COMPONENT` | `year from` and the other component extractors return one component of a date, time or date-time, null when less precise. Added 2026-10-21; not built. | `language-semantics.md` |
+| `LANG-DATETIME-OFFSET` | A returned date-time with no offset of its own carries the evaluation request's offset, as the reference does. Added 2026-10-21; not built. | `language-semantics.md` |
 | `LANG-PARAM-INSTANT` | A parameter override binds at the precision its declared type calls for. | `language-semantics.md` |
 | `LANG-PARAMETER` | CQL parameters bind to declared defaults or explicit overrides; the compiler inlines bound values as literals. | `language-semantics.md` |
 | `LANG-QUANTITY` | Quantities are `(value, unit)` structs; arithmetic/comparison require UCUM conversion. | `language-semantics.md` |

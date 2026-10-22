@@ -205,12 +205,13 @@ class RealCorpusTests(unittest.TestCase):
         self.assertTrue(self.CORPUS.is_dir(), f"conformance corpus not present at {self.CORPUS}")
         self.provider = FileLibraryProvider([str(self.CORPUS)])
 
-    def test_basic_encounter_and_condition_includes_encounter_during_period(self):
-        """BasicEncounterAndCondition includes EncounterDuringPeriod. The provider must resolve the closure
-        correctly."""
-        root = self.provider.resolve(LibraryRef("BasicEncounterAndCondition"))
+    def test_hypertension_measure_includes_its_shared_libraries(self):
+        """HypertensionBPControl includes SampleMeasureCommon and SampleSupplementalData, and FHIRHelpers, which
+        the compiler supplies. The provider must resolve the closure correctly."""
+        root = self.provider.resolve(LibraryRef("HypertensionBPControl"))
         got = {s.name for s in self.provider.closure(root)}
-        self.assertEqual(got, {"EncounterDuringPeriod"}, "BasicEncounterAndCondition closure mismatch")
+        self.assertEqual(got, {"SampleMeasureCommon", "SampleSupplementalData"},
+                         "HypertensionBPControl closure mismatch")
 
     def test_every_pinned_include_in_the_corpus_resolves(self):
         """Every `include` version pin across the whole corpus resolves to a source declaring exactly that

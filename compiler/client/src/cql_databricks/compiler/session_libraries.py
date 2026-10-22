@@ -6,12 +6,12 @@ is registered under that identity, and a later cell's `include X` resolves it. M
 using session libraries, with shared definitions in one cell and populations in another::
 
     %%cql --library
-    library EncounterDuringPeriod version '1.0.0'
+    library SampleMeasureCommon version '1.0.0'
     ...
 
     %%cql
-    library BasicEncounterAndCondition version '1.0.0'
-    include EncounterDuringPeriod version '1.0.0' called Encounters
+    library HypertensionBPControl version '1.0.0'
+    include SampleMeasureCommon version '1.0.0' called Common
     ...
 
 **Cells are the first root, the mounted folder is the second.** [[SessionLibraryProvider]] takes an
@@ -22,7 +22,7 @@ an override against a vendored content repo.
 
 **Shadowing reaches a CELL's closure, never a published measure's.** A root that came from a file is
 walked by the fallthrough alone (see [[SessionLibraryProvider.closure]]), so running
-``client.cql(library="BasicEncounterAndCondition")`` resolves exactly as a build of that content repo would — a cell cannot
+``client.cql(library="HypertensionBPControl")`` resolves exactly as a build of that content repo would — a cell cannot
 silently redefine what a published measure means. Overriding is something you opt into by writing the
 measure as a cell, not something that happens to a measure you merely ran.
 

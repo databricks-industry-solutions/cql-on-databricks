@@ -1,0 +1,1 @@
+{"valueset_id": "http://example.org/fhir/ValueSet/sample-ct-colonography", "system": "http://example.org/fhir/CodeSystem/sample-local-codes", "code": "ct-colonography", "display": "CT colonography"}

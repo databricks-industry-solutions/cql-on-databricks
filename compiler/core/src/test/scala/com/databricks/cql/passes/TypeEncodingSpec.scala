@@ -93,6 +93,27 @@ class TypeEncodingSpec extends AnyFunSuite {
       == IntervalType(IntegerType))
   }
 
+  test("join unifies quantities across units and temporals across precisions (LANG-AGGREGATE-FUNCTIONS)") {
+    assert(CqlType.join(QuantityType(Some("g")), QuantityType(Some("mg"))) == QuantityType(None))
+    assert(CqlType.join(QuantityType(Some("g")), QuantityType(Some("g"))) == QuantityType(Some("g")))
+    assert(CqlType.join(DateType(Some(DateTimePrecision.Year)), DateType(Some(DateTimePrecision.Day))) == DateType(None))
+    assert(CqlType.join(DateType(None), DateTimeType(None)) == AnyType)
+  }
+
+  test("aggregate functions type from the element type (LANG-AGGREGATE-FUNCTIONS)") {
+    import AggregateOp._
+    val ints = ListExpr(Seq(int("1"), int("2")))
+    val cms  = ListExpr(Seq(quantity(1, Some("cm")), quantity(2, Some("cm"))))
+    assert(typeOf(AggregateFunction(Sum, ints)) == IntegerType)
+    assert(typeOf(AggregateFunction(Max, ListExpr(Seq(str("a"))))) == StringType)
+    assert(typeOf(AggregateFunction(Avg, ListExpr(Seq(dec("1.0"))))) == DecimalType)
+    assert(typeOf(AggregateFunction(AllTrue, ListExpr(Nil))) == BooleanType)
+    assert(typeOf(AggregateFunction(StdDev, cms)) == QuantityType(Some("cm")))
+    assert(typeOf(AggregateFunction(Variance, cms)) == QuantityType(Some("cm2")))
+    assert(typeOf(AggregateFunction(Sum, ListExpr(Seq(quantity(1, Some("g")), quantity(1, Some("mg")))))) ==
+      QuantityType(None))
+  }
+
   // -- Phase 3: interval operators + quantity arithmetic (LANG-INTERVAL/LANG-QUANTITY) --
   private def iv(lo: Int, hi: Int) =
     IntervalExpr(Some(int(lo.toString)), Some(int(hi.toString)), lowClosed = true, highClosed = true)

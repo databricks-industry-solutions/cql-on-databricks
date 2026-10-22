@@ -24,7 +24,6 @@ Each feature's docs sit next to its code. Start with the feature you need.
 | [coding-standards.md](coding-standards.md) | Code conventions. Read before writing code |
 | [requirements.md](requirements.md) | Requirements for every feature except the compiler |
 | [compiler/requirements.md](compiler/requirements.md) | The compiler's requirements |
-| [roadmap.md](roadmap.md) | What's next, open decisions, what's deferred |
 | [decisions/](decisions/README.md) | An index of decision IDs cited in code |
 
 ## Conventions
@@ -34,5 +33,5 @@ Each feature's docs sit next to its code. Start with the feature you need.
   in an "after" column, never in the name.
 - A requirement that stops being true becomes a one-line "Retired" row. It's never deleted, so old
   citations still resolve.
-- `DEC-<SLUG>` is a decision. Open ones are in [roadmap.md](roadmap.md). Settled ones amend a requirement
+- `DEC-<SLUG>` is a decision. Open ones are kept outside this repository, in the roadmap. Settled ones amend a requirement
   and are listed in [decisions/](decisions/README.md).

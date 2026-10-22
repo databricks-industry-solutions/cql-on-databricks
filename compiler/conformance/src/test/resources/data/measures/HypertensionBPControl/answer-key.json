@@ -1,0 +1,354 @@
+{
+  "measure": "HypertensionBPControl",
+  "version": "1.0.0",
+  "measurementPeriod": "Interval[@2026-01-01T00:00:00.000, @2026-12-31T23:59:59.999]",
+  "populations": {
+    "Initial Population": "initial-population",
+    "Denominator": "denominator",
+    "Denominator Exclusions": "denominator-exclusion",
+    "Numerator": "numerator"
+  },
+  "supplemental": [
+    "SDE Sex",
+    "SDE Payer"
+  ],
+  "about": "A copy of examples/data/expected-results/HypertensionBPControl.json, kept in lock step with examples/ for now. Written for this repository. For each sample patient, the value of each population define (1 true, 0 false or null) over the measurement period, and why. These are the defines' own values: a patient can be in the numerator define and also excluded.",
+  "patients": {
+    "pat-001": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Hypertension since 2019, one reading of 128/82 in September: controlled."
+    },
+    "pat-002": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Controlled in April, 150/85 in October: the most recent reading is not controlled."
+    },
+    "pat-003": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "160/95 in April, then 138/88 in November: the most recent reading is controlled."
+    },
+    "pat-004": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "139/90: the diastolic value is not below 90."
+    },
+    "pat-005": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "140/80: the systolic value is not below 140."
+    },
+    "pat-006": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "The only reading is from December 2025, before the period: not in the numerator."
+    },
+    "pat-007": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "17 at the end of the period: too young for the hypertension measure. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-008": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "86 at the end of the period: too old for the hypertension measure. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-009": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Hypertension first diagnosed in August, after June 30 of the period: not in the initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-010": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 1,
+      "numerator": 0,
+      "why": "End-stage renal disease since 2024: excluded."
+    },
+    "pat-011": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 1,
+      "numerator": 1,
+      "why": "Hospice care in November: excluded, though the reading is controlled."
+    },
+    "pat-012": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 1,
+      "numerator": 0,
+      "why": "Pregnant during the period: excluded."
+    },
+    "pat-013": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "The only visit was cancelled: no qualifying visit. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-014": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Diagnosis recorded at an encounter, a telehealth visit, and 118/76; the later 170/100 was entered in error."
+    },
+    "pat-015": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 1,
+      "numerator": 1,
+      "why": "Dialysis in May: excluded."
+    },
+    "pat-016": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Hypertension resolved in June 2025: not present during the period. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-017": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-018": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-019": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-020": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-021": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-022": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-023": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 1,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-024": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-025": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-026": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 1,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-027": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-028": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-029": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-030": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-031": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-032": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-033": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-034": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-035": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 1,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-036": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-037": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-038": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-039": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-040": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-041": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-042": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-043": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-044": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-045": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-046": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-047": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-048": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    }
+  }
+}

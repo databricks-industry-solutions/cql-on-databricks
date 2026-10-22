@@ -17,21 +17,21 @@ from cql_databricks_designer.specification.model import (
     Intent, NarratedText, Narration, Overview, ScopeNonGoals, SpecificationOverlay,
 )
 
-LIBRARY = "BasicEncounterAndCondition"
+LIBRARY = "HypertensionBPControl"
 VERSION = "1.0.0"
 
 RESOURCE = {
-    "url": "http://example.org/fhir/Measure/BasicEncounterAndCondition",
+    "url": "http://example.org/fhir/Measure/HypertensionBPControl",
     "version": "1.0.0",
-    "title": "Patients With an Encounter During the Measurement Period Who Have Any Condition",
+    "title": "Hypertension: Blood Pressure Below 140/90 (Sample)",
     "publisher": "Example Measure Steward",
-    "description": "Share of patients with an encounter during the measurement period who have "
-                   "at least one condition recorded.",
+    "description": "Adults 18 to 85 with hypertension whose most recent blood pressure in the measurement period is "
+                   "below 140/90 mmHg.",
     # No `purpose` — real eCQMs routinely omit it, and that is the case that leaves narration standing.
-    "rationale": "Patients in active care often have recorded conditions.\n\nTracking patients with "
-                 "clinical context helps identify those receiving ongoing management.",
-    "clinicalRecommendationStatement": "Example guidance recommends regular encounter tracking and condition assessment.",
-    "usage": "Any encounter type and status counts; any condition status counts.",
+    "rationale": "Controlling high blood pressure lowers the risk of heart attack, stroke and kidney disease.\n\n"
+                 "Hypertension is a leading risk factor for cardiovascular morbidity and mortality.",
+    "clinicalRecommendationStatement": "Regular blood pressure monitoring and management of hypertension improves outcomes.",
+    "usage": "Hypertension diagnosis that starts on or before June 30 of the measurement period counts; qualifying visits are outpatient, telehealth, or preventive.",
     # SPEC-SCORING-METHODOLOGY — how the measure is scored, as published. Normative FHIR, and the
     # authority for a field that had no source but a hand transcription on three Specification
     # instances.
@@ -109,7 +109,7 @@ def test_every_quoted_field_says_whose_words_it_is(authored):
         assert prose.author == "Example Measure Steward"
         # `canonical|version` — the FHIR identity, which differs from the CQL one and must not be
         # confused with it.
-        assert prose.source_ref == "http://example.org/fhir/Measure/BasicEncounterAndCondition|1.0.0"
+        assert prose.source_ref == "http://example.org/fhir/Measure/HypertensionBPControl|1.0.0"
 
 
 def test_fields_land_in_the_slot_their_tag_names(authored):
@@ -153,8 +153,8 @@ def _narration() -> SpecificationOverlay:
                                                       provenance="narrated")),
             how_to_read=NarratedText(text="Read down.", provenance="narrated"),
         ),
-        elements={"BasicEncounterAndCondition::Initial Population": Narration(
-            description=NarratedText(text="Patients with an encounter and a condition.", provenance="narrated"))},
+        elements={"HypertensionBPControl::Initial Population": Narration(
+            description=NarratedText(text="Adults 18-85 with hypertension and a qualifying visit.", provenance="narrated"))},
     )
 
 
@@ -176,7 +176,7 @@ def test_narration_survives_where_the_resource_is_silent(authored):
     assert merged.overview.intent.statement.provenance == "narrated"
     assert merged.overview.scope.in_scope.text == "The last qualifying reading."
     assert merged.overview.how_to_read.text == "Read down."
-    assert merged.elements["BasicEncounterAndCondition::Initial Population"].description.text == "Patients with an encounter and a condition."
+    assert merged.elements["HypertensionBPControl::Initial Population"].description.text == "Adults 18-85 with hypertension and a qualifying visit."
     assert merged.precedence == "The CQL is authoritative."
 
 

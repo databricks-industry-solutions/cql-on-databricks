@@ -31,7 +31,7 @@ To run a library from a folder of `.cql` files, by name:
 from cql_databricks.compiler import connect
 
 client = connect(spark, library_path="/Workspace/Users/me/measure-content/input/cql")
-result = (client.cql(library="BasicEncounterAndCondition")
+result = (client.cql(library="HypertensionBPControl")
           .with_measurement_period("2026-01-01", "2026-12-31")
           .exec("Initial Population"))
 ```
@@ -138,9 +138,9 @@ defines and data source (`RUN-CLIENT-DURABLE`, `RUN-CLIENT-RESULT-IDENTITY`).
 ```python
 from cql_databricks.result import materialize
 
-query = client.cql(library="BasicEncounterAndCondition") \
+query = client.cql(library="HypertensionBPControl") \
               .with_measurement_period("2026-01-01", "2026-12-31")
-results = materialize(query, "Initial Population", "Has Any Condition",
+results = materialize(query, "Initial Population", "Numerator",
                       spark=spark,
                       destination=("my_catalog", "cql_results"))
 results.read("Initial Population").display()

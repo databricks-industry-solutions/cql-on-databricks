@@ -9,8 +9,9 @@
 # MAGIC content you publish and version, not code you paste. No CQL on Databricks App, no registry, no UI — the
 # MAGIC compiler, a folder, and Spark.
 # MAGIC
-# MAGIC The sample measure is **deliberately small** — three definitions over twenty synthetic patients — so its
-# MAGIC output is easy to read and verify. In a real measure everything is larger but the shape is the same.
+# MAGIC The sample measure is a hypertension control measure with an initial population, exclusions and a numerator,
+# MAGIC over 48 synthetic patients — making the output easy to read and verify. In a real measure everything is larger
+# MAGIC but the shape is the same.
 # MAGIC
 # MAGIC **Runs on serverless — no cluster to attach.** Just **Run All**.
 
@@ -119,7 +120,7 @@ for t, fn in sorted(mounted.items()):
 # MAGIC Before running a measure over it, one `%%cql` cell asks the data a direct question. This is what
 # MAGIC cells are for: self-contained CQL, no dependencies, answered immediately.
 # MAGIC
-# MAGIC **Expected output:** twenty rows, one per patient, each with true or false for whether they have any condition
+# MAGIC **Expected output:** 48 rows, one per patient, each with true or false for whether they have any condition
 # MAGIC on record — a direct check to verify the data is readable.
 
 # COMMAND ----------
@@ -155,8 +156,10 @@ for t, fn in sorted(mounted.items()):
 # MAGIC **Expected output:**
 # MAGIC ```
 # MAGIC libraries at /Workspace/…/examples/measures
-# MAGIC   BasicEncounterAndCondition|1.0.0
-# MAGIC   EncounterDuringPeriod|1.0.0
+# MAGIC   FHIRHelpers|4.0.1
+# MAGIC   HypertensionBPControl|1.0.0
+# MAGIC   SampleMeasureCommon|1.0.0
+# MAGIC   SampleSupplementalData|1.0.0
 # MAGIC ```
 
 # COMMAND ----------
@@ -172,9 +175,9 @@ for ref in client.libraries("*"):
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## 4. Bind the measure by name, and read it before running it
-# MAGIC `client.cql(library="BasicEncounterAndCondition")` addresses the measure by **name**. Resolving it walks
-# MAGIC the `include` closure, so `EncounterDuringPeriod` is found and shipped with the compile without
-# MAGIC being mentioned here.
+# MAGIC `client.cql(library="HypertensionBPControl")` addresses the measure by **name**. Resolving it walks
+# MAGIC the `include` closure, so the common libraries and helper functions are found and shipped with the
+# MAGIC compile without being mentioned here.
 # MAGIC
 # MAGIC Two rules decide which source an `include` resolves to:
 # MAGIC
@@ -189,15 +192,16 @@ for ref in client.libraries("*"):
 # MAGIC
 # MAGIC **Expected output:**
 # MAGIC ```
-# MAGIC populations : ['Initial Population']
-# MAGIC defines     : ['Has Encounter During Period', 'Has Any Condition', 'Initial Population']
+# MAGIC populations : ['Initial Population', 'Denominator', 'Denominator Exclusions', 'Numerator']
+# MAGIC defines     : [... 16 defines including population definitions, hypertension logic, blood pressure criteria,
+# MAGIC            and supplemental data ...]
 # MAGIC ```
-# MAGIC `populations` finds `Initial Population` by its well-known name; it is what `exec()` runs when you name
-# MAGIC no targets. The sample measure has no other population (it is deliberately minimal).
-# MAGIC `Initial Population` is the one that matters: 16 of 20 patients true for the 2026-01-01 to 2026-12-31 period.
+# MAGIC `populations` finds the eCQM populations by their well-known names; it is what `exec()` runs when you name
+# MAGIC no targets. The measure has four populations: initial population, denominator, exclusions and numerator.
+# MAGIC Over the 2026-01-01 to 2026-12-31 period, 11 of 48 patients are in the initial population.
 
 # COMMAND ----------
-measure = client.cql(library="BasicEncounterAndCondition") \
+measure = client.cql(library="HypertensionBPControl") \
                 .with_measurement_period("2026-01-01", "2026-12-31")
 
 print("populations :", measure.populations())
@@ -206,27 +210,27 @@ print("defines     :", measure.defines())
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## 5. Run it
-# MAGIC `exec()` with the three defines named evaluates them together, compiling the shared graph
-# MAGIC **once** — `"Has Encounter During Period"` and `"Has Any Condition"` both feed `"Initial Population"`, and
-# MAGIC that shared work is computed once.
+# MAGIC `exec()` with the population defines evaluates them together, compiling the shared graph
+# MAGIC **once** — the measures' logic flows through each other, and that shared work is computed once.
 # MAGIC
 # MAGIC Every define's result arrives with **identical schemas** (`__subject_id`, `__val`), because a define names the
 # MAGIC object and never a column. The frames are presented side by side for each patient so you can
-# MAGIC see the pattern: which patients meet each criterion, and which are in the initial population.
+# MAGIC see the pattern: which patients have hypertension, which are in scope, which are excluded, and which meet control.
 # MAGIC
-# MAGIC **Expected output:** twenty rows, one per patient. 18 have an encounter during 2026, 16 have any condition,
-# MAGIC and 16 meet both criteria (initial population). Four patients fail: pat-007 and pat-009 have encounters but no
-# MAGIC conditions; pat-011 and pat-019 have no 2026 encounter at all.
+# MAGIC **Expected output:** 48 rows, one per patient. 11 are in the initial population (adults 18–85 with hypertension
+# MAGIC and a qualifying visit). Of those, 7 are not excluded (not in hospice, not pregnant, no kidney failure).
+# MAGIC Of those 7 denominators, 3 (pat-001, pat-003, pat-014) have controlled blood pressure — a rate of 3/7.
 
 # COMMAND ----------
 from pyspark.sql import functions as F
 
 from cql_databricks.compiler import VALUE_COLUMN
 
-defines = measure.exec("Has Encounter During Period", "Has Any Condition", "Initial Population")
-report = (defines["Has Encounter During Period"].withColumnRenamed(VALUE_COLUMN, "has_encounter")
-          .join(defines["Has Any Condition"].withColumnRenamed(VALUE_COLUMN, "has_condition"), "__subject_id")
-          .join(defines["Initial Population"].withColumnRenamed(VALUE_COLUMN, "initial_population"), "__subject_id")
+defines = measure.exec("Initial Population", "Denominator", "Denominator Exclusions", "Numerator")
+report = (defines["Initial Population"].withColumnRenamed(VALUE_COLUMN, "initial_population")
+          .join(defines["Denominator"].withColumnRenamed(VALUE_COLUMN, "denominator"), "__subject_id")
+          .join(defines["Denominator Exclusions"].withColumnRenamed(VALUE_COLUMN, "excluded"), "__subject_id")
+          .join(defines["Numerator"].withColumnRenamed(VALUE_COLUMN, "numerator"), "__subject_id")
           .orderBy("__subject_id"))
 report.display()
 
@@ -234,40 +238,42 @@ report.display()
 # MAGIC %md
 # MAGIC ## 6. Query the result as SQL
 # MAGIC Every define also landed as a session temp view named after it, with spaces as underscores
-# MAGIC (`Initial_Population`), so the headline number is one SQL cell away — no CQL, no Python, nothing to export.
+# MAGIC (`Initial_Population`, `Denominator`, etc.), so the headline rate is one SQL cell away — no CQL, no Python, nothing to export.
 # MAGIC
-# MAGIC **Expected output:** one row — `total_patients = 20`, `in_initial_population = 16`.
+# MAGIC **Expected output:** one row — the rate of controlled blood pressure among the denominator (after exclusions).
 
 # COMMAND ----------
 # MAGIC %sql
-# MAGIC SELECT (SELECT count(*) FROM Initial_Population) AS total_patients,
-# MAGIC        (SELECT count_if(__val) FROM Initial_Population) AS in_initial_population
+# MAGIC SELECT count_if(d.__val) AS denominator,
+# MAGIC        count_if(d.__val AND NOT ex.__val) AS denominator_after_exclusions,
+# MAGIC        count_if(n.__val) AS numerator
+# MAGIC FROM Denominator d
+# MAGIC LEFT JOIN Denominator_Exclusions ex ON d.__subject_id = ex.__subject_id
+# MAGIC LEFT JOIN Numerator n ON d.__subject_id = n.__subject_id
 
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## 7. Ask a question the measure did not answer
-# MAGIC A care-gap report always provokes a follow-up: *which* patients, and who is close to the threshold? The published
-# MAGIC definitions in the helper library are addressable, so the follow-up can be asked of **the same library the measure uses**
+# MAGIC A care-gap report always provokes a follow-up: *which* patients, and why are they excluded? The published
+# MAGIC definitions in the helper libraries are addressable, so the follow-up can be asked of **the same libraries the measure uses**
 # MAGIC rather than re-implemented in ad-hoc SQL — which is where consistency usually breaks, someone
-# MAGIC rebuilding "has encounter" slightly differently and getting a number nobody can reconcile.
+# MAGIC rebuilding "age at end of period" slightly differently and getting a number nobody can reconcile.
 # MAGIC
-# MAGIC The follow-up here asks the same helper library for encounters, over the same period. The sample
-# MAGIC measure requires both an encounter *and* a condition, so this shows every patient with an encounter,
-# MAGIC whether or not they have a condition.
+# MAGIC The follow-up here asks the helper library the measure includes, `SampleMeasureCommon`, one of the
+# MAGIC questions behind its exclusions: who was in hospice care during the period?
 # MAGIC
 # MAGIC **Where an `include` is found.** A `%%cql` cell's `include` resolves against earlier cells, then the
 # MAGIC folder in `spark.cqldatabricks.libraryPath`, then the knowledge tagged in your catalog scopes. This
 # MAGIC notebook hands its folder to `connect()` only, so the magic's own client cannot see it; the follow-up
-# MAGIC therefore lives in the folder and runs by name with `library=`. Set the conf to the folder and the
+# MAGIC therefore runs the helper library by name with `library=`. Set the conf to the folder and the
 # MAGIC same question works as a `%%cql` cell.
 # MAGIC
-# MAGIC **Expected output:** twenty rows — 18 patients have an encounter during 2026 (true), 2 do not (false).
-# MAGIC Patients pat-011 and pat-019 show false: they have no 2026 encounter, so they cannot be in any measure's
-# MAGIC initial population for 2026.
+# MAGIC **Expected output:** 48 rows, one per patient. Three are true: pat-011 and pat-035 had hospice care during
+# MAGIC 2026, and pat-026 was discharged to hospice.
 
 # COMMAND ----------
-followup = client.cql(library="EncounterDuringPeriod").with_measurement_period("2026-01-01", "2026-12-31")
-followup.exec("Has Encounter During Period").orderBy("__subject_id").display()
+followup = client.cql(library="SampleMeasureCommon").with_measurement_period("2026-01-01", "2026-12-31")
+followup.exec("In Hospice Care").orderBy("__subject_id").display()
 
 # COMMAND ----------
 # MAGIC %md
@@ -276,9 +282,8 @@ followup.exec("Has Encounter During Period").orderBy("__subject_id").display()
 # MAGIC returns a NEW handle rather than rebinding this one. Nothing about the content changes; the question
 # MAGIC is asked of a different year.
 # MAGIC
-# MAGIC Watch the population turn over completely. In 2025 only two patients have a qualifying encounter *and*
-# MAGIC a condition: pat-003 and pat-006. The measure that reported 16 of 20 for 2026 reports 2 of 20 for 2025,
-# MAGIC over a completely different cohort.
+# MAGIC Watch the population turn over. For 2026 the measure reported 11 patients in the initial population; for 2025
+# MAGIC there are 0 — every hypertension patient's qualifying visit in this dataset is in 2026.
 # MAGIC
 # MAGIC That is worth sitting with: **a rate is meaningless without its period**, and the same content
 # MAGIC honestly produces both numbers.
@@ -291,12 +296,12 @@ followup.exec("Has Encounter During Period").orderBy("__subject_id").display()
 # MAGIC
 # MAGIC **Expected output:**
 # MAGIC ```
-# MAGIC 2025: initial population = 2
+# MAGIC 2025: initial population = 0
 # MAGIC ```
 
 # COMMAND ----------
-prior = measure.with_measurement_period("2025-01-01", "2025-12-31").exec()
-initial_pop_2025 = prior["Initial Population"].collect()
+prior = measure.with_measurement_period("2025-01-01", "2025-12-31").exec("Initial Population")
+initial_pop_2025 = prior.collect()
 count_2025 = sum(1 for r in initial_pop_2025 if r[VALUE_COLUMN])
 print(f"2025: initial population = {count_2025}")
 

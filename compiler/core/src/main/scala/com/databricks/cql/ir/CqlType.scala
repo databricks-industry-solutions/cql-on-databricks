@@ -142,7 +142,9 @@ object CqlType {
 
   /** A conservative least-upper-bound used to unify branch/coalesce/element types.
     * `AnyType` is the identity (a null branch takes its sibling's type); numerics widen
-    * (Integer < Long < Decimal); equal types unify; lists/intervals unify pointwise;
+    * (Integer < Long < Decimal); equal types unify; quantities in different units unify to a quantity
+    * of unknown unit, and temporals of one kind at different precisions to that kind of unknown precision;
+    * lists/intervals unify pointwise;
     * anything else falls to `AnyType` rather than guessing. */
   def join(a: CqlType, b: CqlType): CqlType = (a, b) match {
     case _ if a == b                                => a
@@ -150,6 +152,12 @@ object CqlType {
     case (x, AnyType)                               => x
     case (x, y) if numericRank.contains(x) && numericRank.contains(y) =>
       if (numericRank(x) >= numericRank(y)) x else y
+    // Quantities in different units are still quantities; the unit is then known only per row (LANG-QUANTITY).
+    // Likewise a date, date-time or time at different precisions, whose precision is then per row (LANG-INTERVAL).
+    case (QuantityType(_), QuantityType(_))         => QuantityType(None)
+    case (DateType(_), DateType(_))                 => DateType(None)
+    case (DateTimeType(_), DateTimeType(_))         => DateTimeType(None)
+    case (TimeType(_), TimeType(_))                 => TimeType(None)
     case (ListType(x), ListType(y))                 => ListType(join(x, y))
     case (IntervalType(x), IntervalType(y))         => IntervalType(join(x, y))
     case _                                          => AnyType

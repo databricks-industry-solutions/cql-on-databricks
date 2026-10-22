@@ -220,12 +220,14 @@ print("bound threshold  (100) :",
 # MAGIC **Expected output:**
 # MAGIC ```
 # MAGIC library_path: /Workspace/…/examples/measures
-# MAGIC   BasicEncounterAndCondition|1.0.0
-# MAGIC   EncounterDuringPeriod|1.0.0
-# MAGIC populations of BasicEncounterAndCondition: ['Initial Population']
+# MAGIC   FHIRHelpers|4.0.1
+# MAGIC   HypertensionBPControl|1.0.0
+# MAGIC   SampleMeasureCommon|1.0.0
+# MAGIC   SampleSupplementalData|1.0.0
+# MAGIC populations of HypertensionBPControl: ['Initial Population', 'Denominator', 'Denominator Exclusions', 'Numerator']
 # MAGIC ```
 # MAGIC That last line is the whole feature. Binding by name resolved the measure, walked its `include`
-# MAGIC closure to find `EncounterDuringPeriod`, and shipped both to the compiler — and **no data was
+# MAGIC closure to find the helper libraries, and shipped all of them to the compiler — and **no data was
 # MAGIC touched**, because resolving and compiling a measure is not the same act as running it.
 
 # COMMAND ----------
@@ -244,8 +246,8 @@ print("library_path:", MEASURES)
 for ref in client.libraries("*"):
     print(" ", ref)
 
-measure = client.cql(library="BasicEncounterAndCondition").with_measurement_period("2026-01-01", "2026-12-31")
-print("populations of BasicEncounterAndCondition:", measure.populations())
+measure = client.cql(library="HypertensionBPControl").with_measurement_period("2026-01-01", "2026-12-31")
+print("populations of HypertensionBPControl:", measure.populations())
 
 # COMMAND ----------
 # MAGIC %md

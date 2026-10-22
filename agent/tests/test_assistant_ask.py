@@ -129,10 +129,10 @@ class TestContext:
         # labelled block of argument values invites it to pass them, which is the only job it has.
         client = _FakeClient([_answering()])
         _run(server, client, selection=Selection(
-            library="BasicEncounterAndCondition", version="1.0.0", data_source_id="ds-1"))
+            library="HypertensionBPControl", version="1.0.0", data_source_id="ds-1"))
         scope = client.requests[0]["messages"][2]["content"]
         payload = json.loads(scope[scope.index("{"):])
-        assert payload == {"library": "BasicEncounterAndCondition", "version": "1.0.0",
+        assert payload == {"library": "HypertensionBPControl", "version": "1.0.0",
                            "data_source_id": "ds-1"}
 
     def test_no_selection_sends_no_scope_block_at_all(self, server):
@@ -189,16 +189,16 @@ class TestContext:
     def test_the_labels_are_sent_and_are_NOT_tool_arguments(self, server):
         # The reason the two halves are separate blocks: `measure_title` is not an argument to
         # anything, and a model that passed it as `library` would address a relation that does not
-        # exist. It is sent so the assistant writes "Encounter and Condition" rather than
-        # "BasicEncounterAndCondition" at a clinician who calls it the former.
+        # exist. It is sent so the assistant writes "Hypertension: BP Control" rather than
+        # "HypertensionBPControl" at a clinician who calls it the former.
         client = _FakeClient([_answering()])
         _run(server, client, selection=Selection(
-            library="BasicEncounterAndCondition", version="1.0.0",
+            library="HypertensionBPControl", version="1.0.0",
             data_source_id="sample-patients",
-            measure_title="Encounter and Condition",
+            measure_title="Hypertension: BP Control",
             data_source_name="Sample Patients"))
         content = client.requests[0]["messages"][2]["content"]
-        assert "Encounter and Condition" in content
+        assert "Hypertension: BP Control" in content
         assert "Sample Patients" in content
         # ...and the model is told, in the block itself, which half is which.
         assert "TOOL ARGUMENTS" in content
@@ -212,18 +212,18 @@ class TestContext:
         # chosen is the ordinary first minute of a session. Saying nothing then would leave the
         # assistant unable to name what is on the screen.
         client = _FakeClient([_answering()])
-        _run(server, client, selection=Selection(measure_title="Encounter and Condition"))
-        assert "Encounter and Condition" in client.requests[0]["messages"][2]["content"]
+        _run(server, client, selection=Selection(measure_title="Hypertension: BP Control"))
+        assert "Hypertension: BP Control" in client.requests[0]["messages"][2]["content"]
 
     def test_the_server_never_rewrites_a_call_the_model_made(self, server):
         # The line between a default and ambient state. The model fills arguments from the scope
         # block; nothing is injected behind it, so what the client is shown is what actually ran.
         client = _FakeClient([
             SimpleNamespace(content="", tool_calls=[
-                _tool_call("c1", "get_specification", {"library": "EncounterDuringPeriod", "version": "1.0.0"})]),
+                _tool_call("c1", "get_specification", {"library": "SampleMeasureCommon", "version": "1.0.0"})]),
             _answering()])
-        answer = _run(server, client, selection=Selection(library="BasicEncounterAndCondition", version="1.0.0"))
-        assert answer.invocations[0].arguments == {"library": "EncounterDuringPeriod", "version": "1.0.0"}
+        answer = _run(server, client, selection=Selection(library="HypertensionBPControl", version="1.0.0"))
+        assert answer.invocations[0].arguments == {"library": "SampleMeasureCommon", "version": "1.0.0"}
 
 
 class TestProvenance:
@@ -287,7 +287,7 @@ class TestEventStream:
     def test_a_tool_is_reported_before_the_answer_exists(self, server):
         client = _FakeClient([
             SimpleNamespace(content="", tool_calls=[
-                _tool_call("c1", "get_specification", {"library": "BasicEncounterAndCondition", "version": "1.0.0"})]),
+                _tool_call("c1", "get_specification", {"library": "HypertensionBPControl", "version": "1.0.0"})]),
             _answering()])
         events = list(ask_events("How many patients?", server=server, client=client,
                                  endpoint="test-endpoint"))
@@ -337,7 +337,7 @@ class TestLoop:
         # verbatim WITH its tool_calls. Getting this wrong fails only on the second round.
         client = _FakeClient([
             SimpleNamespace(content="", tool_calls=[
-                _tool_call("c1", "get_specification", {"library": "BasicEncounterAndCondition", "version": "1.0.0"})]),
+                _tool_call("c1", "get_specification", {"library": "HypertensionBPControl", "version": "1.0.0"})]),
             _answering()])
         _run(server, client)
         second = client.requests[1]["messages"]

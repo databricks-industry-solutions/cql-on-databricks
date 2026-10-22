@@ -191,7 +191,7 @@ def load_library(resource: Optional[str] = None, *, elm: Optional[str] = None,
     """Resolve a library and every compiler setting by the `BUILD-RESOLVE` precedence.
 
     The library body comes from exactly one of: ``resource`` (the packaged CQL path, e.g.
-    ``"cql/BasicEncounterAndCondition.cql"``, resolved under ``library_source`` when set and relative — its ELM is read from
+    ``"cql/HypertensionBPControl.cql"``, resolved under ``library_source`` when set and relative — its ELM is read from
     the sibling ``.elm.json``), ``library`` (a NAME, or ``"Name|version"``, resolved through the
     :class:`~.libraries.LibraryProvider` seam, `BUILD-LIBRARY-PROVIDER`), an explicit ``elm`` string, or
     raw ``cql`` TEXT (translated to ELM by the service, `BUILD-CLIENT-SESSION`). ``conf`` overrides the

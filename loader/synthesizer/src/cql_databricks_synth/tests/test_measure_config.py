@@ -168,10 +168,3 @@ def test_a_shaped_cohort_still_verifies(env, valuesets, config):
     config moved choices without moving any patient out of its stratum."""
     cohort = generate(env, valuesets, seed=7, per_stratum=2, priors=True, config=config)
     assert cohort.patients
-
-
-def test_the_sample_measure_config_resolves():
-    sample = dir_or_skip("BasicEncounterAndCondition")
-    sample_env = Env.from_paths([sample])
-    config = load(sample / CONFIG_NAME, sample_env, ValueSetIndex({}))
-    assert config.rates == {"in_ipp": 0.8}

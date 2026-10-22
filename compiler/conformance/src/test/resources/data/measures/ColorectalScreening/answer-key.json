@@ -1,0 +1,354 @@
+{
+  "measure": "ColorectalScreening",
+  "version": "1.0.0",
+  "measurementPeriod": "Interval[@2026-01-01T00:00:00.000, @2026-12-31T23:59:59.999]",
+  "populations": {
+    "Initial Population": "initial-population",
+    "Denominator": "denominator",
+    "Denominator Exclusions": "denominator-exclusion",
+    "Numerator": "numerator"
+  },
+  "supplemental": [
+    "SDE Sex",
+    "SDE Payer"
+  ],
+  "about": "A copy of examples/data/expected-results/ColorectalScreening.json, kept in lock step with examples/ for now. Written for this repository. For each sample patient, the value of each population define (1 true, 0 false or null) over the measurement period, and why. These are the defines' own values: a patient can be in the numerator define and also excluded.",
+  "patients": {
+    "pat-001": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-002": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-003": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-004": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-005": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-006": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-007": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-008": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-009": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-010": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-011": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 1,
+      "numerator": 0,
+      "why": "In the initial population, excluded, not in the numerator."
+    },
+    "pat-012": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-013": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-014": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-015": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-016": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-017": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-018": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-019": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-020": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-021": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-022": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-023": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 1,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-024": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-025": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-026": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 1,
+      "numerator": 0,
+      "why": "In the initial population, excluded, not in the numerator."
+    },
+    "pat-027": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-028": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-029": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-030": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-031": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "In the initial population, not in the numerator."
+    },
+    "pat-032": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-033": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-034": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Not in this measure's initial population."
+    },
+    "pat-035": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 1,
+      "numerator": 0,
+      "why": "In the initial population, excluded, not in the numerator."
+    },
+    "pat-036": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Colonoscopy in 2019, within ten years."
+    },
+    "pat-037": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "Colonoscopy in November 2016, before the ten-year lookback (from 2017-01-01)."
+    },
+    "pat-038": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "A FIT result in April 2026."
+    },
+    "pat-039": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "A FIT result in October 2025: FIT counts only in the measurement period."
+    },
+    "pat-040": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "A stool DNA test in February 2025, within three years."
+    },
+    "pat-041": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "A preventive visit, and a flexible sigmoidoscopy in 2023, within five years."
+    },
+    "pat-042": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "CT colonography in June 2021, before the five-year lookback (from 2022-01-01)."
+    },
+    "pat-043": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 1,
+      "numerator": 0,
+      "why": "Colorectal cancer since 2022: excluded."
+    },
+    "pat-044": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 1,
+      "numerator": 0,
+      "why": "A total colectomy in 2015: excluded."
+    },
+    "pat-045": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "44 at the end of the period: too young for the colorectal measure. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-046": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "76 at the end of the period: too old for the colorectal measure. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-047": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "The only colonoscopy was entered in error: not screened."
+    },
+    "pat-048": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "A FIT in October 2026 with no result: not screened."
+    }
+  }
+}

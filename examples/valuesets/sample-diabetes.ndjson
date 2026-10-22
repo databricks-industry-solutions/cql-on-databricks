@@ -1,0 +1,4 @@
+{"valueset_id": "http://example.org/fhir/ValueSet/sample-diabetes", "system": "http://hl7.org/fhir/sid/icd-10-cm", "code": "E10.9", "display": "Type 1 diabetes mellitus without complications"}
+{"valueset_id": "http://example.org/fhir/ValueSet/sample-diabetes", "system": "http://hl7.org/fhir/sid/icd-10-cm", "code": "E11.9", "display": "Type 2 diabetes mellitus without complications"}
+{"valueset_id": "http://example.org/fhir/ValueSet/sample-diabetes", "system": "http://hl7.org/fhir/sid/icd-10-cm", "code": "E11.65", "display": "Type 2 diabetes mellitus with hyperglycemia"}
+{"valueset_id": "http://example.org/fhir/ValueSet/sample-diabetes", "system": "http://hl7.org/fhir/sid/icd-10-cm", "code": "E11.22", "display": "Type 2 diabetes mellitus with diabetic chronic kidney disease"}

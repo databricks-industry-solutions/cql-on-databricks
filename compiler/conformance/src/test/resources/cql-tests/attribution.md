@@ -18,6 +18,7 @@ Aligned to operator families the engine already implements + gates elsewhere:
 | `CqlNullologicalOperatorsTest.xml` | `Coalesce` / `IsNull` / `IsTrue` / `IsFalse` |
 | `CqlComparisonOperatorsTest.xml` | `=` `!=` `~` `<` `<=` `>` `>=` |
 | `CqlArithmeticFunctionsTest.xml` | `+` `-` `*` `/` `div` `mod` `^` and the math functions |
+| `CqlAggregateFunctionsTest.xml` | `Count` `Sum` `Min` `Max` `Avg` `Median` `Mode` `Variance` `StdDev` `PopulationVariance` `PopulationStdDev` `Product` `AllTrue` `AnyTrue` (`LANG-AGGREGATE-FUNCTIONS`) |
 
 ## How they are consumed
 
@@ -34,12 +35,12 @@ Excluded from this slice (tracked, not silent): cases marked `invalid` (expected
 negative path), cases needing the `system.long` / `tuple` capabilities, and cases needing an
 unsupported ELM node (the `OperatorTests.UnsupportedNodes` frontier).
 
-**Not yet vendored — the other 12 of the upstream suite's 16 files:** `CqlIntervalOperatorsTest`,
+**Not yet vendored — the other 11 of the upstream suite's 16 files:** `CqlIntervalOperatorsTest`,
 `CqlListOperatorsTest`, `CqlStringOperatorsTest`, `CqlDateTimeOperatorsTest`,
-`CqlAggregateFunctionsTest`, `CqlAggregateTest`, `CqlConditionalOperatorsTest`,
+`CqlAggregateTest`, `CqlConditionalOperatorsTest`,
 `CqlTypeOperatorsTest`, `CqlTypesTest`, `CqlQueryTests`, `ValueLiteralsAndSelectors`,
 `CqlErrorsAndMessagingOperatorsTest`. Extending the slice is the cheapest remaining conformance
 coverage win (doc/testing-and-conformance.md, Gate 1 coverage frontier).
 
-To update: re-fetch the four files at a new upstream commit, update the **Pinned commit** above, then
+To update: re-fetch the five files at a new upstream commit, update the **Pinned commit** above, then
 run `OperatorTranslationSpec` and reconcile any new node kinds.
