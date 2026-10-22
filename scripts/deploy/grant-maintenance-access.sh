@@ -4,8 +4,8 @@
 #
 # The private catalog is a PLATFORM PREREQUISITE (RUN-CLIENT-PRIVATE-PROVISIONING): an administrator creates
 # it and grants Designer users USE CATALOG and CREATE SCHEMA. Deployment never creates it and grants users
-# nothing on it. Its one identity and grant is the dedicated principal the daily cql-maintenance Job runs as,
-# which drops expired results in every user's schema:
+# nothing on it. Its one identity and grant is the dedicated principal the daily
+# cql-databricks-designer-maintenance Job runs as, which drops expired results in every user's schema:
 #   USE_CATALOG, USE_SCHEMA   reach every user's schema
 #   MANAGE                    inherited by every schema and table; deletes objects it does not own
 # plus CAN_USE on the configured warehouse, which the Job's SQL runs on. The principal has no secret.
@@ -15,7 +15,7 @@
 # fails the deploy.
 #
 # Prints the principal's application ID on stdout: deploy.sh passes it to the bundle as `maintenance_principal`,
-# the run-as of the `cql-maintenance` Job.
+# the run-as of the `cql-databricks-designer-maintenance` Job.
 #
 # Usage: scripts/deploy/grant-maintenance-access.sh [-t <target>] [-p <profile>]
 set -euo pipefail

@@ -142,14 +142,15 @@ variables:
     default: ""
   maintenance_principal:
     description: >-
-      RUN-CLIENT-MAINTENANCE — the application ID of the service principal the cql-maintenance Job runs as.
-      scripts/deploy/deploy.sh creates the principal (scripts/deploy/grant-maintenance-access.sh) and passes its
-      ID here; there is nothing to set by hand.
+      RUN-CLIENT-MAINTENANCE — the application ID of the service principal the cql-databricks-designer-maintenance
+      Job runs as. scripts/deploy/deploy.sh creates the principal (scripts/deploy/grant-maintenance-access.sh) and
+      passes its ID here; there is nothing to set by hand.
     default: ""
   client_wheel_version:
     description: >-
       SVC-WHEEL-VERSION — the cql-databricks wheel version this deploy builds and uploads to the runtime volume,
-      which the cql-maintenance Job installs. scripts/deploy/deploy.sh sets it; there is nothing to set by hand.
+      which the cql-databricks-designer-maintenance Job installs. scripts/deploy/deploy.sh sets it; there is nothing
+      to set by hand.
     default: ""
 
 targets:
@@ -373,7 +374,7 @@ resources:
     # (scripts/deploy/grant-maintenance-access.sh). The schedule deploys PAUSED: unpause it once one run has been
     # checked on the workspace, because MANAGE exposing every user's tables to the principal is not yet verified.
     cql_databricks_maintenance:
-      name: cql-maintenance
+      name: cql-databricks-designer-maintenance
       description: "Deployment maintenance: expire completed private Designer results (RUN-CLIENT-MAINTENANCE)."
       run_as:
         service_principal_name: ${var.maintenance_principal}

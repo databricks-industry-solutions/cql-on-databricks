@@ -1,4 +1,4 @@
-"""RUN-CLIENT-MAINTENANCE — the deployment-owned identity the daily `cql-maintenance` Job runs as.
+"""RUN-CLIENT-MAINTENANCE — the deployment-owned identity the daily `cql-databricks-designer-maintenance` Job runs as.
 
 `scripts/deploy/grant-maintenance-access.sh` runs this before `bundle deploy`, and `deploy.sh` passes the printed
 application ID to the bundle as `maintenance_principal`, the Job's run-as (`databricks.yml`). Never an App or user
@@ -61,7 +61,7 @@ def provision_maintenance_principal(workspace, *, catalog: str, warehouse: str) 
     _text(catalog, "private catalog")
     _text(warehouse, "warehouse")
     installation = sha256((workspace.config.host.rstrip("/") + "\n" + catalog.casefold()).encode()).hexdigest()
-    name = "cql-maintenance-" + installation[:12]
+    name = "cql-databricks-designer-maintenance-" + installation[:12]
     matching = list(workspace.service_principals.list(filter=f'displayName eq "{name}"'))
     if len(matching) > 1:
         raise ValueError("multiple maintenance principals claim this catalog; refusing to choose")
