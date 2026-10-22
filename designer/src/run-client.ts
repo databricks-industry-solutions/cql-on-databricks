@@ -251,8 +251,8 @@ export async function runMeasure(cql: string, opts: RunCallOptions): Promise<Run
 }
 
 /** SVC-RUN-STAGE — run a measure with streaming progress. The backend sends SSE events as the
- *  evaluation Job progresses (`compiling`, a `profile` breakdown, then one `executing` frame per
- *  second carrying every barrier task's state). `onStage` is called for every progress event; the
+ *  run progresses (`compiling`, then one `executing` frame for the plan and one per finished definition,
+ *  each carrying every definition's state). `onStage` is called for every progress event; the
  *  final `RunResult` is returned on completion.
  *
  *  **THE FINAL RESULT IS BUILT FROM THE `done` FRAME'S OWN FIELDS.** It used to be read from

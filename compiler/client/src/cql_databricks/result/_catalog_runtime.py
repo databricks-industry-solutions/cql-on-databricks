@@ -71,6 +71,7 @@ class StepRecord:
 
 
 StepObserver = Callable[[StepRecord], None]
+PlanObserver = Callable[[tuple[str, ...]], None]
 
 
 def _step(definition: Definition, **fields) -> StepRecord:
@@ -128,7 +129,7 @@ def _columns(run: SqlRunner, outcomes: Sequence[Outcome]) -> tuple[Outcome, ...]
 
 def execute(plan: PreparedPlan, targets: Sequence[str], *, destination: tuple[str, str], run: SqlRunner,
             mode: str = "skip_if_computed", computed_since: datetime | None = None,
-            read_only: bool = False, on_step: StepObserver | None = None,
+            read_only: bool = False, on_step: StepObserver | None = None, on_plan: PlanObserver | None = None,
             sources: Sequence[tuple[str, str]] = ()) -> tuple[Outcome, ...]:
     """RUN-CLIENT-ASYNC-CHECKPOINTS, RUN-CLIENT-RESULT-IDENTITY — one catalog lookup, one CTAS per miss.
 
@@ -145,6 +146,8 @@ def execute(plan: PreparedPlan, targets: Sequence[str], *, destination: tuple[st
     starts a new refresh; no hidden session index remembers it. Readers never execute on a miss.
     APP-RUN-LOG — ``on_step`` receives a ``StepRecord`` per definition, in execution order, including the
     one whose statement failed (reported before the error is raised).
+    RUN-PROGRESS-TASKS — ``on_plan`` receives every planned definition key, in the order ``on_step`` will report
+    them, once, before any of them runs.
     """
     _destination(destination)
     if mode not in ("skip_if_computed", "recompute"):
@@ -158,6 +161,8 @@ def execute(plan: PreparedPlan, targets: Sequence[str], *, destination: tuple[st
     elif mode == "recompute":
         computed_since = datetime.now(timezone.utc)
     planned = _selected(plan.definitions, targets)
+    if on_plan is not None:
+        on_plan(tuple(definition.key for definition in planned))
     names = {definition.key: table_name(definition) for definition in planned}
     found = discover(run, destination, {definition.fingerprint: names[definition.key] for definition in planned})
     sources = [source for source in dict.fromkeys(sources) if source != destination]

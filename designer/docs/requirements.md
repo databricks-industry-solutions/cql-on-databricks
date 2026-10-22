@@ -162,7 +162,7 @@ How the Designer works with the rest of the system.
 | `DESIGNER-SDP-NAV` | Define nav is a hybrid: merged graph from BFF (cross-library edges, deduplication); local CQL scan (node classification, leaves). Engine's `/describe` provides boundaries and provenance. Local scan provides leaf nodes. |
 | `DESIGNER-TOP-BAR` | One bar with three zones: Left = breadcrumb (product glyph IS module switcher, artifact selector); Centre = compute context (Explain, Data Source, execution pill); Right = app toggles (tour, Appearance, Settings). One outline material throughout. |
 | `DESIGNER-TRANSITIVE-STALE` | CQL edit marks define stale; transitively marks downstream dependents stale using merged DAG's `dependentsOf` edges. Stale shows amber dot (needs recompute); computing shows pulse. |
-| `RUN-PROGRESS-TASKS` | The Designer's progress gauge shows the fraction of barrier tasks in a terminal state. |
+| `RUN-PROGRESS-TASKS` | The Designer's progress gauge shows the fraction of the run's definitions in a terminal state. `/api/run-stream` sends every definition's state once before any runs and again as each finishes. |
 | `SVC-MODULE-OPTIN` | Deploy-time module manifest gates which functional modules the Designer app harnesses and mounts. |
 | `SVC-MODULE-SPLIT` | Optional promotion of a module from in-app surface to its own Databricks App with cross-app launcher. |
 | `SVC-RUN-EVAL` | Measure execution in the Designer instance's Spark session via the OSS cql() client. |

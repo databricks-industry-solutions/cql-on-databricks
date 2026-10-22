@@ -213,6 +213,15 @@ def test_each_step_reports_its_decision_statement_and_wall_clock():
         ("reused", "matching completed result", None, None)] * 2
 
 
+def test_the_plan_is_reported_once_before_any_step_in_step_order():
+    """RUN-PROGRESS-TASKS — the plan names every definition the steps will report, before the first runs."""
+    run, events = CatalogRunner(), []
+    execute(prepared(), ("output",), destination=DESTINATION, run=run,
+            on_plan=lambda keys: events.append(("plan", keys, len(run.writes))),
+            on_step=lambda step: events.append(("step", step.definition)))
+    assert events == [("plan", ("base", "output"), 0), ("step", "base"), ("step", "output")]
+
+
 def test_a_failed_step_is_reported_before_the_error_is_raised():
     """APP-RUN-LOG — the failing define is logged with its error; later defines are never reported."""
     run, steps = CatalogRunner(), []

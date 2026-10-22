@@ -120,15 +120,14 @@ export interface DataSourceRecord {
   changeDataLog?: string;
 }
 
-/** RUN-PROGRESS-TASKS — one barrier task of the evaluation Job, as `/api/run-stream` reports it.
+/** RUN-PROGRESS-TASKS — one definition of the run's closure, as `/api/run-stream` reports it.
  *
- *  `build_tasks` makes ONE task per barrier (`RUN-EXECUTOR`), deduplicated on the table it builds, so
- *  this list IS the unit of work the run processes — which is what makes counting it honest progress
- *  rather than a guess. `taskKey` is the barrier's key (`{dataset}__{library}` for a define, the
- *  content-addressed `read_*` label for a read, `RUN-READ-BARRIER`). */
+ *  The client's `materialize` reports the closure once before it runs (`on_plan`) and each definition as
+ *  it is reused or computed (`on_step`), so this list IS the unit of work the run processes — which is
+ *  what makes counting it honest progress rather than a guess. `taskKey` is the definition's key. */
 export interface RunTaskStatus {
   taskKey: string;
-  /** Lakeflow lifecycle mapped to the product's vocabulary by `JobOrchestrator.get_run_status`. */
+  /** Set by the route's `TaskProgress`; it never sends `skipped`. */
   status: "pending" | "running" | "completed" | "failed" | "skipped";
 }
 
@@ -156,7 +155,7 @@ export interface RunStage {
   message?: string;
   /** Overall Job state (stage=executing, stage=done): `running` | `completed` | `failed` | `timeout`. */
   status?: string;
-  /** RUN-PROGRESS-TASKS — every barrier task and its state (stage=executing). */
+  /** RUN-PROGRESS-TASKS — every definition of the run and its state (stage=executing). */
   tasks?: RunTaskStatus[];
   /** The result rows written by this run (stage=done, when the run completed). */
   results?: RunStageResults;

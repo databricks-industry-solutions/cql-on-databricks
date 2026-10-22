@@ -18,7 +18,7 @@ import { POPULATIONS, isTruthy, landingLabel, landingChip, decidingCriterion, pa
 
 /** Format a RunStage into a short user-facing label for the badge (SVC-RUN-STAGE).
  *
- *  The compute phase counts barrier tasks (`RUN-PROGRESS-TASKS`), so the badge states how much of the
+ *  The compute phase counts the run's definitions (`RUN-PROGRESS-TASKS`), so the badge states how much of the
  *  run is left rather than just that one is happening. `profile` reads as "compiling…" because it is
  *  the orchestration's closing frame, not a phase a reader has a name for.
  *
@@ -39,12 +39,12 @@ export function stageLabel(s: RunStage | null): string {
   }
 }
 
-/** RUN-PROGRESS-TASKS — how many of the run's barrier tasks have finished, or `null` before the Job
- *  has reported any.
+/** RUN-PROGRESS-TASKS — how many of the run's definitions have finished, or `null` before the run
+ *  has reported its plan.
  *
- *  Every TERMINAL state counts as done — `completed`, and also `skipped` and `failed`. A skipped
- *  barrier is one the Job's dependency logic decided need not run, and a failed one is not going to
- *  progress further; a bar that holds either open can never reach 100% on a run that has stopped. */
+ *  Every TERMINAL state counts as done — `completed`, and also `skipped` and `failed`. A failed
+ *  definition is not going to progress further; a bar that holds it open can never reach 100% on a run
+ *  that has stopped. */
 function taskCounts(s: RunStage): { done: number; total: number } | null {
   const tasks = s.tasks ?? [];
   if (tasks.length === 0) return null;
@@ -54,9 +54,9 @@ function taskCounts(s: RunStage): { done: number; total: number } | null {
 
 /** SVC-RUN-STAGE / RUN-PROGRESS-TASKS — derive a 0–1 progress fraction from the current stage event.
  *
- *  **THE COMPUTE BAND IS REAL PROGRESS, MEASURED IN BARRIER TASKS.** `RUN-EXECUTOR` makes one Job task
- *  per barrier, `get_run_status` reports every one of their states, and `/api/run-stream` ships the
- *  whole list once a second — so N-of-M over that list is the actual unit of work, not an estimate.
+ *  **THE COMPUTE BAND IS REAL PROGRESS, MEASURED IN DEFINITIONS.** `/api/run-stream` ships the run's
+ *  whole closure before it runs, then again as each definition is reused or computed — so N-of-M over
+ *  that list is the actual unit of work, not an estimate.
  *
  *  What this replaced, and why the shape of the bug matters: the previous bands described the RETIRED
  *  in-process runner's phases (`binding`, `plan`, `collecting` weighted 40–95%), none of which the SDP
@@ -77,7 +77,7 @@ export function stageProgress(s: RunStage | null): number {
     case "profile": return 0.15;
     case "executing": {
       const t = taskCounts(s);
-      // No task list yet: the Job is triggered but has not reported its graph. Hold at the band's
+      // No task list yet: the run has started but has not reported its plan. Hold at the band's
       // floor rather than showing 0 for a run that is demonstrably underway.
       if (!t) return 0.15;
       return 0.15 + 0.84 * (t.done / t.total);

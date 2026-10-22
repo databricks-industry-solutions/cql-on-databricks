@@ -14,7 +14,7 @@ from cql_databricks.data_bindings.tags import parse_scopes
 
 from ._catalog_reader import CatalogReader
 from ._catalog_completion import Completion, search
-from ._catalog_runtime import CatalogSelection, StepObserver, execute as _execute, request_identity, table_name
+from ._catalog_runtime import CatalogSelection, PlanObserver, StepObserver, execute as _execute, request_identity, table_name
 from ._durable import Outcome, ResultsUnavailable, _destination, _selected, _text, _utc
 from ._durable_delta import table_sql
 from ._durable_plan import PreparedPlan
@@ -59,6 +59,7 @@ def materialize(query: CqlQuery | PreparedCalculation, *targets: str, spark=None
                 purpose: Literal["private", "published"] = "private",
                 capacity: int | None = None,
                 on_step: StepObserver | None = None,
+                on_plan: PlanObserver | None = None,
                 catalog_scopes: Iterable[str] | None = None) -> MaterializedResults:
     """RUN-CLIENT-DURABLE, RUN-CLIENT-REUSE — physically compute or reuse the requested closure.
 
@@ -75,6 +76,7 @@ def materialize(query: CqlQuery | PreparedCalculation, *targets: str, spark=None
     Recompute without a cutoff starts a new refresh; no hidden index saves request context.
     An explicit cutoff refreshes only results older than it. It is not a source-data snapshot.
     APP-RUN-LOG — ``on_step`` receives what was done for each definition (``StepRecord``), as it is done.
+    RUN-PROGRESS-TASKS — ``on_plan`` receives the keys of every definition ``on_step`` will report, once, first.
 
     CLIENT-DISCOVERY-SCOPE — a define the destination holds no reusable result for reuses one from the
     ``catalog.schema`` entries of ``catalog_scopes``, earliest first, under the same table name, so the same
@@ -85,7 +87,8 @@ def materialize(query: CqlQuery | PreparedCalculation, *targets: str, spark=None
     """
     return _run(query, targets, spark=spark, run=run, destination=destination,
                 mode=mode, session_id=session_id, purpose=purpose,
-                capacity=capacity, computed_since=computed_since, on_step=on_step, catalog_scopes=catalog_scopes)
+                capacity=capacity, computed_since=computed_since, on_step=on_step, on_plan=on_plan,
+                catalog_scopes=catalog_scopes)
 
 
 def resolve_results(query: CqlQuery | PreparedCalculation, *targets: str, spark=None, run: SqlRunner | None = None,
@@ -152,7 +155,7 @@ def _result_sources(spark, catalog_scopes, destination: tuple[str, str], query=N
 
 
 def _run(query, targets, *, spark, run, destination,
-         mode, session_id, purpose, capacity, computed_since, read_only=False, on_step=None,
+         mode, session_id, purpose, capacity, computed_since, read_only=False, on_step=None, on_plan=None,
          catalog_scopes=None):
     if (spark is None) == (run is None):
         raise ValueError("supply exactly one of spark or run")
@@ -198,7 +201,8 @@ def _run(query, targets, *, spark, run, destination,
         if capacity is not None:
             check_capacity(execute, destination, {table_name(definition) for definition in planned}, capacity)
         outcomes = _execute(prepared, tuple(selected.values()), destination=destination, run=execute, mode=mode,
-                            computed_since=computed_since, read_only=read_only, on_step=on_step, sources=sources)
+                            computed_since=computed_since, read_only=read_only, on_step=on_step,
+                            on_plan=on_plan, sources=sources)
         selection = CatalogSelection.completed(session_id, destination, selected, prepared.definitions, outcomes,
                                                computed_since=computed_since, purpose=purpose)
         backend = CatalogReader(destination, execute, spark, sources)

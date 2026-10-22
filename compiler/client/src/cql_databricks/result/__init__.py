@@ -5,7 +5,7 @@ tables the caller owns (`RUN-CLIENT-DURABLE`). The readers and the result views 
 the caller. A result is found by its table name, which carries its fingerprint, and its UC tags say it is complete
 (`RUN-CLIENT-RESULT-IDENTITY`). Another client discovers and reuses it the same way.
 """
-from ._catalog_runtime import StepObserver, StepRecord
+from ._catalog_runtime import PlanObserver, StepObserver, StepRecord
 from .calculation import PreparedCalculation, prepare_calculation
 from .durable import (MaterializedResults, ResultsUnavailable, archive_session, materialize, open_result_set,
                       resolve_results, search_results)
@@ -16,4 +16,4 @@ __all__ = ["ResultReference",
            "MaterializedResults", "ResultsUnavailable", "archive_session", "materialize", "open_result_set",
            "resolve_results", "search_results",
            "PrivateDestination", "ensure_private_destination", "find_private_destination",
-           "PreparedCalculation", "prepare_calculation", "StepObserver", "StepRecord"]
+           "PreparedCalculation", "prepare_calculation", "PlanObserver", "StepObserver", "StepRecord"]

@@ -6,6 +6,7 @@ Designer reads only the caller's private results; it never reads Job-published r
 APP-COMPUTE-TARGET: every request may name the SQL warehouse it runs on; none means the deployment's.
 APP-RUN-LOG: every Refresh and Automatic run, completed or failed, is handed to the background run log
 before its last frame is sent.
+RUN-PROGRESS-TASKS: ``/api/run-stream`` sends the run's definitions and their states as each one finishes.
 """
 from __future__ import annotations
 
@@ -14,8 +15,11 @@ import hashlib
 import json
 import logging
 from collections.abc import Callable, Iterator
+from contextvars import copy_context
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from queue import SimpleQueue
+from threading import Thread
 from typing import Any, Literal
 
 from fastapi import APIRouter, Header
@@ -25,7 +29,7 @@ from pydantic import BaseModel, Field
 from cql_databricks.compiler.resolve import ResolutionError, resolve_data_source
 from cql_databricks.data_bindings import ContentResolver, StatementObserver
 from cql_databricks_designer.data_bindings import user_content_resolver
-from cql_databricks.result import (ResultsUnavailable, ensure_private_destination,
+from cql_databricks.result import (ResultsUnavailable, StepRecord, ensure_private_destination,
                                      find_private_destination, materialize, open_result_set,
                                      prepare_calculation)
 from cql_databricks.result.insights.evaluation import MetricsUnavailable
@@ -131,6 +135,35 @@ def _handle(instance: str, selection_id: str) -> str:
     return "durable." + base64.urlsafe_b64encode(json.dumps([instance, selection_id]).encode()).decode()
 
 
+class TaskProgress:
+    """RUN-PROGRESS-TASKS — the run's planned definitions and the state of each, as ``executing`` frames.
+
+    ``planned`` is the client's ``on_plan`` and ``step`` its ``on_step``; each sends one frame through ``emit``.
+    A reused or computed step is ``completed`` and a failed one ``failed``. The first definition not yet
+    reported is ``running``, unless one failed, because then nothing more runs.
+    """
+
+    def __init__(self, emit: Callable[[dict], None]) -> None:
+        self._emit = emit
+        self._keys: tuple[str, ...] = ()
+        self._states: dict[str, str] = {}
+
+    def planned(self, keys: tuple[str, ...]) -> None:
+        self._keys = keys
+        self._emit(self.frame())
+
+    def step(self, step: StepRecord) -> None:
+        self._states[step.definition] = "failed" if step.error else "completed"
+        self._emit(self.frame())
+
+    def frame(self) -> dict:
+        failed = "failed" in self._states.values()
+        running = None if failed else next((k for k in self._keys if k not in self._states), None)
+        tasks = [{"taskKey": key, "status": self._states.get(key) or ("running" if key == running else "pending")}
+                 for key in self._keys]
+        return {"stage": "executing", "status": "running", "tasks": tasks}
+
+
 _REFUSED = (ResolutionError, ResultsUnavailable, MetricsUnavailable, ValueError, PermissionError)
 
 
@@ -164,7 +197,8 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
                 "versionKind": "private",
                 "draft": handle, "defines": defines}
 
-    def run_events(req: RunRequest, a: Acting, instance: str, recorder: RunRecorder) -> Iterator[dict]:
+    def run_events(req: RunRequest, a: Acting, instance: str, recorder: RunRecorder,
+                   progress: TaskProgress) -> Iterator[dict]:
         overrides = req.overrides or {}
         unknown = set(overrides) - {"periodStart", "periodEnd"}
         if unknown:
@@ -183,7 +217,8 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
         results = materialize(prepared, *prepared.targets, run=a.run, destination=private,
                               session_id=session, capacity=a.settings.capacity,
                               mode="recompute" if req.recompute else "skip_if_computed",
-                              computed_since=req.computed_since, on_step=recorder.step)
+                              computed_since=req.computed_since, on_plan=progress.planned,
+                              on_step=lambda step: (recorder.step(step), progress.step(step)))
         yield {"stage": "done", "status": "completed", **completed(results, prepared, instance, a)}
 
     def completed(results, prepared, instance, a) -> dict:
@@ -203,12 +238,14 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
         except Exception:
             log.exception("APP-RUN-LOG: run %s was not logged", recorder.run_id)
 
-    def guarded(req, a, instance, recorder: RunRecorder):
-        """APP-RUN-LOG — the run is logged before its last frame, so a closed stream cannot lose the row."""
+    def guarded(req, a, instance, recorder: RunRecorder, emit: Callable[[dict], None]):
+        """APP-RUN-LOG — the run is logged before its last frame, so a closed stream cannot lose the row.
+
+        RUN-PROGRESS-TASKS — ``emit`` receives the progress frames sent while the definitions run."""
         try:
             if not req.data_source_id:
                 raise ValueError("data_source_id is required — select a Data Source.")
-            for event in run_events(req, a, instance, recorder):
+            for event in run_events(req, a, instance, recorder, TaskProgress(emit)):
                 if event["stage"] == "done":
                     logged(recorder, None)
                     event = {**event, "runId": recorder.run_id}
@@ -230,12 +267,30 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
         except Exception as error:
             return None, None, JSONResponse(status_code=503, content={"ok": False, "error": str(error)})
 
+    def streamed(req, a, instance, recorder: RunRecorder) -> Iterator[dict]:
+        """RUN-PROGRESS-TASKS — the run goes on a worker thread, so its progress frames leave while it runs.
+
+        One queue carries every frame in the order the run produced it. The worker carries the request's
+        context and runs to the end even if the stream closes, so the run is still logged (APP-RUN-LOG)."""
+        frames: SimpleQueue = SimpleQueue()
+
+        def work() -> None:
+            try:
+                for event in guarded(req, a, instance, recorder, frames.put):
+                    frames.put(event)
+            finally:
+                frames.put(None)
+
+        Thread(target=copy_context().run, args=(work,), daemon=True, name="designer-run").start()
+        while (event := frames.get()) is not None:
+            yield event
+
     @router.post("/api/run-stream")
     def run_measure_stream(req: CalculationRequest, x_designer_instance: str | None = Header(default=None)):
         a, recorder, refusal = acting_or_refusal(req)
         if refusal is not None:
             return refusal
-        events = guarded(req, a, req.session_id or x_designer_instance or "", recorder)
+        events = streamed(req, a, req.session_id or x_designer_instance or "", recorder)
         return StreamingResponse((f"data: {json.dumps(event)}\n\n" for event in events),
                                  media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -245,7 +300,7 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
         a, recorder, refusal = acting_or_refusal(req)
         if refusal is not None:
             return refusal
-        last = list(guarded(req, a, req.session_id or x_designer_instance or "", recorder))[-1]
+        last = list(guarded(req, a, req.session_id or x_designer_instance or "", recorder, lambda frame: None))[-1]
         if last.get("stage") != "done":
             return JSONResponse(status_code=400, content={"ok": False, "error": last["error"]})
         return {"ok": True, "identity": last["identity"], "draft": last["identity"]["draft"],

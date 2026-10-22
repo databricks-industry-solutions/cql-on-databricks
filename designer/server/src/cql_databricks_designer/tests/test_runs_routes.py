@@ -148,7 +148,7 @@ def test_stream_executes_as_caller_and_reports_completed_empty_result(setup):
     client, state = setup
     response = client.post("/api/run-stream", json=BODY)
     events = [json.loads(line[6:]) for line in response.text.split("\n\n") if line.startswith("data: ")]
-    assert [event["stage"] for event in events] == ["compiling", "executing", "done"]
+    assert [event["stage"] for event in events] == ["compiling", "executing", "executing", "executing", "done"]
     done = events[-1]
     assert done["identity"]["draft"].startswith("durable.")
     assert done["resultSet"]["calculation"]["cql"] == BODY["cql"]
@@ -157,6 +157,27 @@ def test_stream_executes_as_caller_and_reports_completed_empty_result(setup):
     assert done["outcomes"][0]["decision"] == "computed"
     assert len(state.writes) == 1
     assert not any("DESCRIBE" in sql or "VERSION AS OF" in sql for sql in state.sql)
+
+
+def test_stream_reports_each_definition_as_it_finishes(setup):
+    """RUN-PROGRESS-TASKS — the plan, then one frame per step, each carrying every definition's state."""
+    client, _ = setup
+    response = client.post("/api/run-stream", json=BODY)
+    events = [json.loads(line[6:]) for line in response.text.split("\n\n") if line.startswith("data: ")]
+    progress = [event["tasks"] for event in events if "tasks" in event]
+    assert progress == [[{"taskKey": "output", "status": "running"}],
+                        [{"taskKey": "output", "status": "completed"}]]
+
+
+def test_a_failed_step_is_streamed_as_failed_before_the_error(setup):
+    """RUN-PROGRESS-TASKS — a failed definition is terminal, so the gauge can reach the end of a stopped run."""
+    client, state = setup
+    state.failed = True
+    response = client.post("/api/run-stream", json={**BODY, "recompute": True})
+    events = [json.loads(line[6:]) for line in response.text.split("\n\n") if line.startswith("data: ")]
+    assert events[-2]["tasks"] == [{"taskKey": "output", "status": "failed"}]
+    assert events[-1]["stage"] == "error" and "synthetic output failed" in events[-1]["error"]
+    assert len(state.logged) == 1
 
 
 def test_recompute_and_cutoff_reach_runtime_and_same_retry_reuses(setup):
