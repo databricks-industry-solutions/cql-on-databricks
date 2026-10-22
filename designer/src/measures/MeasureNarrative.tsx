@@ -2500,7 +2500,11 @@ function Metric({ metric, metrics, library }: {
       )}
       <b className="tnum">{figure.subjects.toLocaleString()}</b>
       <span className="unit">{metric.subjectUnit}</span>
-      {figure.removes && <span className="unit">removed</span>}
+      {/* SPEC-POPULATION-CASCADE — the counted figure leads and the share is of it; MET, the define
+          true across every evaluated patient, sits beside it so a reader can see what the cascade
+          left out. */}
+      <span className="unit">{figure.removes ? "removed" : "counted"}</span>
+      <span className="second tnum">· {figure.met.toLocaleString()} met</span>
       {figure.elements != null && grain && (
         <span className="second tnum">· {figure.elements.toLocaleString()} {grain}</span>
       )}

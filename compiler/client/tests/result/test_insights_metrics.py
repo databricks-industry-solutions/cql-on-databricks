@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from cql_databricks.result.insights.metrics import MetricsUnavailable, measure_metrics
+from cql_databricks.result.insights.metrics import Cohort, MetricsUnavailable, cohort_count_sql, measure_metrics
 from cql_databricks.result.insights.evaluation import StateClosure
 from cql_databricks.result.address import evaluation_version
 
@@ -108,6 +108,11 @@ COUNTS = {
 }
 
 
+def _everyone(defines):
+    """SPEC-POPULATION-CASCADE — every define counted among every evaluated subject."""
+    return {(lib, name): Cohort() for lib, name, _ in defines}
+
+
 def _build(_subject_rows=((("2713"),),), **overrides):
     kwargs = dict(
         library="ExampleMeasure", version="1.0.0",
@@ -117,6 +122,7 @@ def _build(_subject_rows=((("2713"),),), **overrides):
         results_catalog=CATALOG, execute=_execute(),
     )
     kwargs.update(overrides)
+    kwargs.setdefault("cohorts", _everyone(kwargs["defines"]))
     with patch("cql_databricks.result.insights.metrics.relation_columns", return_value=COLUMNS), \
          patch("cql_databricks.result.insights.metrics.count_relations", return_value=COUNTS), \
          patch(f"{__name__}._warehouse",
@@ -133,7 +139,7 @@ def _captured_sql() -> str:
         measure_metrics(
             library="ExampleMeasure", version="1.0.0",
             data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
-            defines=DEFINES, closure=StateClosure(_State()),
+            defines=DEFINES, cohorts=_everyone(DEFINES), closure=StateClosure(_State()),
             patient_function="acme.conformance.retrieve_Patient",
             results_catalog=CATALOG, execute=_execute())
     execute.assert_called_once()
@@ -232,7 +238,7 @@ def test_one_define_name_in_two_libraries_resolves_to_two_relations():
         m = measure_metrics(
             library="ExampleMeasure", version="1.0.0",
             data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
-            defines=defines, closure=StateClosure(_State()),
+            defines=defines, cohorts=_everyone(defines), closure=StateClosure(_State()),
             patient_function="acme.conformance.retrieve_Patient",
             results_catalog=CATALOG, execute=_execute())
     by_library = {d.library: d.subjects for d in m.defines}
@@ -268,7 +274,108 @@ def test_counts_are_one_evaluation_sets():
         measure_metrics(
             library="ExampleMeasure", version="1.0.0",
             data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
-            defines=DEFINES, closure=StateClosure(_State()),
+            defines=DEFINES, cohorts=_everyone(DEFINES), closure=StateClosure(_State()),
             patient_function="acme.conformance.retrieve_Patient",
             results_catalog=CATALOG, execute=_execute())
     assert count.call_args.kwargs["eval_id"] == SUFFIX
+
+
+# SPEC-POPULATION-CASCADE — every define is counted inside the cohort the client names.
+
+def _subjects(table: str) -> str:
+    """The met-subject SQL `measure_metrics` builds per define, over a plain sqlite table."""
+    return f"SELECT DISTINCT __subject_id FROM {table} WHERE __subject_id IS NOT NULL"
+
+
+def _run_on_sqlite(tables: dict[str, list[str]], sql: str) -> dict[tuple[int, int], int]:
+    import sqlite3
+    db = sqlite3.connect(":memory:")
+    for table, subjects in tables.items():
+        db.execute(f"CREATE TABLE {table} (__subject_id TEXT)")
+        db.executemany(f"INSERT INTO {table} VALUES (?)", [(s,) for s in subjects])
+    return {(k, d): n for k, d, n in db.execute(sql).fetchall()}
+
+
+def test_the_numerator_is_counted_inside_the_denominator_less_exclusions():
+    """The defect this exists for: a Numerator written as "no HbA1c in the period" is true for every
+    patient without diabetes too, so counted across everyone it outnumbered its Denominator. Synthetic:
+    p1-p5 have diabetes (Initial Population and Denominator), p5 is in hospice (Exclusions), and the
+    Numerator's own define is true for p1, p2, p5 and the non-diabetic p6-p9."""
+    tables = {"ipp": ["p1", "p2", "p3", "p4", "p5"], "den": ["p1", "p2", "p3", "p4", "p5"],
+              "denex": ["p5", "p9"], "num": ["p1", "p2", "p5", "p6", "p7", "p8", "p9"]}
+    ipp, den, denex, num = 0, 1, 2, 3
+    sql = cohort_count_sql(
+        [_subjects(t) for t in tables],
+        [([ipp, den], [denex]), ([ipp, den], [])],
+        [(0, num), (1, denex)])
+    got = _run_on_sqlite(tables, sql)
+    assert got[(0, num)] == 2        # p1, p2 — not p5 (excluded), not p6-p9 (no diabetes)
+    assert got[(0, -1)] == 4         # the cohort: Denominator less Exclusions, p1-p4
+    assert got[(1, denex)] == 1      # p5 — p9 is in hospice but was never in the Denominator
+    assert got[(1, -1)] == 5
+
+
+def test_a_cohort_counts_subjects_not_rows():
+    """`relation.py` — a result relation is not one row per subject; the cascade counts people."""
+    tables = {"ipp": ["p1", "p1", "p2"], "num": ["p1", "p1", "p1", "p3"]}
+    got = _run_on_sqlite(tables, cohort_count_sql([_subjects(t) for t in tables], [([0], [])], [(0, 1)]))
+    assert got == {(0, -1): 2, (0, 1): 1}
+
+
+def _scored_build(cohorts, rows):
+    """`_build` with the cohort statement answered by ``rows`` and the Patient binding by 2,713."""
+    def warehouse(_wh, sql):
+        return [["2713"]] if "retrieve_Patient" in sql else rows
+    defines = DEFINES[:2]
+    with patch("cql_databricks.result.insights.metrics.relation_columns", return_value=COLUMNS), \
+         patch("cql_databricks.result.insights.metrics.count_relations", return_value=COUNTS), \
+         patch(f"{__name__}._warehouse", side_effect=warehouse) as execute:
+        m = measure_metrics(
+            library="ExampleMeasure", version="1.0.0",
+            data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
+            defines=defines, cohorts=cohorts, closure=StateClosure(_State()),
+            patient_function="acme.conformance.retrieve_Patient",
+            results_catalog=CATALOG, execute=_execute())
+    return m, [c.args[1] for c in execute.call_args_list]
+
+
+def test_a_scored_define_reports_met_counted_and_its_cohort():
+    ipp = ("ExampleMeasure", "Initial Population")
+    cohorts = {ipp: Cohort(), ("ExampleMeasure", "Numerator"): Cohort(all_of=(ipp,))}
+    # Cohort 0 is the Initial Population, of 0 subjects here; the Numerator is s_0.
+    m, statements = _scored_build(cohorts, [[0, -1, 0], [0, 0, 0]])
+    numerator = next(d for d in m.defines if d.define == "Numerator")
+    assert (numerator.subjects, numerator.counted, numerator.cohort_subjects) == (2, 0, 0)
+    assert numerator.to_dict()["cohortSubjects"] == 0
+    initial = next(d for d in m.defines if d.define == "Initial Population")
+    assert (initial.counted, initial.cohort_subjects) == (initial.subjects, 2713)
+    cascade = next(s for s in statements if "k_0" in s)
+    # One evaluation set's rows, through the typed membership predicate.
+    assert cascade.count(SUFFIX) == 2
+    assert 'CASE WHEN `Numerator` THEN __subject_id END' in cascade
+
+
+def test_everyone_needs_no_cascade_statement():
+    m, statements = _scored_build(_everyone(DEFINES[:2]), [])
+    assert len(statements) == 1 and "retrieve_Patient" in statements[0]
+    assert all(d.counted == d.subjects and d.cohort_subjects == 2713 for d in m.defines)
+
+
+def test_a_cohort_population_with_no_relation_raises():
+    """A Numerator counted without the Exclusions it must leave out is a wrong number, not a missing one."""
+    unrun = ("ExampleUnmaterialized", "Example Unrun")
+    cohorts = {**_everyone(DEFINES[:2]),
+               ("ExampleMeasure", "Numerator"): Cohort(all_of=(("ExampleMeasure", "Initial Population"),),
+                                                       none_of=(unrun,))}
+    with pytest.raises(MetricsUnavailable, match="Example Unrun"):
+        _scored_build(cohorts, [])
+
+
+def test_every_define_needs_a_cohort():
+    with pytest.raises(ValueError, match="needs a cohort"):
+        _scored_build({}, [])
+
+
+def test_a_cohort_that_only_removes_is_refused():
+    with pytest.raises(ValueError, match="cohort it removes them from"):
+        Cohort(none_of=(("ExampleMeasure", "Numerator"),))

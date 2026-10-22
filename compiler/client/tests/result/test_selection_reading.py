@@ -13,7 +13,7 @@ from cql_databricks.result import durable
 from cql_databricks.result._durable import ResultsUnavailable
 from cql_databricks.result.insights.evaluation import locate
 from cql_databricks.result.insights.flow import GateRequest, cohort_flow
-from cql_databricks.result.insights.metrics import measure_metrics
+from cql_databricks.result.insights.metrics import Cohort, measure_metrics
 from cql_databricks.result.insights.profile import define_profile
 from cql_databricks.result.insights.reads import read_metrics
 from cql_databricks.result.results import PinnedRelation, count_relations, relation_columns, result_relation
@@ -138,6 +138,7 @@ def test_metrics_profile_and_flow_share_the_pinned_relation_path(selected):
     """PIPE-RESULT-DERIVATIONS — count, profile and flow SQL all retain exact selection versions."""
     reader = Reader(selected.results)
     metrics = measure_metrics(**options(selected), defines=[("Synthetic", "Output", "Boolean")],
+                              cohorts={("Synthetic", "Output"): Cohort()},
                               patient_function="synthetic_source.retrieve_Patient", execute=reader)
     assert metrics.defines[0].subjects == 0
     profile = define_profile(**options(selected), define="Output", define_library="Synthetic",

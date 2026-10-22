@@ -123,13 +123,15 @@ export function metricSet(): MetricSet {
   return buildMetricSet({
     library: "Demo", version: "1.0.0", provenance: "sample", generated: "2026-08-02T00:00:00Z",
     subjects: 1000,
+    // SPEC-POPULATION-CASCADE — counted equals met: the fixture's populations already nest.
     defines: [
-      { define: "Initial Population", library: "Demo", subjects: 800 },
-      { define: "Denominator", library: "Demo", subjects: 800 },
-      { define: "Numerator", library: "Demo", subjects: 560 },
-      { define: "Has Screening", library: "Demo", subjects: 600, elements: 1500 },
+      { define: "Initial Population", library: "Demo", subjects: 800, counted: 800, cohortSubjects: 1000 },
+      { define: "Denominator", library: "Demo", subjects: 800, counted: 800, cohortSubjects: 800 },
+      { define: "Numerator", library: "Demo", subjects: 560, counted: 560, cohortSubjects: 800 },
+      { define: "Has Screening", library: "Demo", subjects: 600, counted: 600, cohortSubjects: 1000,
+        elements: 1500 },
     ],
-  }, "proportion")!;
+  }, "proportion", new Map())!;
 }
 
 /** Labels of the rows in whichever arrangement is showing, in render order. */

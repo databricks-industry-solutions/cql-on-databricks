@@ -34,7 +34,7 @@ from cql_databricks.result import (ResultsUnavailable, StepRecord, ensure_privat
                                      prepare_calculation)
 from cql_databricks.result.insights.evaluation import MetricsUnavailable
 from cql_databricks.result.insights.flow import GateRequest, cohort_flow as build_cohort_flow
-from cql_databricks.result.insights.metrics import measure_metrics as build_measure_metrics
+from cql_databricks.result.insights.metrics import Cohort, measure_metrics as build_measure_metrics
 from cql_databricks.result.insights.profile import define_profile as build_define_profile
 from cql_databricks.result.insights.reads import read_metrics as build_read_metrics
 from cql_databricks.result.selection_reading import (SelectionClosure, open_selection, selection_address,
@@ -119,6 +119,12 @@ class ReadsBody(ReadMetricsRequest):
 class FlowBody(CohortFlowRequest):
     """APP-COMPUTE-TARGET — a cohort-flow read on the chosen warehouse."""
     warehouse_id: str | None = Field(default=None, alias="warehouseId")
+
+
+def _cohort(dto) -> Cohort:
+    """SPEC-POPULATION-CASCADE — the wire cohort as the counting module takes it."""
+    return Cohort(all_of=tuple((r.library, r.name) for r in dto.all_of),
+                  none_of=tuple((r.library, r.name) for r in dto.none_of))
 
 
 def _session(instance: str, library: str, version: str, population: str, period) -> str:
@@ -401,6 +407,7 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
             a = acting(req.warehouse_id)
             opts = options(a, name, version, req.draft, req.data_source_id, (req.period_start, req.period_end), req.result_set)
             return build_measure_metrics(**opts, defines=[(d.library, d.name, d.resultType) for d in req.defines],
+                                          cohorts={(d.library, d.name): _cohort(d.cohort) for d in req.defines},
                                           patient_function=patient_function(a, req.data_source_id)).to_dict()
         except _REFUSED as error:
             return refused(error)

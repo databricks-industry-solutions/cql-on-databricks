@@ -22,19 +22,51 @@ of them — so most library entries in the document have no relation to count. E
 state "no subject met this" where the truth is "this was never evaluated here"; `SPEC-METRIC` already
 specifies a not-computed state for exactly that, and the client renders an absence mark when a define is
 missing from the set.
+
+**EVERY DEFINE IS COUNTED INSIDE A COHORT, AND THE CLIENT NAMES IT** (`SPEC-POPULATION-CASCADE`). A
+measure's Numerator is written without its Denominator — HL7 CQF Measures makes each population a subset
+of the one before it, and leaves that to the evaluator — so a define counted across every subject can
+exceed the population it is scored against. The cascade depends on the declared scoring, which the client
+owns (`specScoring.ts`); it sends each define's cohort as populations the subject must be in and must not
+be in, and this module only counts. Same split as the flow's gates (`flow.py`).
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from ..relation import SUBJECT_ID
-from ..results import Execute, RelationRef, count_relations, relation_columns
+from ..relation import SUBJECT_ID, met_expr, value_column
+from ..results import Execute, RelationRef, count_relations, relation_columns, result_relation
 from .evaluation import ClosureSource, MetricsUnavailable, locate
 from .model import PROVENANCE_RUN, DefineMetric, MeasureMetrics
 
 log = logging.getLogger("cql_databricks.result.insights.metrics")
+
+#: A define, library-qualified: two libraries in one closure routinely declare the same name.
+DefineKey = tuple[str, str]
+
+
+@dataclass(frozen=True)
+class Cohort:
+    """SPEC-POPULATION-CASCADE — the subjects a define is counted among: in every ``all_of`` define and in
+    no ``none_of`` define. Both empty is every evaluated subject.
+
+    The client derives it from the declared scoring (`specScoring.ts`); for the Numerator of a proportion
+    measure it is the Initial Population and the Denominator, less the Denominator Exclusions.
+    """
+
+    all_of: tuple[DefineKey, ...] = ()
+    none_of: tuple[DefineKey, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.none_of and not self.all_of:
+            raise ValueError("a cohort that removes subjects must name the cohort it removes them from")
+
+    @property
+    def everyone(self) -> bool:
+        return not self.all_of
 
 
 def measure_metrics(
@@ -47,6 +79,7 @@ def measure_metrics(
     eval_id: str,
     draft: str,
     defines: list[tuple[str, str, str | None]],
+    cohorts: dict[DefineKey, Cohort],
     closure: "ClosureSource",
     patient_function: str | None,
     results_catalog: str,
@@ -56,6 +89,7 @@ def measure_metrics(
 
     ``defines`` is ``(library, name, result_type)`` per define, as the CLIENT derived them from the ELM —
     it owns that determination (`APP-SPEC-MODEL`) and a server-side re-derivation could disagree.
+    ``cohorts`` is each define's cohort, keyed ``(library, name)``, and every define must have one.
     What this function adds is the figures.
 
     ``result_type`` is deliberately NOT used to decide the element grain here, unlike the sample builder
@@ -63,6 +97,11 @@ def measure_metrics(
     relation is the thing being counted; a `List<…>` return whose relation carries no usable ordinal has
     no element count to give, and the result type cannot know that.
     """
+    missing_cohort = [(lib, name) for lib, name, _ in defines if (lib, name) not in cohorts]
+    if missing_cohort:
+        raise ValueError(f"every define needs a cohort to be counted in (SPEC-POPULATION-CASCADE); "
+                         f"none given for {missing_cohort}")
+
     # RUN-EVAL-ID-INPUTS: the evaluation set, named by the route (`evaluation_key.EvaluationKeys`).
     suffix = eval_id
     libraries = closure.closure(data_source_id, suffix, root=library, draft=draft)
@@ -71,31 +110,123 @@ def measure_metrics(
             f"no compiled libraries for data source {data_source_id!r} at evaluation {suffix} — "
             f"the measure has not been run against this data source and measurement period")
 
-    # (library, define) -> the relation that holds it, from the compiler's own record.
-    located: dict[tuple[str, str], RelationRef] = {}
-    for define_library, name, _ in defines:
+    # (library, define) -> the relation that holds it, from the compiler's own record. The cohorts'
+    # populations are located with the defines: a population is normally one of them, but need not be.
+    wanted = [(lib, name) for lib, name, _ in defines]
+    wanted += [key for c in cohorts.values() for key in (*c.all_of, *c.none_of)]
+    located: dict[DefineKey, RelationRef] = {}
+    for define_library, name in dict.fromkeys(wanted):
         ref = locate(libraries, define_library, name, results_catalog)
         if ref is not None:
             located[(define_library, name)] = ref
 
     columns = relation_columns(results_catalog, located.values(), execute=execute)
     counts = count_relations(execute, columns, eval_id=suffix)
+    evaluated = _evaluated_subjects(patient_function, execute=execute)
+
+    present = [(lib, name) for lib, name, _ in defines
+               if (lib, name) in located and located[(lib, name)] in counts]
+    within = _counted_within(present, cohorts, located, columns, suffix, execute=execute)
 
     out: list[DefineMetric] = []
     for define_library, name, _ in defines:
-        ref = located.get((define_library, name))
+        key = (define_library, name)
+        ref = located.get(key)
         if ref is None or ref not in counts:
             continue  # never materialized here — absent, not zero
         subjects, elements = counts[ref]
-        out.append(DefineMetric(define=name, library=define_library,
-                                subjects=subjects, elements=elements))
+        counted, cohort_subjects = (subjects, evaluated) if cohorts[key].everyone else within[key]
+        out.append(DefineMetric(define=name, library=define_library, subjects=subjects,
+                                counted=counted, cohort_subjects=cohort_subjects, elements=elements))
 
     return MeasureMetrics(
         library=library, version=version, provenance=PROVENANCE_RUN,
         generated=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-        subjects=_evaluated_subjects(patient_function, execute=execute),
+        subjects=evaluated,
         caveat=_caveat(defines, out), defines=out,
     )
+
+
+def _counted_within(
+    present: list[DefineKey],
+    cohorts: dict[DefineKey, Cohort],
+    located: dict[DefineKey, RelationRef],
+    columns: dict[RelationRef, dict[str, str]],
+    eval_id: str,
+    *,
+    execute: Execute,
+) -> dict[DefineKey, tuple[int, int]]:
+    """SPEC-POPULATION-CASCADE — ``{define: (counted, cohort size)}`` for every present define whose cohort
+    is not everyone, in ONE statement.
+
+    A cohort naming a population with no result relation RAISES. Counting a Numerator without the
+    Denominator Exclusions it must leave out is the wrong number, not a missing one, so it is not
+    reported at all.
+    """
+    scoped = [key for key in present if not cohorts[key].everyone]
+    if not scoped:
+        return {}
+    distinct = list(dict.fromkeys(cohorts[key] for key in scoped))
+    members = [m for c in distinct for m in (*c.all_of, *c.none_of)]
+    unread = sorted({m for m in members if m not in located or located[m] not in columns})
+    if unread:
+        raise MetricsUnavailable(
+            f"the population(s) {unread} have no result relation at this evaluation, so the defines "
+            f"scored within them cannot be counted (SPEC-POPULATION-CASCADE)")
+
+    subject_sql: dict[DefineKey, str] = {}
+    for key in dict.fromkeys([*scoped, *members]):
+        ref = located[key]
+        cols = columns[ref]
+        col = value_column(cols)
+        met = met_expr(col, cols.get(col) if col else None)
+        subject_sql[key] = (f"SELECT DISTINCT {met} AS {SUBJECT_ID} "
+                            f"FROM {result_relation(ref, eval_id)} WHERE {met} IS NOT NULL")
+    index = {key: i for i, key in enumerate(subject_sql)}
+    targets = [(distinct.index(cohorts[key]), index[key]) for key in scoped]
+    rows = execute(cohort_count_sql(
+        list(subject_sql.values()),
+        [([index[k] for k in c.all_of], [index[k] for k in c.none_of]) for c in distinct],
+        targets)) or []
+
+    sizes: dict[int, int] = {}
+    counted: dict[tuple[int, int], int] = {}
+    for row in rows:
+        cohort, define, n = int(row[0]), int(row[1]), int(row[2] or 0)
+        if define < 0:
+            sizes[cohort] = n
+        else:
+            counted[(cohort, define)] = n
+    return {key: (counted.get(target, 0), sizes.get(target[0], 0)) for key, target in zip(scoped, targets)}
+
+
+def cohort_count_sql(subjects: list[str], cohorts: list[tuple[list[int], list[int]]],
+                     targets: list[tuple[int, int]]) -> str:
+    """SPEC-POPULATION-CASCADE — the counting statement, over SQL that selects each define's met subjects.
+
+    ``subjects[i]`` selects the distinct subjects who met define ``i``. A cohort is ``(all_of, none_of)``
+    as indexes into ``subjects``, with ``all_of`` never empty. ``targets`` are ``(cohort, define)`` pairs
+    to count. Each row is ``(cohort, define, n)``: ``define`` -1 is the cohort's own size.
+
+    Every operand is distinct subjects BEFORE any join, so the joins are 1:1 however many rows a result
+    relation carries, and ``COUNT(DISTINCT …)`` keeps it so (`relation.py`: no ``COUNT(*)`` on a
+    metric path). Public so a test can run it on a real SQL engine.
+    """
+    ctes = [f"s_{i} AS ({sql})" for i, sql in enumerate(subjects)]
+    branches: list[str] = []
+    for j, (all_of, none_of) in enumerate(cohorts):
+        first, *rest = all_of
+        joins = [f"JOIN s_{i} a_{n} ON a_{n}.{SUBJECT_ID} = b.{SUBJECT_ID}" for n, i in enumerate(rest)]
+        joins += [f"LEFT JOIN s_{i} x_{n} ON x_{n}.{SUBJECT_ID} = b.{SUBJECT_ID}" for n, i in enumerate(none_of)]
+        where = " AND ".join(f"x_{n}.{SUBJECT_ID} IS NULL" for n in range(len(none_of)))
+        ctes.append(f"k_{j} AS (SELECT b.{SUBJECT_ID} FROM s_{first} b"
+                    + "".join(f" {join}" for join in joins)
+                    + (f" WHERE {where}" if where else "") + ")")
+        branches.append(f"SELECT {j} AS k, -1 AS d, COUNT(DISTINCT {SUBJECT_ID}) AS n FROM k_{j}")
+    for j, i in targets:
+        branches.append(f"SELECT {j}, {i}, COUNT(DISTINCT m.{SUBJECT_ID}) "
+                        f"FROM s_{i} m JOIN k_{j} c ON c.{SUBJECT_ID} = m.{SUBJECT_ID}")
+    return "WITH " + ",\n".join(ctes) + "\n" + "\nUNION ALL\n".join(branches)
 
 
 def _evaluated_subjects(patient_function: str | None, *, execute: Execute) -> int:

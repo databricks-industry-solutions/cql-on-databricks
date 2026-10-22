@@ -468,3 +468,25 @@ def test_a_run_must_say_what_started_it(setup):
     assert client.post("/api/run", json=body).status_code == 422
     assert client.post("/api/run", json={**BODY, "trigger": "reopen"}).status_code == 422
     assert not state.logged and not state.writes
+
+
+def test_metrics_counts_each_define_in_the_cohort_the_client_names(setup, monkeypatch):
+    """SPEC-POPULATION-CASCADE — the cohort travels with each define; a define without one is refused."""
+    client, _ = setup
+    request = result_request(client.post("/api/run", json=BODY).json())
+    monkeypatch.setattr(runs, "resolve_data_source", lambda *a, **kw: SimpleNamespace(bindings={}))
+    captured = []
+    monkeypatch.setattr(runs, "build_measure_metrics",
+                        lambda **kw: captured.append(kw) or SimpleNamespace(to_dict=lambda: {"ok": True}))
+    ref = lambda name: {"name": name, "library": "Synthetic"}
+    define = {"name": "Numerator", "library": "Synthetic", "resultType": "Boolean",
+              "cohort": {"allOf": [ref("Initial Population"), ref("Denominator")],
+                         "noneOf": [ref("Denominator Exclusions")]}}
+    assert client.post("/api/libraries/Synthetic/1/metrics",
+                       json={**request, "defines": [define]}).status_code == 200
+    assert captured[0]["cohorts"] == {("Synthetic", "Numerator"): runs.Cohort(
+        all_of=(("Synthetic", "Initial Population"), ("Synthetic", "Denominator")),
+        none_of=(("Synthetic", "Denominator Exclusions"),))}
+    no_cohort = {k: v for k, v in define.items() if k != "cohort"}
+    assert client.post("/api/libraries/Synthetic/1/metrics",
+                       json={**request, "defines": [no_cohort]}).status_code == 422

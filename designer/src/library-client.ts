@@ -526,7 +526,11 @@ export async function fetchCohortFlow(
 
 export async function fetchMeasureMetrics(
   name: string, version: string,
-  defines: { name: string; library: string; resultType: string | null }[],
+  defines: {
+    name: string; library: string; resultType: string | null;
+    /** SPEC-POPULATION-CASCADE — the cohort the define is counted among (`specMetrics.MetricCohort`). */
+    cohort: { allOf: { name: string; library: string }[]; noneOf: { name: string; library: string }[] };
+  }[],
   scope: ResultReadScope,
 ): Promise<MeasureMetricsDto | null> {
   return cachedPost(

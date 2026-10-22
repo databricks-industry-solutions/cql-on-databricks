@@ -296,3 +296,60 @@ export function scoringMethodology(
       : null,
   };
 }
+
+/** SPEC-POPULATION-CASCADE — the subjects a population (and every criterion under it) is counted among:
+ *  in every `allOf` population and in no `noneOf` one. `label` names that cohort; null is every evaluated
+ *  subject, which the caller names.
+ *
+ *  HL7 CQF Measures makes each population a subset of the one before it and leaves that to the
+ *  evaluator, so a measure's CQL does not say it: a Numerator written as "no HbA1c in the period" is true
+ *  for every patient without diabetes too. A proportion's Denominator Exception removes only a patient
+ *  outside the Numerator, so the Numerator is in its `noneOf`. */
+export interface Cascade {
+  allOf: string[];
+  noneOf: string[];
+  label: string | null;
+}
+
+const CASCADES: Record<ScoringKind, Record<string, [allOf: string[], noneOf: string[]]>> = {
+  proportion: {
+    [INITIAL]: [[], []],
+    [DENOMINATOR]: [[INITIAL], []],
+    [EXCLUSIONS]: [[INITIAL, DENOMINATOR], []],
+    [NUMERATOR]: [[INITIAL, DENOMINATOR], [EXCLUSIONS]],
+    [EXCEPTIONS]: [[INITIAL, DENOMINATOR], [EXCLUSIONS, NUMERATOR]],
+  },
+  ratio: {
+    [INITIAL]: [[], []],
+    [DENOMINATOR]: [[INITIAL], []],
+    [EXCLUSIONS]: [[INITIAL, DENOMINATOR], []],
+    [NUMERATOR]: [[INITIAL], []],
+    [NUM_EXCLUSIONS]: [[INITIAL, NUMERATOR], []],
+  },
+  "continuous-variable": {
+    [INITIAL]: [[], []],
+    [MEASURE_POPULATION]: [[INITIAL], []],
+    [MEASURE_POP_EXCLUSIONS]: [[INITIAL, MEASURE_POPULATION], []],
+  },
+  cohort: {
+    [INITIAL]: [[], []],
+  },
+};
+
+/** The cascade `population` is counted in, under a declared scoring, over the populations the measure
+ *  DECLARES — a measure with no `Denominator Exclusions` has none to leave out. Null where `population`
+ *  is not one of this scoring's populations, or there is no declared scoring: then there is no cascade,
+ *  and the caller counts among every evaluated subject. */
+export function cascadeOf(
+  kind: ScoringKind | null, population: string, declared: ReadonlySet<string>,
+): Cascade | null {
+  const rule = kind ? CASCADES[kind][population] : undefined;
+  if (!rule) return null;
+  const allOf = rule[0].filter((p) => declared.has(p));
+  const noneOf = rule[1].filter((p) => declared.has(p));
+  const last = allOf[allOf.length - 1];
+  if (!last) return { allOf: [], noneOf: [], label: null };
+  const exclusions = noneOf.some((p) => p !== NUMERATOR) ? " after exclusions" : "";
+  const outside = noneOf.includes(NUMERATOR) ? ", outside the Numerator" : "";
+  return { allOf, noneOf, label: `${last}${exclusions}${outside}` };
+}

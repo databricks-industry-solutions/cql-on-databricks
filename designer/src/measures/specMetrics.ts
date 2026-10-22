@@ -21,8 +21,8 @@
 // the same number.
 
 import { ALL_PATIENTS, removedFrom, type Funnel, funnelFromCounts } from "./model.ts";
-import { parseScoring, populationChain, removesFrom } from "./specScoring.ts";
-import type { SpecMetric } from "./specDocument.ts";
+import { cascadeOf, parseScoring, populationChain, removesFrom } from "./specScoring.ts";
+import type { SpecDocument, SpecMetric } from "./specDocument.ts";
 
 /** The wire payload: what the run (or the sample generator) produced. Mirrors `insights/model.py`. */
 export interface MeasureMetricsDto {
@@ -33,14 +33,84 @@ export interface MeasureMetricsDto {
   /** Every subject the measure was evaluated against, before any criterion. */
   subjects: number;
   caveat?: string;
-  defines?: { define: string; library: string; subjects: number; elements?: number }[];
+  /** SPEC-POPULATION-CASCADE — `subjects` is MET, across every evaluated subject; `counted` is those in
+   *  the cohort the request named, and `cohortSubjects` that cohort's size. */
+  defines?: {
+    define: string; library: string; subjects: number; counted: number; cohortSubjects: number;
+    elements?: number;
+  }[];
 }
 
-/** One define's two grains. `elements` is null wherever there is no element grain — a Boolean says
- *  something about the subject and nothing else, so an element count would be an invented dimension. */
+/** One define's figures. `elements` is null wherever there is no element grain — a Boolean says
+ *  something about the subject and nothing else, so an element count would be an invented dimension.
+ *
+ *  SPEC-POPULATION-CASCADE — `subjects` is the COUNTED figure, the one every surface shows; `met` is the
+ *  define true across every evaluated subject, which only the define section shows beside it. */
 export interface DefineFigure {
   subjects: number;
+  met: number;
+  /** The cohort `subjects` was counted among, by the name the request gave it. */
+  cohort: { name: string; subjects: number };
   elements: number | null;
+}
+
+/** SPEC-POPULATION-CASCADE — the cohort one define is counted among, as the metrics request states it:
+ *  in every `allOf` define and in no `noneOf` define, both library-qualified. */
+export interface MetricCohort {
+  name: string;
+  allOf: { name: string; library: string }[];
+  noneOf: { name: string; library: string }[];
+}
+
+const EVERYONE: MetricCohort = { name: ALL_PATIENTS, allOf: [], noneOf: [] };
+
+/** SPEC-POPULATION-CASCADE — every define's cohort, keyed like the metric set (`metricKey`).
+ *
+ *  A population is counted in its own cascade (`specScoring.cascadeOf`). A criterion is counted among
+ *  the patients ENTERING the population it sits under, which is the same cascade — so `No HbA1c In
+ *  Period` under the Numerator is counted among the Denominator less its Exclusions, and its share
+ *  reads as what that step did to the patients who reached it. Placement decides which population a
+ *  criterion sits under (`SPEC-PLACEMENT`); a COMMON define, any define no population reaches, and every
+ *  define of a measure with no declared scoring are counted among every evaluated subject. */
+export function buildMetricCohorts(
+  doc: SpecDocument | null, scoring: string | null | undefined,
+): Map<string, MetricCohort> {
+  const out = new Map<string, MetricCohort>();
+  if (!doc) return out;
+  const kind = parseScoring(scoring);
+  const refs = new Map<string, { name: string; library: string }>();
+  for (const scope of doc.populations) {
+    if (scope.population) refs.set(scope.name, { name: scope.population.name, library: scope.population.library });
+  }
+  const declared = new Set(refs.keys());
+  const ref = (name: string) => refs.get(name)!;
+  const cohortOfScope = (name: string): MetricCohort => {
+    const cascade = cascadeOf(kind, name, declared);
+    return cascade && cascade.label
+      ? { name: cascade.label, allOf: cascade.allOf.map(ref), noneOf: cascade.noneOf.map(ref) }
+      : EVERYONE;
+  };
+  for (const scope of doc.populations) {
+    if (!scope.population) continue;
+    const cohort = cohortOfScope(scope.name);
+    for (const concept of scope.concepts) {
+      out.set(metricKey(concept.library, concept.define), cohort);
+      for (const rule of concept.rules) out.set(metricKey(rule.library, rule.define), cohort);
+    }
+    for (const rule of scope.rules) out.set(metricKey(rule.library, rule.define), cohort);
+  }
+  // Populations LAST: one population can sit under another as a Concept (a Denominator written as
+  // `"Initial Population"`), and it is counted in its own cascade, not in the one it sits under.
+  for (const scope of doc.populations) {
+    const entry = scope.population;
+    if (entry) out.set(metricKey(entry.library, entry.name), cohortOfScope(scope.name));
+  }
+  return out;
+}
+
+/** The cohort for one define: its placement's, or every evaluated subject where nothing places it. */
+export function cohortOf(cohorts: Map<string, MetricCohort>, library: string, define: string): MetricCohort {
+  return cohorts.get(metricKey(library, define)) ?? EVERYONE;
 }
 
 /** The resolved metric layer, keyed the way the document joins: `"<library>::<define>"`. */
@@ -60,7 +130,10 @@ export interface MetricSet {
 
 /** A figure ready to render: the value, what it is a share OF, and the share itself. */
 export interface ResolvedMetric {
+  /** SPEC-POPULATION-CASCADE — the COUNTED figure. */
   subjects: number;
+  /** The define true across every evaluated subject, before the cascade. */
+  met: number;
   elements: number | null;
   /** The base's own count, and the name to state it by. Null when nothing sensible bounds this figure. */
   base: { name: string; subjects: number } | null;
@@ -80,17 +153,20 @@ export function metricKey(library: string, define: string): string {
  *  the MEASURE, not of an evaluation of it, and the endpoint that counts subjects has no business
  *  having an opinion about how they are scored. */
 export function buildMetricSet(
-  dto: MeasureMetricsDto | null, scoring?: string | null,
+  dto: MeasureMetricsDto | null, scoring: string | null | undefined, cohorts: Map<string, MetricCohort>,
 ): MetricSet | null {
   if (!dto) return null;
   const byKey = new Map<string, DefineFigure>();
   const counts: Record<string, number> = {};
   for (const d of dto.defines ?? []) {
-    byKey.set(metricKey(d.library, d.define), { subjects: d.subjects, elements: d.elements ?? null });
+    byKey.set(metricKey(d.library, d.define), {
+      subjects: d.counted, met: d.subjects, elements: d.elements ?? null,
+      cohort: { name: cohortOf(cohorts, d.library, d.define).name, subjects: d.cohortSubjects },
+    });
     // A bare-name index alongside the qualified one. Collisions are real (`FHIRHelpers.ToString`) and
     // resolve to the first declaration; every surface that has a library uses the qualified key, and
     // this one exists for the funnel, whose stages are population names the root library declares.
-    if (!(d.define in counts)) counts[d.define] = d.subjects;
+    if (!(d.define in counts)) counts[d.define] = d.counted;
   }
   return {
     provenance: dto.provenance,
@@ -114,9 +190,10 @@ export function resolveMetric(
   const own = set.byKey.get(metricKey(library, metric.countOf));
   if (!own) return null;
 
-  const base = baseOf(set, metric, library);
+  const base = baseOf(set, metric, own);
   return {
     subjects: own.subjects,
+    met: own.met,
     elements: own.elements,
     base,
     // Guarded against a zero base rather than rendering Infinity or NaN into a clinical document.
@@ -133,11 +210,14 @@ export function resolveMetric(
  *  THE CHAIN IS THE DECLARED SCORING'S (`specScoring.populationChain`), not the full population list.
  *  It used to be every population name in one fixed order, which is the proportion chain — so a ratio's
  *  figures were measured against a proportion's stages, and a continuous variable's against stages it
- *  does not have. With no declared scoring there is NO chain and no population base: the figure renders
- *  with its own count and no share, rather than against a denominator borrowed from a shape this
- *  measure might not be. */
+ *  does not have. With no declared scoring there is NO chain: every figure is a share of the cohort it
+ *  was counted among, which is then every evaluated subject.
+ *
+ *  SPEC-POPULATION-CASCADE, SPEC-ATTRITION — every other define's base is the cohort it was COUNTED
+ *  among: the patients entering the population it sits under. Not that population's own count — a
+ *  criterion counted among the people entering the Numerator is not a subset of the Numerator. */
 function baseOf(
-  set: MetricSet, metric: SpecMetric, library: string,
+  set: MetricSet, metric: SpecMetric, own: DefineFigure,
 ): { name: string; subjects: number } | null {
   const kind = parseScoring(set.scoring);
   const chain = populationChain(kind);
@@ -173,15 +253,7 @@ function baseOf(
     // funnel's own first bar, by that name (`ALL_PATIENTS`).
     return { name: ALL_PATIENTS, subjects: set.subjects };
   }
-  // Every other define: the population it sits under, as placement determined (`SPEC-PLACEMENT`).
-  if (metric.base) {
-    const count = set.byKey.get(metricKey(library, metric.base))?.subjects
-      ?? set.counts[metric.base];
-    if (count != null) return { name: metric.base, subjects: count };
-  }
-  // COMMON — reached from more than one population, so its share is of the whole evaluation
-  // (`SPEC-METRIC`). Named, because an unnamed denominator is the thing the base rule exists to stop.
-  return { name: ALL_PATIENTS, subjects: set.subjects };
+  return own.cohort;
 }
 
 /** One share, one format, everywhere: `58.8%`.
@@ -199,7 +271,7 @@ export function formatShare(share: number): string {
  *  and the nav row has 186px. The bar and the number live on the row; the sentence naming their base
  *  lives here, which is the smallest place it can live and still always be present. */
 export function metricTitle(m: ResolvedMetric, define: string): string {
-  const grains = [`${m.subjects.toLocaleString()} subjects`];
+  const grains = [`${m.subjects.toLocaleString()} subjects counted (${m.met.toLocaleString()} met)`];
   if (m.elements != null) grains.push(`${m.elements.toLocaleString()} elements`);
   if (!m.base) return `${define} — ${grains.join(" · ")}`;
   const verb = m.removes ? "removed from" : "of";

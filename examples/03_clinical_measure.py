@@ -240,12 +240,15 @@ report.display()
 # MAGIC (`Initial_Population`, `Denominator`, etc.), so the headline rate is one SQL cell away — no CQL, no Python, nothing to export.
 # MAGIC
 # MAGIC **Expected output:** one row — the rate of controlled blood pressure among the denominator (after exclusions).
+# MAGIC
+# MAGIC Each define is true or false on its own, so the query nests them the way CQF Measures scores a proportion: the
+# MAGIC numerator counts only patients in the denominator and not excluded.
 
 # COMMAND ----------
 # MAGIC %sql
 # MAGIC SELECT count_if(d.__val) AS denominator,
-# MAGIC        count_if(d.__val AND NOT ex.__val) AS denominator_after_exclusions,
-# MAGIC        count_if(n.__val) AS numerator
+# MAGIC        count_if(d.__val AND NOT coalesce(ex.__val, false)) AS denominator_after_exclusions,
+# MAGIC        count_if(d.__val AND NOT coalesce(ex.__val, false) AND n.__val) AS numerator
 # MAGIC FROM Denominator d
 # MAGIC LEFT JOIN Denominator_Exclusions ex ON d.__subject_id = ex.__subject_id
 # MAGIC LEFT JOIN Numerator n ON d.__subject_id = n.__subject_id

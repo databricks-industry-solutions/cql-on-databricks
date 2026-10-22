@@ -3,7 +3,7 @@
 // the wrong scoring type would be believed.
 
 import { describe, expect, it } from "vitest";
-import { parseScoring, populationChain, readoutOf, readoutText, removesFrom, scoringLabel, scoringMethodology } from "./specScoring.ts";
+import { cascadeOf, parseScoring, populationChain, readoutOf, readoutText, removesFrom, scoringLabel, scoringMethodology } from "./specScoring.ts";
 
 const PROPORTION = ["Initial Population", "Denominator", "Denominator Exclusions", "Numerator"];
 
@@ -171,5 +171,51 @@ describe("scoringLabel — what the document header prints", () => {
     expect(scoringLabel("continuous-variable")).toBe("continuous variable");
     expect(scoringLabel(null)).toBeNull();
     expect(scoringLabel("nonsense")).toBeNull();
+  });
+});
+
+describe("cascadeOf (SPEC-POPULATION-CASCADE)", () => {
+  const declared = new Set([...PROPORTION, "Denominator Exceptions"]);
+
+  it("counts the Numerator inside the Denominator, less its exclusions", () => {
+    // HL7 CQF Measures: each population is a subset of the one before it. The CQL does not say so.
+    expect(cascadeOf("proportion", "Numerator", declared)).toEqual({
+      allOf: ["Initial Population", "Denominator"], noneOf: ["Denominator Exclusions"],
+      label: "Denominator after exclusions",
+    });
+  });
+
+  it("removes an exception only outside the Numerator", () => {
+    expect(cascadeOf("proportion", "Denominator Exceptions", declared)).toEqual({
+      allOf: ["Initial Population", "Denominator"], noneOf: ["Denominator Exclusions", "Numerator"],
+      label: "Denominator after exclusions, outside the Numerator",
+    });
+  });
+
+  it("counts the exclusions inside the Denominator they remove from", () => {
+    expect(cascadeOf("proportion", "Denominator Exclusions", declared)!.allOf)
+      .toEqual(["Initial Population", "Denominator"]);
+  });
+
+  it("names only populations the measure declares", () => {
+    expect(cascadeOf("proportion", "Numerator", new Set(["Initial Population", "Denominator", "Numerator"])))
+      .toEqual({ allOf: ["Initial Population", "Denominator"], noneOf: [], label: "Denominator" });
+  });
+
+  it("counts the Initial Population among everyone, which the caller names", () => {
+    expect(cascadeOf("proportion", "Initial Population", declared))
+      .toEqual({ allOf: [], noneOf: [], label: null });
+  });
+
+  it("nests a ratio's Numerator in the Initial Population, not the Denominator", () => {
+    const ratio = new Set(["Initial Population", "Denominator", "Numerator", "Numerator Exclusions"]);
+    expect(cascadeOf("ratio", "Numerator", ratio)!.allOf).toEqual(["Initial Population"]);
+    expect(cascadeOf("ratio", "Numerator Exclusions", ratio)!.allOf)
+      .toEqual(["Initial Population", "Numerator"]);
+  });
+
+  it("has no cascade without a declared scoring, or for a define that is not a population", () => {
+    expect(cascadeOf(null, "Numerator", declared)).toBeNull();
+    expect(cascadeOf("proportion", "Has Diabetes", declared)).toBeNull();
   });
 });

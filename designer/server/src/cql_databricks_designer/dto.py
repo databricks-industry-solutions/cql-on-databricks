@@ -44,6 +44,21 @@ class TranslateRequest(BaseModel):
 # APP-SAMPLE-METRICS, SPEC-READ-REF, APP-COHORT-ALGEBRA — the insight request bodies of the Designer's
 # `/api/libraries/…` routes (`routes/runs.py`).
 
+class DefineRefDto(BaseModel):
+    """A define, library-qualified."""
+
+    name: str
+    library: str
+
+class MetricCohortDto(BaseModel):
+    """SPEC-POPULATION-CASCADE — the subjects a define is counted among: in every `allOf` define and in no
+    `noneOf` define. Both empty is every evaluated subject. The client derives it from the declared
+    scoring; the server only counts."""
+
+    model_config = {"populate_by_name": True}
+    all_of: list[DefineRefDto] = Field(alias="allOf")
+    none_of: list[DefineRefDto] = Field(alias="noneOf")
+
 class MetricDefineDto(BaseModel):
     """One define the client wants a figure for, as IT derived the define from the ELM."""
 
@@ -51,6 +66,8 @@ class MetricDefineDto(BaseModel):
     library: str
     #: The ELM result type (`Boolean`, `List<Encounter>`). Decides the element grain, nothing else.
     resultType: str | None = None
+    #: SPEC-POPULATION-CASCADE — required: a define with no stated cohort has no counted figure.
+    cohort: MetricCohortDto
 
 class ReadDto(BaseModel):
     """SPEC-READ-REF — one READ the client wants a figure for, as IT derived the read from the ELM.

@@ -192,11 +192,18 @@ class DefineMetric:
 
     `elements` is `None` wherever there is no element grain. A Boolean define says something about the
     subject and nothing else, so an element count there would be an invented dimension.
+
+    SPEC-POPULATION-CASCADE — `subjects` is MET: the define true across every evaluated subject.
+    `counted` is the met subjects inside the cohort the client named for this define, and
+    `cohort_subjects` is that cohort's size. The client chose the cohort and names it; these are the
+    numbers.
     """
 
     define: str
     library: str
     subjects: int
+    counted: int
+    cohort_subjects: int
     elements: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -204,6 +211,8 @@ class DefineMetric:
             "define": self.define,
             "library": self.library,
             "subjects": self.subjects,
+            "counted": self.counted,
+            "cohortSubjects": self.cohort_subjects,
             "elements": self.elements,
         })
 

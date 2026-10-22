@@ -49,7 +49,7 @@ import {
   type MeasureView, type ExecMode, type ComputeTarget, type UpdateMode, type DeepLink, type Selection, type RunStatus,
   type PaneSize, type PaneState,
 } from "./model.ts";
-import { buildMetricSet, metricFunnel, type MetricSet } from "./specMetrics.ts";
+import { buildMetricCohorts, buildMetricSet, cohortOf, metricFunnel, type MetricSet } from "./specMetrics.ts";
 import { buildSpecModel, filterSpecModel, sortSpecModel, type SpecModel, type SpecSortKey } from "./specModel.ts";
 import { buildSpecDocument, withIncluded, withoutNarrated, type SpecDocument } from "./specDocument.ts";
 import { buildRetrieves, referencedTerminology, type SpecRetrieve } from "./specRetrieves.ts";
@@ -865,6 +865,11 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     [visibleSpec, referenceSets, dataReqs],
   );
 
+  // SPEC-POPULATION-CASCADE — the cohort each define is counted among, from placement and the declared
+  // scoring. One map for the request and the metric set, so a figure is named by the cohort it was
+  // counted in.
+  const metricCohorts = useMemo(
+    () => buildMetricCohorts(specDoc, shownOverlay?.scoring ?? null), [specDoc, shownOverlay]);
   const metricDefines = useMemo(() => {
     if (!specModel) return [];
     // Every entry the document can render a figure for — populations and library entries alike, since
@@ -877,8 +882,12 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     // asking for the figure is the fix — a filter on each surface is two chances to disagree.
     return [...specModel.populations, ...specModel.libraries.flatMap((l) => l.entries)]
       .filter((e) => e.kind !== "function")
-      .map((e) => ({ name: e.name, library: e.library, resultType: e.variants[0]?.returns ?? null }));
-  }, [specModel]);
+      .map((e) => {
+        const { allOf, noneOf } = cohortOf(metricCohorts, e.library, e.name);
+        return { name: e.name, library: e.library, resultType: e.variants[0]?.returns ?? null,
+                 cohort: { allOf, noneOf } };
+      });
+  }, [specModel, metricCohorts]);
   const readRequest = useMemo(
     () => retrieves.map((r) => ({ key: r.key, type: r.type, profiles: r.profiles })), [retrieves]);
   const flowGates = useMemo(
@@ -893,7 +902,8 @@ export function MeasureWorkspace({ chrome, deepLink }: {
       defines: metricDefines, reads: readRequest, gates: flowGates,
     } : null);
   const metrics = useMemo(
-    () => buildMetricSet(derivations.metrics, shownOverlay?.scoring ?? null), [derivations.metrics, shownOverlay]);
+    () => buildMetricSet(derivations.metrics, shownOverlay?.scoring ?? null, metricCohorts),
+    [derivations.metrics, shownOverlay, metricCohorts]);
   const readCounts = useMemo(() => derivations.reads
     ? new Map(derivations.reads.reads.map((r) => [r.key, r.subjects])) : null, [derivations.reads]);
   const flow = useMemo(() => buildFlow(computed ? derivations.flow : null), [derivations.flow, computed]);

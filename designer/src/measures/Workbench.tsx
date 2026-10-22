@@ -862,7 +862,6 @@ function Returns({ entry, metric, resultType, metrics, live }: {
 }) {
   const type = resultType;
   const figure = resolveMetric(metrics, metric, entry.library);
-  const value = figure?.subjects ?? null;
   const isFunction = entry.kind === "function";
   return (
     <div className="mw-wb-returns">
@@ -875,8 +874,10 @@ function Returns({ entry, metric, resultType, metrics, live }: {
           <span className="grain">subject <b>{metric.subjectUnit}</b></span>
           {metric.elementGrain && <span className="grain">element <b>{metric.elementGrain}</b></span>}
           {metric.form === "cardinality-histogram" && <span className="grain">many per subject</span>}
+          {/* SPEC-POPULATION-CASCADE — counted and met, as the define section states them. */}
           <span className="grain">
-            {!live ? "not computed" : value == null ? "not returned" : `${value.toLocaleString()} met`}
+            {!live ? "not computed" : figure == null ? "not returned"
+              : `${figure.subjects.toLocaleString()} counted · ${figure.met.toLocaleString()} met`}
           </span>
           {/* SPEC-ATTRITION — the share, against the base the document states beside the same figure.
               Read here so a reader who came from the heading sees the pane agreeing with it. */}
