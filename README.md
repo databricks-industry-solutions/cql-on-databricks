@@ -56,27 +56,31 @@ flowchart LR
 | Find each patient's open care gap, with the evidence, from the measure's own definitions | Planned (`AGENT-CARE-GAPS`) |
 | Care-management cohorts, model features, payment-integrity rules | Build on the result tables. Not separate features |
 
-This project does not replace your existing HEDIS vendor. Its goal is getting CQL running on Databricks. What gets built on top of it is up to you and the community.
+This project does not replace your existing quality measure vendor. Its goal is getting CQL running on Databricks. What gets built on top of it is up to you and the community.
 
 ## Measure verification
 
-The repository ships one sample measure, written for it, with synthetic test patients. It is deliberately
-small: it shows how a measure is laid out, included, run and checked, not a clinical result.
+The repository ships four sample measures written for it, with synthetic patients, in
+[`examples/measures`](examples/README.md). They follow the shape CMS uses for FHIR quality measures (QI-Core
+6.0.0, proportion scoring, exclusions and exceptions), with value sets of our own. They are
+samples, not published measures.
 
-| Measure | Library | What it computes | Test patients |
-|---|---|---|---|
-| Encounter and condition | `BasicEncounterAndCondition` (includes `EncounterDuringPeriod`) | Patients with an encounter during the measurement period who have any condition | 13 |
+| Measure | Library | What it computes |
+|---|---|---|
+| Hypertension control | `HypertensionBPControl` | Adults 18–85 with hypertension whose most recent blood pressure is below 140/90 |
+| Diabetes, high or missing HbA1c | `DiabetesHighOrMissingA1c` | Adults 18–75 with diabetes whose most recent HbA1c is above 9% or missing (lower is better) |
+| Adult flu immunization | `AdultFluImmunization` | Adults seen in the flu season who were vaccinated in it, with declined or contraindicated vaccines as exceptions |
+| Colorectal screening | `ColorectalScreening` | Adults 45–75 current on colorectal cancer screening, each test with its own lookback |
 
-Each test patient's expected result was worked out by hand and is checked against the Java CQF reference
-engine ([testing-and-conformance.md](compiler/docs/testing-and-conformance.md)).
+They share `SampleMeasureCommon`, and run over the 4,000 synthetic patients in `examples/data`, about 1,000
+synthesized for each measure (`DATA-SYNTH-SMALL`). The conformance tests keep their own 48 hand-written patients
+per measure, whose answer keys are checked against the Java CQF reference engine and the compiler
+([testing-and-conformance.md](compiler/docs/testing-and-conformance.md)).
 
 During development we also ran four published CMS eCQMs through the engine, in their FHIR versions: CMS124,
 CMS68, CMS69 and CMS165. Each computed successfully, and its results were verified against the cqframework
 reference engine on the measure's published test patients. The same measures were run over synthetic
-populations of more than a million patients and completed in minutes. This was an internal check, not a
-certification: that content does not ship with this repository, and we are not affiliated with CMS, NCQA or
-any measure steward. To run a published measure yourself, import it with the [loader](loader/README.md), under
-its own terms.
+populations of more than a million patients and completed in minutes.
 
 ## Components
 
@@ -99,6 +103,32 @@ client wheel to a Volume:
 from cql_databricks.compiler import cql
 cql('define "Two": 2 + 2').exec("Two").display()
 ```
+
+Or use the `%%cql` cell magic, where the cell itself is the CQL. Load it once:
+
+```python
+%load_ext cql_databricks.compiler
+```
+
+Then, in its own cell:
+
+```
+%%cql --df ages
+define "BirthYears": { 1990, 2010, 1975 }
+```
+
+The magic shows the result. `--df ages` also binds it as a DataFrame, and each define is a temp view that
+`%sql` can query (`SELECT * FROM BirthYears`).
+
+A cell or `cql()` string with no `library` header joins the session library, like a view in a SQL
+notebook. A later cell sees its defines by name, and redefining a name replaces it:
+
+```
+%%cql
+define "Oldest": Min("BirthYears")
+```
+
+`cql('define "Youngest": Max("BirthYears")').exec("Youngest")` works the same way.
 
 To run a measure from a folder of `.cql` files:
 
@@ -139,12 +169,11 @@ Spark server, and the build checks it (`./gradlew checkNeutrality`).
 
 | When | What |
 |---|---|
-| Now | Release v0.3. It includes a live release test that runs a measure from the built wheels and compares it with its answer key (`CLIENT-RELEASE-TESTS`) |
+| Now | Release v0.3 |
 | Next | A synthetic demo population as a free Marketplace listing (`DATA-SYNTH-MARKETPLACE`). Care-gap agents: CQL probes derived from a measure's own logic explain each failure, computed in bulk, as the caller (`AGENT-CARE-GAPS`) |
 | Through 2026 | The remaining upstream operator tests, and a published CQL support table |
 | Later | Scale acceptance for durable calculations (`CLIENT-DURABLE-VALIDATE`). Natural-language authoring in the Designer (`APP-CREATE-NL`) |
 
-The full plan, open decisions and known gaps are in [docs/roadmap.md](docs/roadmap.md).
 
 ## Repository layout
 

@@ -54,6 +54,8 @@ Instructions for any AI coding agent working in this repository.
 
 - Run the tests that cover your change before saying it works. Say which ones you ran.
 - Semantic compiler changes need a conformance test, not only a unit test.
+- A compiler gap, when found, gets a conformance test with its fix: the smallest CQL that causes and checks it,
+  under `compiler/conformance/src/test/resources/cql/operators/` or `fhir/`. Never a measure.
 
 ## Specs and citations
 
@@ -83,8 +85,8 @@ Instructions for any AI coding agent working in this repository.
 | A feature: what it does, components, build and test | `<feature>/README.md`, then `<feature>/docs/` |
 | Repo layout and feature names | `docs/structure.md`, `docs/systems.md` |
 | Code conventions (read before writing code) | `docs/coding-standards.md` |
-| Compiler requirements | `docs/compiler/requirements.md` |
-| All other requirements | `docs/requirements.md` |
+| Requirements that span features, and where each registry is | `docs/requirements.md` |
+| A feature's requirements | `<feature>/docs/requirements.md` |
 | Decision records | `docs/decisions/` |
-| What's next, open decisions and known gaps | `docs/roadmap.md` |
+| Plan, open decisions, known compiler gaps | `docs/roadmap.md` |
 | Deploying | `docs/deploy.md` |

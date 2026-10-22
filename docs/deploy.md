@@ -71,12 +71,12 @@ The script, in order:
 
 1. Creates or reuses the maintenance service principal and grants it access to the private results catalog
    (`scripts/deploy/grant-maintenance-access.sh`, `RUN-CLIENT-MAINTENANCE`). Its application ID becomes the
-   `cql-maintenance` Job's run-as. The deployer gets the Service Principal: User role on it, which a Job's
-   run-as needs.
+   `cql-databricks-designer-maintenance` Job's run-as. The deployer gets the Service Principal: User role on it,
+   which a Job's run-as needs.
 2. Builds and stages each App.
 3. Runs `databricks bundle deploy`, which creates the runtime schema and Volume, the Designer's shared
-   schema, the Apps and their permissions, and the `cql-maintenance` Job. The Job's daily schedule deploys
-   paused: unpause it after one run has been checked on the workspace.
+   schema, the Apps and their permissions, and the `cql-databricks-designer-maintenance` Job. The Job's daily
+   schedule deploys paused: unpause it after one run has been checked on the workspace.
 4. Uploads the compiler's JRE and jars, the runtime function jar and the client wheel to the Volume.
 5. Registers the `cql_*` runtime functions in Unity Catalog (`scripts/deploy/register-uc-udfs.sh`).
 6. Grants each App's service principal access to the catalogs (`scripts/deploy/grant-app-access.sh`).
@@ -94,8 +94,9 @@ as one-time serverless runs. `deploy.sh` never runs it.
 
 ## Load synthetic data
 
-Optional. The deploy loads only the sample patients. For a large synthesized population with expected results
-per patient, generate and land a cohort per measure after the deploy
+Optional. The deploy loads the synthetic population small, about 1,000 patients per sample measure
+(`synthetic-population-small`). For a large synthesized population with expected results per patient, generate
+and land a cohort per measure after the deploy
 ([synthetic data](../loader/docs/synthetic-data.md)).
 
 ## Proxies and mirrors
@@ -150,7 +151,7 @@ Apps to `app_users_group`, and nothing else. Grant the same group:
 | `uc_catalog` | `USE CATALOG` | Reach the schemas below |
 | `<uc_catalog>.runtime` | `USE SCHEMA`, `EXECUTE`, `SELECT` | The `cql_*` functions and the knowledge views |
 | Volume `<uc_catalog>.runtime.artifacts` | `READ VOLUME` | Notebooks install the client wheel from it |
-| `<uc_catalog>.sample_measures`, `sample_patients` | `USE SCHEMA`, `EXECUTE`, `SELECT` | The sample measures and their data source |
+| `<uc_catalog>.sample_measures`, `synthetic_population_small` | `USE SCHEMA`, `EXECUTE`, `SELECT` | The sample measures and their data source |
 | Any schema you import content into (`ecqi_measures`, `vsac` by default) | `USE SCHEMA`, `SELECT` | Measures you imported yourself |
 | Each data source's catalog and schema | `USE CATALOG`, `USE SCHEMA`, `SELECT` | The patients a measure runs over |
 | `designer_results_catalog` | `USE CATALOG`, `CREATE SCHEMA` | Each user's private results |

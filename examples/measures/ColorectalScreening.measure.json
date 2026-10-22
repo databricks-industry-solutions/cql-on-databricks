@@ -1,0 +1,111 @@
+{
+  "resourceType": "Measure",
+  "id": "ColorectalScreening",
+  "url": "http://example.org/fhir/Measure/ColorectalScreening",
+  "version": "1.0.0",
+  "name": "ColorectalScreening",
+  "title": "Adults 45 to 75 current on colorectal cancer screening (sample)",
+  "status": "active",
+  "experimental": true,
+  "publisher": "CQL on Databricks examples",
+  "description": "Adults 45 to 75 who are current on colorectal cancer screening. A sample measure, written for this repository; not a published measure.",
+  "rationale": "Screening finds colorectal cancer early, when it is easier to treat, and can prevent it by removing polyps.",
+  "guidance": "Each test has its own lookback, ending at the end of the measurement period: a colonoscopy in the period or the nine years before, a flexible sigmoidoscopy or CT colonography in the period or the four years before, a stool DNA test in the period or the two years before, or a fecal immunochemical test in the period. Patients in hospice or palliative care, with colorectal cancer, or after a total colectomy are excluded.",
+  "library": [
+    "http://example.org/fhir/Library/ColorectalScreening"
+  ],
+  "scoring": {
+    "coding": [
+      {
+        "system": "http://terminology.hl7.org/CodeSystem/measure-scoring",
+        "code": "proportion"
+      }
+    ]
+  },
+  "type": [
+    {
+      "coding": [
+        {
+          "system": "http://terminology.hl7.org/CodeSystem/measure-type",
+          "code": "process"
+        }
+      ]
+    }
+  ],
+  "improvementNotation": {
+    "coding": [
+      {
+        "system": "http://terminology.hl7.org/CodeSystem/measure-improvement-notation",
+        "code": "increase"
+      }
+    ]
+  },
+  "group": [
+    {
+      "extension": [
+        {
+          "url": "http://hl7.org/fhir/us/cqfmeasures/StructureDefinition/cqfm-populationBasis",
+          "valueCode": "boolean"
+        }
+      ],
+      "population": [
+        {
+          "code": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/measure-population",
+                "code": "initial-population"
+              }
+            ]
+          },
+          "criteria": {
+            "language": "text/cql-identifier",
+            "expression": "Initial Population"
+          }
+        },
+        {
+          "code": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/measure-population",
+                "code": "denominator"
+              }
+            ]
+          },
+          "criteria": {
+            "language": "text/cql-identifier",
+            "expression": "Denominator"
+          }
+        },
+        {
+          "code": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/measure-population",
+                "code": "denominator-exclusion"
+              }
+            ]
+          },
+          "criteria": {
+            "language": "text/cql-identifier",
+            "expression": "Denominator Exclusions"
+          }
+        },
+        {
+          "code": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/measure-population",
+                "code": "numerator"
+              }
+            ]
+          },
+          "criteria": {
+            "language": "text/cql-identifier",
+            "expression": "Numerator"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -32,8 +32,7 @@ selection or conversation state, so an external client gets the same answers as 
 Designer, the Designer also registers its own tools, such as `get_specification`
 (`AGENT-TOOL-REGISTRY`). The agent never imports the Designer.
 
-The tools only read. Tools that write or compute CQL probes are planned (`AGENT-CARE-GAPS` in the
-[roadmap](../docs/roadmap.md)).
+The tools only read. Tools that write or compute CQL probes are planned (`AGENT-CARE-GAPS`).
 
 ## Skills
 
@@ -56,6 +55,8 @@ variable `assistant_endpoint` to choose it; there is no default. Any chat endpoi
 
 The drawer is read-only, like the tools. It overlays the Designer's reading column, so opening it doesn't
 resize the document (`APP-STABLE-LAYOUT`).
+
+The agent's requirements are in [docs/requirements.md](docs/requirements.md).
 
 ## Build and test
 

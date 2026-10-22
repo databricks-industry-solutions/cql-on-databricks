@@ -38,7 +38,7 @@ An arrow means "depends on".
   the synthesizer, which writes synthetic patients to a schema you name. The data sources this repository
   ships (`SHIPPED-SOURCES-IN-LOADER`): the population lander every shipped source lands through, the change-log
   exemplar, and the script that lands a synthesized cohort (`loader/scripts/`). The deploy loads the sample
-  measures and the `sample-patients` data source from `examples/` through `content_ingest.samples`.
+  measures and the `synthetic-population-small` data source from `examples/` through `content_ingest.samples`.
 - **Doesn't own:** finding or checking what it wrote (the client's `data_bindings`).
 - **Interface:** the `cql-content-ingest` and `cql-synth` commands. You run the importer yourself; the
   deploy never runs it, because eCQM content and value sets are licensed (`SHARE-LICENSING`).

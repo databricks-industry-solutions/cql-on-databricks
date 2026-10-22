@@ -1,4 +1,4 @@
-"""RUN-CLIENT-MAINTENANCE — the daily `cql-maintenance` Job's entry point (`databricks.yml`).
+"""RUN-CLIENT-MAINTENANCE — the daily `cql-databricks-designer-maintenance` Job's entry point (`databricks.yml`).
 
 It runs as the deployment's maintenance principal (`scripts/deploy/maintenance_principal.py`) and calls the
 client's expiry, ``cql_databricks.result.maintenance.maintain_private_results``. Locally, preview with

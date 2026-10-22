@@ -7,7 +7,7 @@ CQL semantics go through the compiler's own lowering rules, never straight onto 
 Spark's defaults differ from CQL on nulls, dates and units.
 
 Sections carry `LANG-*` IDs. The registry is
-[docs/compiler/requirements.md](../../docs/compiler/requirements.md).
+[requirements.md](requirements.md).
 
 ## 1. Three-valued logic — `LANG-3VL`
 
@@ -54,6 +54,20 @@ A retrieve never yields a null list, only an empty one. A list can still be null
 against null, `Coalesce`, output). For those, the compiler carries a per-subject `__is_null` sidecar.
 Every other consumer treats null and empty the same. See [list-null-tristate.md](list-null-tristate.md).
 
+### 2.2 Aggregate functions — `LANG-AGGREGATE-FUNCTIONS`
+
+The CQL aggregate functions reduce a list to one value: `Count`, `Sum`, `Min`, `Max`, `Avg`, `Median`, `Mode`,
+`Variance`, `StdDev`, `PopulationVariance`, `PopulationStdDev`, `Product`, `GeometricMean`, `AllTrue` and
+`AnyTrue`. They ignore null elements, and all but `Count`, `AllTrue` and `AnyTrue` return null for an empty list
+or one with only nulls (CQL Reference, Aggregate Functions). `Count` is then 0, `AllTrue` true and `AnyTrue`
+false. `Min` and `Max` compare with CQL ordering, so they work on dates, times and quantities, not only numbers.
+An uncertain comparison (`@2012` against `@2012-05-01`) keeps the running value, as the reference does.
+
+A list of quantities in one unit keeps that unit. A list in mixed units goes to its coarsest unit
+(`Sum({ 1 'g', 500 'mg' })` is `1.5 'g'`) through the UCUM table (`sema/Ucum.scala`). A unit the table does not
+list gives null, unless the whole list shares it. `Product` and `GeometricMean` over quantities fail loudly
+(`UnsupportedNode`): they need compound-unit algebra, which is not built.
+
 ## 3. Intervals and temporal precision — `LANG-INTERVAL`
 
 - CQL dates and times carry a precision (year, month, day, time). A comparison can be null when the
@@ -68,6 +82,23 @@ Every other consumer treats null and empty the same. See [list-null-tristate.md]
 An interval operator can name a precision: `X during day of Y`. ELM carries it as a `precision`
 attribute. The precision belongs to the comparison, so both operands are truncated to it before
 comparing. Without that, a coarse bound against a fine value returns null.
+
+### 3.2 Date and time components — `LANG-DATETIME-COMPONENT`
+
+`year from X`, `month from X` and the other component extractors return one component of a date, time or
+date-time as an Integer, or null when `X` is null or less precise than the component (CQL Reference, Date and
+Time Operators, "Component From").
+
+Not built: `DateTimeComponentFrom` fails at Normalize (`UnknownExpr`), loudly.
+
+### 3.3 Date-time offsets — `LANG-DATETIME-OFFSET`
+
+A date-time with no offset takes the offset of the evaluation request (CQL Reference, Types, DateTime). A
+date-time the compiler returns must carry that offset, as the reference does.
+
+Not built: a date-time computed from an offset-less parameter, such as `start of "Measurement Period" - 5
+months`, is returned with no offset, while the reference returns `+00:00`. Comparisons agree because both run in
+UTC; the returned value differs.
 
 ## 4. Quantities and units — `LANG-QUANTITY`
 
@@ -157,6 +188,22 @@ adds a `using`, `include` or `library` header.
 
 - A model is named, never inferred (CQL Developer's Guide). `[Encounter]` with no `using` is not a FHIR
   retrieve.
-- FHIRHelpers is included by the author. `include FHIRHelpers version '4.0.1'` resolves to the bundled
-  copy (`translate/FhirHelpersSource.scala`).
+- FHIRHelpers is included by the author, and resolves from content like any include
+  (`LANG-FHIRHELPERS-FROM-CONTENT`, section 12).
 - A library with no header is legal. It can use a model but not FHIRHelpers.
+
+## 12. FHIRHelpers is content — `LANG-FHIRHELPERS-FROM-CONTENT`
+
+HL7 publishes FHIRHelpers as a FHIR `Library`, and a published measure package ships its own copy. So the
+compiler bundles none. The CQL specification leaves supplying a referenced library to the implementation
+environment (Developer's Guide, Libraries).
+
+- `include FHIRHelpers version 'v'` resolves from the library sources the caller supplies: cells, the library
+  folder, or tagged knowledge, by name and exact version. The client ships it in the include closure like
+  any other library.
+- An include that no supplied source declares fails the translation, naming the library and version.
+  `translate/SuppliedLibrarySourceProvider.scala` fails it before cqframework's loader can fall through to
+  the providers registered on the classpath: the `org.cqframework:quick` jar registers one that serves
+  FHIRHelpers 1.0.2 to 4.0.1 from the jar.
+- The compiler lowers each `FHIRHelpers.<function>` call directly, by name. It does not read the library's
+  function bodies, and `LibraryLinker` never merges FHIRHelpers. A closure of only FHIRHelpers is not linked.

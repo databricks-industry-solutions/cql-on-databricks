@@ -170,8 +170,13 @@ def test_a_shaped_cohort_still_verifies(env, valuesets, config):
     assert cohort.patients
 
 
-def test_the_sample_measure_config_resolves():
-    sample = dir_or_skip("BasicEncounterAndCondition")
-    sample_env = Env.from_paths([sample])
-    config = load(sample / CONFIG_NAME, sample_env, ValueSetIndex({}))
-    assert config.rates == {"in_ipp": 0.8}
+@pytest.mark.parametrize("name", ["HypertensionBPControl", "DiabetesHighOrMissingA1c", "AdultFluImmunization",
+                                  "ColorectalScreening"])
+def test_each_sample_measure_config_resolves(name):
+    """The pinned configs of the sample measures resolve, route branches in an included library named by its
+    alias (`Common.In Hospice Care`)."""
+    sample = dir_or_skip(name)
+    sample_env = Env.from_paths([sample], root=name)
+    sample_config = load(sample / CONFIG_NAME, sample_env, ValueSetIndex.from_ndjson_dir(sample))
+    assert "in_ipp" in sample_config.rates
+    assert all(weights and all(w > 0 for w in weights) for weights in sample_config.routes.values())

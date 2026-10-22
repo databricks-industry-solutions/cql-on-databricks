@@ -1,8 +1,8 @@
-"""The synthesizer over the repository's own sample measure, which declares its Measurement Period with no
-default (SYNTH-PDS-ORACLE, SYNTH-PDS-STRATA, SYNTH-PDS-VERIFY, LANG-PARAMETER).
+"""The synthesizer over the repository's own sample measures, which declare their Measurement Period with no
+default (SYNTH-PDS-ORACLE, SYNTH-PDS-STRATA, SYNTH-PDS-VERIFY, SYNTH-PDS-MEASURE-CONFIG, LANG-PARAMETER).
 
-The fixture is the pinned ``examples/measures`` closure (``pins.json`` key ``BasicEncounterAndCondition``), built by
-``python -m cql_databricks_synth fixtures``; the tests skip with that fix when it is absent.
+The fixtures are the pinned ``examples/measures`` closures (``pins.json``, SYNTH-PDS-FIXTURE-PINS), built by
+``python -m cql_databricks_synth fixtures``; the tests skip with that fix when one is absent.
 """
 
 from __future__ import annotations
@@ -14,62 +14,67 @@ import pytest
 
 from cql_databricks_synth import SynthesizerError, UnsupportedElm
 from cql_databricks_synth.emit import write_cohort
-from cql_databricks_synth.fixtures import dir_or_skip
+from cql_databricks_synth.fixtures import CONFIG_NAME, dir_or_skip
 from cql_databricks_synth.generate import generate, run_parameters
 from cql_databricks_synth.library import Env
-from cql_databricks_synth.strata import population_defines, proportion_strata, realistic_counts
+from cql_databricks_synth.measure_config import load
+from cql_databricks_synth.strata import population_defines, proportion_strata, realistic_counts, realistic_rates
 from cql_databricks_synth.valuesets import ValueSetIndex
 from cql_databricks_synth.verify import verify_cohort
 
 PERIOD = "2026-01-01/2026-12-31"
 
-
-@pytest.fixture(scope="module")
-def fixtures():
-    return dir_or_skip("BasicEncounterAndCondition")
+MEASURES = ["HypertensionBPControl", "DiabetesHighOrMissingA1c", "AdultFluImmunization", "ColorectalScreening"]
 
 
-@pytest.fixture(scope="module")
-def env(fixtures) -> Env:
-    return Env.from_paths([fixtures])
+def _measure(name: str) -> tuple[Env, ValueSetIndex, object]:
+    fixtures = dir_or_skip(name)
+    env = Env.from_paths([fixtures], root=name)
+    valuesets = ValueSetIndex.from_ndjson_dir(fixtures)
+    return env, valuesets, fixtures
 
 
-@pytest.fixture(scope="module")
-def valuesets(fixtures) -> ValueSetIndex:
-    return ValueSetIndex.from_ndjson_dir(fixtures)
-
-
-def test_a_measure_with_no_period_default_needs_one_at_run_time(env, valuesets):
+@pytest.mark.parametrize("name", MEASURES)
+def test_a_measure_with_no_period_default_needs_one_at_run_time(name):
+    env, valuesets, _ = _measure(name)
     with pytest.raises(UnsupportedElm, match="no default and no run-time value"):
         generate(env, valuesets, seed=1, per_stratum=1)
 
 
-def test_the_sample_measure_generates_and_reverifies(tmp_path, env, valuesets):
-    cohort = generate(env, valuesets, seed=3, per_stratum=4, measurement_period=PERIOD)
-    by_stratum = {o.stratum: o for o in cohort.outcomes}
-    assert by_stratum["!IPP"].patient_count == 4 and by_stratum["IPP"].patient_count == 4
-    # Both checks are `exists`, which is never null, so the null stratum is reported unsatisfiable.
-    assert by_stratum["null:IPP"].status == "unsatisfiable"
+@pytest.mark.parametrize("name", MEASURES)
+def test_the_sample_measure_generates_every_stratum_and_reverifies(tmp_path, name):
+    """Every stratum but the one the measure rules out (its Denominator is its Initial Population) is built, and
+    every patient re-verifies from the written files."""
+    env, valuesets, _ = _measure(name)
+    cohort = generate(env, valuesets, seed=3, per_stratum=2, measurement_period=PERIOD)
+    unsatisfied = {o.stratum for o in cohort.outcomes if o.status != "satisfied"}
+    assert unsatisfied == {"IPP+!DEN"}
+    assert all(o.patient_count == 2 for o in cohort.outcomes if o.status == "satisfied")
     write_cohort(cohort, tmp_path)
     assert verify_cohort(env, valuesets, tmp_path) == []
     rows = [json.loads(line) for line in (tmp_path / "manifest.jsonl").read_text().splitlines()]
     assert {row["measurement_period"] for row in rows} == {PERIOD}
 
 
-def test_the_period_is_part_of_the_cohort_identity(env, valuesets):
+@pytest.mark.parametrize("name", MEASURES)
+def test_a_realistic_cohort_shaped_by_the_config_reverifies(tmp_path, name):
+    env, valuesets, fixtures = _measure(name)
+    config = load(fixtures / CONFIG_NAME, env, valuesets)
+    rates = realistic_rates(config)
+    populations = population_defines(env)
+    counts = realistic_counts(proportion_strata(populations), populations, 120, **rates)
+    cohort = generate(env, valuesets, seed=4, counts=counts, priors=True, measurement_period=PERIOD,
+                      config=config)
+    assert cohort.meta.config_hash
+    write_cohort(cohort, tmp_path)
+    assert verify_cohort(env, valuesets, tmp_path) == []
+
+
+def test_the_period_is_part_of_the_cohort_identity():
+    env, valuesets, _ = _measure("HypertensionBPControl")
     first = generate(env, valuesets, seed=3, per_stratum=1, measurement_period=PERIOD)
     other = generate(env, valuesets, seed=3, per_stratum=1, measurement_period="2025-01-01/2025-12-31")
     assert first.config_hash != other.config_hash
-
-
-def test_a_cohort_measure_targets_its_initial_population(env):
-    """SYNTH-PDS-STRATA — no numerator: the innermost population is the in-stratum, and the realistic mode gives it
-    the whole scored share."""
-    populations = population_defines(env)
-    strata = proportion_strata(populations)
-    assert [s.label for s in strata] == ["!IPP", "IPP", "null:IPP"]
-    counts = realistic_counts(strata, populations, 1000)
-    assert counts == {"!IPP": 300, "IPP": 690, "null:IPP": 10}
 
 
 def test_run_parameters_read_inclusive_whole_days():

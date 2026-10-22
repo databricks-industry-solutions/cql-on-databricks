@@ -159,6 +159,7 @@ object SqlColumnLowering {
     def isRatio(e: Expr): Boolean = typeOf(e) == RatioType
     def isChoice(e: Expr): Boolean = typeOf(e) match { case _: ChoiceType => true; case _ => false }
     def isList(e: Expr): Boolean = typeOf(e) match { case _: ListType => true; case _ => false }
+    def elementOfList(e: Expr): CqlType = typeOf(e) match { case ListType(t) => t; case _ => AnyType }
     def choiceMembers(e: Expr): Seq[CqlType] = typeOf(e) match { case ChoiceType(m) => m; case _ => Nil }
     // The Choice member `Interval<Point>` whose POINT type matches `asType` — for a helper library's fluent
     // `onsetSpan`'s `choice.low as <Point>` / `choice.high as <Point>` over a `Choice<…, Interval<DateTime>,
@@ -358,11 +359,12 @@ object SqlColumnLowering {
       gs.reduceOption(_ || _).map(g => ifc(g, nullBool, body)).getOrElse(body)
     }
 
-    def temporalCompare(a: SqlExpr, b: SqlExpr, aC: TConst, bC: TConst)(kind: Cmp): SqlExpr = {
+    def temporalCompare(a: SqlExpr, b: SqlExpr, aC: TConst, bC: TConst, inLambda: Boolean = false)(kind: Cmp): SqlExpr = {
       // EMIT-SQL-TEMPORAL-UDF (opaque): collapse the precision-aware compare tower to one black-box call at
       // its leaves. Only when a RUNTIME operand is involved — two literals stay native so they const-fold
       // (federated-retrieve arm elimination keeps its foldable guards). A scalar compare has no infinity.
-      if (temporalUdf && (aC.isEmpty || bC.isEmpty))
+      // `inLambda` keeps it native: Databricks forbids catalog UDFs inside a higher-order function's lambda.
+      if (temporalUdf && !inLambda && (aC.isEmpty || bC.isEmpty))
         Call(SqlNames.TemporalCmp,
           Seq(aC.map(str).getOrElse(a), int(0), bC.map(str).getOrElse(b), int(0), str(cmpOp(kind))))
       else {
@@ -595,6 +597,191 @@ object SqlColumnLowering {
       case Nil            => base
       case "value" :: Nil => base
       case seg :: rest    => navigate(base.getField(seg), rest)
+    }
+
+    // --- Aggregate functions (LANG-AGGREGATE-FUNCTIONS). The list arrives as an array (the frame lowering boxes a
+    // relation-encoded list first). CQL Reference, Aggregate Functions: every one ignores null elements, and all
+    // but Count, AllTrue and AnyTrue return null for a null list or one with no non-null element. ---
+    def nullDec: SqlExpr = Cast(Null, "DECIMAL(28,8)")
+    def d28(e: SqlExpr): SqlExpr = Cast(e, "DECIMAL(28,8)")
+    def lam1(name: String)(body: SqlExpr => SqlExpr): SqlExpr = Lambda(Seq(name), body(Col(name)))
+    def lam2(l: String, r: String)(body: (SqlExpr, SqlExpr) => SqlExpr): SqlExpr =
+      Lambda(Seq(l, r), body(Col(l), Col(r)))
+    def sizeOf(arr: SqlExpr): SqlExpr = ifc(arr.isNull, int(0), Call("size", Seq(arr)))
+    // A quantity with no value is a null element (`null as Quantity` is a struct with a null value).
+    def nonNull(arr: SqlExpr, quantity: Boolean): SqlExpr = Call("filter", Seq(arr, lam1("__ag_x") { x =>
+      if (quantity) x.isNotNull && x.getField("value").isNotNull else x.isNotNull }))
+
+    // The non-null elements as DECIMAL(28,8), and how many there are.
+    final case class Nums(vs: SqlExpr, n: SqlExpr)
+    def nums(vs: SqlExpr): Nums = Nums(vs, hoist(sizeOf(vs)))
+    def decSum(v: Nums): SqlExpr =
+      ifc(v.n === int(0), nullDec,
+        Call("aggregate", Seq(v.vs, d28(int(0)), lam2("__ag_acc", "__ag_x")((acc, x) => d28(acc + x)))))
+    def decAvg(v: Nums): SqlExpr =
+      ifc(v.n === int(0), nullDec, d28(Call("round", Seq(hoist(decSum(v)) / v.n, int(8)))))
+    // An even count averages the middle two, as the reference's MedianEvaluator does.
+    def decMedian(v: Nums): SqlExpr = {
+      val s = hoist(Call("sort_array", Seq(v.vs)))
+      val half = Cast(Infix("div", v.n, int(2)), "INT")
+      whenChain(Seq(
+        (v.n === int(0)) -> nullDec,
+        ((v.n % int(2)) === int(1)) -> Call("get", Seq(s, half))),
+        d28(Call("round", Seq((Call("get", Seq(s, half - int(1))) + Call("get", Seq(s, half))) / int(2), int(8)))))
+    }
+    // The sum of squared differences from the mean, then over n - 1 (sample) or n (population). A difference is
+    // narrowed to DECIMAL(19,8) so its square keeps 8 places (two DECIMAL(28,8) operands would round to 6).
+    def decVariance(v: Nums, population: Boolean): SqlExpr = {
+      val mean = hoist(decAvg(v))
+      val ssd = hoist(Call("aggregate", Seq(v.vs, d28(int(0)), lam2("__ag_acc", "__ag_x") { (acc, x) =>
+        val dx = Cast(x - mean, "DECIMAL(19,8)"); d28(acc + dx * dx) })))
+      if (population) ifc(v.n === int(0), nullDec, d28(Call("round", Seq(ssd / v.n, int(8)))))
+      else ifc(v.n < int(2), nullDec, d28(Call("round", Seq(ssd / (v.n - int(1)), int(8)))))
+    }
+    def decStdDev(v: Nums, population: Boolean): SqlExpr = d28(Call("sqrt", Seq(decVariance(v, population))))
+
+    // The most frequent element; a tie goes to the least, as the reference's ModeEvaluator (sort, then a strict
+    // `>` on the count) decides it. Elements compare by equality, so precisions that differ never match.
+    def modeOf(nn: SqlExpr): SqlExpr = {
+      val counted = Call("transform", Seq(Call("array_distinct", Seq(nn)), lam1("__ag_d") { d =>
+        Struct(Seq("c" -> Call("size", Seq(Call("filter", Seq(nn, lam1("__ag_y")(_ === d))))), "v" -> d)) }))
+      val ranked = Call("array_sort", Seq(counted, lam2("__ag_l", "__ag_r") { (l, r) =>
+        val (lc, rc, lv, rv) = (l.getField("c"), r.getField("c"), l.getField("v"), r.getField("v"))
+        whenChain(Seq((lc > rc) -> int(-1), (lc < rc) -> int(1), (lv < rv) -> int(-1), (lv > rv) -> int(1)), int(0))
+      }))
+      Call("get", Seq(ranked, int(0))).getField("v")
+    }
+
+    // Min/Max of dates, date-times and times: a left fold that replaces the running value only when the comparison
+    // is DECIDED (CQL ordering is precision-aware, so `@2012 < @2012-05` is null and keeps the running value), which
+    // is the reference's MinEvaluator/MaxEvaluator fold.
+    def temporalExtreme(arr: SqlExpr, max: Boolean): SqlExpr =
+      Call("aggregate", Seq(arr, Cast(Null, "STRING"), lam2("__ag_m", "__ag_x") { (m, x) =>
+        whenChain(Seq(x.isNull -> m, m.isNull -> x,
+          temporalCompare(x, m, None, None, inLambda = true)(if (max) Gt else Lt) -> x), m) }))
+
+    // A product over the non-null elements (CQL Reference, Product). Decimal factors narrow to DECIMAL(19,8) so the
+    // product keeps 8 places, which holds for factors below 10^11.
+    def productOf(nn: SqlExpr, t: CqlType): SqlExpr = {
+      val ty = sqlType(sparkType(t))
+      def mul(acc: SqlExpr, x: SqlExpr): SqlExpr =
+        if (t == DecimalType) Cast(acc, "DECIMAL(19,8)") * Cast(x, "DECIMAL(19,8)") else acc * x
+      Call("aggregate", Seq(nn, Cast(Null, ty), lam2("__ag_acc", "__ag_x") { (acc, x) =>
+        ifc(acc.isNull, Cast(x, ty), Cast(mul(acc, x), ty)) }))
+    }
+
+    // A list of quantities brought to one unit (LANG-QUANTITY): `vs` the non-null values in `unit`, `nn` the
+    // non-null quantities themselves (Min, Max and Mode return one of them), `ok` false when some unit cannot be
+    // converted, which makes the result null. A statically known unit needs no conversion. Otherwise the unit is
+    // known per row: a list in one unit keeps it (even one the UCUM table lacks), and a mixed list goes to its
+    // coarsest unit, as the reference's addition does (`1 'g' + 500 'mg'` is `1.5 'g'`), through the
+    // compile-time UCUM factors.
+    final case class Qs(nn: SqlExpr, v: Nums, unit: SqlExpr, ok: SqlExpr)
+    def quantities(arr: SqlExpr, staticUnit: Option[String]): Qs = {
+      val nn = hoist(nonNull(arr, quantity = true))
+      def value(x: SqlExpr): SqlExpr = d28(x.getField("value"))
+      staticUnit match {
+        case Some(u) =>
+          Qs(nn, nums(hoist(Call("transform", Seq(nn, lam1("__ag_x")(value))))), str(u), bool(true))
+        case None =>
+          def unitOf(x: SqlExpr): SqlExpr = Call("coalesce", Seq(x.getField("unit"), str("1")))
+          val units = hoist(Call("transform", Seq(nn, lam1("__ag_x")(unitOf))))
+          val factorMap = Call("map", Ucum.factors.flatMap { case (u, f) =>
+            Seq(str(u), Cast(Lit(f.bigDecimal.toPlainString), "DECIMAL(15,9)")) })
+          val coarsest = Call("array_max", Seq(Call("transform", Seq(nn, lam1("__ag_x") { x =>
+            Struct(Seq("f" -> Call("element_at", Seq(factorMap, unitOf(x))), "u" -> unitOf(x))) })))).getField("u")
+          val unit = hoist(ifc(Call("size", Seq(Call("array_distinct", Seq(units)))) <= int(1),
+            Call("get", Seq(units, int(0))), coarsest))
+          val toCoarser = Call("map", Ucum.toCoarserFactors(12).flatMap { case (from, to, f) =>
+            Seq(str(s"$from|$to"), Cast(Lit(f.bigDecimal.toPlainString), "DECIMAL(13,12)")) })
+          val vs = hoist(Call("transform", Seq(nn, lam1("__ag_x") { x =>
+            val factor = ifc(unitOf(x) === unit, int(1),
+              Call("element_at", Seq(toCoarser, Call("concat", Seq(unitOf(x), str("|"), unit)))))
+            d28(value(x) * Cast(factor, "DECIMAL(13,12)")) })))
+          val ok = hoist(Call("forall", Seq(vs, lam1("__ag_v")(_.isNotNull))))
+          Qs(nn, nums(vs), unit, ok)
+      }
+    }
+    def quantityOf(q: Qs, value: SqlExpr, unit: SqlExpr): SqlExpr =
+      ifc(q.ok && value.isNotNull, Struct(Seq("value" -> d28(value), "unit" -> unit)), Null)
+    // The element whose converted value is `picked` (the first such, as the reference's strict-comparison folds keep).
+    def elementWith(q: Qs, picked: SqlExpr): SqlExpr =
+      ifc(q.ok, Call("get", Seq(q.nn, Cast(Call("array_position", Seq(q.v.vs, picked)) - int(1), "INT"))), Null)
+
+    // The list an aggregate reads. A bare `null` list (`AllTrue(null)`) is typed so the higher-order functions
+    // accept it.
+    def listOperand(src: Expr): SqlExpr = go(src) match {
+      case Null => Cast(Null, s"array<${sparkType(elementOfList(src))}>")
+      case a    => hoist(a)
+    }
+
+    def aggregate(op: AggregateOp, src: Expr): SqlExpr = {
+      import AggregateOp._
+      val elem = elementOfList(src)
+      val arr = listOperand(src)
+      def unsupported(why: String): Nothing = throw UnsupportedNode(op.elmType, why)
+      op match {
+        // AllTrue of a null or empty list is true and AnyTrue is false (the reference agrees).
+        case AllTrue => Call("coalesce", Seq(!Call("exists", Seq(arr, lam1("__ag_x")(_ <=> bool(false)))), bool(true)))
+        case AnyTrue => Call("coalesce", Seq(Call("exists", Seq(arr, lam1("__ag_x")(_ <=> bool(true)))), bool(false)))
+        case _ => elem match {
+          case QuantityType(u) =>
+            val q = quantities(arr, u)
+            op match {
+              case Sum      => quantityOf(q, decSum(q.v), q.unit)
+              case Avg      => quantityOf(q, decAvg(q.v), q.unit)
+              case Median   => quantityOf(q, decMedian(q.v), q.unit)
+              case Min      => elementWith(q, Call("array_min", Seq(q.v.vs)))
+              case Max      => elementWith(q, Call("array_max", Seq(q.v.vs)))
+              case Mode     => elementWith(q, modeOf(q.v.vs))
+              case StdDev   => quantityOf(q, decStdDev(q.v, population = false), q.unit)
+              case PopulationStdDev => quantityOf(q, decStdDev(q.v, population = true), q.unit)
+              // The square of the unit, spelled as `Ucum.squared` spells it.
+              case Variance | PopulationVariance =>
+                val sq = u.map(s => str(Ucum.squared(s))).getOrElse(ifc(q.unit === str("1"), str("1"), Call("concat", Seq(q.unit, str("2")))))
+                quantityOf(q, decVariance(q.v, population = op == PopulationVariance), sq)
+              case Product | GeometricMean =>
+                unsupported("over quantities needs compound-unit algebra, which is not built")
+              case AllTrue | AnyTrue => unsupported("over quantities")
+            }
+          case t @ (IntegerType | LongType | DecimalType | StringType | _: DateType | _: DateTimeType | _: TimeType | BooleanType) =>
+            val numeric = t == IntegerType || t == LongType || t == DecimalType
+            def decimals: Nums = nums(hoist(Call("transform", Seq(nonNull(arr, quantity = false), lam1("__ag_x")(d28)))))
+            op match {
+              case Min | Max if isDateType(t)          => temporalExtreme(arr, max = op == Max)
+              case Min | Max if t != BooleanType       => Call(if (op == Max) "array_max" else "array_min", Seq(arr))
+              case Mode                                => modeOf(hoist(nonNull(arr, quantity = false)))
+              case Sum if t == DecimalType             => decSum(decimals)
+              case Sum | Product if t == IntegerType || t == LongType =>
+                val ty = sqlType(sparkType(t))
+                if (op == Product) productOf(hoist(nonNull(arr, quantity = false)), t)
+                else Call("aggregate", Seq(arr, Cast(Null, ty), lam2("__ag_acc", "__ag_x") { (acc, x) =>
+                  whenChain(Seq(x.isNull -> acc, acc.isNull -> x), Cast(acc + x, ty)) }))
+              case Product if t == DecimalType         => productOf(hoist(nonNull(arr, quantity = false)), t)
+              case Avg if numeric                      => decAvg(decimals)
+              case Median if numeric                   => decMedian(decimals)
+              case Variance if numeric                 => decVariance(decimals, population = false)
+              case PopulationVariance if numeric       => decVariance(decimals, population = true)
+              case StdDev if numeric                   => decStdDev(decimals, population = false)
+              case PopulationStdDev if numeric         => decStdDev(decimals, population = true)
+              // GeometricMean(X) = Power(Product(X), 1 / Count(X)) (CQL Reference, GeometricMean), the exponent a
+              // CQL Decimal division.
+              case GeometricMean if numeric =>
+                val nn = hoist(nonNull(arr, quantity = false))
+                val n = hoist(sizeOf(nn))
+                ifc(n === int(0), nullDec,
+                  d28(Call("power", Seq(productOf(nn, DecimalType), Call("round", Seq(decimal(BigDecimal(1)) / n, int(8)))))))
+              case _ => unsupported(s"over ${t.show}")
+            }
+          // A list with no element type: only a list of nulls (or no elements) types this way, and it has no
+          // non-null element to aggregate.
+          case AnyType => src match {
+            case ListExpr(es) if es.forall(isNullish) => Null
+            case _ => unsupported("over a list whose element type is unknown")
+          }
+          case t => unsupported(s"over ${t.show}")
+        }
+      }
     }
 
     def go(e: Expr): SqlExpr = e match {
@@ -890,7 +1077,11 @@ object SqlColumnLowering {
       case Exists(o)        => Call("size", Seq(go(o))) > int(0)
       case First(o)         => Call("get", Seq(go(o), int(0)))
       case Last(o)          => val a = go(o); Call("get", Seq(a, Call("size", Seq(a)) - int(1)))
-      case Count(o)         => Call("size", Seq(go(o)))
+      // CQL Count is the number of non-null elements, 0 for a null list (CQL Reference, Count).
+      case Count(o) =>
+        val a = listOperand(o)
+        ifc(a.isNull, int(0), Call("size", Seq(nonNull(a, quantity = isQuantityLikeType(elementOfList(o))))))
+      case AggregateFunction(op, src) => aggregate(op, src)
       case Split(s, sep) =>
         val pattern = sep match {
           case Literal(_, Some(v)) => java.util.regex.Pattern.quote(v)

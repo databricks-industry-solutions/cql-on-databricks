@@ -1,0 +1,3 @@
+{"valueset_id": "http://example.org/fhir/ValueSet/sample-colonoscopy", "system": "https://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets", "code": "G0105", "display": "Colorectal cancer screening; colonoscopy on individual at high risk"}
+{"valueset_id": "http://example.org/fhir/ValueSet/sample-colonoscopy", "system": "https://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets", "code": "G0121", "display": "Colorectal cancer screening; colonoscopy on individual not meeting criteria for high risk"}
+{"valueset_id": "http://example.org/fhir/ValueSet/sample-colonoscopy", "system": "http://www.cms.gov/Medicare/Coding/ICD10", "code": "0DJD8ZZ", "display": "Inspection of Lower Intestinal Tract, Via Natural or Artificial Opening Endoscopic"}

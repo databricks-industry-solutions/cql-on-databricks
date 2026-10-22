@@ -100,6 +100,24 @@ object Ucum {
       case _                                            => None
     }
 
+  /** LANG-AGGREGATE-FUNCTIONS: the unit of a quantity multiplied by itself, spelled as the engine's quantity
+    * `Multiply` spells it (`cm` -> `cm2`). The dimensionless `'1'` stays `'1'`. */
+  def squared(unit: String): String = if (unit == "1") "1" else unit + "2"
+
+  /** LANG-AGGREGATE-FUNCTIONS: every modeled unit with its factor, for the runtime choice of the coarsest unit in
+    * a list of quantities whose units are only known per row. Deterministically ordered (TECH-DETERMINISM). */
+  def factors: Seq[(String, BigDecimal)] = units.toSeq.map { case (u, (_, f)) => u -> f }.sortBy(_._1)
+
+  /** LANG-AGGREGATE-FUNCTIONS: `(from, to, factor)` for every pair of commensurable modeled units where `to` is
+    * the coarser, so the factor is at most 1: the conversions a runtime-unit aggregate needs to bring each element
+    * to the list's coarsest unit. A non-terminating factor (`min` to `wk`) is rounded half-up at `scale` places. */
+  def toCoarserFactors(scale: Int): Seq[(String, String, BigDecimal)] =
+    (for {
+      (from, (d1, f1)) <- units.toSeq
+      (to, (d2, f2))   <- units.toSeq
+      if from != to && d1 == d2 && f1 < f2
+    } yield (from, to, (f1 / f2).setScale(scale, BigDecimal.RoundingMode.HALF_UP))).sortBy(t => (t._1, t._2))
+
   // --- CQL calendar duration units (LANG-QUANTITY, temporal-duration comparison) -------------
   //
   // CQL duration KEYWORDS (`year`…`millisecond` and plurals) and their UCUM symbols compare under

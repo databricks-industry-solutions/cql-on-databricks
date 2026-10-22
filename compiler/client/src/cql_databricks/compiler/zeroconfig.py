@@ -14,7 +14,7 @@ or, holding the session explicitly (fluent) and mounting a Git Folder of CQL as 
 
     from cql_databricks.compiler import connect
     client = connect(spark, library_path="/Workspace/Users/me/measure-content/input/cql")
-    client.cql(library="BasicEncounterAndCondition") \\
+    client.cql(library="HypertensionBPControl") \\
           .with_measurement_period("2026-01-01", "2026-12-31").exec("Initial Population")
 
 The endpoint + OAuth are resolved ON INIT (at ``connect()`` / the first ``cql()``), inside the notebook or
@@ -23,7 +23,7 @@ the OSS client anticipates; the OSS core still imports no platform SDK (`APP-DEC
 """
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Sequence
 
 from cql_databricks.compiler import CqlClient, CqlQuery
 from cql_databricks.compiler.libraries import resolve_library_provider
@@ -33,6 +33,7 @@ from .compile_shim import CqlDatabricksCompileProvider, discover_udf_schema
 from .discovery import DatabricksDataBinder
 from .provider import CONF_APP_NAME, make_provider
 from .session_libraries import session_provider
+from .session_scope import SessionScope
 from .session_state import SessionRecord
 
 
@@ -56,7 +57,7 @@ def connect(spark=None, *, app_name: Optional[str] = None, data_catalog: Optiona
     ``library_path`` mounts one or more directories of CQL as the session's library source
     (`SVC-NOTEBOOK-LIBRARY-FOLDER`) — typically a Databricks **Git Folder** under ``/Workspace``, or a UC
     Volume. Roots are ORDERED and earlier wins, so an override directory shadows a vendored content repo.
-    With it set, ``client.cql(library="BasicEncounterAndCondition")`` resolves that library BY NAME and ships its whole
+    With it set, ``client.cql(library="HypertensionBPControl")`` resolves that library BY NAME and ships its whole
     ``include`` closure with the compile (`BUILD-LIBRARY-PROVIDER`, `BUILD-COMPILE-LINK`). Omit it and the
     folder still resolves from ``spark.cqldatabricks.libraryPath`` / ``CQL_DATABRICKS_LIBRARY_PATH``, which is how the
     ``%%cql`` magic and the module-level :func:`cql`, which build their own client, see the same folder
@@ -66,6 +67,10 @@ def connect(spark=None, *, app_name: Optional[str] = None, data_catalog: Optiona
     measure can be written across cells and a later cell's ``include`` finds an earlier cell's library. One
     lookup order, cells first — a cell shadows a published library of the same name, which is what makes it
     an override while you draft.
+
+    CQL with NO ``library`` header — a ``%%cql`` cell or a ``client.cql("...")`` string — joins the session
+    library instead (`SVC-NOTEBOOK-SESSION-SCOPE`): a later fragment sees an earlier one's defines unqualified,
+    and redeclaring a name replaces it. Every client on the session shares it, like the cells.
 
     ``spark`` is the session runs execute against (else the active one). The keyword overrides are only for
     a NON-convention deployment: ``app_name`` (a Compiler Service App not named the default),
@@ -118,6 +123,8 @@ def connect(spark=None, *, app_name: Optional[str] = None, data_catalog: Optiona
         # provider below is built from these same roots, never from a second source of truth.
         builder = builder.library_path(*roots)
     builder = builder.library_provider(_library_provider(roots, spark, scopes))
+    # SVC-NOTEBOOK-SESSION-SCOPE: header-less CQL joins the session library, kept beside the cells.
+    builder = builder.session_scope(SessionScope(SessionRecord(spark)))
     client = builder.build()
     # SVC-RUNTIME-UDF: register the opaque-UDF catalog on a JVM-backed classic session. Since
     # SVC-NOTEBOOK-RUNTIME-BIND qualifies every emitted `cql_*` call against the UC catalog, nothing the
@@ -272,7 +279,7 @@ def resolve_libraries(source: str, *, spark=None, catalog_scopes: Optional[Itera
     return resolve(_session_content(spark, catalog_scopes), cql=source).require_complete().include_sources
 
 
-def translate(source: str, *, app_name: Optional[str] = None) -> str:
+def translate(source: str, *, includes: Sequence[str] = (), app_name: Optional[str] = None) -> str:
     """CQL → ELM JSON via the Compiler Service App's ``/translate`` endpoint (`EMIT-INTERCHANGE`).
 
     Returns the portable ELM interchange string the engine's front end produces from ``source`` — the IR
@@ -280,14 +287,17 @@ def translate(source: str, *, app_name: Optional[str] = None) -> str:
     ``CqlQuery.elm()`` is empty for raw inline CQL (the service translates on compile, no ELM egress), so
     this helper hits ``/translate`` directly through the SAME auto-discovered App endpoint + OAuth as
     :func:`connect` — no endpoint, token, or provider selection needed. Data-free (a pure front-end
-    translate; no Spark session)."""
+    translate; no Spark session).
+
+    ``includes`` is the CQL of every library ``source`` includes, FHIRHelpers among them: the compiler bundles
+    no library, so an include no source provides fails the translation (`LANG-FHIRHELPERS-FROM-CONTENT`)."""
     import requests  # lazy: keep the package importable without requests
 
     conf = {CONF_APP_NAME: app_name} if app_name else {}
     provider = make_provider(conf)  # RemoteProvider: discovered App URL + OAuth token-exchange
     url = provider._base + "/translate"
     headers = {"Content-Type": "application/json", **provider._credentials.auth_headers()}
-    resp = requests.post(url, json={"cql": source}, headers=headers, timeout=60)
+    resp = requests.post(url, json={"cql": source, "includes": list(includes)}, headers=headers, timeout=60)
     if resp.status_code != 200:
         raise RuntimeError(f"{url} returned {resp.status_code}: {resp.text}")
     return resp.json()["elm"]

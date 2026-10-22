@@ -1,0 +1,37 @@
+{
+  "measure": "HypertensionBPControl",
+  "version": "1.0.0",
+  "populations": {
+    "Initial Population": 0.6,
+    "Denominator Exclusions": 0.08,
+    "Numerator": 0.62
+  },
+  "routes": {
+    "Denominator Exclusions": {
+      "Common.In Hospice Care": 1,
+      "Common.Has Palliative Care": 1,
+      "Has Kidney Failure": 3,
+      "Pregnant During Period": 1
+    }
+  },
+  "quantities": {
+    "Systolic blood pressure": {
+      "range": [
+        95,
+        185
+      ]
+    },
+    "Diastolic blood pressure": {
+      "range": [
+        55,
+        115
+      ]
+    }
+  },
+  "members": {
+    "Sample Kidney Failure": {
+      "N18.6": 3,
+      "Z99.2": 2
+    }
+  }
+}

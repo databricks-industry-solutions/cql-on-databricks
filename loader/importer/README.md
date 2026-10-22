@@ -5,7 +5,7 @@ writers and tags. The [loader README](../README.md) lists what it writes and how
 
 | Input | Run by | What it loads |
 |---|---|---|
-| The sample measures, value sets and patients in `examples/` (`samples.py`, `CONTENT-SAMPLE-PRELOAD`) | The deploy (`scripts/deploy/provision-samples.py`) | `<catalog>.sample_measures` (knowledge and terminology) and the data source `sample-patients` |
+| The sample measures, value sets and patients in `examples/` (`samples.py`, `CONTENT-SAMPLE-PRELOAD`) | The deploy (`scripts/deploy/provision-samples.py`) | `<catalog>.sample_measures` (knowledge and terminology) and the data source `synthetic-population-small` |
 | One eCQI measure package you choose (`ecqi.py`, `CONTENT-ECQI-TERMS-GATE`) | You: `python -m content_ingest ecqi <package>` | `--schema` (measures and libraries) and `--valueset-schema` (their VSAC expansions) |
 
 The repository ships no official measure content and no list of measures. Everything in `examples/` is

@@ -148,7 +148,7 @@ final class MaterializePolicySpec extends AnyFunSuite {
         |context Patient
         |define "Initial Population": Visits."Has RoutineEncounter" and exists [Encounter: "SpecializedEncounter"]
         |""".stripMargin
-    val closure = CqlToElmCli.translateClosure(rootCql, Seq(dep))
+    val closure = CqlToElmCli.translateClosure(rootCql, Seq(dep, Paths.read(Paths.cql("FHIRHelpers"))))
     val root = Pipeline().load(closure.root.elmJson.getOrElse(fail(closure.root.errors.mkString("; "))))
     val deps = closure.dependencies.map(e => Pipeline().load(e))
     val lib = Pipeline().normalize(LibraryLinker.prune(

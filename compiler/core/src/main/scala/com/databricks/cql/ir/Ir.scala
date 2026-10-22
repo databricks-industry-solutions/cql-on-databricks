@@ -442,6 +442,36 @@ final case class Last(operand: Expr) extends UnaryExpr {
 final case class Count(operand: Expr) extends UnaryExpr {
   val elmType = "Count"; protected def rebuild(o: Expr) = Count(o)
 }
+
+/** The CQL aggregate functions other than `Count` (LANG-AGGREGATE-FUNCTIONS), named by the ELM `type` they load
+  * from. One IR node carries them all, as [[Convert]] carries the conversion operators. */
+sealed abstract class AggregateOp(val elmType: String)
+object AggregateOp {
+  case object Sum                extends AggregateOp("Sum")
+  case object Min                extends AggregateOp("Min")
+  case object Max                extends AggregateOp("Max")
+  case object Avg                extends AggregateOp("Avg")
+  case object Median             extends AggregateOp("Median")
+  case object Mode               extends AggregateOp("Mode")
+  case object Variance           extends AggregateOp("Variance")
+  case object StdDev             extends AggregateOp("StdDev")
+  case object PopulationVariance extends AggregateOp("PopulationVariance")
+  case object PopulationStdDev   extends AggregateOp("PopulationStdDev")
+  case object Product            extends AggregateOp("Product")
+  case object GeometricMean      extends AggregateOp("GeometricMean")
+  case object AllTrue            extends AggregateOp("AllTrue")
+  case object AnyTrue            extends AggregateOp("AnyTrue")
+
+  val all: Seq[AggregateOp] = Seq(Sum, Min, Max, Avg, Median, Mode, Variance, StdDev, PopulationVariance,
+    PopulationStdDev, Product, GeometricMean, AllTrue, AnyTrue)
+  val byElmType: Map[String, AggregateOp] = all.map(o => o.elmType -> o).toMap
+}
+
+/** LANG-AGGREGATE-FUNCTIONS: an ELM aggregate expression — `op` reduces the list `operand` to one value. ELM carries
+  * the list in `source`, like [[Count]]. */
+final case class AggregateFunction(op: AggregateOp, operand: Expr) extends UnaryExpr {
+  val elmType = op.elmType; protected def rebuild(o: Expr) = AggregateFunction(op, o)
+}
 /** ELM `Indexer` — `list[index]`, 0-based per CQL (LANG-LIST); out-of-range is null. */
 final case class Indexer(list: Expr, index: Expr) extends BinaryExpr {
   val elmType = "Indexer"; def left = list; def right = index

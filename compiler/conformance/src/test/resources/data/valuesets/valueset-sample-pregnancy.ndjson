@@ -1,0 +1,2 @@
+{"valueset_id": "http://example.org/fhir/ValueSet/sample-pregnancy", "system": "http://hl7.org/fhir/sid/icd-10-cm", "code": "Z33.1", "display": "Pregnant state, incidental"}
+{"valueset_id": "http://example.org/fhir/ValueSet/sample-pregnancy", "system": "http://hl7.org/fhir/sid/icd-10-cm", "code": "Z34.90", "display": "Encounter for supervision of normal pregnancy, unspecified, unspecified trimester"}

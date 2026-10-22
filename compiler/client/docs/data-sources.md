@@ -36,7 +36,7 @@ Value-set expansions and libraries come from schemas tagged `cql_databricks_term
 
 ## Sources this repository ships
 
-- Sample patients (`sample-patients`): the patients in `examples/data` the sample measures run over.
-  `scripts/deploy/deploy.sh` loads them (`DATA-SAMPLE-SOURCE`).
+- Synthetic Population Small (`synthetic-population-small`): the patients in `examples/data` the sample measures
+  run over, about 1,000 synthesized per measure. `scripts/deploy/deploy.sh` loads them (`DATA-SYNTH-SMALL`).
 - Synthetic Population Large: synthesized cohorts with expected results per patient, loaded with
   `loader/scripts/synthetic-population/load.py`. See [Synthetic data](../../../loader/docs/synthetic-data.md).

@@ -1,0 +1,2 @@
+{"valueset_id": "http://example.org/fhir/ValueSet/sample-hba1c-lab-test", "system": "http://loinc.org", "code": "4548-4", "display": "Hemoglobin A1c/Hemoglobin.total in Blood"}
+{"valueset_id": "http://example.org/fhir/ValueSet/sample-hba1c-lab-test", "system": "http://loinc.org", "code": "17856-6", "display": "Hemoglobin A1c/Hemoglobin.total in Blood by HPLC"}

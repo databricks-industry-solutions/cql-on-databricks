@@ -38,6 +38,7 @@ LIBRARIES = [
     _library(SHARED, "Common", "1.0.0", ("Helpers", "1.0.0")),
     _library(SHARED, "Helpers", "1.0.0"),
     _library(SHARED, "Helpers", "3.0.0"),
+    _library(SHARED, "FHIRHelpers", "4.0.1"),
 ]
 
 
@@ -82,10 +83,12 @@ class KnowledgeLibraryProviderTest(unittest.TestCase):
         with self.assertRaisesRegex(LibraryResolutionError, "Helpers"):
             self.knowledge.resolve(LibraryRef("Helpers", "9.9.9"))
 
-    def test_the_closure_is_one_walk_of_the_corpus_without_compiler_provided_libraries(self):
+    def test_the_closure_is_one_walk_of_the_corpus_fhirhelpers_included(self):
+        """LANG-FHIRHELPERS-FROM-CONTENT: FHIRHelpers comes from tagged knowledge like any included library."""
         root = self.knowledge.resolve(LibraryRef("Measure", "1.0.0"))
         self.assertEqual(_where(self.knowledge.closure(root)), [
-            ("Helpers", "1.0.0", "acme_dev.cql"), ("Common", "1.0.0", "acme_shared.ecqm")])
+            ("Helpers", "1.0.0", "acme_dev.cql"), ("Common", "1.0.0", "acme_shared.ecqm"),
+            ("FHIRHelpers", "4.0.1", "acme_shared.ecqm")])
 
     def test_an_include_no_scope_holds_fails_naming_the_scopes(self):
         with self.assertRaisesRegex(LibraryResolutionError, "acme_dev.cql, acme_shared"):
@@ -124,11 +127,11 @@ class PrecedenceTest(unittest.TestCase):
         draft = LibrarySource("Draft", "1", cql=_cql("Draft", "1", ("Measure", "1.0.0")))
         self.assertEqual(_where(self.session.closure(draft)), [
             ("Measure", "1.0.0", "acme_shared.ecqm"), ("Helpers", "1.0.0", "acme_dev.cql"),
-            ("Common", "1.0.0", "acme_shared.ecqm")])
+            ("Common", "1.0.0", "acme_shared.ecqm"), ("FHIRHelpers", "4.0.1", "acme_shared.ecqm")])
 
     def test_a_folder_library_includes_what_only_tagged_knowledge_holds(self):
         local = self.session.resolve(LibraryRef("Local"))
-        self.assertEqual([s.name for s in self.session.closure(local)], ["Measure", "Helpers", "Common"])
+        self.assertEqual([s.name for s in self.session.closure(local)], ["Measure", "Helpers", "Common", "FHIRHelpers"])
         self.assertTrue(all(from_knowledge(s) for s in self.session.closure(local)))
 
     def test_without_a_folder_tagged_knowledge_answers_alone(self):

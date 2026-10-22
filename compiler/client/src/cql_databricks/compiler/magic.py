@@ -19,7 +19,12 @@ Which defines run: ``--target`` if given (repeatable), else the measure's auto-d
 else every define (`BUILD-CLIENT-POPULATIONS`). One target binds a DataFrame; several bind a
 ``{define: DataFrame}`` dict.
 
-A cell that declares a `library` header is also REGISTERED as a session library
+A cell with NO `library` header joins the session library (`SVC-NOTEBOOK-SESSION-SCOPE`), as a SQL cell's
+view lands in the session's namespace: a later cell sees its defines unqualified, and redeclaring a name
+replaces it. It runs only its own defines. A cell of declarations alone (a `valueset`, a `parameter`) runs
+nothing; it is there for later cells.
+
+A cell that declares a `library` header is its own library, REGISTERED as a session library
 (`SVC-NOTEBOOK-CELL-LIBRARY`), so a later cell can ``include`` it and a measure can be written across
 cells. ``--library`` registers without running, for a cell of shared definitions there is no point
 evaluating.
@@ -65,14 +70,20 @@ class CqlMagics(Magics):
             if declared is None:
                 raise UsageError(
                     "--library needs a `library <Name> version '<v>'` header — that identity is what a "
-                    "later cell's `include` resolves. Drop --library to run an unnamed snippet.")
+                    "later cell's `include` resolves. Drop --library: a cell with no header joins the "
+                    "session library (SVC-NOTEBOOK-SESSION-SCOPE).")
             print(f"declared {declared.ref} — includable by later cells")
             return
 
         query = _run_cql(cell, spark=self.shell.user_ns.get("spark"))
 
-        targets = args.target or query.populations() or query.defines()
-        frames = {name: query.exec(name) for name in targets}
+        targets = args.target or query.default_targets()
+        if not targets:
+            if args.df:
+                raise UsageError("--df needs a define to bind, and this cell declares none")
+            print("added to the session library — no defines to run")
+            return
+        frames = query.exec(*targets) if len(targets) > 1 else {targets[0]: query.exec(targets[0])}
 
         for name, df in frames.items():
             if len(frames) > 1:

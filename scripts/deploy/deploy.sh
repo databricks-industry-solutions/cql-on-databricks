@@ -15,7 +15,7 @@
 #   8. Load the sample measures and patients from examples/ and bind the knowledge views, as the deployer
 #      (CONTENT-SAMPLE-PRELOAD, DATA-BIND-AUTO).
 # Before 2, the maintenance principal is created and granted (RUN-CLIENT-MAINTENANCE): it is the run-as of the
-# cql-maintenance Job the bundle deploys at 3.
+# cql-databricks-designer-maintenance Job the bundle deploys at 3.
 # Re-run any time to redeploy + restart.
 #
 # Prereqs (one-time): `databricks auth login` / a CLI profile (U2M OAuth) — all auth is OAuth. Nothing
@@ -98,7 +98,7 @@ echo "==> catalog scopes=$_catalog_scopes"
 
 # RUN-CLIENT-MAINTENANCE — the private catalog is an administrator prerequisite; deployment only grants
 # the maintenance principal its authority on it (RUN-CLIENT-PRIVATE-PROVISIONING). Its application ID is the
-# cql-maintenance Job's run-as, so it must exist before [3/7] deploys the Job.
+# cql-databricks-designer-maintenance Job's run-as, so it must exist before [3/7] deploys the Job.
 _maintenance_principal="$(bash "$here/scripts/deploy/grant-maintenance-access.sh" -t "$target" ${profile_args[@]+"${profile_args[@]}"} | tail -1)"
 [ -n "$_maintenance_principal" ] || { echo "!!! the maintenance principal setup printed no application ID"; exit 1; }
 export BUNDLE_VAR_maintenance_principal="$_maintenance_principal"
@@ -131,7 +131,7 @@ export CQL_DATABRICKS_ARTIFACT_VOLUME="$volume"
 # step [4/7] builds, even if the tree changes in between.
 . "$here/scripts/lib/client-wheel-version.sh"
 CQL_CLIENT_WHEEL_VERSION="$(client_wheel_version)"; export CQL_CLIENT_WHEEL_VERSION
-# The cql-maintenance Job installs this same wheel from the runtime volume.
+# The cql-databricks-designer-maintenance Job installs this same wheel from the runtime volume.
 export BUNDLE_VAR_client_wheel_version="$CQL_CLIENT_WHEEL_VERSION"
 echo "==> client wheel version=$CQL_CLIENT_WHEEL_VERSION"
 echo "$keys" | grep -qx "cql_databricks_compiler" && "$here/scripts/deploy/stage-compiler.sh"

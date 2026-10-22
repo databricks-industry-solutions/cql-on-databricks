@@ -84,6 +84,23 @@ class ElmCodecSpec extends AnyFunSuite {
     assert(ElmCodec.loadString(ElmCodec.emitString(ir1)) == ir1)
   }
 
+  // LANG-AGGREGATE-FUNCTIONS: each aggregate loads from its `source` into one node and round-trips; a `path`
+  // (never emitted for CQL) is refused rather than dropped.
+  test("ELM aggregate functions load as AggregateFunction and round-trip") {
+    def lib(expr: String) =
+      s"""{"library":{"identifier":{"id":"A","version":"1"},"statements":{"def":[
+         |  {"type":"ExpressionDef","name":"X","context":"Unfiltered","expression":$expr}]}}}""".stripMargin
+    val list = """{"type":"List","element":[{"type":"Literal","valueType":"{urn:hl7-org:elm-types:r1}Integer","value":"1"}]}"""
+    AggregateOp.all.foreach { op =>
+      val ir1 = ElmCodec.loadString(lib(s"""{"type":"${op.elmType}","source":$list}"""))
+      assert(ir1.collect { case a: AggregateFunction => a.op }.toList == List(op))
+      assert(ElmCodec.loadString(ElmCodec.emitString(ir1)) == ir1)
+    }
+    assertThrows[com.databricks.cql.error.ElmLoadError] {
+      ElmCodec.loadString(lib(s"""{"type":"Sum","source":$list,"path":"value"}"""))
+    }
+  }
+
   test("ELM IdentifierRef loads as IdentifierRef and round-trips") {
     val elm =
       """{"library":{"identifier":{"id":"R","version":"1"},

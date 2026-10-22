@@ -1,42 +1,42 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  An excerpt of a Specification for BasicEncounterAndCondition, the basic measure written for
+  An excerpt of a Specification for HypertensionBPControl, the hypertension sample measure written for
   this repository (examples/measures). Synthetic: the measure and its prose are this repository's own.
   It shows the document shape the Designer reads.
 -->
 <Specification xmlns="https://cql-databricks.databricks.com/spec/1.0" schemaVersion="1.0">
-  <Identity library="BasicEncounterAndCondition" version="1.0.0" fhirVersion="4.0.1"
+  <Identity library="HypertensionBPControl" version="1.0.0" fhirVersion="4.0.1"
             scoring="proportion" context="patients">
-    <Title>Patients with an encounter during the measurement period who have any condition</Title>
+    <Title>Adults with hypertension whose most recent blood pressure is below 140/90 mmHg</Title>
   </Identity>
   <Provenance>
-    <LibraryPin library="BasicEncounterAndCondition" version="1.0.0"/>
-    <LibraryPin library="EncounterDuringPeriod" version="1.0.0"/>
+    <LibraryPin library="HypertensionBPControl" version="1.0.0"/>
+    <LibraryPin library="SampleMeasureCommon" version="1.0.0"/>
   </Provenance>
   <Overview>
-    <Description provenance="authored" author="cql-databricks" sourceTag="description">The share of patients
-      with an encounter during the measurement period who have at least one condition recorded.</Description>
+    <Description provenance="authored" author="cql-databricks" sourceTag="description">The share of adults
+      with hypertension whose most recent blood pressure in the measurement period is below 140/90 mmHg.</Description>
     <Intent>
-      <Statement provenance="authored" author="cql-databricks" sourceTag="intent">Show how many patients in
-        active care have recorded conditions, to identify patients with clinical context.</Statement>
+      <Statement provenance="authored" author="cql-databricks" sourceTag="intent">Identify hypertensive patients
+        achieving blood pressure control to improve cardiovascular health outcomes.</Statement>
     </Intent>
     <ScopeNonGoals>
-      <InScope provenance="authored" author="cql-databricks" sourceTag="scope">Encounters and conditions of any
-        status and type.</InScope>
+      <InScope provenance="authored" author="cql-databricks" sourceTag="scope">Hypertension diagnosis and blood
+        pressure readings from outpatient settings during the measurement period.</InScope>
     </ScopeNonGoals>
   </Overview>
   <PopulationCriteria>
     <Population kind="initial-population" define="Initial Population"
-                library="BasicEncounterAndCondition" stableId="pop-initial-population" id="pop-IP">
-      <Narrative provenance="authored" author="cql-databricks" sourceTag="description">Patients who had
-        <ConceptRef library="EncounterDuringPeriod"
-        define="Has Encounter During Period">an encounter during the measurement period</ConceptRef> and have
-        <ConceptRef library="BasicEncounterAndCondition"
-        define="Has Any Condition">at least one condition on record</ConceptRef>.</Narrative>
-      <Concept define="Has Encounter During Period" library="EncounterDuringPeriod"
-               stableId="concept-encounter-period" id="c-encounter-period" provenance="derived"/>
-      <Concept define="Has Any Condition" library="BasicEncounterAndCondition"
-               stableId="concept-any-condition" id="c-any-condition" provenance="derived"/>
+                library="HypertensionBPControl" stableId="pop-initial-population" id="pop-IP">
+      <Narrative provenance="authored" author="cql-databricks" sourceTag="description">Adults 18-85 with
+        <ConceptRef library="HypertensionBPControl"
+        define="Has Hypertension">hypertension</ConceptRef> and at least one
+        <ConceptRef library="SampleMeasureCommon"
+        define="Qualifying Encounters">qualifying outpatient visit</ConceptRef> during the measurement period.</Narrative>
+      <Concept define="Has Hypertension" library="HypertensionBPControl"
+               stableId="concept-hypertension" id="c-hypertension" provenance="derived"/>
+      <Concept define="Qualifying Encounters" library="SampleMeasureCommon"
+               stableId="concept-qualifying-encounters" id="c-qualifying-encounters" provenance="derived"/>
     </Population>
   </PopulationCriteria>
 </Specification>

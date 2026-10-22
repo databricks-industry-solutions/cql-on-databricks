@@ -29,6 +29,7 @@ Paths are lowercase kebab-case (`BUILD-URL-KEBAB`).
 | `GET /health` | | `{status: "ok"}` | App and local |
 | `POST /translate` | `{cql, includes?}` | `{elm, diagnostics, ok}` | App and UC |
 | `POST /resource-schema` | `{types: [...]}` or `{}` | per-type mount DDL and the same struct as Spark's JSON schema (`CLIENT-RESOURCE-SCHEMA`), or the list of modeled resource types (`SVC-RESOURCE-SCHEMA`) | App and UC |
+| `POST /merge-cql` | `{fragments: [cql, ...]}`, header-less, in order | `{cql, defines}`: one library, the latest declaration of each name winning, and the defines of the last fragment (`SVC-NOTEBOOK-SESSION-SCOPE`) | all |
 
 The caller resolves the CQL include closure and sends it in `deps` (`BUILD-COMPILE-LINK`). The service
 links what it's given and does no library lookup. A missing dependency fails the compile.

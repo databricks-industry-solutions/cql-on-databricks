@@ -15,6 +15,9 @@
 # MAGIC name, exactly as it would include something out of a Git Folder. The last section publishes the draft
 # MAGIC to a folder and runs it from there unchanged, which is the whole point of drafting this way.
 # MAGIC
+# MAGIC A cell *without* a header joins the notebook's session library instead (notebook 1, section 8). That
+# MAGIC is for exploring. A header is what makes logic a named library you can include, version and publish.
+# MAGIC
 # MAGIC **Runs on serverless — no cluster to attach.** Just **Run All**.
 
 # COMMAND ----------
@@ -44,8 +47,7 @@ reset(spark)
 # MAGIC data/         FHIR NDJSON, one file per resource type
 # MAGIC ```
 # MAGIC
-# MAGIC It is the same twenty-patient dataset notebook 3 uses, so the numbers at the end are comparable
-# MAGIC to the ones there.
+# MAGIC It is the same 4,000-patient dataset notebook 3 uses.
 # MAGIC
 # MAGIC **Expected output:** the resolved folder, then the data directory — for example
 # MAGIC ```
@@ -146,7 +148,7 @@ print("libraries declared so far:", [str(r) for r in client.library_provider.dec
 # MAGIC This cell has no `--library`, so it runs. It defines `Initial Population` and other checks, which
 # MAGIC will be executed when you call `exec()`.
 # MAGIC
-# MAGIC **Expected output:** one frame of twenty rows, one per patient. `Initial Population` is true for 16 of 20.
+# MAGIC **Expected output:** one frame of 4,000 rows, one per patient. `Initial Population` is true for 1,223 of 4,000.
 
 # COMMAND ----------
 # MAGIC %%cql
@@ -178,9 +180,9 @@ print("libraries declared so far:", [str(r) for r in client.library_provider.dec
 # MAGIC it reaches published content — including the parts the magic has no syntax for, like binding the
 # MAGIC measurement period to a different year.
 # MAGIC
-# MAGIC Watch the population turn over: in 2025 only two patients (pat-003 and pat-006) have both a visit and
-# MAGIC a condition. The measure that reports 16 of 20 for 2026 reports 2 of 20 for 2025, over a completely
-# MAGIC different cohort — the same content, honestly producing both numbers.
+# MAGIC Watch the population turn over: in 2025 no patient has both a visit and a condition. The patients seen
+# MAGIC in 2025 have no condition on record. The measure that reports 1,223 of 4,000 for 2026 reports 0 of 4,000
+# MAGIC for 2025 — the same content, honestly producing both numbers.
 # MAGIC
 # MAGIC **One thing to know before you draft a second measure in the same notebook.** Every define is
 # MAGIC materialized as a session temp view named after it, so two measures that both define `Initial Population`
@@ -192,8 +194,8 @@ print("libraries declared so far:", [str(r) for r in client.library_provider.dec
 # MAGIC **Expected output:**
 # MAGIC ```
 # MAGIC declared: ['NotebookVisits|1.0.0', 'NotebookMeasure|1.0.0']
-# MAGIC 2026: initial_population=16
-# MAGIC 2025: initial_population=2
+# MAGIC 2026: initial_population=27
+# MAGIC 2025: initial_population=0
 # MAGIC ```
 
 # COMMAND ----------
@@ -220,10 +222,10 @@ for year in (2026, 2025):
 # MAGIC ever surprises you mid-draft, re-run the library cell before believing it.
 # MAGIC
 # MAGIC The edit below widens the visits check to count a visit up to a year after the period ends. Run for 2025,
-# MAGIC the measure counted 2 patients in section 6 (pat-003 and pat-006, the two with a 2025 visit and a
-# MAGIC condition). With the edit it also counts the 2026 visits, and every patient with a condition had one.
+# MAGIC the measure counted no patients in section 6. With the edit it also counts the 2026 visits, and every
+# MAGIC patient with a condition had one.
 # MAGIC
-# MAGIC **Expected output:** `widened_2025: initial_population=16`
+# MAGIC **Expected output:** `widened_2025: initial_population=27`
 
 # COMMAND ----------
 # The same library, redeclared from Python rather than a cell: `register_cell` is what `%%cql` calls, so a
@@ -249,8 +251,8 @@ print("widened_2025: initial_population=", count, sep="")
 # MAGIC %md
 # MAGIC ## 8. Publishing the draft
 # MAGIC A published library is the same text in a file. Writing the two cells out and mounting that directory
-# MAGIC gives exactly what notebook 3 ran — and the measure resolves by name from the folder with no change
-# MAGIC to a single line of CQL.
+# MAGIC gives a folder like the one notebook 3 runs from — and the measure resolves by name from it with no
+# MAGIC change to a single line of CQL.
 # MAGIC
 # MAGIC In a real workflow the directory is your measures repo as a **Databricks Git Folder**, and publishing
 # MAGIC is a commit. The point here is only that nothing about the draft was notebook-shaped: the cell was
@@ -273,7 +275,7 @@ print("widened_2025: initial_population=", count, sep="")
 # MAGIC **Expected output:**
 # MAGIC ```
 # MAGIC published: ['NotebookMeasure-1.0.0.cql', 'NotebookVisits-1.0.0.cql']
-# MAGIC from the folder: initial_population=16
+# MAGIC from the folder: initial_population=27
 # MAGIC ```
 
 # COMMAND ----------

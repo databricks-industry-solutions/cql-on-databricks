@@ -4,7 +4,7 @@ import com.databricks.cql.error.TypeError
 import com.databricks.cql.ir.CqlType._
 import com.databricks.cql.ir._
 import com.databricks.cql.lower.Encoding
-import com.databricks.cql.sema.FhirModel
+import com.databricks.cql.sema.{FhirModel, Ucum}
 
 /** The Type/Encoding step (ARCH-TYPE-ATTR, ARCH-PIPELINE, `engine-design.md` section 2.1): the
   * result type and physical encoding of every kernel node.
@@ -168,7 +168,8 @@ object TypeEncoding {
       case Indexer(list, _)       => elementOf(go(list))
       case Distinct(o)            => go(o)   // dedupe preserves the list type (LANG-EQUIV)
       case Count(_)               => IntegerType
-      case _: Split               => ListType(StringType) // split a string -> List<String>
+      case AggregateFunction(op, src) => aggregateType(op, elementOf(go(src)))
+      case _: Split              => ListType(StringType) // split a string -> List<String>
       // List set operators yield a list whose element type unifies the two operands' elements.
       case Union(a, b)            => ListType(CqlType.join(elementOf(go(a)), elementOf(go(b))))
       case Intersect(a, b)        => ListType(CqlType.join(elementOf(go(a)), elementOf(go(b))))
@@ -285,6 +286,25 @@ object TypeEncoding {
   private def elementOf(t: CqlType): CqlType = t match {
     case ListType(e) => e
     case _           => AnyType
+  }
+
+  /** LANG-AGGREGATE-FUNCTIONS: the result type of an aggregate over elements of type `elem` (CQL Reference,
+    * Aggregate Functions). `Sum`/`Min`/`Max`/`Mode`/`Product` return the element type; the statistics return
+    * Decimal, or a Quantity over a quantity list, whose unit `Variance`/`PopulationVariance` square. */
+  private def aggregateType(op: AggregateOp, elem: CqlType): CqlType = {
+    import AggregateOp._
+    op match {
+      case AllTrue | AnyTrue                       => BooleanType
+      case Sum | Min | Max | Mode | Product        => elem
+      case Variance | PopulationVariance           => elem match {
+        case QuantityType(u) => QuantityType(u.map(Ucum.squared))
+        case _               => DecimalType
+      }
+      case Avg | Median | StdDev | PopulationStdDev | GeometricMean => elem match {
+        case q: QuantityType => q
+        case _               => DecimalType
+      }
+    }
   }
 
   private def intervalPointOf(t: CqlType): CqlType = t match {

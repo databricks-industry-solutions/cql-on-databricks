@@ -10,7 +10,7 @@ test path: the conformance suite's end-to-end lane drives it against a local com
     client = (CqlClient.builder()
               .endpoint("http://localhost:8080").auth_bearer(token)
               .library_source("cql/").data_catalog("fhir").spark(spark).build())
-    q = (client.cql("cql/BasicEncounterAndCondition.cql")
+    q = (client.cql("cql/HypertensionBPControl.cql")
               .with_measurement_period("2026-01-01", "2026-12-31"))
     q.dag()                # the neutral LibraryGraph
     q.exec("Initial Population")    # -> lazy DataFrame (single target)
@@ -30,7 +30,7 @@ or, holding the session explicitly and mounting a Git Folder of CQL as the libra
 
     from cql_databricks.compiler import connect
     client = connect(spark, library_path="/Workspace/Users/me/measure-content/input/cql")
-    client.cql(library="BasicEncounterAndCondition").exec("Initial Population")
+    client.cql(library="HypertensionBPControl").exec("Initial Population")
 
 ``exec(*targets)`` is the ONLY terminal (returns DataFrame(s)); a string is always SOURCE, never a target.
 

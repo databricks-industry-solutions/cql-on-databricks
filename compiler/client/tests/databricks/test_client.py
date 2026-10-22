@@ -84,11 +84,12 @@ class ConnectTest(unittest.TestCase):
         with mock.patch("cql_databricks.compiler.provider._workspace", _ws()):
             c = connect(udf_schema=UDF_SCHEMA, catalog_scopes=["acme.results", "acme"])
             plain = connect(udf_schema=UDF_SCHEMA)
-        q = c.cql('define "Two": 2 + 2')
+        # A header keeps each string its own library: no session to join (SVC-NOTEBOOK-SESSION-SCOPE).
+        q = c.cql("library T version '1'\ndefine \"Two\": 2 + 2")
         self.assertEqual(q._lib.binder.catalog_scopes, ["acme.results", "acme"])
         with mock.patch.dict(os.environ, {config.ENV_CATALOG_SCOPES: "from.env"}):
             self.assertEqual(session_catalog_scopes(None, query=q), ["acme.results", "acme"])
-            self.assertEqual(session_catalog_scopes(None, query=plain.cql('define "Two": 2')), ["from.env"])
+            self.assertEqual(session_catalog_scopes(None, query=plain.cql("library T version '1'\ndefine \"Two\": 2")), ["from.env"])
             self.assertEqual(session_catalog_scopes(None, ["explicit"], query=q), ["explicit"])
 
     def test_catalog_scopes_are_a_list_not_one_string(self):
@@ -99,8 +100,8 @@ class ConnectTest(unittest.TestCase):
     def test_cql_binds_via_a_lazy_default_client(self):
         with mock.patch("cql_databricks.compiler.provider._workspace", _ws()), \
                 mock.patch("cql_databricks.compiler.zeroconfig.discover_udf_schema", return_value=UDF_SCHEMA):
-            q = cql('define "Two": 2 + 2')
-            q2 = cql('define "Three": 3')
+            q = cql("library T version '1'\ndefine \"Two\": 2 + 2")
+            q2 = cql("library T version '1'\ndefine \"Three\": 3")
         from cql_databricks.compiler import CqlQuery
         self.assertIsInstance(q, CqlQuery)
         # the default client is built ONCE and reused

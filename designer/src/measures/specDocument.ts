@@ -472,8 +472,8 @@ export function buildSpecDocument(
     ): SpecRule {
       const entry = entries.get(name)!;
       // Rules under a Concept stem from the CONCEPT'S ALIAS (C10-1), not from initials of its name.
-      // Real define names are long and clinical — "Has Encounter During Period and Condition Active At
-      // Its Start" initialises to "HEDP", which is noise. The concept alias
+      // Real define names are long and clinical — "Systolic Below 140 and Diastolic Below 90 and Most Recent
+      // Blood Pressure Present" initialises to "SBD", which is noise. The concept alias
       // is always short, always readable, and makes the parent obvious at a glance.
       const stem = aliasStem ?? ownerName;
       return {

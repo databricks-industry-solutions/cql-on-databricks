@@ -24,7 +24,9 @@
 # MAGIC Install the client, then learn the two ways to run CQL from a notebook and how each hands its results
 # MAGIC back to Python and SQL. Everything in the other modules uses one of them.
 # MAGIC
-# MAGIC - `%%cql` — a cell whose first line is `%%cql` *is* a CQL library: no quoting, no Python wrapper
+# MAGIC - `%%cql` — a cell whose first line is `%%cql` *is* CQL: no quoting, no Python wrapper
+# MAGIC - Cells with no `library` header share one session library: a later cell sees earlier defines, and
+# MAGIC   redefining a name replaces it
 # MAGIC - `--df NAME` binds the result into the notebook as an ordinary DataFrame — or a dict of them, one
 # MAGIC   per define — and `--target` picks which defines to evaluate
 # MAGIC - Every define also lands as a session temp view, so a plain `%sql` cell can query it
@@ -60,7 +62,7 @@
 # MAGIC ---
 # MAGIC
 # MAGIC ### 03 · A clinical quality measure, end to end
-# MAGIC *Synthetic FHIR · 20 patients · nothing authored in the notebook*
+# MAGIC *Synthetic FHIR · 4,000 patients · nothing authored in the notebook*
 # MAGIC
 # MAGIC A published sample measure run from folders beside this page: the CQL and the data
 # MAGIC read from `measures/` and `data/`. The measure checks for patients with an encounter during

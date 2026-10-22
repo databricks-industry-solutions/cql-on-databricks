@@ -6,6 +6,7 @@ import com.databricks.cql.env.Context
 import com.databricks.cql.ir.ExpressionDef
 import com.databricks.cql.load.ElmCodec
 import com.databricks.cql.spark.SystemColumns
+import com.databricks.cql.translate.SuppliedLibrarySourceProvider
 import org.cqframework.cql.cql2elm.{LibraryManager, ModelManager, StringLibrarySourceProvider}
 import org.opencds.cqf.cql.engine.data.{CompositeDataProvider, DataProvider}
 import org.opencds.cqf.cql.engine.execution.{CqlEngine, Environment, EvaluationExpressionRef, EvaluationParams}
@@ -155,17 +156,15 @@ object GroundTruthRunner {
     evaluate(cqlText, lib.id, names).values.head
   }
 
-  /** The library manager wired with the authored CQL, the bundled FHIRHelpers source, and any
-    * dependency library sources a multi-library measure includes (CONF-GATE-MEASURE). */
+  /** The library manager wired with the authored CQL and the library sources it includes, FHIRHelpers among
+    * them when it includes it (CONF-GATE-MEASURE, LANG-FHIRHELPERS-FROM-CONTENT). */
   private def newLibraryManager(cqlText: String, extraSources: Seq[String]): LibraryManager = {
     val libraryManager = new LibraryManager(new ModelManager()) // default-loads the System model
-    // The same strict provider the engine uses (`CqlToElmCli`): an include resolves to the source declaring
-    // exactly its name and version, so both sides load the same sources (CONF-GATE-MEASURE, TECH-ELM-INPUT).
-    libraryManager.getLibrarySourceLoader.registerProvider(
-      new StringLibrarySourceProvider((Seq(
-        cqlText, // as written: the oracle adds no include either (LANG-NO-IMPLICIT-INCLUDE)
-        com.databricks.cql.translate.FhirHelpersSource.cql) ++
-        extraSources).asJava))
+    // The same provider the engine uses (`CqlToElmCli`): an include resolves to the source declaring exactly
+    // its name and version, and nothing outside the supplied sources, so both sides load the same sources
+    // (CONF-GATE-MEASURE, TECH-ELM-INPUT). The CQL is as written: the oracle adds no include either
+    // (LANG-NO-IMPLICIT-INCLUDE).
+    libraryManager.getLibrarySourceLoader.registerProvider(new SuppliedLibrarySourceProvider(cqlText +: extraSources))
     libraryManager
   }
 

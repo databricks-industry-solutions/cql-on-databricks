@@ -30,7 +30,8 @@ TWO RULES decide which source an include resolves to:
 
 The service still owns TRANSLATION. A resolved closure ships as CQL text (`BUILD-COMPILE-LINK`'s ``deps``
 ``{cql}`` entries) and the service registers it as translation sources, so a pure-Python caller with no
-JVM never translates anything locally, and the compiler's bundled FHIRHelpers keeps applying unchanged.
+JVM never translates anything locally. FHIRHelpers is one of those sources: the compiler bundles none, and
+an include no source provides fails (`LANG-FHIRHELPERS-FROM-CONTENT`).
 """
 from __future__ import annotations
 
@@ -50,12 +51,6 @@ from . import config
 #: a second capability by a ``.discovery`` NAME SUFFIX, and stacking a third meaning onto one namespace
 #: makes every lookup ambiguous. One group per seam.
 LIBRARY_PLUGIN_GROUP = "cql_databricks.libraries"
-
-#: `include FHIRHelpers` is resolved by the COMPILER itself (`FhirHelpersSource` is registered as a
-#: library source on every translate), so a closure that cannot find it locally is still complete. Never
-#: a resolution failure.
-COMPILER_PROVIDED = frozenset({"FHIRHelpers"})
-
 
 class LibraryResolutionError(FileNotFoundError):
     """A library (or a member of its ``include`` closure) could not be resolved. Loud by design
@@ -123,8 +118,6 @@ class LibraryProvider(abc.ABC):
             if ref.name in seen:
                 continue
             seen.add(ref.name)
-            if ref.name in COMPILER_PROVIDED:
-                continue
             src = self.resolve(ref)
             out.append(src)
             queue.extend(includes_of(src))
@@ -307,7 +300,7 @@ class FileLibraryProvider(LibraryProvider):
         """The transitive closure of ``root``, resolved SIBLING-FIRST against ``root``'s own directory.
 
         Overrides the base walk only to thread ``prefer_dir`` through the recursion — the traversal itself
-        (breadth-first, cycle-safe, FHIRHelpers-tolerant) is the same contract."""
+        (breadth-first, cycle-safe) is the same contract."""
         prefer_dir = Path(root.origin).parent if root.origin else None
         out: List[LibrarySource] = []
         seen = {root.name}
@@ -317,8 +310,6 @@ class FileLibraryProvider(LibraryProvider):
             if ref.name in seen:
                 continue
             seen.add(ref.name)
-            if ref.name in COMPILER_PROVIDED:
-                continue
             try:
                 src = self.resolve(ref, prefer_dir=prefer_dir)
             except LibraryResolutionError as e:

@@ -2,9 +2,8 @@
 
 
 Code cites these IDs. This file says what each one decided, so a citation always leads somewhere.
-Requirements are in [`../requirements.md`](../requirements.md) and
-[`../compiler/requirements.md`](../compiler/requirements.md). Open decisions are in
-[`../roadmap.md`](../roadmap.md).
+Requirements are in [`../requirements.md`](../requirements.md) and the feature registries it lists. Open
+decisions are in the [roadmap](../roadmap.md).
 
 | ID | What it decided |
 |---|---|
@@ -60,7 +59,7 @@ Requirements are in [`../requirements.md`](../requirements.md) and
 | `DEC-SUBJECT-PARAMETER` | Retired with `BIND-RETRIEVE-SUBJECT`: no caller scoped a compile to patients. It passed the patient list as one named parameter, `:__subject_ids`, a JSON array string, the only parameter marker the compiler emitted. |
 | `DEC-TERMINOLOGY-UC-TAG` | The terminology table is found by the `cql_databricks_terminology` tag. Value sets arrive already expanded. |
 | `DEC-TOOLCHAIN-VS-EXECUTION` | The compiler is the toolchain: it turns CQL into SQL and ships the runtime and conformance. The client runs that SQL as the caller (`RESULT-INTO-CLIENT`). |
-| `DEPLOY-OWNS-PRINCIPALS` | The deploy creates the service principals that Jobs run as: the maintenance principal before `bundle deploy`, since it is the `cql-maintenance` Job's run-as. The compiler caller is retired with `SVC-COMPILER-M2M`. The client holds no deploy code. |
+| `DEPLOY-OWNS-PRINCIPALS` | The deploy creates the service principals that Jobs run as: the maintenance principal before `bundle deploy`, since it is the `cql-databricks-designer-maintenance` Job's run-as. The compiler caller is retired with `SVC-COMPILER-M2M`. The client holds no deploy code. |
 | `DERIVATIONS-TO-LIBRARY` | The explain, flow, strata and metrics derivations live in the client (`cql_databricks.result.insights`). The Designer and agent call them there. |
 | `DESIGNER-ONE-MODULE` | The Designer keeps one module, for authoring and testing. The other modules were removed. |
 | `DESIGNER-RUNS-SDP` | Retired with SDP. The Designer runs CQL through the client. See `RUN-CLIENT-MIGRATION`. |

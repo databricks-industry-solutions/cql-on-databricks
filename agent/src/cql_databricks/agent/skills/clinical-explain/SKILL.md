@@ -40,7 +40,7 @@ never licenses a sentence that exists only to satisfy it. These both fail:
 | failure | why |
 |---|---|
 | A criterion that reads beautifully and never mentions the value set that decides it | Incomplete. The reader has to open the code to find the thing that actually gates their patient. |
-| "This criterion references Has Encounter During Period, Has Any Condition, and the Measurement Period parameter." | 100% covered and worthless. It is an inventory, not an explanation — and a reader learns nothing they could not have got from the code. |
+| "This criterion references Qualifying Encounters, Has Hypertension, and the Measurement Period parameter." | 100% covered and worthless. It is an inventory, not an explanation — and a reader learns nothing they could not have got from the code. |
 
 The second is the more dangerous, because it *passes a coverage check*. If satisfying coverage made
 you write a sentence a clinician would not read aloud to a colleague, the sentence is wrong and the
@@ -198,14 +198,14 @@ clicks between them. These all shipped and all failed:
 
 | written | why it is wrong |
 |---|---|
-| *Encounter present* for `Has Encounter During Period` | Drops the period, which is the entire criterion. |
-| *Has a condition* for `Has Any Condition` | Restates the name, and drops that any condition counts, whatever its status or date. |
-| *Seen this year* for `Has Encounter During Period` | A DIFFERENT claim. *During the period* means the whole encounter lies inside it; *seen this year* also counts a visit that started in the period and ended after it. |
+| *Blood pressure reading present* for `Most Recent Blood Pressure` | Drops "most recent", which is the entire criterion. |
+| *Has hypertension diagnosis* for `Has Hypertension` | Restates the name, and drops that the diagnosis must start on or before June 30 of the period. |
+| *Seen this year* for `Qualifying Encounters` | A DIFFERENT claim. *During the period* means the whole encounter lies inside it; *seen this year* also counts a visit that started in the period and ended after it. |
 
 **`Title` is a one-line GLOSS: what a reader needs that the NAME does not carry.** Test it by deleting the
 name and asking whether the gloss still says something. *Records showing the patient was cared for elsewhere in
 the period* earns its place over `Transfer or Outside Encounter`, because that name lists two unlike things and
-never says what unites them. `Has Any Condition` needs nothing.
+never says what unites them. `Has Hypertension` needs nothing.
 
 **Most elements have no gloss, and that is the right output** — not a gap to fill. Write one for a cryptic
 name (`encounterFor`), never for a self-describing one.
@@ -268,14 +268,14 @@ library on its own, with no measure around it.
 
 | written | why it is wrong |
 |---|---|
-| "…the **denominator** would fill with people nobody had the opportunity to treat" | A shared `EncounterDuringPeriod` library has no denominator. It is used by measures that have one. |
-| "a visit puts a patient with a **condition on record** in the population" | `EncounterDuringPeriod` knows nothing about conditions. That is what the measure that includes it adds. |
-| "this **removes** patients seen only in the prior year" | Removing patients is something a measure does. The library only answers whether a visit fell in the period. |
+| "…the **denominator** would fill with people nobody had the opportunity to treat" | A shared `SampleMeasureCommon` library has no denominator. It is used by measures that have one. |
+| "a qualifying visit puts a patient **in active care** in the population" | `SampleMeasureCommon` knows nothing about active care status. That is what the measure that includes it adds. |
+| "this **removes** patients who had no qualifying encounter" | Removing patients is something a measure does. The library only answers whether a visit was finished and fell in the period. |
 
 Each says something true of one measure and false of the library. Attached to the library it is read by
 every other measure that includes it, where it is simply wrong.
 
-Write the general form instead — "a visit is what makes a practice accountable for a patient",
+Write the general form instead — "a qualifying outpatient visit is a measure of active care",
 "a visit counts only when it lies wholly inside the period".
 The specific consequence for *this* measure belongs in the population
 criterion that does the excluding, which is the measure's own library and free to say it.
@@ -324,10 +324,10 @@ nothing new to say, it still says the same things in the same form.
 
 ```xml
 <Guidance provenance="narrated" sourceTag="guidance" sourceSpan="2-4">
-  A patient counts once however many encounters or conditions they have, so the figures are patients,
-  not records: <MetricRef library="BasicEncounterAndCondition" define="Initial Population"/> patients are
-  in the initial population, <MetricRef library="BasicEncounterAndCondition"
-  define="Initial Population" as="share"/> of those evaluated.
+  Each patient counts once however many readings they have, so the figures are patients,
+  not records: <MetricRef library="HypertensionBPControl" define="Initial Population"/> patients are
+  in the initial population, <MetricRef library="HypertensionBPControl"
+  define="Numerator" as="share"/> of those evaluated have readings at goal.
 </Guidance>
 ```
 
@@ -443,17 +443,17 @@ rules that otherwise contradict: coverage is counted **per element**, density is
 A define named in a sentence is bound exactly as a read is:
 
 ```xml
-<Item sourceSpan="4">A <ConceptRef library="BasicEncounterAndCondition"
-  define="Has Encounter During Period">recorded encounter</ConceptRef>
+<Item sourceSpan="4">A <ConceptRef library="SampleMeasureCommon"
+  define="Qualifying Encounters">qualifying outpatient visit</ConceptRef>
   during the measurement period</Item>
 ```
 
-- **The phrase is the PROSE, never the declared name.** "recorded encounter", not
-  `Has Encounter During Period` — a title-cased identifier mid-sentence is what binding was supposed
+- **The phrase is the PROSE, never the declared name.** "qualifying outpatient visit", not
+  `Qualifying Encounters` — a title-cased identifier mid-sentence is what binding was supposed
   to avoid. The reader gets the lens; the sentence keeps its voice.
 - **`ConceptRef` for a Concept, `RuleRef` for a Rule.** It is what the reader's type chip says.
 - **Library-qualified, always** — including cross-library references, which are the common case for
-  `Has Encounter During Period`, read from the included `EncounterDuringPeriod`. An unqualified one is DROPPED and the
+  `Qualifying Encounters`, read from the included `SampleMeasureCommon`. An unqualified one is DROPPED and the
   phrase renders as plain prose, because resolving without the library lands the reader on whichever
   library was indexed first: a link to the wrong criterion, indistinguishable from a right one.
 - **Bind at the first place the sentence names it**, once per element, per the account-once rule above.

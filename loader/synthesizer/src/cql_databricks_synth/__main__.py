@@ -17,6 +17,9 @@
     python -m cql_databricks_synth verify \
         --elm <library.elm.json> --valuesets <dir> --out <dir>
 
+    # a population from a recipe: one realistic cohort per pinned measure, merged, resources only (DATA-SYNTH-SMALL)
+    python -m cql_databricks_synth population --recipe loader/synthesizer/recipes/synthetic-small.json --out examples/data
+
 Binding an emitted cohort as the Synthetic Population Large data source (DATA-SYNTH-LARGE) is not this
 CLI's job since SYNTH-SEED-OUT: it is ``python loader/scripts/synthetic-population/load.py``, the same step a
 customer runs on their own data, built from the evaluator's seed contract.
@@ -35,7 +38,7 @@ import sys
 
 from . import SynthesizerError
 from .generate import generate_to_dir, uniform_counts
-from .strata import population_defines, proportion_strata, realistic_counts
+from .strata import DEFAULT_RATES, population_defines, proportion_strata, realistic_counts, realistic_rates
 from .valuesets import ValueSetIndex
 from .verify import verify_cohort
 
@@ -60,25 +63,10 @@ def _load_elm(path: str):
         return json.load(fh)
 
 
-#: The realistic-mix rates when neither a flag nor the measure's config sets one (SYNTH-PDS-SCALE).
-_DEFAULT_RATES = {"out_of_ipp": 0.30, "exclusion_rate": 0.05, "numerator_rate": 0.72, "null_rate": 0.01,
-                  "exception_rate": 0.02}
-
-
 def _rates(args, config) -> dict[str, float]:
     """Each realistic-mix rate: its flag, else the measure's config, else the default."""
-    rates = dict(_DEFAULT_RATES)
-    if config is not None:
-        for name, value in config.rates.items():
-            if name == "in_ipp":
-                rates["out_of_ipp"] = 1.0 - value
-            else:
-                rates[name] = value
-    for name in _DEFAULT_RATES:
-        flag = getattr(args, f"{name.removesuffix('_rate')}_rate")
-        if flag is not None:
-            rates[name] = flag
-    return rates
+    return realistic_rates(config, {name: getattr(args, f"{name.removesuffix('_rate')}_rate")
+                                    for name in DEFAULT_RATES})
 
 
 def _counts(args, elm: dict, config) -> dict[str, int]:
@@ -129,6 +117,12 @@ def main(argv: list[str] | None = None) -> int:
     ver = commands.add_parser("verify", help="re-verify an emitted cohort against its manifest")
     _common(ver)
 
+    population = commands.add_parser(
+        "population", help="build a population from a recipe of pinned measures (DATA-SYNTH-SMALL)")
+    population.add_argument("--recipe", required=True, help="the recipe JSON (see recipe.py)")
+    population.add_argument("--out", required=True,
+                            help="output directory; every *.ndjson in it is replaced")
+
     fixtures = commands.add_parser(
         "fixtures", help="(re)generate the pinned measure fixtures into the local cache")
     fixtures.add_argument("--measure", action="append",
@@ -172,6 +166,15 @@ def main(argv: list[str] | None = None) -> int:
             write_pins(pins)
             print("  pins.json updated")
         return 1 if failures else 0
+
+    if args.command == "population":
+        from .recipe import Recipe, build_population
+
+        written = build_population(Recipe.from_file(args.recipe), args.out)
+        for fhir_type, count in written.items():
+            print(f"  {fhir_type}: {count}")
+        print(f"  wrote {args.out}")
+        return 0
 
     elm = _load_elm(args.elm)
     valuesets = ValueSetIndex.from_ndjson_dir(args.valuesets)

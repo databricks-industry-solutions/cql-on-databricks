@@ -15,11 +15,11 @@ ignored, never guessed at.
 
 ```cql
 /*
-@description: Patients with an encounter during the measurement period who have any condition on record.
-@intent: Show how many patients in active care have recorded conditions.
-@scope: Encounters and conditions of any status and type.
+@description: Adults with hypertension whose most recent blood pressure is below 140/90 mmHg during the measurement period.
+@intent: Identify hypertensive patients achieving blood pressure control.
+@scope: Patients 18-85 with hypertension and a qualifying outpatient visit in the period.
 */
-library BasicEncounterAndCondition version '1.0.0'
+library HypertensionBPControl version '1.0.0'
 ```
 
 | Placement | Tag sits above | Reaches |

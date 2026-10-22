@@ -5,9 +5,10 @@ The libraries declared by ``%%cql`` cells (`SVC-NOTEBOOK-CELL-LIBRARY`) and the 
 views the mount owns. So they end together: restarting Python loses neither, and ending the Spark session
 loses both. They never disagree.
 
-Rows are ``(kind, name, payload)``. A ``cell`` row's payload is its CQL text; the ``mount`` row's is the
-mount's manifest as JSON; the ``version`` row's is a counter every write moves, so a compile cached against an
-older mount is not reused (`CLIENT-SESSION-MOUNT`).
+Rows are ``(kind, name, payload)``. A ``cell`` row's payload is its CQL text; the ``scope`` row's is the session
+library that header-less CQL joins (`SVC-NOTEBOOK-SESSION-SCOPE`); the ``mount`` row's is the mount's manifest as
+JSON; the ``version`` row's is a counter every write moves, so a compile cached against an older mount is not
+reused (`CLIENT-SESSION-MOUNT`).
 
 A write rebuilds the view from the rows: notebooks are single-threaded and the record is small. A read is one
 small query. The client writes no session conf. With no Spark session there is no record: reading one
@@ -19,7 +20,7 @@ import json
 from typing import Dict, Iterator, List, Optional, Tuple
 
 VIEW = "__cqldatabricks_session"
-CELL, MOUNT, VERSION = "cell", "mount", "version"
+CELL, SCOPE, MOUNT, VERSION = "cell", "scope", "mount", "version"
 _SCHEMA = "kind STRING, name STRING, payload STRING"
 
 Row = Tuple[str, str, str]
@@ -84,6 +85,13 @@ class SessionRecord:
         if manifest is not None:
             rows.append((MOUNT, "", json.dumps(manifest, sort_keys=True)))
         self.write(rows)
+
+    def scope(self) -> str:
+        """The session library header-less CQL has joined so far (`SVC-NOTEBOOK-SESSION-SCOPE`), or ``""``."""
+        return next((p for k, _, p in self.rows() if k == SCOPE), "")
+
+    def set_scope(self, cql: str) -> None:
+        self.write([r for r in self.rows() if r[0] != SCOPE] + [(SCOPE, "", cql)])
 
     def drop(self) -> None:
         """Remove the record itself. Safe when there is none."""

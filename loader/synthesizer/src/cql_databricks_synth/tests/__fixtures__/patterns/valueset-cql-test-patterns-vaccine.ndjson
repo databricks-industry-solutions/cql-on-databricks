@@ -1,0 +1,1 @@
+{"valueset_id": "http://example.org/fhir/ValueSet/cql-test-patterns-vaccine", "system": "http://example.org/fhir/CodeSystem/cql-test", "code": "patterns-vaccine-1", "display": "Patterns vaccine"}

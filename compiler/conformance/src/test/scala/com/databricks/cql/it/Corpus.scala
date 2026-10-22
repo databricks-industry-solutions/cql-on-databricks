@@ -31,7 +31,7 @@ object Corpus {
     *   - `library`, `version`, `measurementPeriod` and `populations` from `data/measures/<library>/answer-key.json`
     *     (`populations` maps each CQL population define to its measure-population code, in scoreboard order;
     *     the optional `supplemental` list adds defines reported beside them, and both are the prune roots);
-    *   - `deps`, the FULL transitive `include` closure, FHIRHelpers excepted, from the translated ELM;
+    *   - `deps`, the FULL transitive `include` closure, FHIRHelpers included, from the translated ELM;
     *   - `resourceTypes`, one per `<Type>.ndjson` in the measure's data directory.
     * The value-set expansions are shared in `data/valuesets/` (`CONF-GATE-SCOREKEY`). */
   final case class MeasureDef(
@@ -109,7 +109,8 @@ object Corpus {
         Context.Patient,
         data = Some(new SparkFhirData(spark, dataDir)),
         terminology = if (withTerminology) Some(new SparkTerminology(spark, dataDir)) else None,
-        refEnv = GroundTruthRunner.RefEnv(resourcesByType = resources, expansions = expansions),
+        refEnv = GroundTruthRunner.RefEnv(resourcesByType = resources, expansions = expansions,
+          extraLibrarySources = librarySources(library)),
         deviations = deviations)
     })
 
@@ -131,7 +132,8 @@ object Corpus {
         Context.Patient,
         data = Some(new SparkFhirData(spark, dir.getAbsolutePath)),
         terminology = if (expansions.nonEmpty) Some(new SparkTerminology(spark, valueSetDir.getAbsolutePath)) else None,
-        refEnv = GroundTruthRunner.RefEnv(resourcesByType = resources, expansions = expansions),
+        refEnv = GroundTruthRunner.RefEnv(resourcesByType = resources, expansions = expansions,
+          extraLibrarySources = librarySources(library)),
         deviations = deviations)
     })
 
@@ -204,6 +206,15 @@ object Corpus {
     scalar("IntervalOpenClosed", "IntervalOpenClosed: open bounds normalize to closed via discrete successor/predecessor (LANG-INTERVAL)"),
     scalar("SetUnion", "SetUnion: list union has set semantics (dedup by identity), not UNION ALL (LANG-LIST)"),
     scalar("AggregateFold", "AggregateFold: query aggregate is a left fold -> Spark aggregate HOF (LANG-QUERY-AGGREGATE)"),
+    scalar("AggregateFunctions", "AggregateFunctions: Sum/Min/Max/Avg/Median/Mode/Variance/StdDev/Product/GeometricMean/AllTrue/AnyTrue ignore nulls, are null over no non-null element, order dates precision-aware and convert quantity units (LANG-AGGREGATE-FUNCTIONS)",
+      // CONF-REF-DEVIATION. The CQL Reference defines Product over the non-null elements; the reference's
+      // ProductEvaluator returns null as soon as it meets a null element.
+      Seq(Differential.ValueFor("ProductIgnoresNulls", SystemColumns.UnfilteredSubject,
+        "CQF 4.8.0 ProductEvaluator returns null on a null element; the CQL Reference ignores nulls (Product)")) ++
+      // The reference squares a quantity's unit through UCUM, which normalizes to SI base units (`0.0001 'm2'`);
+      // the engine keeps the operands' unit (`1.0 'cm2'`), as its quantity Multiply does (`Multiply1CMBy2CM`).
+      Seq(Differential.ValueFor("VarianceQuantity", SystemColumns.UnfilteredSubject,
+        "CQF reference normalizes the squared unit to SI base (m2); the engine keeps cm2, as quantity Multiply does"))),
     scalar("Quantities", "Quantities: UCUM cross-unit comparison + arithmetic diff clean (LANG-QUANTITY)"),
     scalar("Temporal", "Temporal: precision-aware date comparison + Measurement-Period math diff clean (LANG-INTERVAL)"),
     scalar("TemporalPartialPrecision", "TemporalPartialPrecision: partial-precision DateTime comparison truth table vs a static bound — coarse prefix-equal -> NULL (alignment-moot), equal-precision decided (LANG-INTERVAL)"),
@@ -213,6 +224,7 @@ object Corpus {
 
     // --- FHIR Patient (DATA-RETRIEVER, LANG-TERMINOLOGY, LANG-QUERY, DATA-LIST-ENCODING) ---
     fhir("FhirRetrieve", withTerminology = false, "FhirRetrieve: exists [Condition] per patient diffs clean"),
+    fhir("FhirHelpersFromContent", withTerminology = false, "FhirHelpersFromContent: an included FHIRHelpers resolves from the corpus beside the fixture, and its conversion diffs clean (LANG-FHIRHELPERS-FROM-CONTENT)"),
     fhir("FhirValueSet", withTerminology = true, "FhirValueSet: value-set-filtered retrieve diffs clean (LANG-TERMINOLOGY)"),
     fhir("FhirValueSetQuery", withTerminology = true, "FhirValueSetQuery: value-set-filtered retrieve as a general query source diffs clean (LANG-TERMINOLOGY/LANG-QUERY)"),
     fhir("FhirValueSetWhere", withTerminology = true, "FhirValueSetWhere: membership where conjunct + terminology pushdown self-diff clean (ARCH-PUSHDOWN/LANG-TERMINOLOGY)"),
@@ -237,6 +249,7 @@ object Corpus {
     fhir("FhirConditional", withTerminology = false, "FhirConditional: if/case over different-source retrieve branches diff clean (ARCH-CONDITIONAL)"),
     fhir("FhirConditionalUnion", withTerminology = false, "FhirConditionalUnion: list-valued if/case lowers to a relation UNION (no collect_list/posexplode) and diffs clean vs the boxed self + Java reference (ARCH-COND-UNION)"),
     fhir("FhirNullableList", withTerminology = false, "FhirNullableList: list-valued if with a NULL else branch keeps the null/empty/non-empty tri-state via the per-subject nullity sidecar (no collect to subject grain) and diffs clean vs the boxed self + Java reference (ARCH-LIST-NULL-SIDECAR/LANG-LIST-NULL-STATE)"),
+    fhir("FhirAggregateMostRecent", withTerminology = false, "FhirAggregateMostRecent: Max over the date-times a query over a retrieve returns, inline and through a list define; a patient with none is null (LANG-AGGREGATE-FUNCTIONS)"),
     fhir("FhirListCount", withTerminology = false, "FhirListCount: a grain-first list define consumed by Count is reduced at SUBJECT GRAIN (countDistinct, no collect_list box) and diffs clean vs the Java reference (ARCH-RELATION-REDUCE)"),
     fhir("FhirConditionalUnionHet", withTerminology = false, "FhirConditionalUnionHet: HETEROGENEOUS list-valued if/case unions into a Choice-tagged relation (no boxing) and diffs clean vs the Java reference (ARCH-COND-UNION Phase B)"),
     fhir("FhirChoiceRetrieve", withTerminology = false, "FhirChoiceRetrieve: FHIR value[x] choice projection/test (as/is) diff clean (LANG-CHOICE)"),
@@ -336,13 +349,18 @@ object Corpus {
       extraRoots = supplemental)
   }
 
-  /** The transitive `include` closure of a library, read from its translated ELM, FHIRHelpers excepted (the
-    * compiler registers it itself). Dependencies come before the libraries that include them. */
+  /** The CQL of every library `library` includes, transitively: the sources the reference is given so its
+    * includes resolve, FHIRHelpers among them (LANG-FHIRHELPERS-FROM-CONTENT). */
+  def librarySources(library: String): Seq[String] = includeClosure(library).map(d => Paths.read(Paths.cql(d)))
+
+  /** The transitive `include` closure of a library, read from its translated ELM, FHIRHelpers included: it is
+    * content like any other library (LANG-FHIRHELPERS-FROM-CONTENT). Dependencies come before the libraries
+    * that include them. */
   private def includeClosure(library: String): Seq[String] = {
     val seen = scala.collection.mutable.LinkedHashSet.empty[String]
     def includes(name: String): Seq[String] =
       ujson.read(Paths.read(Paths.elm(name)))("library").obj.get("includes")
-        .map(_("def").arr.map(_("path").str).toSeq).getOrElse(Nil).filterNot(_ == "FHIRHelpers")
+        .map(_("def").arr.map(_("path").str).toSeq).getOrElse(Nil)
     def visit(name: String): Unit = includes(name).foreach { dep =>
       if (!seen.contains(dep)) { visit(dep); seen += dep }
     }

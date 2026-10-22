@@ -67,7 +67,7 @@ def test_principal_is_created_once_without_secret_and_granted_on_the_catalog():
     first = provision_maintenance_principal(workspace, catalog="synthetic_shared", warehouse="synthetic-wh")
     second = provision_maintenance_principal(workspace, catalog="synthetic_shared", warehouse="synthetic-wh")
     assert first == second == "synthetic-app-0" and len(workspace.created) == 1
-    assert workspace.created[0].display_name.startswith("cql-maintenance-")
+    assert workspace.created[0].display_name.startswith("cql-databricks-designer-maintenance-")
     (args, kwargs), _ = workspace.grant_calls
     assert args == ("catalog", "synthetic_shared")
     change, = kwargs["changes"]
@@ -112,7 +112,7 @@ def _job() -> dict:
 def test_the_bundle_deploys_one_daily_job_as_the_maintenance_principal():
     """RUN-CLIENT-MAINTENANCE — STANDARD daily maintenance, not tied to any interactive session or compiler call."""
     job = _job()
-    assert job["name"] == "cql-maintenance"
+    assert job["name"] == "cql-databricks-designer-maintenance"
     assert job["run_as"] == {"service_principal_name": "${var.maintenance_principal}"}
     assert job["schedule"]["quartz_cron_expression"] == "0 0 3 * * ?" and job["schedule"]["timezone_id"] == "UTC"
     assert job["max_concurrent_runs"] == 1 and not job["queue"]["enabled"]

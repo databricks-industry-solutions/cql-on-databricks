@@ -438,6 +438,10 @@ object SqlFrameLowering {
         ExpressionRef(countFrom(n), None)
       case IsNull(ExpressionRef(n, None)) if relDefs.contains(n) =>
         nullStateRef(n)
+      // LANG-AGGREGATE-FUNCTIONS: an aggregate over a relation define reduces its boxed array, and the box carries
+      // the define's list type, which picks the aggregate's lowering (a date Max, a quantity Sum).
+      case AggregateFunction(op, src @ ExpressionRef(n, None)) if relDefs.contains(n) =>
+        AggregateFunction(op, boxRel(s"box:$n", env.relRef(n), listMeta.getOrElse(n, false), typeOf(src)))
       // A bare reference to a RELATION define in scalar position — a whole-list consumer (`in`/`includes`/
       // a list-valued arg): BOX it to a per-subject array (the reductions above matched first, top-down).
       case ExpressionRef(n, None) if relDefs.contains(n) =>

@@ -133,8 +133,8 @@ test rather than emit a wrong plan (`CORE-NO-SILENT-MISLOWER`). The local compil
 ## Selecting a measure's data
 
 A data source is one population. To compute a measure over a different set of patients, bind a different
-data source. The sample patients the deploy loads are one data source, `sample-patients`
-(`DATA-SAMPLE-SOURCE`), that every sample measure runs over. The data source's address
+data source. The sample patients the deploy loads are one data source, `synthetic-population-small`
+(`DATA-SYNTH-SMALL`), that every sample measure runs over. The data source's address
 is part of every result's fingerprint (`RUN-CLIENT-RESULT-IDENTITY`), so two populations never share a result.
 
 The same compiled plan runs against any data source with this contract: the sample patients or your own

@@ -386,8 +386,8 @@ describe("rule aliases (SPEC-ANCHOR)", () => {
   });
 
   it("stems a Concept's rules from the CONCEPT ALIAS, not from its name", () => {
-    // Real define names are long clinical phrases — "Has Encounter During Period and
-    // Condition Active At Its Start" initialises to "HEDP", which is noise. The alias is
+    // Real define names are long clinical phrases — "Systolic Below 140 and Diastolic Below 90
+    // and Most Recent Blood Pressure Present" initialises to "SBD", which is noise. The alias is
     // always short and makes the parent obvious.
     const concept = scope(document(), "Numerator").concepts[0]!;
     expect(concept.alias).toMatch(/^C\d+$/);

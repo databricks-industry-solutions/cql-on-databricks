@@ -20,8 +20,8 @@ Read before writing code. These follow the existing code.
 
 - Cite the requirement ID in the docstring of code that implements it, and in tests (`PROC-CITE-REQ`):
   `"""RUN-CLIENT-DURABLE: ..."""`.
-- IDs are defined in [`requirements.md`](requirements.md) and
-  [`compiler/requirements.md`](compiler/requirements.md).
+- IDs are defined in [`requirements.md`](requirements.md) and in each feature's
+  `<feature>/docs/requirements.md`.
 - For CQL semantics, cite the HL7 CQL spec clause in a comment.
 
 ## Python

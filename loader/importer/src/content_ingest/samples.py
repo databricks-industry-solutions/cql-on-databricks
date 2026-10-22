@@ -13,8 +13,8 @@ What it reads, and where each part lands in ``<catalog>``:
   (``CONTENT-MEASURE-LIBRARY-LINK``), so each one names its library's canonical URL.
 - ``examples/valuesets/*.ndjson`` — value-set expansion rows ``{valueset_id, system, code, display}``, in
   ``sample_measures.valueset``. The folder may be empty: the table is created either way.
-- ``examples/data/<Type>.ndjson`` — the sample patients, landed as the data source ``sample-patients``
-  (``DATA-SAMPLE-SOURCE``, ``population.land``).
+- ``examples/data/<Type>.ndjson`` — the synthetic population small, landed as the data source
+  ``synthetic-population-small`` (``DATA-SYNTH-SMALL``, ``population.land``).
 
 ``sample_measures`` is tagged as both a knowledge and a terminology source (``CONTENT-IMPORT-TARGET-TAG``), so
 the Designer catalog and ``cql(library=...)`` find the measures by name.
@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .population import PopulationSource
-from .sources import SAMPLE_PATIENTS_DESCRIPTION, SAMPLE_PATIENTS_SCHEMA, SAMPLE_PATIENTS_SOURCE_ID
+from .sources import SYNTHETIC_SMALL_DESCRIPTION, SYNTHETIC_SMALL_SCHEMA, SYNTHETIC_SMALL_SOURCE_ID
 from .transform import _CQL_HEADER_RE, LibraryRow, MeasureRow, TransformResult, ValueSetExpansionRow
 
 log = logging.getLogger("content_ingest.samples")
@@ -39,9 +39,9 @@ SAMPLE_MEASURES_SCHEMA = "sample_measures"
 SAMPLE_KNOWLEDGE_NAME = "sample-measures"
 SAMPLE_TERMINOLOGY_NAME = "sample-measures"
 
-#: DATA-SAMPLE-SOURCE — the sample patients (`sources`).
-SAMPLE_PATIENTS = PopulationSource(source_id=SAMPLE_PATIENTS_SOURCE_ID, schema=SAMPLE_PATIENTS_SCHEMA,
-                                   description=SAMPLE_PATIENTS_DESCRIPTION)
+#: DATA-SYNTH-SMALL — the patients the sample measures run over (`sources`).
+SYNTHETIC_SMALL = PopulationSource(source_id=SYNTHETIC_SMALL_SOURCE_ID, schema=SYNTHETIC_SMALL_SCHEMA,
+                                   description=SYNTHETIC_SMALL_DESCRIPTION)
 
 #: The canonical base of every sample resource.
 CANONICAL_BASE = "http://example.org/fhir"
@@ -145,6 +145,6 @@ def load_samples(spark, *, catalog: str, examples: Path, valid_from: str, valid_
                terminology=(SAMPLE_MEASURES_SCHEMA, SAMPLE_TERMINOLOGY_NAME))
     raw = {fhir_type: spark.createDataFrame([(line,) for line in lines], "value STRING")
            for fhir_type, lines in content.patients.items()}
-    counts.update(land(spark, catalog=catalog, source=SAMPLE_PATIENTS, raw_by_type=raw,
+    counts.update(land(spark, catalog=catalog, source=SYNTHETIC_SMALL, raw_by_type=raw,
                        valid_from=valid_from, valid_to=valid_to))
     return counts

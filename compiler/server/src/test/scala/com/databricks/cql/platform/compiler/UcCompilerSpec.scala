@@ -32,7 +32,8 @@ class UcCompilerSpec extends AnyFunSuite {
       "compile-pipeline" -> ujson.Obj("cql" -> cql, "durable" -> true,
                                       "overrides" -> ujson.Obj("materialize.mode" -> "all")),
       "resource-schema" -> ujson.Obj(),
-      "describe" -> ujson.Obj("cql" -> cql))) {
+      "describe" -> ujson.Obj("cql" -> cql),
+      "merge-cql" -> ujson.Obj("fragments" -> ujson.Arr("define X: 1", "define Y: X + 1")))) {
       val expected = router.handle("POST", "/" + operation, None, ujson.write(body))
       assert(expected.status == 200, expected.body)
       assert(call(operation, body) == ujson.read(expected.body))

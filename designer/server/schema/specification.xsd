@@ -42,7 +42,7 @@
   Realizes: SPEC-XSD, SPEC-DOCUMENT, SPEC-CONCEPTS, SPEC-RULES, SPEC-PLACEMENT, SPEC-POLARITY,
   SPEC-METRIC, SPEC-ANCHOR, SPEC-DEFINITIONS, SPEC-NARRATIVE-TAGS, APP-NARRATIVE-OVERLAY,
   SPEC-MEASURE-METADATA, SPEC-DERIVED-APPENDIX, REND-BADGES.
-  Requirements: the SPEC-* rows in docs/requirements.md.
+  Requirements: the SPEC-* rows in designer/docs/requirements.md.
 -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
            xmlns="https://cql-databricks.databricks.com/spec/1.0"

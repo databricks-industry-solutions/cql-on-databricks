@@ -32,12 +32,12 @@ reset(spark)
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## The measure under inspection
-# MAGIC The sample measure notebook 3 runs, `BasicEncounterAndCondition`, read from the `measures/` folder published
-# MAGIC beside this notebook. It includes `EncounterDuringPeriod`, which resolves from the same folder. Nothing runs:
-# MAGIC the handle below is **lazy**, and when it compiles the result is memoized, so every section shares one round
-# MAGIC trip. The measure has no default measurement period, so the handle passes one.
+# MAGIC The sample measure notebook 3 runs, `HypertensionBPControl`, read from the `measures/` folder published
+# MAGIC beside this notebook. It includes `SampleMeasureCommon`, which resolves from the same folder.
+# MAGIC Nothing runs: the handle below is **lazy**, and when it compiles the result is memoized, so every section
+# MAGIC shares one round trip. The measure has a default measurement period parameter, so the handle passes one.
 # MAGIC
-# MAGIC **Expected output:** `BasicEncounterAndCondition` and `EncounterDuringPeriod`, each with its CQL size.
+# MAGIC **Expected output:** `HypertensionBPControl` and `SampleMeasureCommon`, each with its CQL size.
 
 # COMMAND ----------
 import pathlib
@@ -51,11 +51,11 @@ if not MEASURES.is_dir():
     raise FileNotFoundError(f"no measures folder at {MEASURES} — it is published beside this notebook")
 
 client = connect(spark, library_path=str(MEASURES))
-SOURCES = {name: (MEASURES / f"{name}.cql").read_text() for name in ("BasicEncounterAndCondition",
-                                                                      "EncounterDuringPeriod")}
+SOURCES = {name: (MEASURES / f"{name}.cql").read_text() for name in ("HypertensionBPControl",
+                                                                      "SampleMeasureCommon")}
 for name, cql in SOURCES.items():
     print(f"{name} — {len(cql)} chars of CQL")
-q = client.cql(library="BasicEncounterAndCondition").with_measurement_period("2026-01-01", "2026-12-31")
+q = client.cql(library="HypertensionBPControl").with_measurement_period("2026-01-01", "2026-12-31")
 
 # COMMAND ----------
 # MAGIC %md
@@ -68,17 +68,19 @@ q = client.cql(library="BasicEncounterAndCondition").with_measurement_period("20
 # MAGIC
 # MAGIC **Expected output:**
 # MAGIC ```
-# MAGIC defines             : ['EncounterDuringPeriod.Has Encounter During Period', 'Has Any Condition',
-# MAGIC                        'Has Encounter During Period', 'Initial Population']
-# MAGIC dependencies        : {'Has Encounter During Period': ['EncounterDuringPeriod.Has Encounter During Period'],
-# MAGIC                        'Initial Population': ['Has Encounter During Period', 'Has Any Condition'], ...}
-# MAGIC populations         : ['Initial Population']
+# MAGIC defines             : [... approximately 14 defines including population definitions,
+# MAGIC                        hypertension checks and blood pressure criteria ...]
+# MAGIC dependencies        : {'Initial Population': [...],
+# MAGIC                        'Numerator': ['Most Recent Diastolic', 'Most Recent Systolic'],
+# MAGIC                        'Denominator': ['Initial Population'], ...}
+# MAGIC populations         : ['Initial Population', 'Denominator', 'Denominator Exclusions', 'Numerator']
 # MAGIC materialized_defines: [...]   # the barriers the cost model chose
 # MAGIC boundaries          : [...]
 # MAGIC compiler_version    : '...'   # the pin the run is reproducible against
 # MAGIC ```
-# MAGIC The edges to read are `Initial Population -> [Has Encounter During Period, Has Any Condition]` and, behind
-# MAGIC the first, the included library's own define, named with its library: the include is part of the graph.
+# MAGIC The graph shows the hypertension measure's population defines at the top level, with blood pressure reads,
+# MAGIC condition checks, and encounter eligibility flowing in. The included libraries' defines are named with their
+# MAGIC library prefix: the includes are part of the graph.
 
 # COMMAND ----------
 graph = q.dag()
@@ -95,27 +97,27 @@ print("compiler_version    :", graph.compiler_version)
 # MAGIC `translate()` returns the ELM JSON the engine's front end produces from CQL — HL7's standard
 # MAGIC interchange form for CQL logic.
 # MAGIC
-# MAGIC The library translated here is `EncounterDuringPeriod`, the one the measure includes: it needs no library
-# MAGIC but FHIRHelpers, which the compiler supplies, so its text translates on its own.
+# MAGIC The library translated here is `SampleMeasureCommon`, one the measure includes. Its only include is
+# MAGIC FHIRHelpers, which is content like any library, so its text is passed along with it.
 # MAGIC
-# MAGIC **Expected output:** a byte count of a few thousand, the statement names, and the first 600 characters of
-# MAGIC `Has Encounter During Period`'s expression tree — an `Exists` over a `Query` whose source is the
-# MAGIC `Encounter` retrieve, which is the CQL you read, spelled out.
+# MAGIC **Expected output:** a byte count of several thousand (the library has multiple functions and queries),
+# MAGIC the statement names, and the first 600 characters of one define's expression tree — showing the `Query` and
+# MAGIC filter logic over FHIR retrieves, which is the CQL you read, spelled out in ELM.
 # MAGIC ```
 # MAGIC ELM bytes  : ...
-# MAGIC statements : ['Patient', 'Has Encounter During Period']
+# MAGIC statements : ['Patient', 'Age At End Of Period', 'Qualifying Encounters', ...]
 # MAGIC ```
 # MAGIC (`Patient` is the implicit context statement the translator adds.)
 
 # COMMAND ----------
 import json
-elm = translate(SOURCES["EncounterDuringPeriod"])
+elm = translate(SOURCES["SampleMeasureCommon"], includes=[(MEASURES / "FHIRHelpers.cql").read_text()])
 elm_obj = json.loads(elm)
 print("ELM bytes  :", len(elm))
 print("statements :", [s["name"] for s in elm_obj["library"]["statements"]["def"]])
-print("\nELM for 'Has Encounter During Period':")
-during = next(s for s in elm_obj["library"]["statements"]["def"] if s["name"] == "Has Encounter During Period")
-print(json.dumps(during["expression"], indent=2)[:600], "...")
+print("\nELM for 'Qualifying Encounters':")
+encounters = next(s for s in elm_obj["library"]["statements"]["def"] if s["name"] == "Qualifying Encounters")
+print(json.dumps(encounters["expression"], indent=2)[:600], "...")
 
 # COMMAND ----------
 # MAGIC %md
@@ -130,11 +132,15 @@ print(json.dumps(during["expression"], indent=2)[:600], "...")
 # MAGIC away — the plan would collapse to nothing and prove nothing. The row is a **plan placeholder** and is
 # MAGIC never read: `explain` plans, it does not execute.
 # MAGIC
-# MAGIC **Expected output:** the three stubbed functions, one per type the measure reads.
+# MAGIC **Expected output:** the stubbed functions for each type the measure reads — the hypertension measure reads
+# MAGIC Patient, Encounter, Condition (for hypertension and other diagnoses), Observation (for blood pressure readings),
+# MAGIC and Procedure (for dialysis/transplant).
 # MAGIC ```
 # MAGIC Condition    -> retrieve_Condition__cqlmount
 # MAGIC Encounter    -> retrieve_Encounter__cqlmount
+# MAGIC Observation  -> retrieve_Observation__cqlmount
 # MAGIC Patient      -> retrieve_Patient__cqlmount
+# MAGIC Procedure    -> retrieve_Procedure__cqlmount
 # MAGIC ```
 
 # COMMAND ----------
@@ -152,8 +158,9 @@ def stub(fhir_type):
     return spark.createDataFrame([(None, None)], contract)
 
 
-# The sample measure filters on no value set, so no expansion table is mounted.
-mounted = mount(spark, {t: stub(t) for t in ("Condition", "Encounter", "Patient")})
+# The sample measure filters on value sets, so no expansion table is mounted for this plan — the compile
+# produces the complete closure regardless, reading the stub schemas.
+mounted = mount(spark, {t: stub(t) for t in ("Condition", "Coverage", "Encounter", "Observation", "Patient", "Procedure")})
 for t, fn in sorted(mounted.items()):
     print(f"{t:12} -> {fn}")
 
@@ -167,10 +174,10 @@ for t, fn in sorted(mounted.items()):
 # MAGIC Every define's frame is independently `.explain()`-able, which is also how you read a materialized
 # MAGIC barrier's full plan.
 # MAGIC
-# MAGIC **Expected output:** a `== Physical Plan ==` block for `Initial Population` — the `Encounter` retrieve
-# MAGIC and its period comparison through the `cql_*` UC functions, the `Condition` retrieve, and the join that
-# MAGIC brings the two defines together. No private runtime anywhere in it, and nothing your existing Spark
-# MAGIC tooling cannot read.
+# MAGIC **Expected output:** a `== Physical Plan ==` block for `Initial Population` — the `Encounter`, `Condition`,
+# MAGIC and `Observation` retrieves with their filters through the `cql_*` UC functions, and the joins that flow
+# MAGIC age, hypertension status, and encounter eligibility into the population. No private runtime anywhere in it,
+# MAGIC and nothing your existing Spark tooling cannot read.
 
 # COMMAND ----------
 pops = q.exec()   # no targets -> the populations, one lazy frame each

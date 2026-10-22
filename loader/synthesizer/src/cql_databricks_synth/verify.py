@@ -15,6 +15,7 @@ from pathlib import Path
 from . import SynthesizerError
 from .evaluator import Bundle, Evaluator
 from .emit import serialize_value
+from .fill import PATIENT_REFERENCE
 from .generate import run_parameters
 from .valuesets import ValueSetIndex
 
@@ -43,10 +44,11 @@ def load_bundles(out_dir: str | Path) -> dict[str, Bundle]:
                 if resource["resourceType"] == "Patient":
                     key = resource["id"]
                 else:
-                    reference = resource.get("subject", {}).get("reference", "")
+                    element = PATIENT_REFERENCE.get(resource["resourceType"], "subject")
+                    reference = resource.get(element, {}).get("reference", "")
                     if not reference.startswith("Patient/"):
                         raise SynthesizerError(
-                            f"resource {resource.get('id')} has no Patient subject reference")
+                            f"resource {resource.get('id')} has no Patient reference in {element}")
                     key = reference.removeprefix("Patient/")
                 bundles.setdefault(key, Bundle()).add(resource)
     return bundles

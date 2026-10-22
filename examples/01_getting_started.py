@@ -5,8 +5,9 @@
 # MAGIC notebook and how they hand results back to Python and SQL. Everything after this notebook — the
 # MAGIC language tour, the clinical measure, the compile artifacts — uses one of these two doors.
 # MAGIC
-# MAGIC 1. **`%%cql` — the cell magic.** A cell whose first line is `%%cql` *is* a CQL library. No quoting,
-# MAGIC    no Python wrapper, editor-width room to write real CQL.
+# MAGIC 1. **`%%cql` — the cell magic.** A cell whose first line is `%%cql` *is* CQL. No quoting,
+# MAGIC    no Python wrapper, editor-width room to write real CQL. A cell with no `library` header joins
+# MAGIC    the notebook's **session library**, so a later cell sees its defines, as a SQL cell sees a view.
 # MAGIC 2. **`cql(...)` — the Python API.** A lazy query handle you can inspect, parameterize and reuse.
 # MAGIC
 # MAGIC They are the same execution path: the magic is a front door, not a second
@@ -111,8 +112,8 @@ print("BirthYears =", ages.collect()[0][VALUE_COLUMN])
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## 7. `--target` — choose which defines to evaluate
-# MAGIC With no `--target`, the magic runs the library's auto-detected eCQM populations
-# MAGIC if it has any, else **every** define. `--target` names one explicitly and
+# MAGIC With no `--target`, the magic runs the cell's auto-detected eCQM populations
+# MAGIC if it has any, else **every** define the cell declares. `--target` names one explicitly and
 # MAGIC repeats for several — useful for inspecting a supporting define rather than the headline one.
 # MAGIC
 # MAGIC With several targets, `--df` binds a `{define: DataFrame}` **dict** instead of a single frame.
@@ -132,17 +133,48 @@ print(cohort.keys())
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## 8. The other front door — the Python API
-# MAGIC `cql(source)` returns a **lazy query handle**. Nothing is compiled or run until you ask it for
-# MAGIC something, and the compile is memoized — inspecting a library and then running it costs one round
-# MAGIC trip, not two.
+# MAGIC ## 8. One session library — later cells see earlier defines
+# MAGIC Every cell so far had no `library` header, so each one joined the notebook's **session library**
+# MAGIC (`SVC-NOTEBOOK-SESSION-SCOPE`). A later cell refers to an earlier define by name, with nothing to
+# MAGIC import. Redefining a name **replaces** it, the way re-running a SQL cell's `CREATE OR REPLACE VIEW`
+# MAGIC does, and every define that uses it follows.
+# MAGIC
+# MAGIC A cell shows only its own defines. Give a cell a `library` header when you want a separate,
+# MAGIC includable library instead (notebook 5).
+# MAGIC
+# MAGIC **Expected output:** `Total` is `1200` (`Screened` + `Unscreened` from section 7). After `Eligible` is
+# MAGIC redefined as `1500`, the cell shows `1500`, and the `%sql` cell reads `total = 1500`: `Unscreened`
+# MAGIC is now `660`, so `Total` moved with it.
+
+# COMMAND ----------
+# MAGIC %%cql
+# MAGIC define "Total": "Screened" + "Unscreened"
+
+# COMMAND ----------
+# MAGIC %%cql
+# MAGIC define "Eligible": 1500
+
+# COMMAND ----------
+# MAGIC %sql
+# MAGIC SELECT __val AS total FROM Total
+
+# COMMAND ----------
+# MAGIC %md
+# MAGIC ## 9. The other front door — the Python API
+# MAGIC `cql(source)` returns a **lazy query handle**. Nothing runs until you ask it for something, and the
+# MAGIC compile is memoized — inspecting a library and then running it costs one round trip, not two.
+# MAGIC
+# MAGIC A string with no `library` header joins the same session library as the cells above. `cql()` checks
+# MAGIC at once that the whole library still compiles. `exec()` with no targets runs only the string's own
+# MAGIC defines, and `defines()` lists the whole library.
 # MAGIC
 # MAGIC This is the door to use when the CQL is a *value* your code holds: read from a file, resolved from a
 # MAGIC registry, or looped over.
 # MAGIC
 # MAGIC **Expected output:**
 # MAGIC ```
-# MAGIC defines     : ['Answer2', 'Doubled']
+# MAGIC its defines : ['Answer2', 'Doubled']
+# MAGIC library     : ['Answer', 'Answer2', 'BirthYears', 'Doubled', 'Eligible', 'Screened', 'Total', 'Unscreened']
 # MAGIC populations : []
 # MAGIC Doubled     = 84
 # MAGIC ```
@@ -157,13 +189,14 @@ define "Answer2": 6 * 7
 define "Doubled": "Answer2" * 2
 ''', spark=spark)
 
-print("defines     :", q.defines())
+print("its defines :", q.default_targets())
+print("library     :", sorted(q.defines()))
 print("populations :", q.populations())
 print("Doubled     =", q.exec("Doubled").collect()[0][VALUE_COLUMN])
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## 9. Parameters — the same handle, specialized
+# MAGIC ## 10. Parameters — the same handle, specialized
 # MAGIC A CQL `parameter` with a `default` is the mechanism every measure uses for its measurement period.
 # MAGIC The handle is **immutable-fluent**: `with_parameter` returns a NEW handle, so one bound library can
 # MAGIC be reused and specialized rather than rebound.
@@ -192,7 +225,7 @@ print("bound threshold  (100) :",
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## 10. Libraries from a folder — the Git Folder setup
+# MAGIC ## 11. Libraries from a folder — the Git Folder setup
 # MAGIC Everything so far ran CQL you handed over as *text*. A real measure is not text you paste: it is a
 # MAGIC library that `include`s one or more others, published and versioned in a repo.
 # MAGIC
@@ -220,12 +253,13 @@ print("bound threshold  (100) :",
 # MAGIC **Expected output:**
 # MAGIC ```
 # MAGIC library_path: /Workspace/…/examples/measures
-# MAGIC   BasicEncounterAndCondition|1.0.0
-# MAGIC   EncounterDuringPeriod|1.0.0
-# MAGIC populations of BasicEncounterAndCondition: ['Initial Population']
+# MAGIC   FHIRHelpers|4.0.1
+# MAGIC   HypertensionBPControl|1.0.0
+# MAGIC   SampleMeasureCommon|1.0.0
+# MAGIC populations of HypertensionBPControl: ['Initial Population', 'Denominator', 'Denominator Exclusions', 'Numerator']
 # MAGIC ```
 # MAGIC That last line is the whole feature. Binding by name resolved the measure, walked its `include`
-# MAGIC closure to find `EncounterDuringPeriod`, and shipped both to the compiler — and **no data was
+# MAGIC closure to find the helper libraries, and shipped all of them to the compiler — and **no data was
 # MAGIC touched**, because resolving and compiling a measure is not the same act as running it.
 
 # COMMAND ----------
@@ -244,12 +278,12 @@ print("library_path:", MEASURES)
 for ref in client.libraries("*"):
     print(" ", ref)
 
-measure = client.cql(library="BasicEncounterAndCondition").with_measurement_period("2026-01-01", "2026-12-31")
-print("populations of BasicEncounterAndCondition:", measure.populations())
+measure = client.cql(library="HypertensionBPControl").with_measurement_period("2026-01-01", "2026-12-31")
+print("populations of HypertensionBPControl:", measure.populations())
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## 11. What did *not* happen
+# MAGIC ## 12. What did *not* happen
 # MAGIC No endpoint. No token. No cluster. No `%scala` cell. No catalog or schema named anywhere in this
 # MAGIC notebook. A single deployment matching the naming convention resolves itself:
 # MAGIC

@@ -15,8 +15,12 @@ not evolving logic.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from . import SynthesizerError
+
+if TYPE_CHECKING:
+    from .measure_config import MeasureConfig
 
 
 def normalize_population(name: str) -> str:
@@ -141,6 +145,27 @@ def proportion_strata(populations: dict[str, str]) -> list[Stratum]:
         add(dict(in_denominator))
     add({ipp: None}, null_target=True)
     return strata
+
+
+#: The realistic-mix rates when neither a flag nor the measure's config sets one (SYNTH-PDS-SCALE).
+DEFAULT_RATES = {"out_of_ipp": 0.30, "exclusion_rate": 0.05, "numerator_rate": 0.72, "null_rate": 0.01,
+                 "exception_rate": 0.02}
+
+
+def realistic_rates(config: MeasureConfig | None, flags: dict[str, float | None] | None = None) -> dict[str, float]:
+    """Each realistic-mix rate: its flag, else the measure's config (SYNTH-PDS-MEASURE-CONFIG), else the default
+    (SYNTH-PDS-SCALE)."""
+    rates = dict(DEFAULT_RATES)
+    if config is not None:
+        for name, value in config.rates.items():
+            if name == "in_ipp":
+                rates["out_of_ipp"] = 1.0 - value
+            else:
+                rates[name] = value
+    for name, flag in (flags or {}).items():
+        if flag is not None:
+            rates[name] = flag
+    return rates
 
 
 def realistic_counts(strata: list[Stratum], populations: dict[str, str], total: int, *,

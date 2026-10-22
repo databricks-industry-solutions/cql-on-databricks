@@ -66,7 +66,7 @@ class CompileRequest:
     sources: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
     # BUILD-COMPILE-LINK: the ROOT's include CLOSURE, resolved by the caller (`BUILD-LIBRARY-PROVIDER`).
     # The service resolves NOTHING — it merges what it is handed — so a multi-library eCQM is only
-    # compilable when this carries every non-FHIRHelpers dependency. Each entry ships as ELM when it has
+    # compilable when this carries every dependency, FHIRHelpers included. Each entry ships as ELM when it has
     # it, else as CQL TEXT the service registers as a translation source.
     deps: Sequence["LibrarySource"] = ()
     # EMIT-SQL-OBJECT-PREFIX: session-object namespace. Empty (the default) emits BARE names.
@@ -414,6 +414,14 @@ class LibraryGraph:
 # Credential providers (auth) — standard OAuth, provider-neutral.
 # --------------------------------------------------------------------------------------------------
 
+@dataclass(frozen=True)
+class MergedCql:
+    """The ``merge-cql`` result (`SVC-NOTEBOOK-SESSION-SCOPE`): the merged session library, and the expression
+    defines its LAST fragment declares, in that fragment's order."""
+    cql: str
+    defines: Tuple[str, ...]
+
+
 class CredentialProvider(abc.ABC):
     """Yields the HTTP auth headers for a compile request. The compiler touches NO data, so auth is
     light and is entirely the host's concern (BUILD-COMPILE-SERVICE)."""
@@ -556,6 +564,12 @@ class CompileProvider(abc.ABC):
         root's ``include`` statements resolve. Optional capability."""
         raise NotImplementedError(f"{type(self).__name__} does not support translate()")
 
+    def merge_cql(self, fragments: Sequence[str]) -> MergedCql:
+        """Merge header-less CQL ``fragments``, in order, into one library — the latest declaration of a name
+        wins (`SVC-NOTEBOOK-SESSION-SCOPE`). The merge is the compiler's: it needs a CQL parser. Optional
+        capability."""
+        raise NotImplementedError(f"{type(self).__name__} does not support merge_cql()")
+
     def resource_types(self) -> List[str]:
         """The FHIR resource types the compiler models (`SVC-RESOURCE-SCHEMA`), sorted. Optional
         capability."""
@@ -625,6 +639,10 @@ class _JsonProvider(CompileProvider):
         raising on them (`BUILD-RESOLVE-COMPILE`'s ``Translate``). A transport failure still raises."""
         body = self._post("/translate", {"cql": cql, "includes": list(includes)})
         return {"ok": bool(body.get("ok")), "elm": body.get("elm"), "diagnostics": list(body.get("diagnostics") or [])}
+
+    def merge_cql(self, fragments: Sequence[str]) -> MergedCql:
+        body = self._post("/merge-cql", {"fragments": list(fragments)})
+        return MergedCql(cql=body["cql"], defines=tuple(body.get("defines") or ()))
 
     def resource_types(self) -> List[str]:
         body = self._post("/resource-schema", {})

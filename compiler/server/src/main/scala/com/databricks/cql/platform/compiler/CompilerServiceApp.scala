@@ -5,7 +5,7 @@ import com.databricks.cql.meta.LibraryGraph
 import com.databricks.cql.passes.BuildInfo
 import com.databricks.cql.retrieve.{ResourceStruct, TerminologyProvider}
 import com.databricks.cql.sema.{FhirModel, FhirSchema}
-import com.databricks.cql.service.{CompileRequest, CompileService, SqlStatementOut}
+import com.databricks.cql.service.{CompileRequest, CompileService, MergeCql, SqlStatementOut}
 import com.databricks.cql.translate.CqlToElmCli
 
 import java.net.InetSocketAddress
@@ -94,7 +94,7 @@ object CompilerServiceApp {
     // don't serialize on the HttpServer's default single-threaded executor.
     server.setExecutor(Executors.newFixedThreadPool(cfg.threads))
     for (path <- Seq("/health", "/capabilities", "/translate", "/compile-sql", "/compile-pipeline",
-                     "/describe", "/resource-schema")) {
+                     "/describe", "/resource-schema", "/merge-cql")) {
       server.createContext(path, new HttpHandler {
         def handle(ex: HttpExchange): Unit = CompilerServiceApp.serve(router, ex)
       })
@@ -221,7 +221,9 @@ final class CompilerRouter(service: CompileService, token: Option[String],
       case "/compile-pipeline" if method == "POST" => cachedCompile(path, body)(compilePipeline(body))
       case "/describe" if method == "POST"         => describe(body)
       case "/resource-schema" if method == "POST"  => resourceSchema(body)
-      case "/translate" | "/compile-sql" | "/compile-pipeline" | "/describe" | "/resource-schema" =>
+      case "/merge-cql" if method == "POST"        => mergeCql(body)
+      case "/translate" | "/compile-sql" | "/compile-pipeline" | "/describe" | "/resource-schema" |
+           "/merge-cql" =>
         HttpResult.error(405, s"$path expects POST")
       case "/capabilities" => HttpResult.error(405, "/capabilities expects GET")
       case other => HttpResult.error(404, s"no such method: $other")
@@ -248,14 +250,15 @@ final class CompilerRouter(service: CompileService, token: Option[String],
       "compilerVersion" -> compilerVersion,
       "engineVersion" -> BuildInfo.version,
       // Method names advertise the served URL paths, which are lowercase kebab-case (BUILD-URL-KEBAB).
-      "methods" -> ujson.Arr("translate", "compile-sql", "compile-pipeline", "describe", "resource-schema"),
+      "methods" -> ujson.Arr("translate", "compile-sql", "compile-pipeline", "describe", "resource-schema",
+                             "merge-cql"),
       // The SQL backend is Spark-free end to end (EXEC-SQL-BACKEND): every op is pure IR -> text/metadata.
       // `resource-schema` is likewise Spark-free — the mount DDL is derived from the STATIC FHIR model
       // (ResourceStruct.structType), no SparkSession (SVC-RESOURCE-SCHEMA). One kebab path serves two
       // additive shapes: `{types:[...]}` -> mount DDL; empty/absent `types` -> `{resourceTypes:[...]}`,
       // the enumeration of every modeled FHIR resource (FhirModel.resourceTypes, sorted).
       "sparkFreeMethods" ->
-        ujson.Arr("translate", "compile-sql", "compile-pipeline", "describe", "resource-schema")))
+        ujson.Arr("translate", "compile-sql", "compile-pipeline", "describe", "resource-schema", "merge-cql")))
 
   /** CQL -> ELM (authoring). Fail-loud: `ok:false` + diagnostics, never a silent pass
     * (`CORE-NO-SILENT-MISLOWER`). `includes` are extra library sources so cross-library `include`s
@@ -271,6 +274,12 @@ final class CompilerRouter(service: CompileService, token: Option[String],
       "diagnostics" -> ujson.Arr.from(result.errors.map(ujson.Str(_))),
       "ok" -> result.elmJson.isDefined))
   }
+
+  /** SVC-NOTEBOOK-SESSION-SCOPE — header-less fragments -> one library, the latest declaration winning
+    * ([[MergeCql]]). A header or a syntax error is a loud 400. */
+  private def mergeCql(body: String): HttpResult =
+    try HttpResult.json(200, MergeCql.handle(body))
+    catch { case t: Throwable => HttpResult.error(400, t) }
 
   /** ELM/CQL -> a Spark SQL SCRIPT (runtime `cql()` compile, `EXEC-SQL-BACKEND`, `PIPE-RUNTIME-COMPILE`):
     * `{statements:[{name,kind,sql}], target, defines}`. The client runs each statement via `spark.sql` in
