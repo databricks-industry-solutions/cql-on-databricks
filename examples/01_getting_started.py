@@ -256,7 +256,6 @@ print("bound threshold  (100) :",
 # MAGIC   FHIRHelpers|4.0.1
 # MAGIC   HypertensionBPControl|1.0.0
 # MAGIC   SampleMeasureCommon|1.0.0
-# MAGIC   SampleSupplementalData|1.0.0
 # MAGIC populations of HypertensionBPControl: ['Initial Population', 'Denominator', 'Denominator Exclusions', 'Numerator']
 # MAGIC ```
 # MAGIC That last line is the whole feature. Binding by name resolved the measure, walked its `include`

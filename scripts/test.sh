@@ -96,7 +96,7 @@ if [ "$mode" = "integration" ] || [ "$mode" = "all" ]; then
   integration() {
     [ -x "$venv_py" ] || { echo "  venv absent — run: scripts/setup.sh"; return 1; }
     . "$here/scripts/lib/databricks-profile.sh"
-    local target="${DATABRICKS_BUNDLE_TARGET:-default}" profile cfg volume catalog scopes results app url token junit skipped
+    local target="${DATABRICKS_BUNDLE_TARGET:-default}" profile cfg volume catalog app url token junit skipped
     profile="$(config_profile -t "$target")"
     [ -n "$profile" ] || { echo "  no profile — set targets.$target.workspace.profile in databricks.local.yml"; return 1; }
     cfg="$(cd "$here" && databricks bundle validate -t "$target" -p "$profile" -o json)" || return 1
@@ -106,10 +106,6 @@ if [ "$mode" = "integration" ] || [ "$mode" = "all" ]; then
     # BIND-PUBLISH: the live publish writes a scratch schema here, and drops it.
     catalog="$(jqpy "print(((d.get('variables') or {}).get('uc_catalog') or {}).get('value') or '')")"
     [ -n "$catalog" ] || { echo "  could not resolve uc_catalog from the bundle"; return 1; }
-    # CLIENT-RELEASE-TESTS: the release run discovers in these scopes and writes its private results here.
-    scopes="$(jqpy "print(((d.get('variables') or {}).get('catalog_scopes') or {}).get('value') or '')")"
-    results="$(jqpy "print(((d.get('variables') or {}).get('designer_results_catalog') or {}).get('value') or '')")"
-    [ -n "$scopes" ] && [ -n "$results" ] || { echo "  could not resolve catalog_scopes and designer_results_catalog from the bundle"; return 1; }
     app="$(jqpy "print(d['resources']['apps']['cql_databricks_compiler']['name'])")" || return 1
     url="$(databricks apps get "$app" -p "$profile" -o json | python3 -c "import sys,json;print(json.load(sys.stdin).get('url') or '')")"
     [ -n "$url" ] || { echo "  App $app has no URL — deploy it: scripts/deploy/deploy.sh"; return 1; }
@@ -118,7 +114,7 @@ if [ "$mode" = "integration" ] || [ "$mode" = "all" ]; then
     junit="$(mktemp)"
     ( cd "$here" && DATABRICKS_CONFIG_PROFILE="$profile" CQL_DATABRICKS_LIVE=1 DATABRICKS_SERVERLESS=1 \
         CQL_DATABRICKS_ARTIFACT_VOLUME="$volume" CQL_DATABRICKS_PUBLISH_CATALOG="$catalog" \
-        CQL_DATABRICKS_CATALOG_SCOPES="$scopes" CQL_DATABRICKS_RESULTS_CATALOG="$results" CQL_DATABRICKS_ENDPOINT="$url" CQL_DATABRICKS_TOKEN="$token" \
+        CQL_DATABRICKS_ENDPOINT="$url" CQL_DATABRICKS_TOKEN="$token" \
         "$venv_py" -m pytest -q -rs --junitxml="$junit" examples/tests ) || { rm -f "$junit"; return 1; }
     # A skipped live test proved nothing, so it fails the run.
     skipped="$(python3 -c "import sys,xml.etree.ElementTree as E;r=E.parse(sys.argv[1]).getroot();print(sum(int(s.get('skipped',0)) for s in r.iter('testsuite')))" "$junit")"

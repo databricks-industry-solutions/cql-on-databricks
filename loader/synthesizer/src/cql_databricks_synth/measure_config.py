@@ -9,14 +9,15 @@ in ``<Measure>.synth.json`` beside its CQL, and pinned with it (``pins.json``, S
       "measure": "HypertensionBPControl",
       "version": "1.0.0",
       "populations": {"Initial Population": 0.70},
-      "routes": {"Denominator Exclusions": {"Has Exclusion Condition": 0.8, "Has Excluding Encounter": 0.2}},
+      "routes": {"Denominator Exclusions": {"Common.In Hospice Care": 1, "Has Kidney Failure": 3}},
       "quantities": {"Example Reading A": {"range": [85, 185]}},
       "members": {"Example Condition Diagnoses": {"example-hypertension": 3, "example-asthma": 1}}
     }
 
 Every key resolves against the measure's ELM — a root population or define, a declared code or value set, a
-member of that value set's expansion — and an unknown key is an error, never ignored. Every section is
-optional. The file applies in the realistic mix mode only (``--patients``), like the FHIR-level priors: uniform
+member of that value set's expansion — and an unknown key is an error, never ignored. A route branch that is a
+define of an included library is named by the alias the measure includes it as (``"Common.In Hospice Care"``).
+Every section is optional. The file applies in the realistic mix mode only (``--patients``), like the FHIR-level priors: uniform
 and explicit modes exist to cover every route and member evenly, and shaping them would defeat that.
 """
 from __future__ import annotations
@@ -147,12 +148,13 @@ def _disjuncts(node: dict) -> list[dict]:
 
 
 def _branch_define(part: dict) -> str | None:
-    """The root define an `or` branch names: ``"X"`` or ``exists "X"``."""
+    """The define an `or` branch names: ``"X"`` or ``exists "X"``, and ``"Common.X"`` for a define of an included
+    library, by the alias the measure includes it as."""
     if part.get("type") == "Exists":
         part = part.get("operand") or {}
-    if part.get("type") == "ExpressionRef" and not part.get("libraryName"):
-        return part.get("name")
-    return None
+    if part.get("type") != "ExpressionRef":
+        return None
+    return f"{part['libraryName']}.{part['name']}" if part.get("libraryName") else part.get("name")
 
 
 def _routes(section: dict, root, problems: list[str]) -> dict[tuple[str, str], list[float]]:
@@ -171,8 +173,7 @@ def _routes(section: dict, root, problems: list[str]) -> dict[tuple[str, str], l
             continue
         names = [_branch_define(part) for part in _disjuncts(expression)]
         if None in names:
-            problems.append(f"routes: every branch of {define!r} must be a define of {root.name}, "
-                            "or `exists` of one")
+            problems.append(f"routes: every branch of {define!r} must be a define, or `exists` of one")
             continue
         if set(weights) != set(names):
             problems.append(f"routes.{define}: weights name {sorted(weights)}, the branches are {sorted(names)}")

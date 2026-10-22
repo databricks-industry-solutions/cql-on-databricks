@@ -17,7 +17,7 @@ import scala.jdk.CollectionConverters._
   *
   * It runs every measure in the conformance corpus (`CONF-MEASURE-DISCOVERY`: each `data/measures/<library>/`
   * with an `answer-key.json`), reading the CQL from disk rather than a copy, so the test moves with the
-  * corpus. Each measure's closure is the one the translator resolves, FHIRHelpers excepted. */
+  * corpus. Each measure's closure is the one the translator resolves, FHIRHelpers included. */
 @RunWith(classOf[JUnitRunner])
 class ClientClosureE2ESpec extends AnyFunSuite {
   import ClientClosureE2ESpec.Measure
@@ -52,13 +52,14 @@ class ClientClosureE2ESpec extends AnyFunSuite {
   }
   assert(measures.nonEmpty, s"no measure under $measuresDataDir")
 
-  /** The library names the translator resolves for `library`, FHIRHelpers excepted (the compiler supplies it). */
+  /** The library names the translator resolves for `library`, FHIRHelpers among them: it is shipped like any
+    * included library (LANG-FHIRHELPERS-FROM-CONTENT). */
   private def closure(library: String): Seq[String] = {
     val candidates = Files.list(measureDir).iterator().asScala.map(_.getFileName.toString)
       .filter(_.endsWith(".cql")).map(_.stripSuffix(".cql")).filterNot(_ == library).toSeq.sorted
     val result = com.databricks.cql.translate.CqlToElmCli.translateClosure(read(library), candidates.map(read))
     assert(result.root.errors.isEmpty, result.root.errors.mkString("; "))
-    result.dependencies.map(e => ujson.read(e)("library")("identifier")("id").str).filterNot(_ == "FHIRHelpers")
+    result.dependencies.map(e => ujson.read(e)("library")("identifier")("id").str)
   }
 
   measures.foreach { m =>

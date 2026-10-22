@@ -125,7 +125,7 @@ final class DurablePlanSpec extends AnyFunSuite {
                              |""".stripMargin
 
   private def bound(catalog: String, schema: String): CompileRequest =
-    CompileRequest(cql = Some(fhirSource), durable = true,
+    CompileRequest(cql = Some(fhirSource), depCql = Seq(FhirHelpersCql.text), durable = true,
       dataSource = Some(DataSourceRoutines(catalog, schema, Seq("retrieve_patient"))))
 
   test("RUN-CLIENT-RESULT-IDENTITY: a different data source changes every fingerprint") {

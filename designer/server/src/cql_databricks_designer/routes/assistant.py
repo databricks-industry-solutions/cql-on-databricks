@@ -49,7 +49,7 @@ class AssistantSelectionDto(BaseModel):
     result_set: dict | None = Field(default=None, alias="resultSet")
     #: What those identifiers are CALLED on the screen. Carried separately from the arguments above
     #: and never passed to a tool — an identifier is not a name a clinician recognises, and an
-    #: assistant that says `sample-patients` at someone who calls it *the sample patients*
+    #: assistant that says `synthetic-population-small` at someone who calls it *the sample patients*
     #: is describing the registry rather than the data.
     measure_title: str | None = Field(default=None, alias="measureTitle")
     data_source_name: str | None = Field(default=None, alias="dataSourceName")

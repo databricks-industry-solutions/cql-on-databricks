@@ -12,7 +12,7 @@ import tempfile
 import unittest
 
 from cql_databricks.compiler import config
-from cql_databricks.compiler.libraries import (COMPILER_PROVIDED, DEFAULT_LAYOUTS, FileLibraryProvider,
+from cql_databricks.compiler.libraries import (DEFAULT_LAYOUTS, FileLibraryProvider,
                                         LibraryProvider, LibraryRef, LibraryResolutionError,
                                         LibrarySource, identity_of, includes_of,
                                         resolve_library_provider)
@@ -159,14 +159,28 @@ class ClosureTests(unittest.TestCase):
             p = FileLibraryProvider([d])
             self.assertEqual([s.name for s in p.closure(p.resolve(LibraryRef("A")))], ["B"])
 
-    def test_fhirhelpers_is_never_a_resolution_failure(self):
-        """`include FHIRHelpers` is resolved by the COMPILER itself, so a closure without a local copy is
-        still complete."""
+    def test_fhirhelpers_resolves_from_the_folder_like_any_library(self):
+        """LANG-FHIRHELPERS-FROM-CONTENT: the compiler bundles no FHIRHelpers, so the closure carries the
+        folder's copy."""
         with tempfile.TemporaryDirectory() as d:
             _write(d, "Root.cql", _cql("Root", includes=[("FHIRHelpers", "4.0.1")]))
+            _write(d, "FHIRHelpers.cql", _cql("FHIRHelpers", "4.0.1"))
             p = FileLibraryProvider([d])
-            self.assertEqual(p.closure(p.resolve(LibraryRef("Root"))), [])
-            self.assertIn("FHIRHelpers", COMPILER_PROVIDED)
+            closure = p.closure(p.resolve(LibraryRef("Root")))
+            self.assertEqual([(s.name, s.version) for s in closure], [("FHIRHelpers", "4.0.1")])
+
+    def test_fhirhelpers_version_no_source_provides_fails(self):
+        """LANG-FHIRHELPERS-FROM-CONTENT: an include of a FHIRHelpers version the folder does not hold fails,
+        naming the version asked for and the ones held, rather than leaving it to a bundled copy."""
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "Root.cql", _cql("Root", includes=[("FHIRHelpers", "4.0.2")]))
+            _write(d, "FHIRHelpers.cql", _cql("FHIRHelpers", "4.0.1"))
+            p = FileLibraryProvider([d])
+            with self.assertRaises(LibraryResolutionError) as ctx:
+                p.closure(p.resolve(LibraryRef("Root")))
+            self.assertIn("FHIRHelpers|4.0.2", str(ctx.exception))
+            self.assertIn("4.0.1", str(ctx.exception))
+            self.assertIn("Root", str(ctx.exception))
 
     def test_sibling_first_scoping_picks_the_measures_own_copy(self):
         """THE scoping rule. Published content ships a copy of each shared library PER MEASURE; a flat
@@ -206,11 +220,11 @@ class RealCorpusTests(unittest.TestCase):
         self.provider = FileLibraryProvider([str(self.CORPUS)])
 
     def test_hypertension_measure_includes_its_shared_libraries(self):
-        """HypertensionBPControl includes SampleMeasureCommon and SampleSupplementalData, and FHIRHelpers, which
-        the compiler supplies. The provider must resolve the closure correctly."""
+        """HypertensionBPControl includes SampleMeasureCommon and FHIRHelpers, both resolved from the corpus
+        (LANG-FHIRHELPERS-FROM-CONTENT)."""
         root = self.provider.resolve(LibraryRef("HypertensionBPControl"))
         got = {s.name for s in self.provider.closure(root)}
-        self.assertEqual(got, {"SampleMeasureCommon", "SampleSupplementalData"},
+        self.assertEqual(got, {"SampleMeasureCommon", "FHIRHelpers"},
                          "HypertensionBPControl closure mismatch")
 
     def test_every_pinned_include_in_the_corpus_resolves(self):
@@ -219,8 +233,6 @@ class RealCorpusTests(unittest.TestCase):
         for ref in self.provider.search():
             src = self.provider.resolve(ref)
             for inc in includes_of(src):
-                if inc.name in COMPILER_PROVIDED:
-                    continue
                 prefer = pathlib.Path(src.origin).parent
                 resolved = self.provider.resolve(inc, prefer_dir=prefer)
                 self.assertEqual((resolved.name, resolved.version), (inc.name, inc.version),

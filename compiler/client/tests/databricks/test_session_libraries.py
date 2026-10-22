@@ -203,12 +203,24 @@ class ClosureTest(unittest.TestCase):
         root = LibrarySource(name="DiabetesCareGap", version="1.0.0", cql=MEASURE, origin=path)
         self.assertEqual([d.name for d in provider.closure(root)], ["DiabetesCommon"])
 
-    def test_fhirhelpers_is_the_compilers_and_never_a_resolution_failure(self):
+    def test_fhirhelpers_resolves_from_a_cell_like_any_library(self):
+        """LANG-FHIRHELPERS-FROM-CONTENT: the compiler bundles no FHIRHelpers; the session supplies it."""
+        provider = SessionLibraryProvider()
+        provider.register("library FHIRHelpers version '4.0.1'\ndefine \"H\": 1\n")
+        root = provider.register("library Cell version '1.0.0'\n"
+                                 "include FHIRHelpers version '4.0.1' called FHIRHelpers\n"
+                                 "define \"C\": 1\n")
+        self.assertEqual([d.name for d in provider.closure(root)], ["FHIRHelpers"])
+
+    def test_fhirhelpers_no_cell_or_folder_provides_fails(self):
+        """LANG-FHIRHELPERS-FROM-CONTENT: an include of FHIRHelpers nothing in the session provides fails."""
         provider = SessionLibraryProvider()
         root = provider.register("library Cell version '1.0.0'\n"
                                  "include FHIRHelpers version '4.0.1' called FHIRHelpers\n"
                                  "define \"C\": 1\n")
-        self.assertEqual(provider.closure(root), [])
+        with self.assertRaises(LibraryResolutionError) as ctx:
+            provider.closure(root)
+        self.assertIn("FHIRHelpers|4.0.1", str(ctx.exception))
 
     def test_mutual_includes_terminate(self):
         provider = SessionLibraryProvider()

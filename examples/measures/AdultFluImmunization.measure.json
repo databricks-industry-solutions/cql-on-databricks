@@ -121,45 +121,5 @@
         }
       ]
     }
-  ],
-  "supplementalData": [
-    {
-      "code": {
-        "text": "SDE Sex"
-      },
-      "usage": [
-        {
-          "coding": [
-            {
-              "system": "http://terminology.hl7.org/CodeSystem/measure-data-usage",
-              "code": "supplemental-data"
-            }
-          ]
-        }
-      ],
-      "criteria": {
-        "language": "text/cql-identifier",
-        "expression": "SDE Sex"
-      }
-    },
-    {
-      "code": {
-        "text": "SDE Payer"
-      },
-      "usage": [
-        {
-          "coding": [
-            {
-              "system": "http://terminology.hl7.org/CodeSystem/measure-data-usage",
-              "code": "supplemental-data"
-            }
-          ]
-        }
-      ],
-      "criteria": {
-        "language": "text/cql-identifier",
-        "expression": "SDE Payer"
-      }
-    }
   ]
 }

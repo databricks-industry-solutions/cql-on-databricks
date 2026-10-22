@@ -735,7 +735,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     dataSourceId: selectedSourceId ?? undefined,
     periodStart, periodEnd,
     // The LABELS — what the screen calls those identifiers. Not tool arguments; the assistant writes
-    // with them so it does not say `HypertensionBPControl` and `sample-patients` at a
+    // with them so it does not say `HypertensionBPControl` and `synthetic-population-small` at a
     // clinician who calls them something else. Resolved here because this is where both are already
     // known — the alternative is the assistant spending a tool round-trip on what is on the screen.
     measureTitle: definition?.title ?? undefined,

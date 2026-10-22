@@ -193,6 +193,9 @@ class SolveState:
     forbidden: dict[tuple[str, str | None], str] = field(default_factory=dict)
     define_wants: dict[tuple[str, str], bool | None] = field(default_factory=dict)
     define_sketch: dict[tuple[str, str], int] = field(default_factory=dict)  # -> resources index
+    #: Branches that must stay empty while resources of their retrieve exist: indices into
+    #: ``Solver._kept_empty``, so every resource of the retrieve, placed before or after, fails a where clause.
+    kept_empty: list[int] = field(default_factory=list)
     next_serial: int = 0
 
 
@@ -202,6 +205,7 @@ _ALTERNATIVES: dict[tuple[str, str], str] = {
     ("Observation", "status"): "preliminary",
     ("Procedure", "status"): "not-done",
     ("Condition", "clinicalStatus"): "inactive",
+    ("Condition", "verificationStatus"): "confirmed",
     ("Patient", "gender"): "male",
     ("Encounter", "class"): "AMB",
 }
@@ -219,6 +223,12 @@ _ELEMENT_OWNERS: dict[str, frozenset[str]] = {
     "onset": frozenset({"Condition", "AllergyIntolerance"}),
     "period": frozenset({"Encounter", "Coverage", "CareTeam", "EpisodeOfCare"}),
 }
+
+#: Elements fill never writes, so a read of one is always null. A condition carries no abatement (fill.py), which
+#: makes its onset-to-abatement interval open-ended.
+_UNFILLED: frozenset[tuple[str, str]] = frozenset({("Condition", "abatement")})
+
+_ELM_DATETIME = "{urn:hl7-org:elm-types:r1}DateTime"
 
 
 class _Chooser:
@@ -319,6 +329,9 @@ class Solver:
         # (`CORE-NO-SILENT-MISLOWER`): the cohort looks complete while a whole exclusion
         # path is dark, and downstream cannot tell that from "the logic says empty".
         self.skipped: list[str] = []
+        #: The branches ``SolveState.kept_empty`` indexes. Append-only and outside the state, so a rollback's
+        #: deepcopy never copies the branches' libraries.
+        self._kept_empty: list[tuple[Solver._Branch, str]] = []
         self._const = Evaluator(self.env, valuesets, Bundle(), parameters)
         self._lib = self.env.lib(self.env.root)
         period = self._const.eval_in(self.env.root, {"type": "ParameterRef",
@@ -699,6 +712,9 @@ class Solver:
             raise Unsatisfiable(f"{kind} never evaluates to null",
                                 conflicts=[f"{kind}@{node.get('locator')}"])
         site = f"{kind}@{self._lib.name}:{node.get('locator')}"
+        if self._is_component_query(source):
+            self._populate_component(self._query_slot(source, scope), want, site)
+            return
         element = self._property_list_query(source, scope)
         if element is not None:
             self._populate_property_list(element, source, want, site)
@@ -715,7 +731,61 @@ class Solver:
             if branch.with_rels:
                 self._uncorrelate(branch, site)
             else:
-                self._forbid(branch, site)
+                self._keep_empty(branch, site)
+
+    def _keep_empty(self, branch: "Solver._Branch", site: str) -> None:
+        """Drive a branch to empty. While no resource of its retrieve exists, the retrieve is forbidden.
+
+        Once one does, it is a resource another define needs (``[Encounter] Discharge where …`` while the
+        patient's qualifying visit is an Encounter): that resource, and any of the retrieve placed later
+        (``_instantiate``), is made to fail one of the branch's where clauses instead.
+        """
+        existing = self._matching_sketches(branch)
+        if not existing:
+            self._forbid(branch, site)
+            return
+        if not branch.wheres:
+            raise Unsatisfiable(f"an unfiltered retrieve must stay empty at {site}", conflicts=[site])
+        self._kept_empty.append((branch, site))
+        self.state.kept_empty.append(len(self._kept_empty) - 1)
+        for sketch in existing:
+            self._miss(branch, sketch, site)
+
+    def _miss(self, branch: "Solver._Branch", sketch: ResourceSketch, site: str) -> None:
+        """Keep one resource out of a branch: one of the branch's where clauses fails for it (a where keeps only a
+        true result, so false is enough)."""
+        def attempt(where) -> None:
+            w_alias, w_node, w_lib, w_scope = where
+            with self._in_lib(w_lib):
+                self._satisfy(w_node, False, {**w_scope, w_alias: sketch})
+
+        self._try_routes(f"miss@{site}:{sketch.serial}", branch.wheres, attempt)
+
+    @staticmethod
+    def _is_component_query(source: dict) -> bool:
+        """A query over a resource's component list (``Reading.component Systolic where …``)."""
+        sources = source.get("source", []) if source.get("type") == "Query" else []
+        if len(sources) != 1:
+            return False
+        src = sources[0]["expression"]
+        return src.get("type") == "Property" and src["path"].split(".")[0] == "component"
+
+    def _populate_component(self, slot: "_ComponentSlot", want: bool, site: str) -> None:
+        """``exists`` over a component query: the component with the where clause's code is present (a later
+        comparison of its value refines that into a numeric domain), or absent."""
+        fields = self.state.resources[slot.owner_index].fields
+        key = f"component:{slot.code}"
+        current = fields.get(key)
+        if want is True:
+            if current is ABSENT:
+                raise Unsatisfiable(f"component {slot.code} demanded both absent and present", conflicts=[site])
+            if current is None:
+                fields[key] = PRESENT
+                fields.setdefault(f"component-system:{slot.code}", slot.system)
+            return
+        if current is not None and current is not ABSENT:
+            raise Unsatisfiable(f"component {slot.code} demanded both present and absent", conflicts=[site])
+        fields[key] = ABSENT
 
     def _property_list_query(self, source: dict, scope: dict) -> "_FieldSlot | None":
         """The field slot a query over a LIST-VALUED ELEMENT of a bound resource denotes
@@ -1004,6 +1074,10 @@ class Solver:
         for w_alias, w_node, w_lib, w_scope in branch.wheres:
             with self._in_lib(w_lib):
                 self._satisfy(w_node, True, {**w_scope, w_alias: sketch})
+        for kept in list(self.state.kept_empty):
+            kept_branch, kept_site = self._kept_empty[kept]
+            if self._retrieves(kept_branch, sketch):
+                self._miss(kept_branch, sketch, kept_site)
         for rel_node, rel_lib, rel_scope in branch.without:
             with self._in_lib(rel_lib):
                 for rel_branch in self._flatten(rel_node, rel_scope):
@@ -1083,19 +1157,17 @@ class Solver:
 
     def _matching_sketches(self, branch: "Solver._Branch") -> list[ResourceSketch]:
         """Existing sketches a branch's base retrieve would return."""
+        return [sketch for sketch in self.state.resources if self._retrieves(branch, sketch)]
+
+    def _retrieves(self, branch: "Solver._Branch", sketch: ResourceSketch) -> bool:
+        """Whether a branch's base retrieve would return the sketch."""
         resource_type, ident, _, template, direct = self._retrieve_parts(
             branch.retrieve, branch.lib)
-        out: list[ResourceSketch] = []
-        for sketch in self.state.resources:
-            if sketch.resource_type != resource_type:
-                continue
-            if ident is None:
-                if template is None or template == sketch.template_id:
-                    out.append(sketch)
-            elif sketch.key == (resource_type, ident) \
-                    or self._sketch_code_matches(sketch, ident, direct):
-                out.append(sketch)
-        return out
+        if sketch.resource_type != resource_type:
+            return False
+        if ident is None:
+            return template is None or template == sketch.template_id
+        return sketch.key == (resource_type, ident) or self._sketch_code_matches(sketch, ident, direct)
 
     def _code_forbidden(self, resource_type: str, coding: Coding) -> bool:
         """Whether a candidate coding falls inside any forbidden retrieve's filter for
@@ -1200,6 +1272,10 @@ class Solver:
             return self._query_slot(node, scope)
         if kind == "Case":
             return self._choice_dispatch_slot(node, scope)
+        if kind == "If":
+            return self._choice_test_slot(node, scope)
+        if kind == "Interval":
+            return self._interval_slot(node, scope)
         if kind == "Coalesce":
             # First operand that denotes a slot the owning type actually carries — the
             # _ELEMENT_OWNERS gate makes `Coalesce(performed…, authoredOn…)` land on the
@@ -1269,12 +1345,66 @@ class Solver:
                 f"locator {node.get('locator')})")
         return slots[0]
 
+    def _choice_test_slot(self, node: dict, scope: dict):
+        """The ``if`` a helper writes to read a temporal FHIR choice element by its variant: ``if performed is
+        DateTime then Interval[performed, performed] else performed as Interval<DateTime>``.
+
+        Fill writes every temporal choice element as its DateTime variant (``performedDateTime``,
+        ``effectiveDateTime``), so the outcome of the test is known: a test for DateTime takes the ``then`` branch
+        and a test for an interval takes the ``else`` branch. Resolving to that branch is exact rather than a
+        guess. Any other ``if`` in slot position is a real conditional and stays unsupported.
+        """
+        condition = node.get("condition") or {}
+        if condition.get("type") != "Is":
+            raise UnsupportedElm(
+                f"If in slot position that does not test a type (library {self._lib.name}, "
+                f"locator {node.get('locator')})")
+        # The tested operand must itself be an element, so the test is a choice-variant test.
+        self._slot(condition["operand"], scope)
+        tested = condition.get("isTypeSpecifier") or {"type": "NamedTypeSpecifier", "name": condition.get("isType")}
+        if tested.get("type") == "NamedTypeSpecifier" and tested.get("name") == _ELM_DATETIME:
+            return self._slot(node["then"], scope)
+        if tested.get("type") == "IntervalTypeSpecifier" \
+                and (tested.get("pointType") or {}).get("name") == _ELM_DATETIME:
+            return self._slot(node["else"], scope)
+        raise UnsupportedElm(
+            f"If tests a variant fill does not write ({tested}) (library {self._lib.name}, "
+            f"locator {node.get('locator')})")
+
+    def _interval_slot(self, node: dict, scope: dict):
+        """An interval a helper builds from an element's own bounds.
+
+        ``Interval[x, x]`` over one point element is that element as an instant. An interval whose high bound reads
+        an element fill never writes (``_UNFILLED``) and is closed is open-ended from its low bound:
+        ``Interval[Coalesce(onset, recordedDate), Coalesce(abatement, …)]`` is ``[onset, +inf)`` (CQL spec,
+        Interval Operators: a closed null high boundary is the maximum).
+        """
+        low = self._slot(node["low"], scope)
+        high = self._slot(node["high"], scope)
+        if not isinstance(low, _FieldSlot) or low.owner_index is None:
+            raise UnsupportedElm(
+                f"interval with a low bound that is not an element (library {self._lib.name}, "
+                f"locator {node.get('locator')})")
+        if high == low and node.get("lowClosed") and node.get("highClosed"):
+            return _IntervalView(start=low, mode="point")
+        if isinstance(high, _FieldSlot) and high.owner_index is not None and node.get("highClosed") \
+                and (self.state.resources[high.owner_index].resource_type, high.prop) in _UNFILLED:
+            return _IntervalView(start=low, mode="open-end")
+        raise UnsupportedElm(
+            f"interval between two elements (library {self._lib.name}, locator {node.get('locator')})")
+
     def _slot_field(self, base, path: str):
         if isinstance(base, _FieldSlot):
-            if path == "value":
-                return base
+            # A resource's `value` is its element (`"Most Recent HbA1c".value`, Observation.value[x]); only an
+            # element's `value` is the FHIR primitive's own value, which the element slot already denotes.
             if base.prop == "" and base.owner_index is not None:
                 return self._sketch_slot(self.state.resources[base.owner_index], path)
+            if path == "value":
+                return base
+            if base.prop and base.owner_index is not None:
+                # A backbone element's field (`hospitalization.dischargeDisposition`): one decision variable at the
+                # dotted path, which fill places nested.
+                return _FieldSlot(base.owner_index, f"{base.prop}.{path}")
         raise UnsupportedElm(f"property {path!r} over {type(base).__name__} slot")
 
     def _sketch_slot(self, sketch: ResourceSketch, path: str):
@@ -1467,8 +1597,8 @@ class Solver:
 
     def _satisfy_In(self, node: dict, want, scope) -> None:
         point_node, container_node = node["operand"]
-        if point_node.get("type") == "CalculateAgeAt":
-            self._satisfy_age(point_node, container_node, want, node, scope)
+        if (age := self._age_call(point_node, scope)) is not None:
+            self._satisfy_age(age, container_node, want, node)
             return
         site = f"in@{self._lib.name}:{node.get('locator')}"
         try:
@@ -1711,8 +1841,8 @@ class Solver:
 
     def _numeric_compare(self, node: dict, want, scope, *, less: bool) -> None:
         left, right = node["operand"]
-        if left.get("type") == "CalculateAgeAt":
-            self._age_bound(left, right, want, node, scope, less=less,
+        if (age := self._age_call(left, scope)) is not None:
+            self._age_bound(age, right, want, node, less=less,
                             or_equal=node["type"] in ("LessOrEqual", "GreaterOrEqual"))
             return
         threshold = self._const_eval(right)
@@ -1756,7 +1886,7 @@ class Solver:
         sketch = self.state.resources[slot.owner_index]
         key = f"component:{slot.code}"
         current = sketch.fields.get(key)
-        if current is None:
+        if current is None or current is PRESENT:
             current = NumericDomain(lo=0.0, hi=400.0, unit=unit)
             sketch.fields[key] = current
             sketch.fields.setdefault(f"component-system:{slot.code}", slot.system)
@@ -1807,12 +1937,28 @@ class Solver:
             raise Unsatisfiable(f"age band unreachable across the asOf window at {site}")
         self._narrow_birth_date(dob_lo, dob_hi, site=site)
 
-    def _age_bound(self, age_node: dict, threshold_node: dict, want, node: dict,
-                   scope: dict, *, less: bool, or_equal: bool) -> None:
+    def _age_call(self, node: dict, scope: dict) -> tuple[dt.date, dt.date] | None:
+        """The asOf dates of the age a node denotes, or None when it is not an age: a ``CalculateAgeAt`` written in
+        place, or a define that is one (``Common."Age At End Of Period"``), followed through each reference into
+        the library it is written in."""
+        lib = self._lib
+        while node.get("type") == "ExpressionRef":
+            lib = self.env.resolve(lib, node.get("libraryName"))
+            define = lib.defines.get(node["name"])
+            if define is None:
+                raise SynthesizerError(f"define {node['name']!r} not in {lib.name}")
+            node, scope = define["expression"], {}
+        if node.get("type") != "CalculateAgeAt":
+            return None
+        if node.get("precision") != "Year":
+            raise UnsupportedElm(f"CalculateAgeAt precision {node.get('precision')!r}")
+        with self._in_lib(lib):
+            return self._asof_range(node["operand"][1], scope)
+
+    def _age_bound(self, as_of: tuple[dt.date, dt.date], threshold_node: dict, want, node: dict, *,
+                   less: bool, or_equal: bool) -> None:
         """A one-sided age comparison lowered to a birthDate bound."""
-        if age_node.get("precision") != "Year":
-            raise UnsupportedElm(f"CalculateAgeAt precision {age_node.get('precision')!r}")
-        as_of_lo, as_of_hi = self._asof_range(age_node["operand"][1], scope)
+        as_of_lo, as_of_hi = as_of
         threshold = self._const_eval(threshold_node)
         if not isinstance(threshold, int):
             raise UnsupportedElm("age compared against a non-integer")
@@ -1831,11 +1977,8 @@ class Solver:
             raise Unsatisfiable(f"empty age band at {site}")
         self._narrow_birth_band(as_of_lo, as_of_hi, band[0], band[1], site)
 
-    def _satisfy_age(self, age_node: dict, interval_node: dict, want, node: dict,
-                     scope: dict) -> None:
-        if age_node.get("precision") != "Year":
-            raise UnsupportedElm(f"CalculateAgeAt precision {age_node.get('precision')!r}")
-        as_of_lo, as_of_hi = self._asof_range(age_node["operand"][1], scope)
+    def _satisfy_age(self, as_of: tuple[dt.date, dt.date], interval_node: dict, want, node: dict) -> None:
+        as_of_lo, as_of_hi = as_of
         interval = self._const_eval(interval_node)
         if not isinstance(interval, CqlInterval) or not isinstance(interval.effective_low(), int):
             raise UnsupportedElm("age comparison against a non-integer interval")

@@ -102,7 +102,8 @@ class PartialPrecisionOracleSpec extends AnyFunSuite {
         "Patient"   -> lines("Patient.ndjson"),
         "Condition" -> lines("Condition.ndjson"),
         "Encounter" -> lines("Encounter.ndjson")),
-      subjectIds = Seq("p1", "p2", "p3", "p4", "p5", "p6", "p7"))
+      subjectIds = Seq("p1", "p2", "p3", "p4", "p5", "p6", "p7"),
+      extraLibrarySources = Corpus.librarySources("FhirTemporalDynamic"))
 
     val r = GroundTruthRunner.evaluate(
       cqlText = Paths.read(Paths.cql("FhirTemporalDynamic")),

@@ -1,0 +1,1 @@
+{"valueset_id": "http://example.org/fhir/ValueSet/cql-test-patterns-condition", "system": "http://example.org/fhir/CodeSystem/cql-test", "code": "patterns-condition-1", "display": "Patterns condition"}

@@ -188,6 +188,22 @@ adds a `using`, `include` or `library` header.
 
 - A model is named, never inferred (CQL Developer's Guide). `[Encounter]` with no `using` is not a FHIR
   retrieve.
-- FHIRHelpers is included by the author. `include FHIRHelpers version '4.0.1'` resolves to the bundled
-  copy (`translate/FhirHelpersSource.scala`).
+- FHIRHelpers is included by the author, and resolves from content like any include
+  (`LANG-FHIRHELPERS-FROM-CONTENT`, section 12).
 - A library with no header is legal. It can use a model but not FHIRHelpers.
+
+## 12. FHIRHelpers is content — `LANG-FHIRHELPERS-FROM-CONTENT`
+
+HL7 publishes FHIRHelpers as a FHIR `Library`, and a published measure package ships its own copy. So the
+compiler bundles none. The CQL specification leaves supplying a referenced library to the implementation
+environment (Developer's Guide, Libraries).
+
+- `include FHIRHelpers version 'v'` resolves from the library sources the caller supplies: cells, the library
+  folder, or tagged knowledge, by name and exact version. The client ships it in the include closure like
+  any other library.
+- An include that no supplied source declares fails the translation, naming the library and version.
+  `translate/SuppliedLibrarySourceProvider.scala` fails it before cqframework's loader can fall through to
+  the providers registered on the classpath: the `org.cqframework:quick` jar registers one that serves
+  FHIRHelpers 1.0.2 to 4.0.1 from the jar.
+- The compiler lowers each `FHIRHelpers.<function>` call directly, by name. It does not read the library's
+  function bodies, and `LibraryLinker` never merges FHIRHelpers. A closure of only FHIRHelpers is not linked.

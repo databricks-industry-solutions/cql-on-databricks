@@ -1,0 +1,1 @@
+{"valueset_id": "http://example.org/fhir/ValueSet/cql-test-patterns-reason", "system": "http://example.org/fhir/CodeSystem/cql-test", "code": "patterns-reason-1", "display": "Patterns reason not given"}

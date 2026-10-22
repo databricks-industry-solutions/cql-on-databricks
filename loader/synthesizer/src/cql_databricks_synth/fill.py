@@ -12,6 +12,8 @@ Fill invariants the solver's slot algebra relies on (see solve.py):
 - Choice elements are point-valued (onsetDateTime / effectiveDateTime /
   performedDateTime), so temporal boundary helpers collapse to the point.
 - Vital-sign-profile observations always carry BOTH component values.
+- A resource names its patient in the element FHIR R4 gives it: ``subject``, or ``patient`` on Immunization and
+  ``beneficiary`` on Coverage.
 
 Every resource is tagged synthetic — ``meta.security`` HTEST plus a generator-version
 ``meta.tag`` (SYNTH-PDS-SYNTHETIC-TAG) — so generated data can never pass as real.
@@ -41,6 +43,16 @@ _PATIENT_PROFILE = "http://hl7.org/fhir/us/qicore/StructureDefinition/qicore-pat
 _UCUM = "http://unitsofmeasure.org"
 
 _ENCOUNTER_DURATION = dt.timedelta(hours=1)
+
+#: The element that names the patient, where FHIR R4 does not call it ``subject``.
+PATIENT_REFERENCE = {"Immunization": "patient", "Coverage": "beneficiary"}
+
+#: Temporal elements that are a plain dateTime, not a ``[x]`` choice, on the generic template.
+_PLAIN_TEMPORAL = frozenset({"authoredOn", "issued", "recordedDate", "dateWritten", "recorded"})
+
+#: The unit of a vital-sign component the logic demands present but compares nowhere, so no solved domain carries
+#: one: the FHIR R4 Vital Signs blood pressure profile (observation-bp) fixes both components in mm[Hg].
+_COMPONENT_UNITS = {"8480-6": "mm[Hg]", "8462-4": "mm[Hg]"}
 
 #: Elements that are LISTS of CodeableConcept in FHIR; a solved list of Codes
 #: serializes element-per-code.
@@ -189,7 +201,7 @@ def _resource(sketch: ResourceSketch, rng: random.Random, patient_id: str, index
         "resourceType": sketch.resource_type,
         "id": f"{patient_id}-r{index}",
         "meta": _meta(sketch.template_id),
-        "subject": {"reference": f"Patient/{patient_id}"},
+        PATIENT_REFERENCE.get(sketch.resource_type, "subject"): {"reference": f"Patient/{patient_id}"},
     }
 
     handled = {"status", "class", "clinicalStatus", "verificationStatus",
@@ -250,14 +262,13 @@ def _resource(sketch: ResourceSketch, rng: random.Random, patient_id: str, index
         # whose real shape needs more than this (SYNTH-PDS-VERIFY).
         if (status := coded("status", "active")) is not None:
             resource["status"] = status
-        plain_keys = {"authoredOn", "issued", "recordedDate", "dateWritten"}
         for prop, value in list(sketch.fields.items()):
             if prop.startswith("extension:"):
                 continue
             if isinstance(value, TemporalDomain):
                 point = temporal(prop)
                 if point is not None:
-                    key = prop if prop in plain_keys else f"{prop}DateTime"
+                    key = prop if prop in _PLAIN_TEMPORAL else f"{prop}DateTime"
                     resource[key] = _fhir_datetime(point)
                 handled.add(prop)
 
@@ -272,9 +283,14 @@ def _resource(sketch: ResourceSketch, rng: random.Random, patient_id: str, index
             raise SynthesizerError(
                 f"presence demanded on {sketch.resource_type}.{prop} with no fill shape")
         if isinstance(value, Code):
-            # A coded choice element serializes under its variant key (value[x]).
+            # A coded choice element serializes under its variant key (value[x]); a backbone element's field
+            # (`hospitalization.dischargeDisposition`) nests under its parent.
             key = "valueCodeableConcept" if prop == "value" else prop
-            resource.setdefault(key, _codeable(value))
+            *parents, leaf = key.split(".")
+            owner = resource
+            for parent in parents:
+                owner = owner.setdefault(parent, {})
+            owner.setdefault(leaf, _codeable(value))
         elif isinstance(value, list) and value and all(isinstance(c, Code) for c in value):
             # A solved coded list (`reasonCode in "…"`), element per code.
             resource.setdefault(prop, [_codeable(c) for c in value])
@@ -327,6 +343,11 @@ def _place_components(resource: dict, sketch: ResourceSketch, rng: random.Random
     domains: dict[str, NumericDomain] = {}
     systems: dict[str, str] = {}
     for key, value in sketch.fields.items():
+        if key.startswith("component:") and value is PRESENT:
+            code = key.removeprefix("component:")
+            if code not in _COMPONENT_UNITS:
+                raise SynthesizerError(f"component {code!r} demanded present with no unit to fill it with")
+            value = NumericDomain(lo=0.0, hi=400.0, unit=_COMPONENT_UNITS[code])
         if key.startswith("component:") and isinstance(value, NumericDomain):
             domains[key.removeprefix("component:")] = value
         if key.startswith("component-system:"):

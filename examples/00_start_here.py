@@ -62,7 +62,7 @@
 # MAGIC ---
 # MAGIC
 # MAGIC ### 03 · A clinical quality measure, end to end
-# MAGIC *Synthetic FHIR · 48 patients · nothing authored in the notebook*
+# MAGIC *Synthetic FHIR · 4,000 patients · nothing authored in the notebook*
 # MAGIC
 # MAGIC A published sample measure run from folders beside this page: the CQL and the data
 # MAGIC read from `measures/` and `data/`. The measure checks for patients with an encounter during

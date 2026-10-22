@@ -3,6 +3,7 @@ package com.databricks.cql.it
 import com.databricks.cql.env.{Config, Context}
 import com.databricks.cql.passes.{Optimize, Pipeline}
 import com.databricks.cql.sema.FhirModel
+import com.databricks.cql.translate.CqlToElmCli
 import com.databricks.cql.transpiler.emit.{SqlExpr, SqlRel, SqlRender, SqlStmt}
 import com.databricks.cql.transpiler.lower.{SqlEvalEnv, SqlFrameLowering}
 import org.junit.runner.RunWith
@@ -108,7 +109,10 @@ final class HetChoiceScaleSpec extends AnyFunSuite {
   }
 
   private def lowerToSql(cql: String, config: Config): Seq[SqlStmt] = {
-    val lib = Pipeline().normalizeCql(cql)
+    // The generated library includes FHIRHelpers, which comes from the corpus (LANG-FHIRHELPERS-FROM-CONTENT).
+    val translated = CqlToElmCli.translateText(cql, Seq(Paths.read(Paths.cql("FHIRHelpers"))))
+    val lib = Pipeline().normalize(translated.elmJson.getOrElse(
+      throw new IllegalArgumentException(s"CQL translation produced errors: ${translated.errors.mkString("; ")}")))
     val optimized = Optimize.run(lib, config)
     SqlFrameLowering.lower(optimized, SqlEvalEnv(Context.Patient, config, terminology = false)).script.statements
   }

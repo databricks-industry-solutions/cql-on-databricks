@@ -10,8 +10,8 @@
 # MAGIC compiler, a folder, and Spark.
 # MAGIC
 # MAGIC The sample measure is a hypertension control measure with an initial population, exclusions and a numerator,
-# MAGIC over 48 synthetic patients — making the output easy to read and verify. In a real measure everything is larger
-# MAGIC but the shape is the same.
+# MAGIC over 4,000 synthetic patients, about 1,000 synthesized for each sample measure. In a real measure everything is
+# MAGIC larger but the shape is the same.
 # MAGIC
 # MAGIC **Runs on serverless — no cluster to attach.** Just **Run All**.
 
@@ -120,7 +120,7 @@ for t, fn in sorted(mounted.items()):
 # MAGIC Before running a measure over it, one `%%cql` cell asks the data a direct question. This is what
 # MAGIC cells are for: self-contained CQL, no dependencies, answered immediately.
 # MAGIC
-# MAGIC **Expected output:** 48 rows, one per patient, each with true or false for whether they have any condition
+# MAGIC **Expected output:** 4,000 rows, one per patient, each with true or false for whether they have any condition
 # MAGIC on record — a direct check to verify the data is readable.
 
 # COMMAND ----------
@@ -159,7 +159,6 @@ for t, fn in sorted(mounted.items()):
 # MAGIC   FHIRHelpers|4.0.1
 # MAGIC   HypertensionBPControl|1.0.0
 # MAGIC   SampleMeasureCommon|1.0.0
-# MAGIC   SampleSupplementalData|1.0.0
 # MAGIC ```
 
 # COMMAND ----------
@@ -193,12 +192,12 @@ for ref in client.libraries("*"):
 # MAGIC **Expected output:**
 # MAGIC ```
 # MAGIC populations : ['Initial Population', 'Denominator', 'Denominator Exclusions', 'Numerator']
-# MAGIC defines     : [... 16 defines including population definitions, hypertension logic, blood pressure criteria,
-# MAGIC            and supplemental data ...]
+# MAGIC defines     : [... 14 defines including population definitions, hypertension logic and blood pressure
+# MAGIC            criteria ...]
 # MAGIC ```
 # MAGIC `populations` finds the eCQM populations by their well-known names; it is what `exec()` runs when you name
 # MAGIC no targets. The measure has four populations: initial population, denominator, exclusions and numerator.
-# MAGIC Over the 2026-01-01 to 2026-12-31 period, 11 of 48 patients are in the initial population.
+# MAGIC Over the 2026-01-01 to 2026-12-31 period, 590 of 4,000 patients are in the initial population.
 
 # COMMAND ----------
 measure = client.cql(library="HypertensionBPControl") \
@@ -217,9 +216,9 @@ print("defines     :", measure.defines())
 # MAGIC object and never a column. The frames are presented side by side for each patient so you can
 # MAGIC see the pattern: which patients have hypertension, which are in scope, which are excluded, and which meet control.
 # MAGIC
-# MAGIC **Expected output:** 48 rows, one per patient. 11 are in the initial population (adults 18–85 with hypertension
-# MAGIC and a qualifying visit). Of those, 7 are not excluded (not in hospice, not pregnant, no kidney failure).
-# MAGIC Of those 7 denominators, 3 (pat-001, pat-003, pat-014) have controlled blood pressure — a rate of 3/7.
+# MAGIC **Expected output:** 4,000 rows, one per patient. 590 are in the initial population (adults 18–85 with
+# MAGIC hypertension and a qualifying visit). Of those, 543 are not excluded (not in hospice or palliative care, not
+# MAGIC pregnant, no kidney failure). Of those 543, 337 have controlled blood pressure — a rate of about 62%.
 
 # COMMAND ----------
 from pyspark.sql import functions as F
@@ -268,8 +267,8 @@ report.display()
 # MAGIC therefore runs the helper library by name with `library=`. Set the conf to the folder and the
 # MAGIC same question works as a `%%cql` cell.
 # MAGIC
-# MAGIC **Expected output:** 48 rows, one per patient. Three are true: pat-011 and pat-035 had hospice care during
-# MAGIC 2026, and pat-026 was discharged to hospice.
+# MAGIC **Expected output:** 4,000 rows, one per patient. 42 are true: they had hospice care during 2026, or were
+# MAGIC discharged to hospice in it.
 
 # COMMAND ----------
 followup = client.cql(library="SampleMeasureCommon").with_measurement_period("2026-01-01", "2026-12-31")

@@ -674,8 +674,8 @@ object CompileService {
     * `depCql` (`BUILD-COMPILE-LINK`) is registered as EXTRA translation sources, so a root whose
     * `include`s the caller resolved translates against that closure instead of failing on "Could not load
     * source for library …". This is what lets a pure-Python caller compile a multi-library measure: it
-    * resolves the file set (`BUILD-LIBRARY-PROVIDER`) and the service still owns translation, including
-    * the bundled FHIRHelpers source.
+    * resolves the file set (`BUILD-LIBRARY-PROVIDER`), FHIRHelpers among it when the root includes it
+    * (`LANG-FHIRHELPERS-FROM-CONTENT`), and the service still owns translation.
     *
     * Translation runs ONCE: the previous form called `translateText` a second time just to build the
     * error message, doubling the cost of the failure path for a large measure. */
@@ -704,8 +704,7 @@ object CompileService {
       val result = CqlToElmCli.translateClosure(request.cql.get, request.depCql)
       val elm = result.root.elmJson.getOrElse(throw new IllegalArgumentException(
         s"CQL translation produced errors: ${result.root.errors.mkString("; ")}"))
-      // A root with no caller-supplied closure keeps the existing no-link/no-prune behavior; bundled
-      // FHIRHelpers may be translated internally but is lowered directly, not a new linking request.
+      // A root with no caller-supplied closure keeps the existing no-link/no-prune behavior.
       val dependencies = if (request.depCql.isEmpty) Seq.empty else result.dependencies
       request.copy(cql = None, elmJson = elm, deps = request.deps ++ dependencies, depCql = Seq.empty)
     }
@@ -730,13 +729,12 @@ object CompileService {
     if (req.libraries.nonEmpty) multiLinkedRoot(req)
     else {
       val root = Pipeline().load(elmOf(req))
-      val allDeps = req.deps ++ translatedDepCql(req)
-      if (allDeps.isEmpty) root
-      else {
-        val depsById = allDeps.iterator.map(Pipeline().load).map(d => d.id -> d).toMap
-        val linked = LibraryLinker.link(root, depsById)
-        LibraryLinker.prune(linked, pruneRoots(req, root))
-      }
+      // FHIRHelpers arrives in the closure like any included library (LANG-FHIRHELPERS-FROM-CONTENT), but it
+      // is never merged: its calls are lowered directly. A closure of only FHIRHelpers has nothing to link.
+      val depsById = (req.deps ++ translatedDepCql(req)).iterator.map(Pipeline().load)
+        .filterNot(_.id == LibraryLinker.FhirHelpers).map(d => d.id -> d).toMap
+      if (depsById.isEmpty) root
+      else LibraryLinker.prune(LibraryLinker.link(root, depsById), pruneRoots(req, root))
     }
   }
 

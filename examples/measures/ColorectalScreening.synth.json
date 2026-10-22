@@ -1,0 +1,33 @@
+{
+  "measure": "ColorectalScreening",
+  "version": "1.0.0",
+  "populations": {
+    "Initial Population": 0.6,
+    "Denominator Exclusions": 0.06,
+    "Numerator": 0.7
+  },
+  "routes": {
+    "Denominator Exclusions": {
+      "Common.In Hospice Care": 1,
+      "Common.Has Palliative Care": 1,
+      "Has Colorectal Cancer": 3,
+      "Had Total Colectomy": 1
+    },
+    "Numerator": {
+      "Colonoscopy Within 10 Years": 6,
+      "Flexible Sigmoidoscopy Within 5 Years": 1,
+      "CT Colonography Within 5 Years": 1,
+      "Stool DNA Test Within 3 Years": 2,
+      "Fecal Immunochemical Test In Period": 3
+    }
+  },
+  "members": {
+    "Sample Colonoscopy": {
+      "G0121": 4
+    },
+    "Sample Colorectal Cancer": {
+      "C18.9": 3,
+      "C20": 2
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "measure": "DiabetesHighOrMissingA1c",
+  "version": "1.0.0",
+  "populations": {
+    "Initial Population": 0.6,
+    "Denominator Exclusions": 0.05,
+    "Numerator": 0.3
+  },
+  "routes": {
+    "Denominator Exclusions": {
+      "Common.In Hospice Care": 1,
+      "Common.Has Palliative Care": 1
+    },
+    "Numerator": {
+      "Most Recent HbA1c Above 9 Percent": 5,
+      "Most Recent HbA1c Has No Result": 1,
+      "No HbA1c In Period": 4
+    }
+  },
+  "quantities": {
+    "Sample HbA1c Lab Test": {
+      "range": [
+        5,
+        14
+      ]
+    }
+  },
+  "members": {
+    "Sample Diabetes": {
+      "E11.9": 6,
+      "E11.65": 2
+    },
+    "Sample HbA1c Lab Test": {
+      "4548-4": 9
+    }
+  }
+}

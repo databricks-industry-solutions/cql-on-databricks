@@ -14,7 +14,6 @@ using QICore version '6.0.0'
 
 include FHIRHelpers version '4.0.1' called FHIRHelpers
 include SampleMeasureCommon version '1.0.0' called Common
-include SampleSupplementalData version '1.0.0' called SDE
 
 valueset "Sample Diabetes": 'http://example.org/fhir/ValueSet/sample-diabetes'
 valueset "Sample HbA1c Lab Test": 'http://example.org/fhir/ValueSet/sample-hba1c-lab-test'
@@ -97,15 +96,3 @@ define "Numerator":
   "Most Recent HbA1c Above 9 Percent"
     or "Most Recent HbA1c Has No Result"
     or "No HbA1c In Period"
-
-/*
-@description: Supplemental data: administrative gender.
-*/
-define "SDE Sex":
-  SDE."SDE Sex"
-
-/*
-@description: Supplemental data: the type of each coverage during the period.
-*/
-define "SDE Payer":
-  SDE."SDE Payer"

@@ -13,7 +13,6 @@ using QICore version '6.0.0'
 
 include FHIRHelpers version '4.0.1' called FHIRHelpers
 include SampleMeasureCommon version '1.0.0' called Common
-include SampleSupplementalData version '1.0.0' called SDE
 
 valueset "Sample Colorectal Cancer": 'http://example.org/fhir/ValueSet/sample-colorectal-cancer'
 valueset "Sample Total Colectomy": 'http://example.org/fhir/ValueSet/sample-total-colectomy'
@@ -122,15 +121,3 @@ define "Numerator":
     or "CT Colonography Within 5 Years"
     or "Stool DNA Test Within 3 Years"
     or "Fecal Immunochemical Test In Period"
-
-/*
-@description: Supplemental data: administrative gender.
-*/
-define "SDE Sex":
-  SDE."SDE Sex"
-
-/*
-@description: Supplemental data: the type of each coverage during the period.
-*/
-define "SDE Payer":
-  SDE."SDE Payer"

@@ -31,7 +31,7 @@ object Corpus {
     *   - `library`, `version`, `measurementPeriod` and `populations` from `data/measures/<library>/answer-key.json`
     *     (`populations` maps each CQL population define to its measure-population code, in scoreboard order;
     *     the optional `supplemental` list adds defines reported beside them, and both are the prune roots);
-    *   - `deps`, the FULL transitive `include` closure, FHIRHelpers excepted, from the translated ELM;
+    *   - `deps`, the FULL transitive `include` closure, FHIRHelpers included, from the translated ELM;
     *   - `resourceTypes`, one per `<Type>.ndjson` in the measure's data directory.
     * The value-set expansions are shared in `data/valuesets/` (`CONF-GATE-SCOREKEY`). */
   final case class MeasureDef(
@@ -109,7 +109,8 @@ object Corpus {
         Context.Patient,
         data = Some(new SparkFhirData(spark, dataDir)),
         terminology = if (withTerminology) Some(new SparkTerminology(spark, dataDir)) else None,
-        refEnv = GroundTruthRunner.RefEnv(resourcesByType = resources, expansions = expansions),
+        refEnv = GroundTruthRunner.RefEnv(resourcesByType = resources, expansions = expansions,
+          extraLibrarySources = librarySources(library)),
         deviations = deviations)
     })
 
@@ -131,7 +132,8 @@ object Corpus {
         Context.Patient,
         data = Some(new SparkFhirData(spark, dir.getAbsolutePath)),
         terminology = if (expansions.nonEmpty) Some(new SparkTerminology(spark, valueSetDir.getAbsolutePath)) else None,
-        refEnv = GroundTruthRunner.RefEnv(resourcesByType = resources, expansions = expansions),
+        refEnv = GroundTruthRunner.RefEnv(resourcesByType = resources, expansions = expansions,
+          extraLibrarySources = librarySources(library)),
         deviations = deviations)
     })
 
@@ -222,6 +224,7 @@ object Corpus {
 
     // --- FHIR Patient (DATA-RETRIEVER, LANG-TERMINOLOGY, LANG-QUERY, DATA-LIST-ENCODING) ---
     fhir("FhirRetrieve", withTerminology = false, "FhirRetrieve: exists [Condition] per patient diffs clean"),
+    fhir("FhirHelpersFromContent", withTerminology = false, "FhirHelpersFromContent: an included FHIRHelpers resolves from the corpus beside the fixture, and its conversion diffs clean (LANG-FHIRHELPERS-FROM-CONTENT)"),
     fhir("FhirValueSet", withTerminology = true, "FhirValueSet: value-set-filtered retrieve diffs clean (LANG-TERMINOLOGY)"),
     fhir("FhirValueSetQuery", withTerminology = true, "FhirValueSetQuery: value-set-filtered retrieve as a general query source diffs clean (LANG-TERMINOLOGY/LANG-QUERY)"),
     fhir("FhirValueSetWhere", withTerminology = true, "FhirValueSetWhere: membership where conjunct + terminology pushdown self-diff clean (ARCH-PUSHDOWN/LANG-TERMINOLOGY)"),
@@ -346,13 +349,18 @@ object Corpus {
       extraRoots = supplemental)
   }
 
-  /** The transitive `include` closure of a library, read from its translated ELM, FHIRHelpers excepted (the
-    * compiler registers it itself). Dependencies come before the libraries that include them. */
+  /** The CQL of every library `library` includes, transitively: the sources the reference is given so its
+    * includes resolve, FHIRHelpers among them (LANG-FHIRHELPERS-FROM-CONTENT). */
+  def librarySources(library: String): Seq[String] = includeClosure(library).map(d => Paths.read(Paths.cql(d)))
+
+  /** The transitive `include` closure of a library, read from its translated ELM, FHIRHelpers included: it is
+    * content like any other library (LANG-FHIRHELPERS-FROM-CONTENT). Dependencies come before the libraries
+    * that include them. */
   private def includeClosure(library: String): Seq[String] = {
     val seen = scala.collection.mutable.LinkedHashSet.empty[String]
     def includes(name: String): Seq[String] =
       ujson.read(Paths.read(Paths.elm(name)))("library").obj.get("includes")
-        .map(_("def").arr.map(_("path").str).toSeq).getOrElse(Nil).filterNot(_ == "FHIRHelpers")
+        .map(_("def").arr.map(_("path").str).toSeq).getOrElse(Nil)
     def visit(name: String): Unit = includes(name).foreach { dep =>
       if (!seen.contains(dep)) { visit(dep); seen += dep }
     }

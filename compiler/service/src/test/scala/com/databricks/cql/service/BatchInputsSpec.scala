@@ -66,15 +66,15 @@ final class BatchInputsSpec extends AnyFunSuite {
     assert(CompileService.compilePipeline(req, false) == CompileService.compilePipeline(elmReq, false))
   }
 
-  test("SVC-COMPILE-BATCH: bundled FHIRHelpers does not introduce pruning for a root without a closure") {
+  test("SVC-COMPILE-BATCH: a closure of only FHIRHelpers does not introduce pruning (LANG-FHIRHELPERS-FROM-CONTENT)") {
     val root = """library Standalone version '1'
                  |using FHIR version '4.0.1'
                  |include FHIRHelpers version '4.0.1' called FH
                  |define Denominator: true
                  |define Other: 7
                  |""".stripMargin
-    val elm = CqlToElmCli.translateText(root).elmJson.get
-    val req = CompileRequest(cql = Some(root), durable = true)
+    val elm = CqlToElmCli.translateText(root, Seq(FhirHelpersCql.text)).elmJson.get
+    val req = CompileRequest(cql = Some(root), depCql = Seq(FhirHelpersCql.text), durable = true)
     assert(CompileService.compilePipeline(req, false) ==
       CompileService.compilePipeline(req.copy(cql = None, elmJson = elm), false))
     assert(CompileService.compilePipeline(req, false).datasets.exists(_.define == "Other"))

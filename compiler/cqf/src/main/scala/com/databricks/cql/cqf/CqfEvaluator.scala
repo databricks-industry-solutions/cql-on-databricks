@@ -2,9 +2,8 @@ package com.databricks.cql.cqf
 
 import ca.uhn.fhir.context.FhirContext
 import ca.uhn.fhir.parser.DataFormatException
-import com.databricks.cql.translate.FhirHelpersSource
-import org.cqframework.cql.cql2elm.{CqlCompilerException, CqlCompilerOptions, LibraryManager, ModelManager,
-  StringLibrarySourceProvider}
+import com.databricks.cql.translate.SuppliedLibrarySourceProvider
+import org.cqframework.cql.cql2elm.{CqlCompilerException, CqlCompilerOptions, LibraryManager, ModelManager}
 import org.cqframework.cql.elm.serializing.DefaultElmLibraryWriterProvider
 import org.hl7.elm.r1.{FunctionDef, IntervalTypeSpecifier, NamedTypeSpecifier, VersionedIdentifier}
 import org.hl7.fhir.instance.model.api.IBaseResource
@@ -28,8 +27,8 @@ final case class CqfPatient(id: String, resources: Seq[String])
   * CQF CQL engine, in memory, over resources the caller extracted.
   *
   * **The closure arrives as CQL and is translated here**, once per closure, with the compiler's own translator
-  * options (`CqlToElmCli.translateText`: annotations and result types on, the lenient include provider, the bundled
-  * FHIRHelpers). It cannot arrive as ELM: cqframework 4.8's ELM JSON reader restores no result types, and the engine
+  * options (`CqlToElmCli.translateText`: annotations and result types on, and only the supplied library sources,
+  * FHIRHelpers among them when the closure includes it, LANG-FHIRHELPERS-FROM-CONTENT). It cannot arrive as ELM: cqframework 4.8's ELM JSON reader restores no result types, and the engine
   * needs them (POINT-CQF-UC-FUNCTION, 2026-10-08). Translated closures are kept, least recently used first out,
   * up to `maxClosures`.
   *
@@ -103,7 +102,7 @@ final class CqfEvaluator(maxClosures: Int = 32) {
     options.getOptions.add(CqlCompilerOptions.Options.EnableAnnotations)
     options.getOptions.add(CqlCompilerOptions.Options.EnableResultTypes)
     val manager = new LibraryManager(new ModelManager(), options)
-    manager.getLibrarySourceLoader.registerProvider(new StringLibrarySourceProvider((FhirHelpersSource.cql +: sources).asJava))
+    manager.getLibrarySourceLoader.registerProvider(new SuppliedLibrarySourceProvider(sources))
     val headers = sources.flatMap(s => Header.findFirstMatchIn(s).map(m => m.group(1) -> m.group(2)))
     val version = headers.collectFirst { case (`root`, v) => v }
       .getOrElse(throw new IllegalArgumentException(s"no CQL among the sources declares library $root"))

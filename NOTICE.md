@@ -51,7 +51,7 @@ to each code system's license.
 |---|---|---|
 | CQL operator tests | `compiler/conformance/src/test/resources/cql-tests/` | Four files from [cqframework/cql-tests](https://github.com/cqframework/cql-tests) at commit `06667083335f645e46e6f88bbd3b4d8d232574df`, unmodified. Apache License 2.0. |
 | FHIR R4 schemas | `compiler/core/model-schemas/fhir-r4/` | HL7 FHIR R4 XML schemas. Creative Commons "No Rights Reserved" (CC0). |
-| FHIRHelpers 4.0.1 | `examples/measures/FHIRHelpers.cql` | `org/hl7/fhir/FHIRHelpers-4.0.1.cql` from the cqframework `quick` 4.8.0 artifact ([cqframework/clinical_quality_language](https://github.com/cqframework/clinical_quality_language)), unmodified. Apache License 2.0. |
+| FHIRHelpers 4.0.1 | `examples/measures/FHIRHelpers.cql`, `compiler/conformance/src/test/resources/cql/measures/FHIRHelpers.cql`, `compiler/conformance/src/test/resources/cql/fhir/FHIRHelpers.cql` | `org/hl7/fhir/FHIRHelpers-4.0.1.cql` from the cqframework `quick` 4.8.0 artifact ([cqframework/clinical_quality_language](https://github.com/cqframework/clinical_quality_language)), unmodified. Apache License 2.0. |
 
 Third-party libraries this repository depends on are listed, with their licenses, in `README.md`.
 

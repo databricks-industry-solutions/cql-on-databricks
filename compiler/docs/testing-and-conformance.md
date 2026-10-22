@@ -30,16 +30,17 @@ populations (population define to population code), and gives, per patient, the 
 define and the reason. The CQL lives under `src/test/resources/cql/measures/`, and the include closure is
 read from the translated ELM. Adding a measure is adding its CQL and that directory.
 
-The measures are written for this repository, with synthetic test patients. They are copies of the sample
-measures in `examples/`, kept the same for now (`CONTENT-SAMPLE-PRELOAD`). Their expected results are worked out
-per patient and checked against the reference by `RefScoreSpec`.
+The measures are written for this repository, with synthetic test patients. Their CQL is a copy of the sample
+measures in `examples/`, kept the same for now (`CONTENT-SAMPLE-PRELOAD`). The 48 hand-written patients are the
+conformance corpus's own: `examples/` ships a synthesized population instead (`DATA-SYNTH-SMALL`). Their expected
+results are worked out per patient and checked against the reference by `RefScoreSpec`.
 
 | Measure | Includes | Patients |
 |---|---|---|
-| `HypertensionBPControl`: most recent blood pressure below 140/90 | `SampleMeasureCommon`, `SampleSupplementalData` | 48 |
-| `DiabetesHighOrMissingA1c`: most recent HbA1c above 9% or missing | `SampleMeasureCommon`, `SampleSupplementalData` | 48 |
-| `AdultFluImmunization`: vaccinated in the flu season, with exceptions | `SampleMeasureCommon`, `SampleSupplementalData` | 48 |
-| `ColorectalScreening`: current on screening, per-test lookbacks | `SampleMeasureCommon`, `SampleSupplementalData` | 48 |
+| `HypertensionBPControl`: most recent blood pressure below 140/90 | `SampleMeasureCommon` | 48 |
+| `DiabetesHighOrMissingA1c`: most recent HbA1c above 9% or missing | `SampleMeasureCommon` | 48 |
+| `AdultFluImmunization`: vaccinated in the flu season, with exceptions | `SampleMeasureCommon` | 48 |
+| `ColorectalScreening`: current on screening, per-test lookbacks | `SampleMeasureCommon` | 48 |
 
 The measurement period is declared with no default. Both engines get it at run time as a parameter, from
 the answer key (`LANG-PARAMETER`); no library's CQL is edited for a run.

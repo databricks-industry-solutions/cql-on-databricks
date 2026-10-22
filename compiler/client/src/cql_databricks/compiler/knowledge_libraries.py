@@ -25,7 +25,7 @@ from typing import Callable, List, Optional
 
 from cql_databricks.data_bindings import ContentResolver, Corpus, Library
 
-from .libraries import (COMPILER_PROVIDED, FileLibraryProvider, LibraryProvider, LibraryRef, LibraryResolutionError,
+from .libraries import (FileLibraryProvider, LibraryProvider, LibraryRef, LibraryResolutionError,
                         LibrarySource, _name_matches, includes_of)
 
 #: The ``origin`` of a library read from tagged knowledge: ``uc://<catalog>.<schema>/<name>|<version>``.
@@ -74,13 +74,13 @@ class KnowledgeLibraryProvider(LibraryProvider):
             raise LibraryResolutionError(f"library '{root.name}' has no CQL for tagged knowledge to walk")
         corpus = self._corpus()
         closure = corpus.resolve_closure(root.cql)
-        unresolved = [ref for ref in closure.unresolved if ref.name not in COMPILER_PROVIDED]
+        unresolved = closure.unresolved
         if unresolved:
             missing = ", ".join(f"{ref.name} {ref.version or ''}".strip() for ref in unresolved)
             raise LibraryResolutionError(f"the include closure of '{root.name}' needs {missing}, which no tagged "
                                          f"knowledge source in catalog scopes {self._where()} holds")
         return [_source(corpus.library(item.id.name, item.id.version)) for item in closure.includes
-                if item.id.name not in COMPILER_PROVIDED and item.id.name != root.name]
+                if item.id.name != root.name]
 
     def search(self, pattern: Optional[str] = None) -> List[LibraryRef]:
         refs, seen = [], set()
@@ -126,8 +126,6 @@ class FolderThenKnowledge(LibraryProvider):
             if ref.name in seen:
                 continue
             seen.add(ref.name)
-            if ref.name in COMPILER_PROVIDED:
-                continue
             source = self._resolve(ref, prefer_dir)
             out.append(source)
             if not from_knowledge(source):

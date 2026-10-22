@@ -33,11 +33,11 @@ reset(spark)
 # MAGIC %md
 # MAGIC ## The measure under inspection
 # MAGIC The sample measure notebook 3 runs, `HypertensionBPControl`, read from the `measures/` folder published
-# MAGIC beside this notebook. It includes `SampleMeasureCommon` and `SampleSupplementalData`, which resolve from the same
-# MAGIC folder. Nothing runs: the handle below is **lazy**, and when it compiles the result is memoized, so every section
+# MAGIC beside this notebook. It includes `SampleMeasureCommon`, which resolves from the same folder.
+# MAGIC Nothing runs: the handle below is **lazy**, and when it compiles the result is memoized, so every section
 # MAGIC shares one round trip. The measure has a default measurement period parameter, so the handle passes one.
 # MAGIC
-# MAGIC **Expected output:** `HypertensionBPControl`, `SampleMeasureCommon`, and `SampleSupplementalData`, each with its CQL size.
+# MAGIC **Expected output:** `HypertensionBPControl` and `SampleMeasureCommon`, each with its CQL size.
 
 # COMMAND ----------
 import pathlib
@@ -52,8 +52,7 @@ if not MEASURES.is_dir():
 
 client = connect(spark, library_path=str(MEASURES))
 SOURCES = {name: (MEASURES / f"{name}.cql").read_text() for name in ("HypertensionBPControl",
-                                                                      "SampleMeasureCommon",
-                                                                      "SampleSupplementalData")}
+                                                                      "SampleMeasureCommon")}
 for name, cql in SOURCES.items():
     print(f"{name} — {len(cql)} chars of CQL")
 q = client.cql(library="HypertensionBPControl").with_measurement_period("2026-01-01", "2026-12-31")
@@ -69,8 +68,8 @@ q = client.cql(library="HypertensionBPControl").with_measurement_period("2026-01
 # MAGIC
 # MAGIC **Expected output:**
 # MAGIC ```
-# MAGIC defines             : [... approximately 16 defines including population definitions,
-# MAGIC                        hypertension checks, blood pressure criteria, and supplemental data ...]
+# MAGIC defines             : [... approximately 14 defines including population definitions,
+# MAGIC                        hypertension checks and blood pressure criteria ...]
 # MAGIC dependencies        : {'Initial Population': [...],
 # MAGIC                        'Numerator': ['Most Recent Diastolic', 'Most Recent Systolic'],
 # MAGIC                        'Denominator': ['Initial Population'], ...}
@@ -98,8 +97,8 @@ print("compiler_version    :", graph.compiler_version)
 # MAGIC `translate()` returns the ELM JSON the engine's front end produces from CQL — HL7's standard
 # MAGIC interchange form for CQL logic.
 # MAGIC
-# MAGIC The library translated here is `SampleMeasureCommon`, one the measure includes: it needs no library
-# MAGIC but FHIRHelpers, which the compiler supplies, so its text translates on its own.
+# MAGIC The library translated here is `SampleMeasureCommon`, one the measure includes. Its only include is
+# MAGIC FHIRHelpers, which is content like any library, so its text is passed along with it.
 # MAGIC
 # MAGIC **Expected output:** a byte count of several thousand (the library has multiple functions and queries),
 # MAGIC the statement names, and the first 600 characters of one define's expression tree — showing the `Query` and
@@ -112,7 +111,7 @@ print("compiler_version    :", graph.compiler_version)
 
 # COMMAND ----------
 import json
-elm = translate(SOURCES["SampleMeasureCommon"])
+elm = translate(SOURCES["SampleMeasureCommon"], includes=[(MEASURES / "FHIRHelpers.cql").read_text()])
 elm_obj = json.loads(elm)
 print("ELM bytes  :", len(elm))
 print("statements :", [s["name"] for s in elm_obj["library"]["statements"]["def"]])
@@ -135,10 +134,9 @@ print(json.dumps(encounters["expression"], indent=2)[:600], "...")
 # MAGIC
 # MAGIC **Expected output:** the stubbed functions for each type the measure reads — the hypertension measure reads
 # MAGIC Patient, Encounter, Condition (for hypertension and other diagnoses), Observation (for blood pressure readings),
-# MAGIC Procedure (for dialysis/transplant), and Coverage (for supplemental data).
+# MAGIC and Procedure (for dialysis/transplant).
 # MAGIC ```
 # MAGIC Condition    -> retrieve_Condition__cqlmount
-# MAGIC Coverage     -> retrieve_Coverage__cqlmount
 # MAGIC Encounter    -> retrieve_Encounter__cqlmount
 # MAGIC Observation  -> retrieve_Observation__cqlmount
 # MAGIC Patient      -> retrieve_Patient__cqlmount

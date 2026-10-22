@@ -1,7 +1,7 @@
 """DATA-SOURCE-UC-TAG, DATA-CONTRACT — land a FHIR bulk-data population as a data source.
 
-One path for every population this repository ships: the sample patients (``DATA-SAMPLE-SOURCE``, from
-``examples/data``) and the large synthesized population (``DATA-SYNTH-LARGE``). A caller hands over one raw
+One path for every population this repository ships: the small synthesized population (``DATA-SYNTH-SMALL``, from
+``examples/data``) and the large one (``DATA-SYNTH-LARGE``). A caller hands over one raw
 NDJSON text frame per FHIR type that has data (a ``value`` column, one resource per row), and this module:
 
 - reshapes each onto the mount contract ``(__subject_id, __resource)`` through the client's reshape

@@ -39,8 +39,8 @@ third from `connect()`. All of them read one session's cells. The FALLTHROUGH is
 """
 from __future__ import annotations
 
-from cql_databricks.compiler.libraries import (COMPILER_PROVIDED, LibraryProvider, LibraryRef,
-                                        LibraryResolutionError, LibrarySource, identity_of, includes_of)
+from cql_databricks.compiler.libraries import (LibraryProvider, LibraryRef, LibraryResolutionError, LibrarySource,
+                                               identity_of, includes_of)
 
 from .session_state import CellStore, SessionRecord
 
@@ -135,8 +135,7 @@ class SessionLibraryProvider(LibraryProvider):
         queue = list(includes_of(root))
         while queue:
             ref = queue.pop(0)
-            if ref.name in seen or ref.name in COMPILER_PROVIDED:
-                seen.add(ref.name)
+            if ref.name in seen:
                 continue
             seen.add(ref.name)
             cell = cells.get(ref.name)

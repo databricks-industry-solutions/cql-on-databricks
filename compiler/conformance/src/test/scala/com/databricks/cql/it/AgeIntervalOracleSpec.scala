@@ -38,7 +38,7 @@ final class AgeIntervalOracleSpec extends AnyFunSuite {
       GroundTruthRunner.RefEnv(
         contextName = "Patient",
         resourcesByType = Seq("Patient", "Condition").map(t => t -> lines(s"$t.ndjson")).toMap,
-        subjectIds = subjects))
+        subjectIds = subjects, extraLibrarySources = Corpus.librarySources(library)))
 
   test("the reference evaluates EVERY subject — no silent exclusions (CONF-GROUND-TRUTH)") {
     val missing = subjects.filterNot(reference.contains)

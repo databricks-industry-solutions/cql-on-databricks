@@ -23,7 +23,7 @@ the OSS client anticipates; the OSS core still imports no platform SDK (`APP-DEC
 """
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Sequence
 
 from cql_databricks.compiler import CqlClient, CqlQuery
 from cql_databricks.compiler.libraries import resolve_library_provider
@@ -279,7 +279,7 @@ def resolve_libraries(source: str, *, spark=None, catalog_scopes: Optional[Itera
     return resolve(_session_content(spark, catalog_scopes), cql=source).require_complete().include_sources
 
 
-def translate(source: str, *, app_name: Optional[str] = None) -> str:
+def translate(source: str, *, includes: Sequence[str] = (), app_name: Optional[str] = None) -> str:
     """CQL → ELM JSON via the Compiler Service App's ``/translate`` endpoint (`EMIT-INTERCHANGE`).
 
     Returns the portable ELM interchange string the engine's front end produces from ``source`` — the IR
@@ -287,14 +287,17 @@ def translate(source: str, *, app_name: Optional[str] = None) -> str:
     ``CqlQuery.elm()`` is empty for raw inline CQL (the service translates on compile, no ELM egress), so
     this helper hits ``/translate`` directly through the SAME auto-discovered App endpoint + OAuth as
     :func:`connect` — no endpoint, token, or provider selection needed. Data-free (a pure front-end
-    translate; no Spark session)."""
+    translate; no Spark session).
+
+    ``includes`` is the CQL of every library ``source`` includes, FHIRHelpers among them: the compiler bundles
+    no library, so an include no source provides fails the translation (`LANG-FHIRHELPERS-FROM-CONTENT`)."""
     import requests  # lazy: keep the package importable without requests
 
     conf = {CONF_APP_NAME: app_name} if app_name else {}
     provider = make_provider(conf)  # RemoteProvider: discovered App URL + OAuth token-exchange
     url = provider._base + "/translate"
     headers = {"Content-Type": "application/json", **provider._credentials.auth_headers()}
-    resp = requests.post(url, json={"cql": source}, headers=headers, timeout=60)
+    resp = requests.post(url, json={"cql": source, "includes": list(includes)}, headers=headers, timeout=60)
     if resp.status_code != 200:
         raise RuntimeError(f"{url} returned {resp.status_code}: {resp.text}")
     return resp.json()["elm"]

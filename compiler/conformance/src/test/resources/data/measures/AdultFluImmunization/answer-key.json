@@ -9,11 +9,7 @@
     "Numerator": "numerator",
     "Denominator Exceptions": "denominator-exception"
   },
-  "supplemental": [
-    "SDE Sex",
-    "SDE Payer"
-  ],
-  "about": "A copy of examples/data/expected-results/AdultFluImmunization.json, kept in lock step with examples/ for now. Written for this repository. For each sample patient, the value of each population define (1 true, 0 false or null) over the measurement period, and why. These are the defines' own values: a patient can be in the numerator define and also excluded.",
+  "about": "Written for this repository. For each sample patient, the value of each population define (1 true, 0 false or null) over the measurement period, and why. These are the defines' own values: a patient can be in the numerator define and also excluded.",
   "patients": {
     "pat-001": {
       "initial-population": 0,

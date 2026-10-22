@@ -3,7 +3,8 @@
 Run by ``scripts/deploy/deploy.sh`` after the Apps start. Two idempotent steps:
 
 1. the sample measures, their value sets and their patients from ``examples/`` (``content_ingest.samples``): the
-   tagged knowledge and terminology in ``<catalog>.sample_measures`` and the data source ``sample-patients``;
+   tagged knowledge and terminology in ``<catalog>.sample_measures`` and the data source
+   ``synthetic-population-small`` (``DATA-SYNTH-SMALL``);
 2. the knowledge views in the runtime schema (``cql_databricks.data_bindings.bindings``), so a fresh deploy runs
    measures without a manual Bind.
 

@@ -30,7 +30,7 @@ The deploy loads the sample measures, their value sets and their patients (`scri
 | Where | What it holds |
 |---|---|
 | `<catalog>.sample_measures.measure`, `.library`, `.valueset` | The sample measures and libraries from `examples/measures`, and their value sets |
-| `<catalog>.sample_patients` | The data source `sample-patients`: the patients in `examples/data` |
+| `<catalog>.synthetic_population_small` | The data source `synthetic-population-small`: the patients in `examples/data` |
 
 To import an eCQI measure package yourself, run the importer through `scripts/with-local-env.sh`, which exports
 the workspace settings from `databricks.local.yml` and local-run settings from the optional root `.env`:

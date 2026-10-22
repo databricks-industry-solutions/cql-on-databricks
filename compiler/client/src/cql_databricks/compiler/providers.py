@@ -66,7 +66,7 @@ class CompileRequest:
     sources: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
     # BUILD-COMPILE-LINK: the ROOT's include CLOSURE, resolved by the caller (`BUILD-LIBRARY-PROVIDER`).
     # The service resolves NOTHING — it merges what it is handed — so a multi-library eCQM is only
-    # compilable when this carries every non-FHIRHelpers dependency. Each entry ships as ELM when it has
+    # compilable when this carries every dependency, FHIRHelpers included. Each entry ships as ELM when it has
     # it, else as CQL TEXT the service registers as a translation source.
     deps: Sequence["LibrarySource"] = ()
     # EMIT-SQL-OBJECT-PREFIX: session-object namespace. Empty (the default) emits BARE names.

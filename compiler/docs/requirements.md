@@ -49,7 +49,8 @@ The compiler's requirements, including its client (`cql-databricks`). Requiremen
 | `LANG-QUERY-LET` | A query `let` introduces named values in query-iteration scope, lowered by binding once via compute-once carrier or inlining. | `language-semantics.md` |
 | `LANG-FUNCTION` | Non-recursive functions are inlined in Normalize; overload/fluent dispatch is resolved upstream. | `language-semantics.md` |
 | `LANG-FUNCTION-TERMINOLOGY` | Value-set/code/concept arguments substitute the resolved terminology handle through inlining. | `language-semantics.md` |
-| `LANG-NO-IMPLICIT-INCLUDE` | The compiler translates a library exactly as written and accepts it when the reference translator does; no added includes. | `language-semantics.md` |
+| `LANG-NO-IMPLICIT-INCLUDE` | The compiler translates a library exactly as written and accepts it when the reference translator does; no added includes. Amended 2026-10-21 by `LANG-FHIRHELPERS-FROM-CONTENT`: the reference translator is given the same library sources and no library from its classpath. | `language-semantics.md` |
+| `LANG-FHIRHELPERS-FROM-CONTENT` | FHIRHelpers is content, not part of the compiler. `include FHIRHelpers version 'v'` resolves like any include: from the library sources the caller supplies (cells, the library folder, tagged knowledge), by name and exact version. The compiler bundles no library and never consults a library source on its classpath (the cqframework `quick` jar's `FhirLibrarySourceProvider`). An include that no supplied source declares fails the translation, naming the library and version. Added and built 2026-10-21. | `language-semantics.md` |
 | `LANG-RETRIEVE-PROFILE` | A profile-specific retrieve narrows to resources conforming to that profile, tested at the scan against `meta.profile`. | `language-semantics.md` |
 
 ## ARCH — engine/compiler architecture

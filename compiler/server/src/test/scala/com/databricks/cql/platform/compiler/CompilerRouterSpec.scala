@@ -100,7 +100,8 @@ class CompilerRouterSpec extends AnyFunSuite {
 
   test("/describe lists the retrieved types, empty for data-free CQL (EMIT-DESCRIBE-RETRIEVE-TYPES)") {
     def types(cql: String) =
-      ujson.read(post("/describe", ujson.write(ujson.Obj("cql" -> cql))).body)("retrieveTypes").arr.map(_.str).toSeq
+      ujson.read(post("/describe", ujson.write(ujson.Obj("cql" -> cql,
+        "deps" -> ujson.Arr(ujson.Obj("cql" -> FhirHelpersCql.text))))).body)("retrieveTypes").arr.map(_.str).toSeq
     val head = "library Probe version '1.0.0'\nusing FHIR version '4.0.1'\ninclude FHIRHelpers version '4.0.1'\n"
     assert(types(head + "context Patient\ndefine \"Any\": exists [Encounter]\n") == Seq("Encounter", "Patient"))
     assert(types(head + "context Unfiltered\ndefine \"Two\": 1 + 1\n").isEmpty)

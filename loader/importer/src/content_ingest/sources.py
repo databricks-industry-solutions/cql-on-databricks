@@ -1,8 +1,8 @@
 """DATA-SOURCE-UC-TAG — the data sources this repository ships, and where their parts live.
 
-Two sources, both fabricated: **Sample Patients** (``DATA-SAMPLE-SOURCE``, the patients in ``examples/data``
-the sample measures run over, landed by the deploy) and **Synthetic Population Large** (``DATA-SYNTH-LARGE``,
-synthesized cohorts with per-patient expected results). A source's name is part of the address of every result
+Two sources, both fabricated: **Synthetic Population Small** (``DATA-SYNTH-SMALL``, the patients in
+``examples/data`` the sample measures run over, synthesized from a recipe and landed by the deploy) and **Synthetic
+Population Large** (``DATA-SYNTH-LARGE``, synthesized cohorts with per-patient expected results). A source's name is part of the address of every result
 computed against it, so renaming one recomputes those results.
 
 Both land through ``population.land``, which declares them with
@@ -13,10 +13,10 @@ from __future__ import annotations
 
 from .change_data_log import CHANGE_DATA_LOG_NAME
 
-SAMPLE_PATIENTS_SOURCE_ID = "sample-patients"
-SAMPLE_PATIENTS_SCHEMA = "sample_patients"
+SYNTHETIC_SMALL_SOURCE_ID = "synthetic-population-small"
+SYNTHETIC_SMALL_SCHEMA = "synthetic_population_small"
 # Says "fabricated" in the description itself: the failure that matters is a sample count read as a measured one.
-SAMPLE_PATIENTS_DESCRIPTION = "Fabricated sample patients for the example measures"
+SYNTHETIC_SMALL_DESCRIPTION = "Fabricated small population, synthesized for the sample measures"
 
 # "Large", not a count: the population grows with each measure's cohort, so a count in the name goes stale.
 SYNTHETIC_LARGE_SOURCE_ID = "synthetic-population-large"

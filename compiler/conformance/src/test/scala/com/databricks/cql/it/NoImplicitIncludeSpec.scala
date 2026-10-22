@@ -1,6 +1,6 @@
 package com.databricks.cql.it
 
-import com.databricks.cql.translate.{CqlToElmCli, FhirHelpersSource}
+import com.databricks.cql.translate.CqlToElmCli
 import org.cqframework.cql.cql2elm.{CqlCompilerException, CqlTranslator, LibraryManager, ModelManager,
   StringLibrarySourceProvider}
 import org.junit.runner.RunWith
@@ -12,7 +12,7 @@ import scala.jdk.CollectionConverters._
 /** LANG-NO-IMPLICIT-INCLUDE — the compiler translates CQL exactly as written, so it accepts a library exactly
   * when the reference translator (cqframework `cql-to-elm`) does. Differential: each case is translated by
   * `CqlToElmCli.translateText` and by a bare reference `CqlTranslator` given the same library sources
-  * (the bundled FHIRHelpers), and the two must agree.
+  * (the corpus's FHIRHelpers), and the two must agree.
   *
   * The cases are the ones the removed `FhirHelpersSource.inject` changed: a FHIR conversion with no
   * `include FHIRHelpers` (accepted here, refused by the reference), and an unnamed library (refused here,
@@ -23,14 +23,16 @@ import scala.jdk.CollectionConverters._
 @RunWith(classOf[JUnitRunner])
 final class NoImplicitIncludeSpec extends AnyFunSuite {
 
+  private val fhirHelpers = Paths.read(Paths.cql("FHIRHelpers"))
+
   private def reference(cql: String): Seq[String] = {
     val libraryManager = new LibraryManager(new ModelManager())
-    libraryManager.getLibrarySourceLoader.registerProvider(new StringLibrarySourceProvider(Seq(FhirHelpersSource.cql).asJava))
+    libraryManager.getLibrarySourceLoader.registerProvider(new StringLibrarySourceProvider(Seq(fhirHelpers).asJava))
     CqlTranslator.fromText(cql, libraryManager).getErrors.asScala.toSeq
       .filter(_.getSeverity == CqlCompilerException.ErrorSeverity.Error).map(_.getMessage)
   }
 
-  private def ours(cql: String): Seq[String] = CqlToElmCli.translateText(cql).errors
+  private def ours(cql: String): Seq[String] = CqlToElmCli.translateText(cql, Seq(fhirHelpers)).errors
 
   /** Both sides agree, and agree with `accepted`. */
   private def agree(cql: String, accepted: Boolean): Unit = {
@@ -63,5 +65,24 @@ final class NoImplicitIncludeSpec extends AnyFunSuite {
 
   test("a model-free unnamed library is accepted") {
     agree("define \"Two\": 2 + 2\n", accepted = true)
+  }
+
+  // LANG-FHIRHELPERS-FROM-CONTENT: only the supplied sources resolve an include. The `org.cqframework:quick` jar
+  // on this classpath registers a provider that serves FHIRHelpers 1.0.2 to 4.0.1 (a bare reference translator
+  // with no sources accepts `include FHIRHelpers version '4.0.1'` through it); ours must never reach it.
+  private def withInclude(version: String): String =
+    s"library WithInclude version '1.0.0'\nusing FHIR version '4.0.1'\n" +
+      s"include FHIRHelpers version '$version' called FHIRHelpers\ncontext Patient\n$conversion"
+
+  test("an included FHIRHelpers that no source supplies fails, though the quick jar ships that version") {
+    val errors = CqlToElmCli.translateText(withInclude("4.0.1")).errors
+    assert(errors.exists(_.contains("Library FHIRHelpers version '4.0.1' is not among the supplied library sources")),
+      s"expected the include to fail as not supplied, got: $errors")
+  }
+
+  test("an included FHIRHelpers version that no supplied source declares fails") {
+    val errors = CqlToElmCli.translateText(withInclude("4.0.2"), Seq(fhirHelpers)).errors
+    assert(errors.exists(_.contains("Library FHIRHelpers version '4.0.2' is not among the supplied library sources")),
+      s"expected the include to fail as not supplied, got: $errors")
   }
 }

@@ -47,7 +47,7 @@ reset(spark)
 # MAGIC data/         FHIR NDJSON, one file per resource type
 # MAGIC ```
 # MAGIC
-# MAGIC It is the same 48-patient dataset notebook 3 uses.
+# MAGIC It is the same 4,000-patient dataset notebook 3 uses.
 # MAGIC
 # MAGIC **Expected output:** the resolved folder, then the data directory — for example
 # MAGIC ```
@@ -148,7 +148,7 @@ print("libraries declared so far:", [str(r) for r in client.library_provider.dec
 # MAGIC This cell has no `--library`, so it runs. It defines `Initial Population` and other checks, which
 # MAGIC will be executed when you call `exec()`.
 # MAGIC
-# MAGIC **Expected output:** one frame of 48 rows, one per patient. `Initial Population` is true for 27 of 48.
+# MAGIC **Expected output:** one frame of 4,000 rows, one per patient. `Initial Population` is true for 1,223 of 4,000.
 
 # COMMAND ----------
 # MAGIC %%cql
@@ -181,8 +181,8 @@ print("libraries declared so far:", [str(r) for r in client.library_provider.dec
 # MAGIC measurement period to a different year.
 # MAGIC
 # MAGIC Watch the population turn over: in 2025 no patient has both a visit and a condition. The patients seen
-# MAGIC in 2025 have no condition on record. The measure that reports 27 of 48 for 2026 reports 0 of 48 for
-# MAGIC 2025 — the same content, honestly producing both numbers.
+# MAGIC in 2025 have no condition on record. The measure that reports 1,223 of 4,000 for 2026 reports 0 of 4,000
+# MAGIC for 2025 — the same content, honestly producing both numbers.
 # MAGIC
 # MAGIC **One thing to know before you draft a second measure in the same notebook.** Every define is
 # MAGIC materialized as a session temp view named after it, so two measures that both define `Initial Population`

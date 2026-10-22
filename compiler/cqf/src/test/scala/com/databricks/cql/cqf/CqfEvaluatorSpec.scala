@@ -41,7 +41,7 @@ class CqfEvaluatorSpec extends AnyFunSuite {
     CqfPatient("b", Seq(patient("b", "male"), condition("c3", "b", "11111111"), encounter("e2", "b", "2025-03-01T10:00:00Z"))))
 
   test("RUN-POINT-CQF: every Patient-context define, per patient, in the oracle's JSON") {
-    val out = new CqfEvaluator().evaluate("PointTest", Seq(Library), patients, expansions, p2026).toMap
+    val out = new CqfEvaluator().evaluate("PointTest", Seq(Library, FhirHelpersCql.text), patients, expansions, p2026).toMap
     assert(out("a")("Is Female") == ujson.Bool(true))
     assert(out("a")("Example Condition Count") == ujson.Num(2))
     assert(out("a")("Encounter In Period") == ujson.Bool(true))
@@ -54,36 +54,39 @@ class CqfEvaluatorSpec extends AnyFunSuite {
 
   test("RUN-POINT-CQF: the period given is the one evaluated") {
     val p2025 = Some(("2025-01-01T00:00:00.000", "2025-12-31T23:59:59.999"))
-    val out = new CqfEvaluator().evaluate("PointTest", Seq(Library), patients, expansions, p2025).toMap
+    val out = new CqfEvaluator().evaluate("PointTest", Seq(Library, FhirHelpersCql.text), patients, expansions, p2025).toMap
     assert(out("a")("Encounter In Period") == ujson.Bool(false))
     assert(out("b")("Encounter In Period") == ujson.Bool(true))
   }
 
   test("RUN-POINT-CQF: requirements are the retrieved types and declared value sets of the closure") {
-    val r = new CqfEvaluator().requirements("PointTest", Seq(Library))
+    val r = new CqfEvaluator().requirements("PointTest", Seq(Library, FhirHelpersCql.text))
     assert(r.resourceTypes.toSet == Set("Patient", "Condition", "Encounter"))
     assert(r.valueSets == Seq(Vs))
   }
 
   test("RUN-POINT-CQF: a closure is translated once and reused") {
     val e = new CqfEvaluator()
-    e.evaluate("PointTest", Seq(Library), patients.take(1), expansions, p2026)
+    e.evaluate("PointTest", Seq(Library, FhirHelpersCql.text), patients.take(1), expansions, p2026)
     val t0 = System.nanoTime()
-    e.evaluate("PointTest", Seq(Library), patients.take(1), expansions, p2026)
+    e.evaluate("PointTest", Seq(Library, FhirHelpersCql.text), patients.take(1), expansions, p2026)
     assert((System.nanoTime() - t0) / 1e6 < 1000, "a second call must not translate again")
   }
 
   test("RUN-POINT-CQF: refusals are loud") {
     val e = new CqfEvaluator()
     assert(intercept[IllegalArgumentException](
-      e.evaluate("Nope", Seq(Library), patients, expansions, p2026)).getMessage.contains("no CQL"))
+      e.evaluate("Nope", Seq(Library, FhirHelpersCql.text), patients, expansions, p2026)).getMessage.contains("no CQL"))
     assert(intercept[IllegalArgumentException](
-      e.evaluate("PointTest", Seq(Library), patients, expansions, None)).getMessage.contains("give its bounds"))
+      e.evaluate("PointTest", Seq(Library, FhirHelpersCql.text), patients, expansions, None)).getMessage.contains("give its bounds"))
     assert(intercept[IllegalArgumentException](
-      e.evaluate("PointTest", Seq(Library), Seq(CqfPatient("z", Seq(patient("a", "female")))), expansions, p2026))
+      e.evaluate("PointTest", Seq(Library, FhirHelpersCql.text), Seq(CqfPatient("z", Seq(patient("a", "female")))), expansions, p2026))
       .getMessage.contains("no Patient resource"))
     assert(intercept[IllegalArgumentException](
-      e.evaluate("PointTest", Seq(Library.replace("context Patient", "context Patient\ndefine \"Bad\": 1 +")),
-        patients, expansions, p2026)).getMessage.contains("did not translate"))
+      e.evaluate("PointTest", Seq(Library.replace("context Patient", "context Patient\ndefine \"Bad\": 1 +"),
+        FhirHelpersCql.text), patients, expansions, p2026)).getMessage.contains("did not translate"))
+    // LANG-FHIRHELPERS-FROM-CONTENT: an included FHIRHelpers comes with the closure, or the closure does not translate.
+    assert(intercept[IllegalArgumentException](e.evaluate("PointTest", Seq(Library), patients, expansions, p2026))
+      .getMessage.contains("Library FHIRHelpers version '4.0.1' is not among the supplied library sources"))
   }
 }

@@ -241,7 +241,7 @@ class CompileServiceSqlSpec extends AnyFunSuite {
         |context Patient
         |define "Age": CalculateAgeInYearsAt(Patient.birthDate, @2026-01-01)
         |""".stripMargin
-    val ageElm = CqlToElmCli.translateText(ageCql).elmJson.getOrElse(fail("no ELM"))
+    val ageElm = CqlToElmCli.translateText(ageCql, Seq(FhirHelpersCql.text)).elmJson.getOrElse(fail("no ELM"))
     // Without udfSchema — bare function names.
     val bare = CompileService.compileSql(
       CompileRequest(elmJson = ageElm, target = Some("Age")), hasTerminology = false)
@@ -268,7 +268,7 @@ class CompileServiceSqlSpec extends AnyFunSuite {
         |context Patient
         |define "Age": CalculateAgeInYearsAt(Patient.birthDate, @2026-01-01)
         |""".stripMargin
-    val ageElm = CqlToElmCli.translateText(ageCql).elmJson.getOrElse(fail("no ELM"))
+    val ageElm = CqlToElmCli.translateText(ageCql, Seq(FhirHelpersCql.text)).elmJson.getOrElse(fail("no ELM"))
     val plan = CompileService.compilePipeline(
       CompileRequest(elmJson = ageElm, udfSchema = Some("rt"),
         overrides = Map("materialize.mode" -> "all")),

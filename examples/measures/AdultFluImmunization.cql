@@ -13,7 +13,6 @@ using QICore version '6.0.0'
 
 include FHIRHelpers version '4.0.1' called FHIRHelpers
 include SampleMeasureCommon version '1.0.0' called Common
-include SampleSupplementalData version '1.0.0' called SDE
 
 valueset "Sample Influenza Vaccine": 'http://example.org/fhir/ValueSet/sample-influenza-vaccine'
 valueset "Sample Patient Objection": 'http://example.org/fhir/ValueSet/sample-patient-objection'
@@ -76,15 +75,3 @@ define "Denominator Exceptions":
       and (NotGiven.statusReason in "Sample Patient Objection"
         or NotGiven.statusReason in "Sample Medical Reason Not Given")
       and NotGiven.recorded during day of "Flu Season"("Measurement Period"))
-
-/*
-@description: Supplemental data: administrative gender.
-*/
-define "SDE Sex":
-  SDE."SDE Sex"
-
-/*
-@description: Supplemental data: the type of each coverage during the period.
-*/
-define "SDE Payer":
-  SDE."SDE Payer"

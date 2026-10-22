@@ -92,7 +92,7 @@ class Selection:
     #: rule above is that the selection prefills arguments, and a title is not an argument to anything.
     #:
     #: They earn their place because an identifier is not a name a clinician recognises. Without them
-    #: the assistant either says "HypertensionBPControl" and "sample-patients" at a reader
+    #: the assistant either says "HypertensionBPControl" and "synthetic-population-small" at a reader
     #: who calls those things *Hypertension: BP Control* and *the sample patients*, or it
     #: spends a tool round-trip resolving what the screen already had on it. `list_data_sources` can
     #: resolve the source, so this is an economy for the drawer rather than the only route.

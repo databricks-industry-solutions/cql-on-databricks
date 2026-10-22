@@ -94,8 +94,9 @@ as one-time serverless runs. `deploy.sh` never runs it.
 
 ## Load synthetic data
 
-Optional. The deploy loads only the sample patients. For a large synthesized population with expected results
-per patient, generate and land a cohort per measure after the deploy
+Optional. The deploy loads the synthetic population small, about 1,000 patients per sample measure
+(`synthetic-population-small`). For a large synthesized population with expected results per patient, generate
+and land a cohort per measure after the deploy
 ([synthetic data](../loader/docs/synthetic-data.md)).
 
 ## Proxies and mirrors
@@ -150,7 +151,7 @@ Apps to `app_users_group`, and nothing else. Grant the same group:
 | `uc_catalog` | `USE CATALOG` | Reach the schemas below |
 | `<uc_catalog>.runtime` | `USE SCHEMA`, `EXECUTE`, `SELECT` | The `cql_*` functions and the knowledge views |
 | Volume `<uc_catalog>.runtime.artifacts` | `READ VOLUME` | Notebooks install the client wheel from it |
-| `<uc_catalog>.sample_measures`, `sample_patients` | `USE SCHEMA`, `EXECUTE`, `SELECT` | The sample measures and their data source |
+| `<uc_catalog>.sample_measures`, `synthetic_population_small` | `USE SCHEMA`, `EXECUTE`, `SELECT` | The sample measures and their data source |
 | Any schema you import content into (`ecqi_measures`, `vsac` by default) | `USE SCHEMA`, `SELECT` | Measures you imported yourself |
 | Each data source's catalog and schema | `USE CATALOG`, `USE SCHEMA`, `SELECT` | The patients a measure runs over |
 | `designer_results_catalog` | `USE CATALOG`, `CREATE SCHEMA` | Each user's private results |

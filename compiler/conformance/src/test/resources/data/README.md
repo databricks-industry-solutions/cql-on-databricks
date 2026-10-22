@@ -19,11 +19,11 @@ measure gates find them there (`CONF-MEASURE-DISCOVERY`):
 | `measures/AdultFluImmunization/` | Adults seen in the flu season who were vaccinated in it | 48 |
 | `measures/ColorectalScreening/` | Adults 45 to 75 current on colorectal cancer screening | 48 |
 
-They are copies of the sample measures in `examples/` (`CONTENT-SAMPLE-PRELOAD`): their CQL (and the
-`SampleMeasureCommon` and `SampleSupplementalData` libraries they include) in `cql/measures/`, the 48 sample
-patients in each directory, the `valueset-sample-*.ndjson` expansions, and each answer key from the sample's
-expected results. For now they are kept the same as `examples/` and changed in lock step, by hand. Nothing reads
-one copy from the other, so they can diverge later.
+Their CQL (and the `SampleMeasureCommon` library they include) in `cql/measures/` and the
+`valueset-sample-*.ndjson` expansions are copies of the sample measures in `examples/` (`CONTENT-SAMPLE-PRELOAD`),
+kept the same for now and changed in lock step, by hand. Nothing reads one copy from the other, so they can
+diverge later. The 48 hand-written patients in each directory and their answer keys are the corpus's own:
+`examples/` ships a synthesized population with no expected results instead (`DATA-SYNTH-SMALL`).
 
 Each has an `answer-key.json`. It names the measure, its version, its measurement period
 and its populations (population define to population code), and gives, for each patient, the value of each

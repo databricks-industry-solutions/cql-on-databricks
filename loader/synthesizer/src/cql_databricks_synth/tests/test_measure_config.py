@@ -168,3 +168,15 @@ def test_a_shaped_cohort_still_verifies(env, valuesets, config):
     config moved choices without moving any patient out of its stratum."""
     cohort = generate(env, valuesets, seed=7, per_stratum=2, priors=True, config=config)
     assert cohort.patients
+
+
+@pytest.mark.parametrize("name", ["HypertensionBPControl", "DiabetesHighOrMissingA1c", "AdultFluImmunization",
+                                  "ColorectalScreening"])
+def test_each_sample_measure_config_resolves(name):
+    """The pinned configs of the sample measures resolve, route branches in an included library named by its
+    alias (`Common.In Hospice Care`)."""
+    sample = dir_or_skip(name)
+    sample_env = Env.from_paths([sample], root=name)
+    sample_config = load(sample / CONFIG_NAME, sample_env, ValueSetIndex.from_ndjson_dir(sample))
+    assert "in_ipp" in sample_config.rates
+    assert all(weights and all(w > 0 for w in weights) for weights in sample_config.routes.values())

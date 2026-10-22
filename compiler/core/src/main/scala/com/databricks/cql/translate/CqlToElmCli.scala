@@ -1,7 +1,6 @@
 package com.databricks.cql.translate
 
-import org.cqframework.cql.cql2elm.{CqlCompilerException, CqlCompilerOptions, CqlTranslator, LibraryManager, ModelManager,
-  StringLibrarySourceProvider}
+import org.cqframework.cql.cql2elm.{CqlCompilerException, CqlCompilerOptions, CqlTranslator, LibraryManager, ModelManager}
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
@@ -53,8 +52,8 @@ object CqlToElmCli {
     // libraries it includes). Registering the WHOLE corpus as one source set collides those per-measure
     // duplicates — the cqframework LibraryManager raises "Multiple libraries for id … resolved" and
     // emits NO ELM for any measure. Grouping sources by directory isolates each measure's dependency
-    // closure (every `include` resolves to a sibling); flat fixtures (`operators/`, `fhir/`) include at
-    // most FHIRHelpers, which is the bundled source, so their sibling set is a harmless no-op.
+    // closure (every `include` resolves to a sibling). The flat `fhir/` fixtures include FHIRHelpers, so that
+    // directory carries its own copy (LANG-FHIRHELPERS-FROM-CONTENT).
     val sourcesByDir: Map[Path, Seq[String]] =
       cqlFiles.groupBy(_.getParent).map { case (dir, fs) =>
         dir -> fs.map(f => new String(Files.readAllBytes(f), StandardCharsets.UTF_8))
@@ -116,13 +115,12 @@ object CqlToElmCli {
     options.getOptions.add(CqlCompilerOptions.Options.EnableAnnotations)
     options.getOptions.add(CqlCompilerOptions.Options.EnableResultTypes)
     val libraryManager = new LibraryManager(modelManager, options)
-    // The bundled FHIRHelpers, so a library that writes `include FHIRHelpers version '4.0.1'`
-    // resolves it; it is never added to a library that does not (LANG-NO-IMPLICIT-INCLUDE).
-    // Plus any cross-library sources so a multi-library measure's includes resolve. An include resolves
-    // to the source declaring exactly its name and version; a version no source declares fails the
-    // translation (HL7 CQL Author's Guide, Libraries: an include that states a version references that version).
-    libraryManager.getLibrarySourceLoader.registerProvider(
-      new StringLibrarySourceProvider((FhirHelpersSource.cql +: extraSources).asJava))
+    // The caller's library sources, and nothing else: FHIRHelpers is one of them when the library includes
+    // it (LANG-FHIRHELPERS-FROM-CONTENT), and it is never added to a library that does not
+    // (LANG-NO-IMPLICIT-INCLUDE). An include resolves to the source declaring exactly its name and version; a
+    // version no source declares fails the translation (HL7 CQL Author's Guide, Libraries: an include that
+    // states a version references that version).
+    libraryManager.getLibrarySourceLoader.registerProvider(new SuppliedLibrarySourceProvider(extraSources))
     // The cqframework parser can THROW (not just collect diagnostics) on some malformed input —
     // e.g. a reserved word as the library name NPEs its error listener. Treat any such failure as
     // an error Result so one bad fixture never crashes the corpus build or the engine (the missing

@@ -2,7 +2,7 @@
 @description: Adults 18 to 85 with hypertension whose most recent blood pressure in the measurement period is
   below 140/90 mmHg.
 @intent: A sample proportion measure, written for this repository, in the shape CMS uses for FHIR quality
-  measures: an initial population, a denominator, exclusions, a numerator and supplemental data.
+  measures: an initial population, a denominator, exclusions and a numerator.
 @scope: QI-Core 6.0.0. A hypertension diagnosis that starts on or before June 30 of the measurement period, and
   a qualifying outpatient visit in the period.
 @nonGoal: Not a published measure. Readings are not reduced to the lowest of the day, and readings taken in an
@@ -15,7 +15,6 @@ using QICore version '6.0.0'
 
 include FHIRHelpers version '4.0.1' called FHIRHelpers
 include SampleMeasureCommon version '1.0.0' called Common
-include SampleSupplementalData version '1.0.0' called SDE
 
 codesystem "LOINC": 'http://loinc.org'
 
@@ -150,15 +149,3 @@ define "Diastolic Below 90":
 define "Numerator":
   "Systolic Below 140"
     and "Diastolic Below 90"
-
-/*
-@description: Supplemental data: administrative gender.
-*/
-define "SDE Sex":
-  SDE."SDE Sex"
-
-/*
-@description: Supplemental data: the type of each coverage during the period.
-*/
-define "SDE Payer":
-  SDE."SDE Payer"

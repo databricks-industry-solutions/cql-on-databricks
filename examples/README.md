@@ -7,7 +7,7 @@ The content directories are **your responsibility in a real deployment** — not
 ```
 measures/     the CQL — sample measures, the helper libraries they include, and FHIRHelpers
 valuesets/    the sample value sets the measures use
-data/         a small FHIR NDJSON dataset with 48 synthetic patients
+data/         a FHIR NDJSON dataset of 4,000 synthetic patients
 ```
 
 The directories are beside the notebooks so that each notebook can derive the path from its own location.
@@ -16,8 +16,9 @@ The deploy loads all three into your workspace (`CONTENT-SAMPLE-PRELOAD`).
 ## measures/
 
 Four sample quality measures in the shape CMS uses for FHIR measures (`CONTENT-SAMPLE-STANDARDS`): QI-Core
-6.0.0, proportion scoring, a measurement period passed in at run time, exclusions, exceptions and
-supplemental data. Each has a `.cql` and a `.measure.json`:
+6.0.0, proportion scoring, a measurement period passed in at run time, exclusions and
+exceptions. Each has a `.cql`, a `.measure.json`, and a `.synth.json` the synthesizer reads for its realism
+(`SYNTH-PDS-MEASURE-CONFIG`):
 
 | Library | What it computes | Better |
 |---|---|---|
@@ -26,14 +27,12 @@ supplemental data. Each has a `.cql` and a `.measure.json`:
 | `AdultFluImmunization` | Adults seen in the flu season who were vaccinated in it; declined or contraindicated vaccines are exceptions | Higher |
 | `ColorectalScreening` | Adults 45–75 current on colorectal cancer screening, each test with its own lookback | Higher |
 
-They include two helper libraries:
-- `SampleMeasureCommon.cql` — qualifying visits, age, condition and procedure timing, hospice and palliative care
-- `SampleSupplementalData.cql` — supplemental data: administrative gender and payer. Birth sex, race and
-  ethnicity are not reported yet: the compiler does not yet read those US Core extensions correctly.
+They include one helper library, `SampleMeasureCommon.cql`: qualifying visits, age, condition and procedure
+timing, hospice and palliative care.
 
 `FHIRHelpers.cql` is FHIRHelpers 4.0.1, unmodified, from the cqframework `quick` 4.8.0 artifact (Apache License
-2.0). Every library includes it. The compiler bundles the same library, so the client resolves the include
-itself; the copy here is so the content you load is complete.
+2.0). Every library includes it. The compiler bundles no FHIRHelpers, so an include of it resolves from this
+copy, like any other library (`LANG-FHIRHELPERS-FROM-CONTENT`).
 
 These are samples written for this repository, not published measures.
 
@@ -44,9 +43,9 @@ client.cql(library="HypertensionBPControl").exec()
 ```
 
 Over the sample patients, for 2026-01-01 to 2026-12-31, `HypertensionBPControl` gives:
-- `Initial Population` and `Denominator`: 11 of 48 patients
-- after `Denominator Exclusions`: 7 patients
-- `Numerator` among those 7: 3, a rate of 3 of 7
+- `Initial Population` and `Denominator`: 590 of 4,000 patients
+- after `Denominator Exclusions`: 543 patients
+- `Numerator` among those 543: 337, a rate of about 62%
 
 ## valuesets/
 
@@ -67,20 +66,17 @@ No CPT or SNOMED CT code is used: both need a license. Visit types and CT colono
 
 ## data/
 
-FHIR NDJSON: one file per resource type. `mount()` reads it against the compiler's FHIR model.
-- `Patient.ndjson`: 48 synthetic patients (`pat-001`..`pat-048`)
-- `Encounter.ndjson`: 49 encounters
-- `Condition.ndjson`: 30 conditions
-- `Observation.ndjson`: 35 blood pressure readings and laboratory results
-- `Procedure.ndjson`: 11 procedures
-- `Immunization.ndjson`: 7 immunizations, given or not given
-- `Coverage.ndjson`: 11 coverages
+The synthetic population small (`DATA-SYNTH-SMALL`): FHIR NDJSON, one file per resource type. `mount()` reads it
+against the compiler's FHIR model, and the deploy lands it as the data source `synthetic-population-small`.
+- `Patient.ndjson`: 4,000 synthetic patients
+- `Encounter.ndjson`: 2,422 encounters
+- `Condition.ndjson`: 1,270 conditions
+- `Observation.ndjson`: 1,167 blood pressure readings and laboratory results
+- `Procedure.ndjson`: 295 procedures
+- `Immunization.ndjson`: 332 immunizations, given or not given
 
-Each patient is written to test one case of one measure, such as an age limit, a threshold, a lookback edge,
-an exclusion or an exception: `pat-001`..`pat-016` hypertension, `pat-017`..`pat-026` diabetes, `pat-027`..`pat-035`
-flu immunization and `pat-036`..`pat-048` colorectal screening. Every resource claims its QI-Core profile in
-`meta.profile`.
-
-All data is synthetic. The expected results for each measure, per patient and population, with the reason,
-are in `expected-results/<Library>.json`. Each value is the population define's own value: a patient can be
-in a numerator define and also excluded.
+The synthesizer built it from `synthetic-small.json`: about 1,000 patients for each sample measure, at realistic
+rates set by the measure's `.synth.json`, with patient ids `pds-<seed>-<n>`. Every resource claims its QI-Core
+profile in `meta.profile` and carries the synthesizer's synthetic markers. It ships with no expected results: the
+answer keys are the conformance tests' (`compiler/conformance`). To rebuild it, see
+[synthetic-data.md](../loader/docs/synthetic-data.md).

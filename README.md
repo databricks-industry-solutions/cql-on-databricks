@@ -62,7 +62,7 @@ This project does not replace your existing quality measure vendor. Its goal is 
 
 The repository ships four sample measures written for it, with synthetic patients, in
 [`examples/measures`](examples/README.md). They follow the shape CMS uses for FHIR quality measures (QI-Core
-6.0.0, proportion scoring, exclusions, exceptions and supplemental data), with value sets of our own. They are
+6.0.0, proportion scoring, exclusions and exceptions), with value sets of our own. They are
 samples, not published measures.
 
 | Measure | Library | What it computes |
@@ -72,11 +72,10 @@ samples, not published measures.
 | Adult flu immunization | `AdultFluImmunization` | Adults seen in the flu season who were vaccinated in it, with declined or contraindicated vaccines as exceptions |
 | Colorectal screening | `ColorectalScreening` | Adults 45–75 current on colorectal cancer screening, each test with its own lookback |
 
-They share `SampleMeasureCommon` and `SampleSupplementalData`, and run over the 48 sample patients in
-`examples/data`, whose expected results are in `examples/data/expected-results`. Each patient's expected
-result is checked against the Java CQF reference engine and the compiler
-([testing-and-conformance.md](compiler/docs/testing-and-conformance.md)), and the release test checks them on a
-deployed workspace (`CLIENT-RELEASE-TESTS`).
+They share `SampleMeasureCommon`, and run over the 4,000 synthetic patients in `examples/data`, about 1,000
+synthesized for each measure (`DATA-SYNTH-SMALL`). The conformance tests keep their own 48 hand-written patients
+per measure, whose answer keys are checked against the Java CQF reference engine and the compiler
+([testing-and-conformance.md](compiler/docs/testing-and-conformance.md)).
 
 During development we also ran four published CMS eCQMs through the engine, in their FHIR versions: CMS124,
 CMS68, CMS69 and CMS165. Each computed successfully, and its results were verified against the cqframework
@@ -170,7 +169,7 @@ Spark server, and the build checks it (`./gradlew checkNeutrality`).
 
 | When | What |
 |---|---|
-| Now | Release v0.3. It includes a live release test that runs a measure from the built wheels and compares it with its answer key (`CLIENT-RELEASE-TESTS`) |
+| Now | Release v0.3 |
 | Next | A synthetic demo population as a free Marketplace listing (`DATA-SYNTH-MARKETPLACE`). Care-gap agents: CQL probes derived from a measure's own logic explain each failure, computed in bulk, as the caller (`AGENT-CARE-GAPS`) |
 | Through 2026 | The remaining upstream operator tests, and a published CQL support table |
 | Later | Scale acceptance for durable calculations (`CLIENT-DURABLE-VALIDATE`). Natural-language authoring in the Designer (`APP-CREATE-NL`) |
