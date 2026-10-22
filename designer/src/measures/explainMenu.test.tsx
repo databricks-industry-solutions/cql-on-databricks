@@ -12,16 +12,20 @@ import type { ExplainTarget } from "./MeasureNarrative.tsx";
 
 const TARGET: ExplainTarget = { label: "Denominator", define: "Denominator" };
 
+const NARRATION = { library: "SampleBP", exists: false, running: false };
+
 function open(props: Partial<Parameters<typeof ExplainMenu>[0]> = {}) {
   const toggled: number[] = [];
   const ran: ExplainTarget[] = [];
+  const generated: number[] = [];
   const view = render(
     <div className="mw">
       <ExplainMenu explain onToggle={() => toggled.push(1)} target={null}
-        onExplainAgain={(t) => ran.push(t)} {...props} />
+        onExplainAgain={(t) => ran.push(t)} narration={NARRATION} onGenerate={() => generated.push(1)}
+        {...props} />
     </div>,
   );
-  return { ...view, toggled, ran };
+  return { ...view, toggled, ran, generated };
 }
 
 describe("ExplainMenu — the toggle and its caret are ONE control (SPEC-EXPLAIN-AGAIN)", () => {
@@ -64,6 +68,30 @@ describe("ExplainMenu — the toggle and its caret are ONE control (SPEC-EXPLAIN
     fireEvent.click(row);
     expect(ran).toEqual([TARGET]);
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("generates the open library's narration from its own row, and closes (APP-NARRATIVE-OVERLAY)", () => {
+    const { generated } = open();
+    fireEvent.click(screen.getByRole("button", { name: "Explain options" }));
+    const row = screen.getByRole("menuitem", { name: /Generate narration/ });
+    expect(row.textContent).toContain("SampleBP");
+    fireEvent.click(row);
+    expect(generated).toEqual([1]);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("offers to regenerate a library that already has a narration", () => {
+    open({ narration: { ...NARRATION, exists: true } });
+    fireEvent.click(screen.getByRole("button", { name: "Explain options" }));
+    expect(screen.getByRole("menuitem", { name: /Regenerate narration/ })).not.toBeDisabled();
+  });
+
+  it("refuses a second generation while one runs, and says why in the row", () => {
+    open({ narration: { ...NARRATION, running: true } });
+    fireEvent.click(screen.getByRole("button", { name: "Explain options" }));
+    const row = screen.getByRole("menuitem", { name: /Generate narration/ });
+    expect(row).toBeDisabled();
+    expect(row.textContent).toMatch(/being written/);
   });
 
   it("dismisses on Escape and on a press outside — the app's one popover contract", () => {

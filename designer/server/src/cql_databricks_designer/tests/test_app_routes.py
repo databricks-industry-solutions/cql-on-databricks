@@ -58,6 +58,8 @@ EXPECTED: dict[tuple[str, str], str] = {
     ("/api/knowledge-sources/reload", "POST"): "reload_knowledge_sources",
     # --- designer: the Specification document and its derivations ---------------------------
     ("/api/libraries/{name}/{version}/specification", "GET"): "library_specification",
+    # APP-NARRATIVE-OVERLAY — generate, check and cache the signed-in user's narration (SSE).
+    ("/api/libraries/{name}/{version}/narration", "POST"): "generate_narration",
     ("/api/libraries/{name}/{version}/defines/{define}/profile", "POST"): "define_profile",
     ("/api/libraries/{name}/{version}/metrics", "POST"): "measure_metrics",
     ("/api/libraries/{name}/{version}/reads", "POST"): "read_metrics",

@@ -364,7 +364,7 @@ def ask_events(question: str, *, server: FastMCP, selection: Selection | None = 
     ``endpoint`` are injected for the reason the warehouse is in `tools.py`: testable against a fake
     completion rather than a workspace and a metered model.
     """
-    client = client or _serving_client()
+    client = client or serving_client()
     endpoint = endpoint or config.assistant_endpoint()
     definitions = tool_definitions(server)
 
@@ -382,7 +382,7 @@ def ask_events(question: str, *, server: FastMCP, selection: Selection | None = 
         messages.append(_assistant_message(choice, calls))
 
         if not calls:
-            answer = Answer(text=_answer_text(choice.content), invocations=invocations,
+            answer = Answer(text=answer_text(choice.content), invocations=invocations,
                             messages=messages)
             yield {"type": "answer", **answer.to_dict()}
             return
@@ -420,7 +420,7 @@ def ask(question: str, **kwargs: Any) -> Answer:
     return answer
 
 
-def _answer_text(content: Any) -> str:
+def answer_text(content: Any) -> str:
     """The prose out of a completion's ``content``, whichever shape the endpoint used.
 
     **Some chat endpoints answer with a LIST OF BLOCKS**, not a string:
@@ -453,7 +453,7 @@ def _assistant_message(choice: Any, calls: list[Any]) -> dict[str, Any]:
     return message
 
 
-def _serving_client() -> Any:
+def serving_client() -> Any:
     """The Foundation Model API client, as the **signed-in user** (`APP-ASSISTANT`, `SEC-OBO`).
 
     No API key: the credentials and the endpoint are the workspace's.
@@ -470,7 +470,8 @@ def _serving_client() -> Any:
     identity would leak across. Locally the shared client already IS the signed-in user
     (`SEC-LOCAL-IDENTITY`), so this costs nothing there.
 
-    The user needs `CAN QUERY` on the endpoint; the App's service principal no longer does.
+    The user needs `CAN QUERY` on the endpoint; the App's service principal no longer does. The
+    Designer's narration generation (`APP-NARRATIVE-OVERLAY`) calls the model through this client too.
     """
     from cql_databricks_common.workspace import user_client
 

@@ -165,6 +165,14 @@ _designer_app="$(jqpy "a=(d.get('resources') or {}).get('apps') or {};print((a.g
   "$venv_py" "$here/scripts/deploy/provision-run-log.py" --catalog "$_designer_catalog" --warehouse "$_warehouse_id" \
     --designer-app "$_designer_app" --readers-group "$readers_group"
 )
+
+echo "==> [5.85] create the Designer narration cache table and grant it, as the deployer (APP-NARRATIVE-OVERLAY)"
+# Same schema and the same ordering as [5.8]. FATAL on failure: without it no generated narration can be cached.
+(
+  if [ -n "$profile_name" ]; then export DATABRICKS_CONFIG_PROFILE="$profile_name"; fi
+  "$venv_py" "$here/scripts/deploy/provision-narrations.py" --catalog "$_designer_catalog" --warehouse "$_warehouse_id" \
+    --designer-app "$_designer_app"
+)
 # [5.9] is retired (SVC-COMPILER-M2M SUPERSEDED): a Job reaches the compiler App with its own identity
 # through the token exchange (SVC-EXCHANGE-RETRY), so the deploy provisions no compiler caller.
 # [5.5/7] is retired: the Designer's Lakebase is removed.

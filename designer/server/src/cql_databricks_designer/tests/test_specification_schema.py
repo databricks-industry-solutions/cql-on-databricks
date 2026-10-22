@@ -15,22 +15,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import xmlschema
 
-xmlschema = pytest.importorskip("xmlschema")
+import cql_databricks_designer
 
-def _component_root() -> Path:
-    """The component directory (designer/server), found by walking up to the one holding pyproject.toml.
-    The previous `parents[2]` meant `<component>/schema` when the package sat at the component root; the
-    src-layout move made it `src/schema`, which does not exist — and because this module skips when
-    `xmlschema` is absent, the gate reported SKIPPED rather than failing. A schema nobody validates is
-    documentation, which is exactly what this file exists to prevent."""
-    for candidate in Path(__file__).resolve().parents:
-        if (candidate / "pyproject.toml").is_file():
-            return candidate
-    raise RuntimeError("component root not found (no pyproject.toml above this test)")
-
-
-SCHEMA_DIR = _component_root() / "schema"
+# The schema ships inside the package (APP-NARRATIVE-OVERLAY validates against it at run time), so it is
+# anchored on the package rather than on a parent count. `xmlschema` is a runtime dependency: imported,
+# never skipped, because a gate that skips when its validator is missing is documentation.
+SCHEMA_DIR = Path(cql_databricks_designer.__file__).parent / "schema"
 NS = "https://cql-databricks.databricks.com/spec/1.0"
 
 

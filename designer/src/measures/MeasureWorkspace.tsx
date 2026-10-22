@@ -17,7 +17,9 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { useLocation, useNavigate } from "react-router-dom";
 import type { Definition } from "../catalog.ts";
 import { fetchDefinitions, fetchLibrarySource, fetchSpecification, fetchDataRequirements, type DataRequirement,
-  type SpecificationOverlay } from "../library-client.ts";
+  type SpecificationOverlay, generateNarration, NarrationRejected } from "../library-client.ts";
+import { useRevision } from "../use-revision.ts";
+import { NarrationStatus, type NarrationState } from "./NarrationStatus.tsx";
 import { runMeasureStreaming, fetchDataSources, fetchWarehouses, reopenResults, type RunTrigger } from "../run-client.ts";
 import { translate } from "../authoring/diagnostics.ts";
 import { CqlCode } from "../authoring/cqlHighlight.tsx";
@@ -49,7 +51,7 @@ import {
 } from "./model.ts";
 import { buildMetricSet, metricFunnel, type MetricSet } from "./specMetrics.ts";
 import { buildSpecModel, filterSpecModel, sortSpecModel, type SpecModel, type SpecSortKey } from "./specModel.ts";
-import { buildSpecDocument, withoutNarrated, type SpecDocument } from "./specDocument.ts";
+import { buildSpecDocument, withIncluded, withoutNarrated, type SpecDocument } from "./specDocument.ts";
 import { buildRetrieves, referencedTerminology, type SpecRetrieve } from "./specRetrieves.ts";
 
 const VALID_VIEWS = new Set<MeasureView>(["define", "cql"]);
@@ -461,14 +463,19 @@ export function MeasureWorkspace({ chrome, deepLink }: {
 
   // APP-NARRATIVE-OVERLAY — the Specification narration overlay for the current definition: intent,
   // scope, and the what/why/how-to-read triple per define. Prose only; the document's STRUCTURE is
-  // derived from the ELM below and the overlay cannot move it.
-  const [overlay, setOverlay] = useState<SpecificationOverlay | null>(null);
+  // derived from the ELM below and the overlay cannot move it. Read again when the server's revision
+  // moves (`PERF-CLIENT-REVISION`): a narration generated elsewhere changes this body.
+  const revision = useRevision();
+  const [ownOverlay, setOwnOverlay] = useState<SpecificationOverlay | null>(null);
   useEffect(() => {
-    if (!definition) { setOverlay(null); return; }
+    if (!definition) { setOwnOverlay(null); return; }
     const [name, version] = definition.id.split("@");
     if (!name || !version) return;
-    fetchSpecification(name, version).then(setOverlay).catch(() => setOverlay(null));
-  }, [definition?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    let live = true;
+    fetchSpecification(name, version).then((o) => { if (live) setOwnOverlay(o); })
+      .catch(() => { if (live) setOwnOverlay(null); });
+    return () => { live = false; };
+  }, [definition?.id, revision]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   // RUN-CLIENT-RESULT-SETS — figures arrive from the run's complete selection. Ordinary runs reuse
@@ -584,6 +591,22 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     return () => { live = false; };
   }, [elmInfo, compiledIncludes]);
 
+  // APP-NARRATIVE-OVERLAY — each included library's own narration, joined onto the open library's. A
+  // narration is cached per library, so a helper narrated once reads the same in every measure using it.
+  const [includedOverlays, setIncludedOverlays] = useState<(SpecificationOverlay | null)[]>([]);
+  useEffect(() => {
+    const includes = compiledIncludes.ok.map((i) => i.info);
+    if (includes.length === 0) { setIncludedOverlays([]); return; }
+    let live = true;
+    void Promise.all(includes.map((i) => fetchSpecification(i.name, i.version).catch(() => null)))
+      .then((found) => { if (live) setIncludedOverlays(found); });
+    return () => { live = false; };
+  }, [compiledIncludes, revision]);
+  const overlay = useMemo(() => {
+    const [library = "", version = ""] = (definition?.id ?? "").split("@");
+    return withIncluded({ library, version }, ownOverlay, includedOverlays);
+  }, [definition?.id, ownOverlay, includedOverlays]);
+
   // The read-only dependency view still wants name + source.
   const resolvedIncludes = useMemo(
     () => (trans?.includes ?? []).map((i) => ({ name: i.name, source: i.source })),
@@ -660,6 +683,50 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // nothing in the next, and a stale one would fire the act at a name this measure does not declare.
   const [explainTarget, setExplainTarget] = useState<ExplainTarget | null>(null);
   useEffect(() => { setExplainTarget(null); }, [definition?.id]);
+
+  // APP-NARRATIVE-OVERLAY — generate the open library's narration. The server compiles it, writes it with
+  // the model, checks it (one visible retry) and caches it only when it passes; the composed Specification
+  // it now serves comes back on the stream and replaces the open library's overlay directly. Leaving the
+  // library closes the stream, and the server stops with it: nothing is saved for an abandoned generation.
+  const openLibrary = definition?.id.split("@")[0] ?? "";
+  const [narration, setNarration] = useState<NarrationState | null>(null);
+  const narrationAbort = useRef<AbortController | null>(null);
+  useEffect(() => {
+    narrationAbort.current?.abort();
+    narrationAbort.current = null;
+    setNarration(null);
+  }, [definition?.id]);
+  const generate = useCallback(() => {
+    if (!definition) return;
+    const [name, version] = definition.id.split("@");
+    if (!name || !version) return;
+    narrationAbort.current?.abort();
+    const ctl = new AbortController();
+    narrationAbort.current = ctl;
+    setNarration({ status: "running", library: name, progress: null, retried: null });
+    generateNarration(name, version, {
+      signal: ctl.signal,
+      onProgress: (progress) => {
+        if (ctl.signal.aborted) return;
+        setNarration((prev) => prev?.status === "running"
+          ? progress.type === "problems"
+            ? { ...prev, retried: progress.problems }
+            : { ...prev, progress }
+          : prev);
+      },
+    }).then((specification) => {
+      if (ctl.signal.aborted) return;
+      setOwnOverlay(specification);
+      setNarration(null);
+      // The reader asked to see it: a narration generated behind Explain-off would look like nothing happened.
+      setExplain(true);
+    }).catch((e: unknown) => {
+      if (ctl.signal.aborted) return;
+      setNarration(e instanceof NarrationRejected
+        ? { status: "rejected", library: name, problems: e.problems, attempts: e.attempts }
+        : { status: "error", library: name, error: e instanceof Error ? e.message : String(e) });
+    });
+  }, [definition]);
 
   // APP-ASSISTANT — the drawer's open state, and the question an inline entry point handed it.
   // NOT in the URL and NOT persisted: a conversation is a session, not a place. `APP-PANE-STATE`
@@ -1016,7 +1083,10 @@ export function MeasureWorkspace({ chrome, deepLink }: {
                 source and carries no narration to filter — and therefore nothing to re-explain. */}
             {view === "define" && (
               <ExplainMenu explain={explain} onToggle={toggleExplain}
-                target={explainTarget} onExplainAgain={explainAgain} />
+                target={explainTarget} onExplainAgain={explainAgain}
+                narration={{ library: openLibrary, exists: narratedLibraries.has(openLibrary),
+                             running: narration?.status === "running" }}
+                onGenerate={generate} />
             )}
             {/* DESIGNER-SPACE-CONTEXT — show the active Data Source name when the measure belongs to one. */}
             {/* APP-EXEC-PARAMS — the execution parameters, dialled in the bar. They scope every count,
@@ -1059,6 +1129,8 @@ export function MeasureWorkspace({ chrome, deepLink }: {
         {/* definition-dependent content: error banner, body, inspector */}
         {definition ? <>
           {derivations.error && <div className="mw-error" role="alert">{derivations.error}</div>}
+          {/* APP-NARRATIVE-OVERLAY — a generation in progress, or why it showed nothing. */}
+          {narration && <NarrationStatus state={narration} onDismiss={() => setNarration(null)} />}
           {/* Run error banner — subtle, dismissible, collapsible. */}
           {runError && <div className={`mw-error${errorExpanded ? " expanded" : ""}`} role="alert">
             <div className="mw-error-summary">

@@ -4,7 +4,7 @@
 // directly — no server-side cache. Each record maps to the UI's `Definition` shape so the
 // Browse/Home/Detail components are unchanged.
 
-import { cachedGet, cachedPost, postKey, peek } from "./data-cache.ts";
+import { cachedGet, cachedPost, mutate, postKey, peek } from "./data-cache.ts";
 import type { Category, Definition, Status } from "./catalog.ts";
 import type { MeasureMetricsDto } from "./measures/specMetrics.ts";
 import type { CohortFlowDto, FlowGateRequest } from "./measures/specFlow.ts";
@@ -335,6 +335,70 @@ export async function fetchSpecification(name: string, version: string): Promise
   return cachedGet(
     `/api/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/specification`,
     async (res) => (res.ok ? ((await res.json()) as SpecificationOverlay) : null));
+}
+
+// ── APP-NARRATIVE-OVERLAY — generate a library's narration ─────────────────────────────────────────
+//
+// `POST /api/libraries/{name}/{version}/narration`, SSE. The server compiles the library, asks the model,
+// checks the reply against the schema and the reference set, retries once with the problems it found,
+// and caches a narration only when it passes. Not cached here: every call generates.
+
+/** One reason a narration was not shown. `invalid`, `identifier` or `coverage` (`explain/checks.py`). */
+export interface NarrationProblem { kind: string; message: string }
+
+/** A progress event: a stage starting, or a failed attempt that is being retried. */
+export type NarrationProgress =
+  | { type: "stage"; stage: "compiling" | "writing" | "checking" | "saving"; attempt?: number }
+  | { type: "problems"; attempt: number; problems: NarrationProblem[] };
+
+/** Every attempt failed its checks. Carries the last attempt's problems; nothing was cached. */
+export class NarrationRejected extends Error {
+  constructor(readonly problems: NarrationProblem[], readonly attempts: number) {
+    super(`The narration failed ${problems.length} check${problems.length === 1 ? "" : "s"} after ${attempts} attempts.`);
+  }
+}
+
+/** Generate, check and cache the signed-in user's narration of one library. Resolves with the composed
+ *  Specification the server now serves for it; rejects with `NarrationRejected` or the server's error. */
+export async function generateNarration(
+  name: string, version: string,
+  opts: { onProgress?: (event: NarrationProgress) => void; signal?: AbortSignal } = {},
+): Promise<SpecificationOverlay | null> {
+  const res = await mutate(
+    `/api/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/narration`,
+    { method: "POST", signal: opts.signal });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { error?: string } | null;
+    throw new Error(body?.error ?? `narration request failed: ${res.status}`);
+  }
+  if (!res.body) throw new Error("The narration stream is not supported by this browser.");
+
+  // SSE frames are `\n\n`-delimited and a chunk can split one, so the tail is carried over, as in
+  // `assistant-client.ts`.
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      const line = frame.trim();
+      if (!line.startsWith("data: ")) continue;
+      const event = JSON.parse(line.slice(6)) as
+        | NarrationProgress
+        | { type: "narration"; attempts: number; specification: SpecificationOverlay | null }
+        | { type: "rejected"; attempts: number; problems: NarrationProblem[] }
+        | { type: "error"; error: string };
+      if (event.type === "narration") return event.specification;
+      if (event.type === "rejected") throw new NarrationRejected(event.problems, event.attempts);
+      if (event.type === "error") throw new Error(event.error);
+      opts.onProgress?.(event);
+    }
+  }
+  throw new Error("The narration stream ended before it reported a result.");
 }
 
 /** SPEC-DATA-REQUIREMENTS — one `Library.dataRequirement` entry: what the logic READS.

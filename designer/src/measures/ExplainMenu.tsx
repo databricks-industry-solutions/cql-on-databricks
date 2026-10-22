@@ -19,18 +19,26 @@
 // a tooltip. A disabled control that cannot say why is indistinguishable from a broken one
 // (`design-system.md` section 6, the pane-tab rule); this one says why in the row's own body, which is
 // the same fix that rule prescribes.
+//
+// APP-NARRATIVE-OVERLAY — the menu's second act generates the open library's narration. It is a library-
+// level act, so it is aimed by the open artifact rather than by a section mark. Included libraries are
+// narrated from their own page: a narration belongs to the library that declares the define.
 
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Explain, ExplainOff } from "../icons.tsx";
 import type { ExplainTarget } from "./MeasureNarrative.tsx";
 
-export function ExplainMenu({ explain, onToggle, target, onExplainAgain }: {
+export function ExplainMenu({ explain, onToggle, target, onExplainAgain, narration, onGenerate }: {
   /** SPEC-EXPLAIN-VIEW — whether the interpreted layer is showing. */
   explain: boolean;
   onToggle: () => void;
   /** SPEC-EXPLAIN-AGAIN — the section the document last aimed at, or null if none has been. */
   target: ExplainTarget | null;
   onExplainAgain: (target: ExplainTarget) => void;
+  /** APP-NARRATIVE-OVERLAY — the open library, whether it has a narration yet, and whether one is being
+   *  written. */
+  narration: { library: string; exists: boolean; running: boolean };
+  onGenerate: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
@@ -91,6 +99,19 @@ export function ExplainMenu({ explain, onToggle, target, onExplainAgain }: {
                      contract this document's prose was written to; nothing here is overwritten.`
                   : `Press the Explain mark on a section to choose what to re-explain — a re-explanation
                      is about one criterion, and no section has been picked yet.`}
+              </span>
+            </span>
+          </button>
+          <button className="mw-selpill-row" role="menuitem" disabled={narration.running}
+            onClick={() => { setOpen(false); onGenerate(); }}>
+            <span className="tx">
+              <span className="nm">{narration.exists ? "Regenerate narration" : "Generate narration"}</span>
+              <span className="bl">
+                {narration.running
+                  ? `A narration of ${narration.library} is being written. Its progress shows above the document.`
+                  : `${narration.exists ? "Write a new" : "Write a"} narration of ${narration.library} with AI. It is
+                     checked against the compiled logic before it is shown, and saved for you only. Takes a few
+                     minutes.`}
               </span>
             </span>
           </button>

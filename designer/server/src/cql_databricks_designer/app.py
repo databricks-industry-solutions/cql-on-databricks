@@ -21,7 +21,8 @@ from cql_databricks.agent.wiring import assistant_server
 from cql_databricks_common import config
 from cql_databricks_designer.cache_stamp import CacheStamp, install as install_cache_revision
 from cql_databricks_common.compiler import CompilerClient, compile_provider
-from cql_databricks_designer.data_bindings import app_content_resolver
+from cql_databricks_designer.data_bindings import app_content_resolver, app_sql_runner
+from cql_databricks_designer.explain.narrations import NarrationStore
 from cql_databricks_common.workspace import install_forwarded_identity
 
 from .calculation_env import calculation_env
@@ -34,6 +35,7 @@ from .routes import (
     designer as designer_routes,
     deployment as deployment_routes,
     data_sources as data_sources_routes,
+    narration as narration_routes,
     runs as runs_routes,
 )
 
@@ -63,13 +65,16 @@ def create_app() -> FastAPI:
     data_sources = data_sources_routes.user_data_sources(compiler.list_modeled_types)
     # CONTENT-RESOLVER — one per process; it reads nothing until the first knowledge request.
     content = app_content_resolver()
+    # APP-NARRATIVE-OVERLAY, APP-AI-CACHE — generated narrations, read and written as the App's service
+    # principal in `<designer_catalog>.designer.narrations`. Reads nothing until the first Specification.
+    narrations = NarrationStore(app_sql_runner, config.designer_catalog)
 
     # APP-ASSISTANT — the drawer's `/api/assistant/ask` loop dispatches through the agent's server
     # object, in process: the tool definitions it sends the model are generated from
     # `mcp_server.list_tools()`, so there is no second set of schemas to keep in step. The Designer adds
     # its own `get_specification` (AGENT-TOOL-REGISTRY). The agent's MCP surface is the agent's App;
     # this one mounts no `/mcp` (`APP-PER-FEATURE`).
-    mcp_server = assistant_server(contributed=designer_tools(content=content))
+    mcp_server = assistant_server(contributed=designer_tools(content=content, narrations=narrations))
 
     # PERF-CACHE-REVISION — browser caching for the whole reading surface, with ONE thing that
     # busts it. The stamp is a digest of the corpus generation and the data-source cache's generation plus
@@ -79,6 +84,8 @@ def create_app() -> FastAPI:
         # `generation` moves on every load and reload, and reading it never forces a load.
         "knowledge": lambda: [content.generation],
         "data-sources": lambda: [data_sources.generation],
+        # A generated narration changes the Specification body for its user.
+        "narrations": lambda: [narrations.generation],
     }))
 
     # SEC-OBO — bind the signed-in user's forwarded credentials to the request context, so that
@@ -99,7 +106,8 @@ def create_app() -> FastAPI:
     app.include_router(deployment_routes.router(compiler=compiler))
     app.include_router(compile_routes.router(compiler=compiler, content=content))
     app.include_router(knowledge_routes.router(content=content, warehouse=data_sources_routes.warehouse))
-    app.include_router(designer_routes.router(content=content))
+    app.include_router(designer_routes.router(content=content, narrations=narrations))
+    app.include_router(narration_routes.router(compiler=compiler, content=content, narrations=narrations))
     app.include_router(data_sources_routes.router(data_sources=data_sources, content=content))
     # RUN-CLIENT-MIGRATION — caller-owned durable calculations and complete-selection reads.
     app.include_router(runs_routes.router(

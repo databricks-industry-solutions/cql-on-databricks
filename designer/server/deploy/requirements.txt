@@ -29,6 +29,9 @@ fastmcp>=2.0
 # for a Databricks endpoint reached with the App's own service principal — not a second model
 # provider, and no API key. MUST stay in lockstep with pyproject.toml, per the note at the top.
 openai>=1.40
+# SPEC-XSD, APP-NARRATIVE-OVERLAY — a generated narration is validated against the Specification schema
+# before it is shown or cached.
+xmlschema>=3
 # SVC-PACKAGING — the OSS cql() client (cql-databricks): the compiler client and the compile shims every
 # feature here uses. It is NOT on PyPI, so the App installs the WHEEL from the runtime UC Volume, the one
 # documented way a Databricks App gets a private package (relative paths in requirements.txt are not

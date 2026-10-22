@@ -80,7 +80,9 @@ The script, in order:
 4. Uploads the compiler's JRE and jars, the runtime function jar and the client wheel to the Volume.
 5. Registers the `cql_*` runtime functions in Unity Catalog (`scripts/deploy/register-uc-udfs.sh`).
 6. Grants each App's service principal access to the catalogs (`scripts/deploy/grant-app-access.sh`).
-7. Creates and grants the Designer run log tables (`scripts/deploy/provision-run-log.py`).
+7. Creates and grants the Designer run log tables (`scripts/deploy/provision-run-log.py`) and the narration
+   cache table, `designer.narrations` (`scripts/deploy/provision-narrations.py`). Only the Designer App's
+   service principal is granted the narration table.
 8. Publishes the example notebooks to a shared workspace folder (`scripts/deploy/publish-examples.sh`).
 9. Starts every App.
 10. Loads the sample measures and patients from `examples/` and creates the knowledge views

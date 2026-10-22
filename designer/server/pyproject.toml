@@ -32,6 +32,9 @@ dependencies = [
     # APP-ASSISTANT — the in-product drawer runs on the Foundation Model API (`get_open_ai_client`).
     "databricks-sdk>=0.122",
     "openai>=1.40",
+    # SPEC-XSD, APP-NARRATIVE-OVERLAY — a generated narration is validated against
+    # `schema/specification.xsd` before it is shown or cached.
+    "xmlschema>=3",
 ]
 
 [project.urls]
@@ -39,16 +42,20 @@ Homepage = "https://github.com/databricks-industry-solutions/cql-on-databricks"
 Repository = "https://github.com/databricks-industry-solutions/cql-on-databricks"
 
 [project.optional-dependencies]
-# SPEC-XSD — `xmlschema` is the CI enforcement of the Specification standard (`schema/specification.xsd`).
 # `pyyaml` reads `databricks.yml` and `deploy/app.yaml` in the deploy tests. `pyflakes` backs
 # `test_no_undefined_names.py`.
-dev = ["pytest>=8", "xmlschema>=3", "pyyaml>=6", "pyflakes>=3"]
+dev = ["pytest>=8", "pyyaml>=6", "pyflakes>=3"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["cql_databricks_designer*"]
 # Tests are not part of the distribution.
 exclude = ["*.tests", "*.tests.*"]
+
+# SPEC-XSD — the Specification schema and its example instances ship with the package: narration
+# generation validates against the schema at run time (APP-NARRATIVE-OVERLAY).
+[tool.setuptools.package-data]
+cql_databricks_designer = ["schema/*.xsd", "schema/examples/*.xml"]
 
 [tool.pytest.ini_options]
 testpaths = ["src/cql_databricks_designer/tests"]

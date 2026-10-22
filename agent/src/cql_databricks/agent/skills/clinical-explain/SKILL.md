@@ -296,7 +296,7 @@ measure that uses it, that is a sign the narration belongs in the measure, not h
 
 ## What the schema will and will not accept
 
-`designer/server/schema/specification.xsd` is the normative contract (`SPEC-XSD`) — read it, do not guess.
+`designer/server/src/cql_databricks_designer/schema/specification.xsd` is the normative contract (`SPEC-XSD`) — read it, do not guess.
 Every element and attribute below is defined there with its own documentation:
 
 - `Overview` — `Intent/Statement`, `Intent/ClinicalRationale`, `Intent/Recommendation`,

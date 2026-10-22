@@ -9,9 +9,9 @@ it wrong. The reference set makes every identifier a narration needs SELECTABLE 
 
 WHAT IT IS FOR, in order of who consumes it:
 
-1. The **narration generator** (today an LLM session over `clinical-explain/SKILL.md`, later a runtime
-   endpoint). It receives resolved candidates and returns selections; the emitter writes the attributes.
-2. The **accounting check** (`SPEC-EXPLAIN-ACCOUNTING`). Coverage needs a denominator, and this is it:
+1. The **narration generator** (`explain/generate.py`, the model over `clinical-explain/SKILL.md`). It
+   receives resolved candidates and returns selections; the emitter writes the attributes.
+2. The **accounting check** (`SPEC-EXPLAIN-ACCOUNTING`, `explain/checks.py`). Coverage needs a denominator, and this is it:
    every reference site, every read, every terminology binding, every metric key, per define.
 3. **`sourceSpan` derivation.** Spans come from ELM locators converted to body-relative line ranges, never
    counted by eye — a counted range breaks silently when the registry's CQL is reformatted.

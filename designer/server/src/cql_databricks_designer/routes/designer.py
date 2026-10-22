@@ -33,11 +33,12 @@ from .. import sample_deck
 from cql_databricks.data_bindings import ContentResolver
 
 from cql_databricks_designer.dto import TranslateRequest
+from cql_databricks_designer.explain.narrations import NarrationStore
 
 log = logging.getLogger("cql_databricks_designer")
 
 
-def router(*, content: ContentResolver) -> APIRouter:
+def router(*, content: ContentResolver, narrations: NarrationStore) -> APIRouter:
 
 
     router = APIRouter()
@@ -50,16 +51,16 @@ def router(*, content: ContentResolver) -> APIRouter:
         # derived client-side, and a second copy could disagree with the first.
         #
         # AUTHORED PROSE (SPEC-MEASURE-METADATA). The measure's own FHIR resource is quoted verbatim and
-        # attributed to its steward. Narration generated for the signed-in user (APP-NARRATIVE-OVERLAY) is
-        # not composed in yet. A metadata read failure is logged, and its absence is visible on the page as
-        # a Summary with no authored prose.
+        # attributed to its steward. The signed-in user's cached narration of this exact CQL
+        # (APP-NARRATIVE-OVERLAY) is composed under it; authored prose wins the slot. A failed read of
+        # either is logged, and its absence is visible on the page as prose that is not there.
         #
         # THE COMPOSITION ITSELF LIVES IN `assistant_tools` (`SVC-MCP-TOOLS`, `AGENT-TOOL-REGISTRY`), and this
         # route delegates to it. It is not a helper extracted for tidiness: the MCP tool
         # `get_specification` must return exactly what this route returns, or one define reads one
         # way to a person and another way to an agent — which is the drift the whole tool surface
         # exists to prevent. The independent-failure behaviour above moved with it, unchanged.
-        document = specification_document(name, version, content=content)
+        document = specification_document(name, version, content=content, narrations=narrations)
         if document is None:
             return JSONResponse(status_code=404,
                                 content={"error": f"No Specification for {name}@{version}"})

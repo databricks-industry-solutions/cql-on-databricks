@@ -272,6 +272,27 @@ export function withoutNarrated(overlay: SpecificationOverlay | null): Specifica
   };
 }
 
+/** APP-NARRATIVE-OVERLAY — the open library's overlay plus each included library's own.
+ *
+ *  A narration is scoped to the library that declares the define (`clinical-explain`), so an included
+ *  library's elements and catalogue overview come from ITS overlay, fetched and cached under its own
+ *  key. The open library's own fields win where both speak; its Overview, title and notices are only
+ *  ever its own. `root` names the open library, for the case where only an include has prose. */
+export function withIncluded(
+  root: { library: string; version: string },
+  own: SpecificationOverlay | null,
+  included: (SpecificationOverlay | null)[],
+): SpecificationOverlay | null {
+  const others = included.filter((o): o is SpecificationOverlay => o !== null);
+  if (others.length === 0) return own;
+  const base: SpecificationOverlay = own ?? { ...root, overview: {}, elements: {}, libraryOverviews: {} };
+  return {
+    ...base,
+    elements: Object.assign({}, ...others.map((o) => o.elements), base.elements),
+    libraryOverviews: Object.assign({}, ...others.map((o) => o.libraryOverviews), base.libraryOverviews),
+  };
+}
+
 /** One derived element — a Concept or a Rule. Both are defines, so both carry the same evidence. */
 interface SpecElementBase {
   /** Unique within the document: library + define. Safe as a React key. */

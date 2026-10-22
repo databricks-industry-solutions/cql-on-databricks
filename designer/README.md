@@ -8,7 +8,8 @@ figures in the document come from the results.
 
 - Specification. Each define renders once, with its prose, its CQL and its dependencies, with dependency
   counts in both directions (`APP-DEP-COUNTS`). Prose comes from the CQL's narrative tags, the measure's
-  FHIR `Measure` resource and static narration instances ([narrative-tags.md](docs/narrative-tags.md)).
+  FHIR `Measure` resource and narration generated on request, checked and cached per user
+  ([narrative-tags.md](docs/narrative-tags.md)).
 - Run. The execution menu at the top holds the data source, the warehouse and the run status. Refresh
   runs the measure through the Python client's durable calculations, as you, on the warehouse you picked.
   Results go to your private schema. Opening a measure reopens its last matching results when they exist
@@ -28,8 +29,8 @@ The Designer computes nothing itself. It calls the client like any other caller.
 | `designer/src` | The React SPA (Vite). `measures/` is the workspace and Specification, `authoring/` the CQL helpers, `tour/` the product tour |
 | `designer/packages/cql-grammar` | The Monaco Monarch grammar for CQL |
 | `designer/server` | The FastAPI backend, `cql_databricks_designer`. It serves the built SPA and `/api` |
-| `designer/server/schema` | `specification.xsd`, the Specification document schema, and an example instance |
-| `designer/server/src/cql_databricks_designer/specifications` | Static narration instances for external measures |
+| `designer/server/src/cql_databricks_designer/schema` | `specification.xsd`, the Specification document schema, and example instances. Ships in the package: generation validates against it at run time |
+| `designer/server/src/cql_databricks_designer/explain` | Narration generation: the reference set, the model call, the checks and the per-user cache |
 | `designer/server/deploy` | The App's `app.yaml` and `requirements.txt` |
 | `designer/scripts` | `build-design-doc.mjs`, which builds the design-system HTML page |
 

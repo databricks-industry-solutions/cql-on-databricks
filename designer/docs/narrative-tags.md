@@ -2,7 +2,7 @@
 
 The CQL annotation vocabulary for the Specification's prose (`SPEC-NARRATIVE-TAGS`). Each piece of prose
 the Specification shows has a named home: a CQL annotation tag. This document lists the tags, the
-Specification element each one fills (`designer/server/schema/specification.xsd`) and what the reader sees.
+Specification element each one fills (`designer/server/src/cql_databricks_designer/schema/specification.xsd`) and what the reader sees.
 
 The tag name and the XSD element name are the same word. `@intent` in the CQL is `Overview/Intent/Statement`
 in the schema and the Intent section on the page.
@@ -139,9 +139,27 @@ XSD-conformant Specification instance (`specification/parser.py` reads it). Ever
 `provenance="narrated" method="ai-drafted"` and carries `sourceTag`. It carries prose only: an Appendix,
 value set, parameter or code is derived from the ELM (`SPEC-DERIVED-APPENDIX`).
 
-Generation is not built yet. Until it is, a library with no tags and no Measure resource shows no
-narration. The hand-written instances that stood in for it were removed with the official measure
-content (`SPEC-STATIC-OVERLAY`, superseded).
+"Generate narration" in the Explain menu asks for one, for the open library
+(`POST /api/libraries/{name}/{version}/narration`). The server:
+
+1. Compiles the library from its CQL in knowledge and derives its reference set (`SPEC-EXPLAIN-INPUTS`).
+2. Sends the model the writing rules (`clinical-explain/SKILL.md`), the schema, the CQL and the reference
+   set (`explain/generate.py`), through the assistant's endpoint, as the signed-in user.
+3. Checks the reply (`explain/checks.py`): the schema, the library's identity, the provenance of every
+   prose element, no derived elements, no invented identifiers, and the coverage directions of
+   `SPEC-EXPLAIN-ACCOUNTING`.
+4. If any check fails, sends the problems back once. The banner above the document says so. If the second
+   reply fails too, the banner lists its problems and nothing is shown or saved.
+5. Saves a passing narration in `<designer_catalog>.designer.narrations`.
+
+A cached narration is found by user, library, version, a digest of the CQL and a digest of the writing
+rules and schema. A changed CQL or contract shows no narration until it is generated again. Regenerating
+saves a newer row. An included library's narration is generated from its own page and joined onto every
+measure that includes it.
+
+A library with no tags, no Measure resource and no generated narration shows no narration. The
+hand-written instances that once stood in for generation were removed with the official measure content
+(`SPEC-STATIC-OVERLAY`, superseded).
 
 ### Precedence
 
