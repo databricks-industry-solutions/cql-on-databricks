@@ -38,12 +38,6 @@ export {
   ArrowUpRight as OpenRef,
   Pin,
   AlertTriangle,
-  // REND-BADGES — the section health marks, and they are ONE FAMILY: the same scalloped seal outline,
-  // differing only in what sits inside it. The shape says "this is a verdict on the section"; the mark
-  // inside says which verdict. A seal drawn as a seal needs no halo.
-  BadgeCheck,
-  BadgeAlert,
-  BadgeInfo,
   List,
   Users,
   FileText,

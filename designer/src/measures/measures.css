@@ -15,7 +15,7 @@
   --tacc: var(--accent); --tacc-h: var(--accent-strong); --tacc-w: var(--accent-soft); --tacc-i: var(--accent-strong);
   --tgood: var(--good); --tgood-w: var(--good-soft); --twarn: var(--warn); --twarn-w: var(--warn-soft);
   /* `good` FILLED — the one solid-green disc, for a mark that carries WHITE ink rather than semantic ink
-     on a wash (the Validation pass badge, `REND-BADGES`). It is deliberately the SAME value in both
+     on a wash. It is deliberately the SAME value in both
      themes, which is why it is declared here and in neither dark block: `--tgood`'s dark value (`#42BA91`)
      is tuned to be read AS ink on a dark ground, and white on it is 2.4:1 — a fill and an ink are two
      different jobs for one hue, and only the fill has to hold white. Brand green holds white at 4.6:1 and
@@ -2253,16 +2253,9 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
   background: var(--panel-2); border: 1px solid var(--tline); border-radius: 999px; padding: 1px 8px; }
 .mw-el-chip:hover { color: var(--tacc); border-color: var(--tacc); }
 
-/* ── REND-BADGES — the criterion's state, as DISCS ON THE HEADING ROW ─────────────────────────────
-   Was two labelled pills (`VALIDATION ok` · `MAPPING ?`) on their own line under every heading. The label
-   repeated what the colour and the tooltip already said, MAPPING could never report anything (retired,
-   `SpecBadges`), and the strip pushed every criterion's prose a line further down, forty times a page.
-   A DISC is the same claim at a glance and reads as a column beside the headings, which is what makes a
-   page of them scannable instead of noisy; the words live in the tooltip, read once by whoever needs them.
-   Semantic wash + semantic ink per the pill language; never accent, which stays reserved for selection and
-   the primary CTA. `not-run` is deliberately quiet — an unevaluated badge must not read like a passing one
-   and must not read like an alarm either. `explain` takes the one hueless wash (`--texpl-w`), because
-   whose words a sentence is, is not a state of the measure (design-system section 2). */
+/* ── APP-NARRATIVE-PROVENANCE — the provenance mark on the heading row ─────────────────────────────
+   `explain` takes no semantic hue, because whose words a sentence is, is not a state of the measure
+   (design-system section 2). */
 /* On the heading's own line, after the name. `align-self: center` keeps the discs on the heading's centre
    line rather than its serif baseline, which a circle ignores. */
 .mw-el-badges { flex: none; align-self: center; display: inline-flex; gap: 4px; }
@@ -2277,29 +2270,9 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 /* SPECIFICITY: the global `.mw button { background:none; border:0 }` reset is (0,1,1) and would blank a
    badge rendered as a button, so these are `.mw`-qualified to (0,2,1). The standing caveat in
    design-system.md section 6 that has already bitten the pane tabs and the ref lens's action corner. */
-/* EVERY BADGE IS A GLYPH NOW, NOT A DISC. The
-   seal-shaped icon family carries the mark itself — `BadgeCheck` / `BadgeAlert` / `BadgeInfo`, one outline
-   with three faces — so the disc, the wash and the gold rim that were drawing a "seal" around a plain tick
-   all come off: a seal drawn as a seal needs no halo to say it is one, and the ring was a second,
-   competing shape around a shape. The provenance mark loses its disc in the same move — two marks on one
-   heading, one ringed and one not, would rank one over the other when they are peers.
-   IT IS ALSO WHAT MAKES THEM LEGIBLE AT LAST: a state used to be a 9px character inside a 15px tint, and
-   the complaint that started this ("I can barely see it, I thought it was a count of defines") was a fair
-   reading of it. They are 18px glyphs, sized to the heading row they sit on. */
+/* A GLYPH, NOT A DISC: the icon carries the mark itself, sized to the heading row it sits on. */
 .mw .mw-badge { padding: 0; border: 0; width: auto; height: auto;
   grid-auto-flow: column; gap: 3px; background: none; }
-/* PASS IS THE FILLED SEAL — the shape's interior takes the green and the check is knocked out of it in
-   white (`fill` + `currentColor` on one lucide glyph), which is the verified-badge idiom a reader already
-   knows. Only `pass` is filled: it is the settled state, and a filled amber `!` beside every criterion
-   would shout the ones that are merely open. */
-.mw .mw-badge.st-pass { color: var(--paper); }
-.mw .mw-badge.st-pass svg { fill: var(--tgood); }
-.mw .mw-badge.st-findings { color: var(--twarn); }
-.mw .mw-badge.st-not-run { color: var(--tink-3); }
-/* The finding COUNT, stated beside the mark rather than inside it. Mono and tabular like every figure in
-   the document, and a step up from the 9px it was as a disc's contents — it is now a number in a heading
-   row rather than a character in a token, and it has the room. */
-.mw .mw-badge .n { font-size: 11.5px; line-height: 1; }
 /* PROVENANCE FILLS WITH LAVA — the exact ink the Explain TOGGLE's glyph takes when it is ON
    (`.mw-explain[aria-pressed="true"] svg`), which is what these marks are the result of: the toggle is
    pressed, so the prose it produces wears the toggle's own colour. A control that looks like its own
@@ -2312,11 +2285,8 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    these. Decided deliberately: the tie to the control that governs them is worth it, and the
    glyph is a 18px outline rather than a fill of any size. If the page ever reads as lava-spotted, this
    mark is the first thing to walk back, not the pin or the primary CTA.
-   OUTLINED, NOT FILLED, which is the other half of keeping that budget honest: the bubble is a full disc
-   where the seal is a scalloped shape inset in its box, so a lava FILL beside a green one read as the
-   heavier of the two marks — and provenance is not the more important fact on the line. The stroke carries
-   the colour; the interior stays paper. `pass` keeps its fill because a check has to be knocked out of
-   something. */
+   OUTLINED, NOT FILLED, which is the other half of keeping that budget honest: the stroke carries the
+   colour; the interior stays paper. */
 .mw .mw-badge.st-explain { color: var(--tacc); }
 .mw .mw-badge:hover { filter: brightness(0.96); }
 .mw-badge-wrap { position: relative; display: inline-flex; }
@@ -2337,21 +2307,11 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-badge-pop .hd { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--tink); }
 .mw-badge-pop .hd b { font-weight: 600; }
 .mw-badge-pop .hd svg { color: var(--tink-3); flex: none; }
-/* The verdict's own glyph, the one head icon that is not tertiary ink: the box exists to state a state,
-   and the seal IS that state rather than a decoration on the title beside it. It takes the badge's own
-   classes so the mark in the heading and the mark in the box cannot drift to two different hues. */
-.mw-badge-pop .hd svg.st-pass { color: var(--tgood); }
-.mw-badge-pop .hd svg.st-findings { color: var(--twarn); }
 .mw-badge-pop .bd { font-size: 12px; line-height: 1.55; color: var(--tink-2); }
 .mw-badge-pop .ac { display: flex; justify-content: flex-end; padding-top: 2px; }
 .mw .mw-badge-pop .ac button { font-size: 11.5px; font-weight: 500; color: var(--tink-2); padding: 4px 9px;
   border: 1px solid var(--tline); border-radius: 7px; background: var(--panel-2); width: auto; height: auto; }
 .mw .mw-badge-pop .ac button:disabled { opacity: .5; cursor: default; }
-/* The un-`.mw`-qualified copy of the four state rules is GONE. It was a duplicate left from
-   the days of a second token carrier outside `.mw` (`.mw-tokens`, deleted with the classic shell), and
-   because it sat LATER in the file at equal specificity it silently won: it is what kept re-drawing the
-   Explain badge's wash disc after the disc was removed above. Every badge renders inside `.mw`. */
-
 /* ── SPEC-DEFINITIONS — the compact reference catalogue ───────────────────────────────────────────
    Deliberately subordinate to the narrated sections above: ONE DENSE ROW per entry, detail expanding in
    place. A 297-entry library has to stay skimmable, so there is no cell chrome, no per-entry paragraph

@@ -221,7 +221,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   const [updateMode, setUpdateMode] = useState<UpdateMode>(storedUpdateMode(stored.current.updateMode));
   // DATA-SOURCE-REGISTRY — the data sources the picker offers (Live + Conformance) and the selected one. A
   // selected registry source overrides the ExecMode data source and runs via `data_source_id`; the backend
-  // resolves the bind (Conformance validates against golden, REG-CONFORMANCE-DECK). API-driven
+  // resolves the bind. API-driven
   // (APP-NO-UI-MOCK); a source selection still "computes" the document.
   const [sources, setSources] = useState<DataSourceRecord[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(stored.current.sourceId ?? null);
@@ -346,8 +346,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   const source = loadedSource ?? "";
 
   // DATA-SOURCE-BIND / SVC-RUN-EVAL — run against a selected registry data source by its id; the backend
-  // resolves the bind origin (a Conformance source validates against golden + returns a receipt,
-  // REG-CONFORMANCE-DECK; a Live source binds its retrieve UDTFs). One path for both.
+  // resolves the bind origin (a Live source binds its retrieve UDTFs). One path for both.
   // RUN-CLIENT-REQUEST-REOPEN — the calculation whose results were last looked up or shown, so a finished
   // run is not followed by a redundant reopen of what it just returned.
   const scopeKey = `${definition?.id ?? ""}\0${source}\0${selectedSourceId ?? ""}\0${periodStart}\0${periodEnd}\0${warehouseId ?? ""}\0${updateMode}`;
@@ -1191,11 +1190,6 @@ export function MeasureWorkspace({ chrome, deepLink }: {
                       onExplainScope={setExplainTarget}
                       onExplainAgain={explainAgain}
                       onRunCell={runCell}
-                      /* REND-BADGES — the Validation badge's destination. Validate is no longer a lens of
-                         this workspace (`MeasureView` is `define | cql`); its findings live in the Data
-                         Quality module (`APP-VALIDATE-LENS`), so that is where the badge goes. The
-                         section scope does NOT carry across — the module is measure-level — which is a
-                         real limitation of the portal rather than of the badge. */
                       results={computed ? (run?.results ?? null) : null}
                       spec={visibleSpec} elmInfo={elmInfo}
                       overlay={shownOverlay} doc={specDoc} narratedLibraries={narratedLibraries}
@@ -1207,8 +1201,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
                       parameters={citableParams(execParams)}
                       /* SPEC-REF-LENS — the same scope the inspector pane resolves, so a define popped from
                          a sentence and the same define pinned in the pane profile one evaluation. */
-                      profileScope={profileScope}
-                      scorekey={computed ? (run?.receipt?.populations ?? null) : null} />
+                      profileScope={profileScope} />
                   ) : <div className="mw-empty">{compiling ? <><span className="mw-spin" /> Compiling…</> : "Waiting for source…"}</div>
                 ) : null}
               </div>

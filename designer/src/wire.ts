@@ -69,8 +69,6 @@ export interface RunResult {
   counts?: Record<string, number>;
   error?: string;
   diagnostics?: string[];
-  /** REG-CONFORMANCE-DECK: present on a validated Conformance run — computed vs golden `conformance.expected`. */
-  receipt?: ConformanceReceipt;
   /** RUN-CLIENT-RESULT-SETS — presentation/cache label; resultSet carries the request for reopening. */
   draft?: string;
   /** APP-UPDATE-MODE — when the shown results were computed: the latest successful computation among
@@ -232,21 +230,6 @@ export interface LibraryIdentity {
   library: string;
   version: string;
   dataSource: string;
-}
-
-/** REG-CONFORMANCE-DECK — a Conformance run's validation of computed populations against the
- *  deck's golden CMS results: the glass-box proof that the measure computes correctly here. */
-export interface ConformanceReceipt {
-  passed: boolean;
-  deck?: string;
-  version?: string;
-  subjects: number;
-  checked: number;
-  matched: number;
-  match_rate: number;
-  populations: Record<string, { expected_met: number; computed_met: number; matches: number; mismatches: number }>;
-  unresolved_populations: string[];
-  mismatches: { subject: string; population: string; expected: boolean; computed: boolean }[];
 }
 
 // ── APP-DATA-PROFILE — one define's data profile (`insights/model.py`) ─────────────────────────

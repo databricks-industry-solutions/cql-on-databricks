@@ -252,58 +252,12 @@ function sectionNames(container: HTMLElement): string[] {
   return [...container.querySelectorAll(".mw-define")].map((el) => el.getAttribute("data-crit-name") ?? "");
 }
 
-describe("MeasureNarrative — state badges on the heading row (REND-BADGES)", () => {
-  it("carries VALIDATION and no MAPPING badge", () => {
-    // MAPPING is retired: `unknown` on every section of every document is furniture, and it taught readers
-    // to ignore the badge beside it. Asserted on the RENDER, not just the model, because the badge pair was
-    // a rendering decision as much as a data one.
-    const { container } = renderDoc();
-    const badges = [...container.querySelectorAll(".mw-badge")];
-    expect(badges.length).toBeGreaterThan(0);
-    for (const b of badges) {
-      expect(b.getAttribute("title") ?? "").not.toContain("Mapping");
-    }
-    expect(container.textContent).not.toContain("MAPPING");
-  });
-
-  it("puts the badge inside the heading, not in a strip below it", () => {
-    // The badge is ABOUT the criterion, so it belongs on the criterion's title line — and a strip of its
-    // own pushed every criterion's prose a line further down, forty times a page.
-    const { container } = renderDoc();
-    const inHeading = container.querySelector("h2 .mw-badge, .mw-define-head .mw-badge");
-    expect(inHeading).not.toBeNull();
-  });
-
-  it("states the conformance check when Validation is pressed, with no way out to a removed module", () => {
-    // The press opens the verdict as a SURFACE. Its "Open Data Readiness" verb went with that module
-    // (DESIGNER-ONE-MODULE), so the box is the whole answer. The press must not move the selection either,
-    // since the whole cell is clickable underneath it.
-    const picked: string[] = [];
+describe("MeasureNarrative — marks on the heading row", () => {
+  it("draws no Validation verdict, even on a run (REND-BADGES superseded)", () => {
+    // There is no scorekey to check a run against, so a seal could only ever say "no findings" while
+    // reading as "correct". A live run with real counts is the case that used to draw `pass`.
     const lib = measure();
     const model = buildSpecModel({ root: lib, includes: [] });
-    const { container } = render(
-      <MeasureNarrative definition={DEFINITION} metrics={null} funnel={null} live={false}
-        selected={null} onSelect={() => picked.push("select")} onNavigate={() => {}} onRunCell={() => {}}
-        spec={model} elmInfo={lib.info} doc={buildSpecDocument(model, new Map([["Doc", lib.elm]]))}
-        explain namedTerminology={{ valueSets: new Set(), codes: new Set() }} />,
-    );
-    const badge = container.querySelector<HTMLButtonElement>("button.mw-badge.st-not-run");
-    expect(badge).not.toBeNull();
-    fireEvent.click(badge!);
-    const pop = document.querySelector(".mw-badge-pop");
-    expect(pop).not.toBeNull();
-    expect(pop!.textContent).toContain("Not run yet");
-    expect(screen.queryByRole("button", { name: /Data Readiness/ })).toBeNull();
-    expect(picked).toEqual([]);
-  });
-
-  it("says the section matches the Scorekey when Validation passes", () => {
-    // The `pass` copy is the temporary claim (`ValidationBadge`) — the one state whose box has something
-    // to say beyond the badge itself. Pinned so the wording is deleted deliberately rather than drifting.
-    const lib = measure();
-    const model = buildSpecModel({ root: lib, includes: [] });
-    // `pass` is what `sectionBadges` returns when every define in the section matched somebody, so the
-    // harness has to carry real counts: a live run with a zero anywhere is `findings`, not `pass`.
     const metrics = {
       provenance: "run", caveat: null, subjects: 7, byKey: new Map(), scoring: null,
       counts: Object.fromEntries(lib.info.defines.map((d) => [d.name, 7])),
@@ -314,12 +268,8 @@ describe("MeasureNarrative — state badges on the heading row (REND-BADGES)", (
         spec={model} elmInfo={lib.info} doc={buildSpecDocument(model, new Map([["Doc", lib.elm]]))}
         explain namedTerminology={{ valueSets: new Set(), codes: new Set() }} />,
     );
-    const badge = container.querySelector<HTMLButtonElement>("button.mw-badge.st-pass");
-    expect(badge).not.toBeNull();
-    fireEvent.click(badge!);
-    const pop = document.querySelector(".mw-badge-pop");
-    expect(pop!.textContent).toContain("Conformance check passed");
-    expect(pop!.textContent).toContain("Matches the Scorekey");
+    expect(container.querySelector(".mw-badge:not(.st-explain)")).toBeNull();
+    expect(container.textContent).not.toContain("Scorekey");
   });
 
   it("opens the disclaimer as a surface when Explain is pressed", () => {
@@ -412,14 +362,6 @@ describe("MeasureNarrative — state badges on the heading row (REND-BADGES)", (
     // It dismisses, like every other verb on a popover: the drawer now holds the answer, and a box left
     // open over the surface it just delegated to is litter (`SPEC-REF-LENS`).
     expect(document.querySelector(".mw-badge-pop")).toBeNull();
-  });
-
-  it("explains every badge in its tooltip — a bare state is a puzzle, not a clue", () => {
-    const { container } = renderDoc();
-    for (const b of container.querySelectorAll(".mw-badge")) {
-      expect((b.getAttribute("title") ?? "").length).toBeGreaterThan(10);
-      expect(b.getAttribute("aria-label")).toBeTruthy();
-    }
   });
 });
 

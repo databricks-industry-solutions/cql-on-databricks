@@ -21,7 +21,7 @@ import { parseElmDefines } from "../authoring/elmDefines.ts";
 import type { NarratedText, SpecificationOverlay } from "../library-client.ts";
 import { buildSpecModel, specCellId, type SpecLibraryInput } from "./specModel.ts";
 import {
-  buildSpecDocument, initials, proseRuns, sectionBadges, withoutNarrated,
+  buildSpecDocument, initials, proseRuns, withoutNarrated,
   type ProseRun, type SpecDocument, type SpecProse, type SpecRule, type SpecScope,
 } from "./specDocument.ts";
 
@@ -447,56 +447,6 @@ describe("narration from CQL annotation tags (APP-NARRATIVE-TAGS)", () => {
       .flatMap((p) => [...p.concepts, ...p.concepts.flatMap((c) => c.rules)])
       .filter((e) => e.narration !== null).map((e) => e.define);
     expect(withNarration.sort()).toEqual(["Example Condition Diagnosis", "Reading During Inpatient"]);
-  });
-});
-
-describe("section health badges (REND-BADGES)", () => {
-  const base = { defines: ["A", "B"], population: "Numerator", live: true, scorekey: null };
-
-  it("reports not-run before a run", () => {
-    // A section that has not been evaluated must not read as passing.
-    const b = sectionBadges({ ...base, live: false, counts: null });
-    expect(b.validation.state).toBe("not-run");
-  });
-
-  it("passes when every define in the section matched somebody", () => {
-    const b = sectionBadges({ ...base, counts: { A: 120, B: 4 } });
-    expect(b.validation.state).toBe("pass");
-    expect(b.validation.count).toBeUndefined();
-  });
-
-  it("does NOT flag a criterion that matched nobody (temporary, 2026-08-11)", () => {
-    // An exclusion with no members is a perfectly good outcome, so the badge fired on the normal case —
-    // one lone `1` beside Denominator Exclusions and nothing else on the page, which reads as a defect
-    // rather than as a count. The count is already stated on the criterion itself; an empty criterion
-    // that is genuinely worth reporting belongs in the readiness read, with its cause beside it.
-    const b = sectionBadges({ ...base, counts: { A: 120, B: 0 } });
-    expect(b.validation.state).toBe("pass");
-  });
-
-  it("flags a Scorekey mismatch on the population the section serves", () => {
-    // The compliance question — does the engine reproduce the golden result — is the strongest
-    // signal a section can carry, so it surfaces even when every count is healthy.
-    const b = sectionBadges({
-      ...base, counts: { A: 120, B: 4 }, scorekey: { Numerator: { mismatches: 3 } },
-    });
-    expect(b.validation.state).toBe("findings");
-    expect(b.validation.detail).toContain("3 Scorekey mismatches");
-  });
-
-  it("ignores a Scorekey verdict for a population this section does not serve", () => {
-    const b = sectionBadges({
-      ...base, counts: { A: 1, B: 1 }, scorekey: { "Denominator Exclusions": { mismatches: 9 } },
-    });
-    expect(b.validation.state).toBe("pass");
-  });
-
-  it("carries VALIDATION alone — no badge for a question nothing can answer yet", () => {
-    // Only VALIDATION carries a badge. A badge that always states nothing teaches readers to ignore
-    // the badge beside it. This test should change when `describe` → RetrieveHints lands and there is a
-    // real figure to carry.
-    const b = sectionBadges({ ...base, counts: { A: 1, B: 1 } });
-    expect(Object.keys(b)).toEqual(["validation"]);
   });
 });
 

@@ -103,7 +103,7 @@ The measure document the Designer derives from ELM.
 | ID | Requirement |
 |---|---|
 | `PROC-DATA-PROVENANCE` | A data element reachable from a measure boundary but not used by any measure define (dead code) is not part of the measure. Reachability walks the compiler's describe graph. |
-| `REND-BADGES` | Validation badge states compile diagnostics and Scorekey verdict (pass/findings/not run, sealed when pass). Mapping badge retired (coverage unbuilt). |
+| `REND-BADGES` | Validation badge states compile diagnostics and Scorekey verdict (pass/findings/not run, sealed when pass). Mapping badge retired (coverage unbuilt). SUPERSEDED 2026-10-22: the Validation badge is removed. No data source the Designer runs against has a scorekey and nothing builds a receipt (`REG-CONFORMANCE-DECK`, superseded), so the badge showed `pass` on every run and claimed a match it never checked. The section heading carries only the provenance mark (`APP-NARRATIVE-PROVENANCE`), and the Common section, which held only the badge, is no longer rendered. |
 | `SPEC-ANCHOR` | Everything is linkable and shows its code. Anchors key off library-qualified define names, never display aliases. Source chips are real links. Every Concept and Rule discloses the CQL at its derive statement. |
 | `SPEC-ATTRITION` | A criterion's inline figure states what it did: `10,318 → 8,204 patients · 79%` with a share bar. Base is the nearest KEPT stage above or the population it sits under. Delta is neutral ink. |
 | `SPEC-CLAUSE-PROBE` | Rejected: clause-level probing for per-sub-expression counts. Define is the accountability boundary. A clause without a name cannot be narrated. If a clause deserves a figure, promote it to a define. |

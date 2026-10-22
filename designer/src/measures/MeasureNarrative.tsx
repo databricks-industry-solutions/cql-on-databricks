@@ -36,8 +36,7 @@ import { terminologyAnchor as termAnchor, useSpecLens, type ReadLens, type TermL
   from "./specLens.ts";
 import { Markdown, MarkdownInline } from "../markdown.tsx";
 import { CqlCode, type CqlLinker } from "../authoring/cqlHighlight.tsx";
-import { Play, Copy, Focus, Sparkle, Explain, Trash, ChevronDown, Plus, OpenRef, Pin,
-  BadgeCheck, BadgeAlert, BadgeInfo } from "../icons.tsx";
+import { Play, Copy, Focus, Sparkle, Explain, Trash, ChevronDown, Plus, OpenRef, Pin } from "../icons.tsx";
 import { FunnelView } from "./Funnel.tsx";
 import { isDefineSelected, isRetrieveSelected, selectionToken, type Funnel, type Selection } from "./model.ts";
 import { formatShare, metricKey, metricTitle, resolveMetric, type MetricSet } from "./specMetrics.ts";
@@ -51,12 +50,12 @@ import { entriesByName, type SpecEntry, type SpecLibrary, type SpecModel } from 
 import { InspectorIdentity, InspectorScope, useInspectorTab,
   type InspectorContext, type ProfileScope } from "./Workbench.tsx";
 import {
-  isNarrated, proseRuns, scopeDefines, sectionBadges,
-  type ScorekeyPopulation, type SpecBadge, type SpecBadges, type SpecDefineView, type SpecDocument,
+  isNarrated, proseRuns,
+  type SpecDefineView, type SpecDocument,
   type SpecMetric, type SpecNarration, type SpecProse, type SpecScope,
 } from "./specDocument.ts";
 
-type SectionKey = "overview" | "common" | "libraries" | "datareq" | "terminology" | "terms" | `inc-${string}`;
+type SectionKey = "overview" | "libraries" | "datareq" | "terminology" | "terms" | `inc-${string}`;
 
 /** SPEC-EXPLAIN-AGAIN — which section a re-explanation would be about.
  *
@@ -82,7 +81,7 @@ interface ExplainAgainVerbs {
 
 const ExplainAgainContext = createContext<ExplainAgainVerbs | null>(null);
 
-export function MeasureNarrative({ definition, metrics, readCounts, funnel, live, selected, onSelect, onNavigate, onExplainScope, onExplainAgain, onRunCell, results, spec, elmInfo, overlay, doc, scorekey, narratedLibraries, retrieves = [], namedTerminology, parameters = {}, profileScope = null, explain }: {
+export function MeasureNarrative({ definition, metrics, readCounts, funnel, live, selected, onSelect, onNavigate, onExplainScope, onExplainAgain, onRunCell, results, spec, elmInfo, overlay, doc, narratedLibraries, retrieves = [], namedTerminology, parameters = {}, profileScope = null, explain }: {
   definition: Definition;
   /** SPEC-REF-LENS / APP-DATA-PROFILE — which evaluation a reference lens profiles when a reader opens
    *  one. The lens renders the inspector's own tabs, and a profile is a fact about ONE evaluation, so the
@@ -137,9 +136,6 @@ export function MeasureNarrative({ definition, metrics, readCounts, funnel, live
   /** SPEC-DOCUMENT — the derived structure: populations → Concepts → Rules, plus COMMON. Derived from
    *  `spec`, so the two cannot disagree (APP-SPEC-MODEL). */
   doc: SpecDocument;
-  /** REG-CONFORMANCE-DECK — the per-population Scorekey verdict, when the run validated against a
-   *  Test Deck. Feeds each section's Validation badge (REND-BADGES). */
-  scorekey?: Record<string, ScorekeyPopulation> | null;
   /** SPEC-LIBRARY-DENSITY — libraries with at least one narrated criterion, which is what decides
    *  whether a library opens Verbose or Compact.
    *
@@ -546,7 +542,7 @@ export function MeasureNarrative({ definition, metrics, readCounts, funnel, live
             lead={doc.populations.map((scope, i) => (
               <ScopeBlock key={scope.name} scope={scope} live={live} metrics={metrics} reads={readLens}
                 selected={selected} onSelect={onSelect} onRunCell={onRunCell} showAdd={i > 0}
-                results={results} scorekey={scorekey ?? null}
+                results={results}
                 link={cqlLink} explain={explain} />
             ))}
             selected={selected} onSelect={onSelect} link={cqlLink} />
@@ -561,25 +557,6 @@ export function MeasureNarrative({ definition, metrics, readCounts, funnel, live
         ))}
 
       </SpecSection>
-
-      {/* ── Common — the same card format, for logic shared across population criteria.
-             Sits AFTER Libraries now rather than between the two halves of it; it was never part of
-             either, and the merge left it stranded in the middle of one section. ── */}
-      {doc.common && (
-        <SpecSection id="common" title="Common" collapsed={collapsed.has("common")} onToggle={toggle}>
-        {/* NO SECTION BLURB (`SPEC-NO-UI-PROSE`, 2026-08-08). A `.mw-desc` paragraph stood here
-            explaining what the section holds. It was written in a component, in the reading
-            column, in the document's own voice — indistinguishable from the measure's authored
-            prose to the reader it was for. The heading names the section; what is under it says
-            the rest. */}
-          <ScopeBlock scope={doc.common} live={live} metrics={metrics} reads={readLens}
-            selected={selected} onSelect={onSelect} onRunCell={onRunCell} showAdd={false}
-            results={results} scorekey={scorekey ?? null}
-            link={cqlLink} explain={explain} />
-        </SpecSection>
-      )}
-
-
 
       {/* ── Data requirements — what the logic READS (SPEC-DATA-REQUIREMENTS).
              ONE section, not three. A value set that filters a read is stated INSIDE that read rather
@@ -996,9 +973,7 @@ function DefineSection({ entry, view, live, metrics, reads, selected, onSelect, 
         {signature && <span className="sig">({signature})</span>}
         {/* APP-NARRATIVE-PROVENANCE — the provenance badge belongs on EVERY criterion's heading, not
             only a population's. Most of the interpreted prose in the document is in defines, so a badge
-            that appeared on populations alone would leave the bulk of it unmarked. There is no Validation
-            badge here: `sectionBadges` is scoped to a population and its defines, and inventing a
-            per-define verdict would be a state nothing computed. */}
+            that appeared on populations alone would leave the bulk of it unmarked. */}
         {isNarrated(view?.narration ?? null) && (
           <ExplainBadge method={narrationMethod(view?.narration ?? null)}
             target={{ label: entry.name, define: entry.name }} />
@@ -1072,22 +1047,17 @@ function DefinitionRow({ entry, summary, selected, onSelect, link }: {
  *  run; Concepts and Rules below it are reading surfaces, so they stay light. A population that merely
  *  re-states another renders its own CQL and nothing more — the decomposition lives in the section of
  *  the population it reaches, and is never repeated here (SPEC-PLACEMENT). */
-function ScopeBlock({ scope, live, metrics, reads, selected, onSelect, onRunCell, showAdd, results, scorekey, link, explain }: {
+function ScopeBlock({ scope, live, metrics, reads, selected, onSelect, onRunCell, showAdd, results, link, explain }: {
   scope: SpecScope;
   live: boolean; metrics: MetricSet | null;
   /** SPEC-READ-REF — what a read named in this population's prose resolves against. */
   reads?: ReadLens;
   selected: Selection | null; onSelect: (sel: Selection) => void; onRunCell: (name: string) => void;
   showAdd: boolean; results?: Record<string, Record<string, unknown>> | null;
-  scorekey: Record<string, ScorekeyPopulation> | null;
   link: CqlLinker;
   /** SPEC-EXPLAIN-VIEW — off, this criterion IS its CQL: the block opens and the narration goes. */
   explain: boolean;
 }) {
-  const badges = sectionBadges({
-    defines: scopeDefines(scope), population: scope.population?.name ?? null, live,
-    counts: metrics?.counts ?? null, scorekey,
-  });
   const cites = useCitations();
   // SPEC-DEFINE-SECTIONS — a population states ITSELF: its prose, its own CQL, and the dependency
   // index that reaches everything below it. The Concept and Rule cards that used to nest here are
@@ -1099,9 +1069,7 @@ function ScopeBlock({ scope, live, metrics, reads, selected, onSelect, onRunCell
   // of the document had no other instance of, met exactly once, in one shape nothing else used. The
   // `reaches` edge is still the ELM's and PLACEMENT still turns on it (`specDocument.ts`); it is not
   // restated as a row (`SPEC-NO-UI-PROSE`).
-  if (scope.kind === "common" || !scope.population) {
-    return <div className="mw-scope"><Badges badges={badges} narration={null} name={scope.name} /></div>;
-  }
+  if (!scope.population) return null;
 
   const e = scope.population;
   return (
@@ -1111,7 +1079,13 @@ function ScopeBlock({ scope, live, metrics, reads, selected, onSelect, onRunCell
       <h2>
         <span className="mw-spec-kind pop">pop</span>
         <span>{e.name}</span>
-        <Badges badges={badges} narration={scope.narration} name={e.name} />
+        {/* APP-NARRATIVE-PROVENANCE — on the heading row, right after the name: the chip on the left is
+            a classification ("this is a population"), the mark on the right is state ("we wrote this"). */}
+        {isNarrated(scope.narration) && (
+          <span className="mw-el-badges">
+            <ExplainBadge method={narrationMethod(scope.narration)} target={{ label: e.name, define: e.name }} />
+          </span>
+        )}
         {/* THE SAME `Metric` a define renders (`SPEC-ATTRITION`). A population had its own inline
             figure — a bar, a count and a percent of a base passed down as a bare number — which is how
             a population came to state its share against the initial population while a define below it
@@ -1725,7 +1699,7 @@ const NARRATION_LANES = {
  *  it is OURS rather than the measure author's.
  *
  *  THE OVERVIEW WAS THE ONE PLACE NARRATION WENT UNMARKED. Provenance is stated once per criterion, on
- *  the heading row (`Badges` → `ExplainBadge`), and `NarratedRun` deliberately draws nothing — so prose
+ *  the heading row (`ExplainBadge`), and `NarratedRun` deliberately draws nothing — so prose
  *  reached through `OverviewProse` had no heading row to carry the mark and showed none at all. A reader
  *  moving down the page from Description and Intent to the criteria was told "we wrote this" for forty
  *  sections and told nothing for the four at the top, which reads as *those* being the author's words.
@@ -2535,35 +2509,6 @@ function Metric({ metric, metrics, library }: {
   );
 }
 
-/** REND-BADGES — the section's health, as ONE badge on the heading row.
- *
- *  BADGES ARE GLYPHS IN A DISC, NOT LABELLED PILLS. Labels repeated what colour and destination
- *  already said, and the pair pushed prose down forty times a page. A disc states it at a glance,
- *  reads as a column beside headings, and makes a page scannable rather than noisy. Words move to
- *  the tooltip; a badge with no explanation is a puzzle, not a clue.
- *
- *  ON THE HEADING ROW, immediately after the name. A badge is ABOUT the criterion, so it belongs on the
- *  criterion's title line, not in a strip below it — and to the right of the name rather than left of it,
- *  because the type chip on the left is a CLASSIFICATION ("this is a population") while these are STATE
- *  ("this passed", "we wrote this"). Sorting them to opposite sides of the name keeps the two readings
- *  from merging into one row of ornament. `Metric` keeps `margin-left: auto`, so the figure still holds
- *  the far right. */
-function Badges({ badges, narration, name }: {
-  badges: SpecBadges; narration: SpecNarration | null;
-  /** SPEC-EXPLAIN-AGAIN — the criterion these badges are about, so its Explain mark can aim the
-   *  re-explain at it. A population IS an addressable define, so it is both label and node. */
-  name: string;
-}) {
-  return (
-    <span className="mw-el-badges">
-      <ValidationBadge badge={badges.validation} />
-      {isNarrated(narration) && (
-        <ExplainBadge method={narrationMethod(narration)} target={{ label: name, define: name }} />
-      )}
-    </span>
-  );
-}
-
 /** How the criterion's narrated prose was produced — the first narrated field's `method`, since a
  *  criterion's fields are narrated in one pass. `MethodKind` allows `ai-drafted` and `human-written`; a
  *  badge hardcoded to "with AI" would print a false claim the day the second one arrives. */
@@ -2576,75 +2521,7 @@ function narrationMethod(n: SpecNarration | null): string | undefined {
   return undefined;
 }
 
-/** A BUTTON, NOT A MARK — the tooltip says what the state means, the press shows the evidence behind it.
- *  The box used to end in "Open Data Readiness"; that module is gone (DESIGNER-ONE-MODULE), so the verdict
- *  in the box is the whole answer.
- *
- *  THE PRESS OPENS A POPOVER RATHER THAN LEAVING THE DOCUMENT. The state a badge carries is worth
- *  a sentence a reader can read at leisure, reach on touch, and act from. Stating the verdict where
- *  the reader is beats sending them elsewhere. The destination is NOT dropped: it is the badge's
- *  one verb, and the badge still goes there when asked.
- *
- *  The `pass` wording over-claims by design. `pass` means "no findings for this section", which is
- *  NOT the same as "matches the Scorekey" — a section with no Scorekey verdict (`sectionBadges`, no
- *  deck run, or COMMON with no population) passes for want of anything to say. The wording will
- *  settle once the badge carries the verdict itself.
- *
- *  `stopPropagation` because the badge sits inside the criterion's heading and the whole cell is clickable
- *  (selection) — without it, opening the box would also move the reader's selection underneath it. */
-function ValidationBadge({ badge }: { badge: SpecBadge }) {
-  // ONE FAMILY, THREE FACES — the seal glyphs, not three unrelated marks. The scalloped outline is
-  // constant ("this is the verdict"); what sits inside says which: CHECK for pass, BANG for findings,
-  // `i` for unrun. It replaces green tick / amber digit / grey dash — three signs a reader had to
-  // learn separately, one (bare `1`) read as a count of defines. THE COUNT SURVIVES AS TEXT beside
-  // the mark; the number is the useful part of a finding. It is stated, not implied: `1 finding`.
-  const glyph = badge.state === "pass" ? <BadgeCheck size={18} aria-hidden="true" />
-    : badge.state === "findings" ? (
-      <>
-        <BadgeAlert size={18} aria-hidden="true" />
-        <span className="n">{badge.count ?? "!"}</span>
-      </>
-    )
-    : <BadgeInfo size={18} aria-hidden="true" />;
-  const label = `Validation: ${badge.detail}`;
-  const pop = useRefLens();
-  // The box's headline, which is the verdict in words. `findings` and `not-run` say what the badge already
-  // says and leave the evidence to `badge.detail` below them; only `pass` has a claim to make.
-  const head = badge.state === "pass" ? "Conformance check passed"
-    : badge.state === "findings" ? `${badge.count ?? ""} finding${badge.count === 1 ? "" : "s"}`.trim()
-    : "Not run yet";
-  const body = badge.state === "pass"
-    ? "Matches the Scorekey — this section reproduces the expected result, with no findings against it."
-    : badge.detail;
-  return (
-    <span className="mw-badge-wrap" ref={pop.wrap}>
-      <button className={`mw-badge st-${badge.state}`} {...pop.trigger}
-        aria-label={`${label} — show the conformance check`}
-        title={`Validation — ${badge.detail}`}
-        onClick={(e) => { e.stopPropagation(); pop.trigger.onClick(e); }}>
-        {glyph}
-      </button>
-      {/* Portaled and placed by measurement, for the reason every popover in this document is
-          (`SPEC-REF-LENS`): a badge sits just after its criterion's name inside `.mw-doc`, a scrollport, so
-          an absolutely-positioned box would be clipped by however long that name happens to be. */}
-      {pop.open && pop.portal(
-        <div className="mw-badge-pop" role="dialog" aria-label={head} {...pop.lens}>
-          {/* THE HEAD WEARS THE BADGE'S OWN GLYPH, at the popover's size. The box is what the badge means
-              said in full, so a different mark at the top of it would be a second sign for one state. */}
-          <span className="hd">
-            {badge.state === "pass" ? <BadgeCheck size={13} className="st-pass" aria-hidden="true" />
-              : badge.state === "findings" ? <BadgeAlert size={13} className="st-findings" aria-hidden="true" />
-              : <BadgeInfo size={13} aria-hidden="true" />}
-            <b>{head}</b>
-          </span>
-          <span className="bd">{body}</span>
-        </div>,
-      )}
-    </span>
-  );
-}
-
-/** APP-NARRATIVE-PROVENANCE — the provenance mark, promoted to the heading row beside Validation.
+/** APP-NARRATIVE-PROVENANCE — the provenance mark, on the heading row.
  *
  *  IT IS THE SAME GLYPH AS THE TOOLBAR TOGGLE — the speech bubble (`Explain`), so the mark and the
  *  control that governs it stay one sign. The badge follows the toggle because the toggle is what a
@@ -2677,9 +2554,7 @@ function ExplainBadge({ method, target }: { method?: string; target: ExplainTarg
         {/* 13px — THE EXACT SIZE THE EXPLAIN TOGGLE'S OWN GLYPH IS (`ExplainMenu`). The mark and the
             control that governs it are one sign (`APP-NARRATIVE-PROVENANCE`), and a sign drawn at two
             sizes is two signs; the toolbar is the one a reader learns it from, so the toolbar sets the
-            size. It also settles the optical problem the other way round: a `MessageCircle` meets its own
-            bounding box where a `BadgeCheck` sits inset inside its, so equal NUMBERS read as an unequal
-            pair — 13 against the seal's 18 is what makes them look like peers on the line. */}
+            size. */}
         <Explain size={13} aria-hidden="true" />
       </button>
       {/* THE DISCLAIMER IS A SURFACE, not only a tooltip: a tooltip cannot be read at leisure, cannot be
