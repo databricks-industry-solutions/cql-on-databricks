@@ -14,7 +14,7 @@ What it reads, and where each part lands in ``<catalog>``:
 - ``examples/valuesets/*.ndjson`` — value-set expansion rows ``{valueset_id, system, code, display}``, in
   ``sample_measures.valueset``. The folder may be empty: the table is created either way.
 - ``examples/data/<Type>.ndjson`` — the synthetic population small, landed as the data source
-  ``synthetic-population-small`` (``DATA-SYNTH-SMALL``, ``population.land``). The folder's recipe is not data.
+  ``synthetic-population-small`` (``DATA-SYNTH-SMALL``, ``population.land``).
 
 ``sample_measures`` is tagged as both a knowledge and a terminology source (``CONTENT-IMPORT-TARGET-TAG``), so
 the Designer catalog and ``cql(library=...)`` find the measures by name.

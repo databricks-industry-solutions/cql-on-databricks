@@ -44,8 +44,8 @@ that need a fixture skip when the cache is absent, and say how to build it.
 
 `population --recipe <file> --out <dir>` builds a population of several measures: one realistic cohort per pinned
 measure, with the seed the recipe gives it, merged into one `<Type>.ndjson` per type with no manifest. It is how the
-synthetic population small in `examples/data` is built from `examples/data/synthetic-small.json`
-(`DATA-SYNTH-SMALL`).
+synthetic population small in `examples/data` is built from `recipes/synthetic-small.json`, by hand with
+`scripts/generate-sample-data.sh` (`DATA-SYNTH-SMALL`).
 
 `--seed` makes a run repeatable (default 42). `--measurement-period START/END` passes the Measurement Period at
 run time, as inclusive ISO dates (`LANG-PARAMETER`); it is required for a measure that declares the period with no

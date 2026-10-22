@@ -31,15 +31,17 @@ Both are built in the realistic mix, shaped by each measure's `<Measure>.synth.j
 
 The small population is committed in `examples/data`, so nobody has to synthesize it: `scripts/deploy/deploy.sh`
 lands it. It ships with no expected results; the answer keys are the conformance tests' (`compiler/conformance`).
-Its recipe, `examples/data/synthetic-small.json`, names each measure's seed, the patient count and the measurement
-period. Rebuild it after a change to a sample measure, its config or the synthesizer:
+Its recipe, `loader/synthesizer/recipes/synthetic-small.json`, names each measure's seed, the patient count and the
+measurement period. Regenerate it by hand after a change to a sample measure, its config, the recipe or the
+synthesizer, then review and commit the diff. No build, test or deploy step runs it:
 
 ```bash
-.venv/bin/python -m cql_databricks_synth population --recipe examples/data/synthetic-small.json --out examples/data
+scripts/generate-sample-data.sh
 ```
 
-The build is deterministic, and the synthesizer tests fail when the committed files differ from what the recipe
-builds. It takes a few seconds and writes about 7 MB.
+The script builds and starts a local Compiler Service, builds the recipe's measure fixtures, writes the population
+into `examples/data` and stops the service. It needs no workspace. The build is deterministic, and the synthesizer
+tests fail when the committed files differ from what the recipe builds. It writes about 7 MB.
 
 ## Large: the synthesizer cohorts
 

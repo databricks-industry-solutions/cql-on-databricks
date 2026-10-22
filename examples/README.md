@@ -75,8 +75,8 @@ against the compiler's FHIR model, and the deploy lands it as the data source `s
 - `Procedure.ndjson`: 295 procedures
 - `Immunization.ndjson`: 332 immunizations, given or not given
 
-The synthesizer built it from `synthetic-small.json`: about 1,000 patients for each sample measure, at realistic
-rates set by the measure's `.synth.json`, with patient ids `pds-<seed>-<n>`. Every resource claims its QI-Core
-profile in `meta.profile` and carries the synthesizer's synthetic markers. It ships with no expected results: the
-answer keys are the conformance tests' (`compiler/conformance`). To rebuild it, see
-[synthetic-data.md](../loader/docs/synthetic-data.md).
+The synthesizer built it from `loader/synthesizer/recipes/synthetic-small.json`: about 1,000 patients for each
+sample measure, at realistic rates set by the measure's `.synth.json`, with patient ids `pds-<seed>-<n>`. Every
+resource claims its QI-Core profile in `meta.profile` and carries the synthesizer's synthetic markers. It ships with
+no expected results: the answer keys are the conformance tests' (`compiler/conformance`). To regenerate it, run
+`scripts/generate-sample-data.sh` by hand; see [synthetic-data.md](../loader/docs/synthetic-data.md).

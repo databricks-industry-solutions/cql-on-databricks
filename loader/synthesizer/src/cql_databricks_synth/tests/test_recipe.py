@@ -17,7 +17,7 @@ from cql_databricks_synth.fixtures import dir_or_skip, repo_root
 from cql_databricks_synth.recipe import Recipe, build_population
 
 SMALL = repo_root() / "examples" / "data"
-RECIPE = SMALL / "synthetic-small.json"
+RECIPE = repo_root() / "loader" / "synthesizer" / "recipes" / "synthetic-small.json"
 
 
 def test_the_committed_small_population_is_what_its_recipe_builds(tmp_path):
@@ -29,8 +29,7 @@ def test_the_committed_small_population_is_what_its_recipe_builds(tmp_path):
     committed = {path.name: path.read_bytes() for path in sorted(SMALL.glob("*.ndjson"))}
     assert sorted(built) == sorted(committed)
     stale = [name for name in built if built[name] != committed[name]]
-    assert not stale, (f"{stale} differ from what the recipe builds — rebuild: python -m cql_databricks_synth "
-                       f"population --recipe examples/data/synthetic-small.json --out examples/data")
+    assert not stale, (f"{stale} differ from what the recipe builds — regenerate: scripts/generate-sample-data.sh")
 
 
 def test_a_recipe_with_a_repeated_seed_fails(tmp_path):
