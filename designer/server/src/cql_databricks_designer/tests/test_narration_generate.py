@@ -23,8 +23,8 @@ class _Client:
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
         self.finish_reason = finish_reason
 
-    def _create(self, *, model, messages):
-        self.requests.append({"model": model, "messages": [dict(m) for m in messages]})
+    def _create(self, *, model, messages, max_tokens):
+        self.requests.append({"model": model, "messages": [dict(m) for m in messages], "max_tokens": max_tokens})
         content = self.replies.pop(0)
         return SimpleNamespace(choices=[SimpleNamespace(
             message=SimpleNamespace(content=content), finish_reason=self.finish_reason)])
@@ -80,6 +80,13 @@ def test_a_reply_cut_off_at_the_output_limit_is_a_problem_even_when_it_parses():
     with pytest.raises(gen.NarrationRejected) as rejected:
         _run(client)
     assert rejected.value.problems[0].message == "the reply was cut off at the endpoint's output limit"
+
+
+def test_every_call_asks_for_the_output_limit_rather_than_the_endpoint_default():
+    """The FM API's default (8,192) is shorter than reasoning plus one library's document."""
+    client = _Client("not xml", VALID)
+    _run(client)
+    assert [r["max_tokens"] for r in client.requests] == [gen.MAX_OUTPUT_TOKENS] * 2
 
 
 def test_a_block_list_reply_is_read_for_its_text():

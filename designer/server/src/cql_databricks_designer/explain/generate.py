@@ -28,6 +28,10 @@ from .checks import NS, SCHEMA_PATH, Problem, check
 #: The first reply and one retry with its problems. More attempts would be a bill, not a better chance.
 MAX_ATTEMPTS = 2
 
+#: The reply's output limit, asked for on every call. Left unset, the endpoint applies its own default
+#: (8,192 on the FM API), and the model's reasoning plus one library's document runs past it.
+MAX_OUTPUT_TOKENS = 32_000
+
 #: The output rules the writing rules leave to the emitter. The writing rules say how to write; these say
 #: what the reply must be so that it can be checked mechanically.
 OUTPUT_RULES = f"""\
@@ -105,7 +109,8 @@ def generate(*, library: str, version: str, source: str, reference_set: dict[str
     problems: list[Problem] = []
     for attempt in range(1, MAX_ATTEMPTS + 1):
         yield {"type": "stage", "stage": "writing", "attempt": attempt}
-        completion = client.chat.completions.create(model=endpoint, messages=conversation)
+        completion = client.chat.completions.create(model=endpoint, messages=conversation,
+                                                    max_tokens=MAX_OUTPUT_TOKENS)
         choice = completion.choices[0]
         text = answer_text(choice.message.content).strip()
         yield {"type": "stage", "stage": "checking", "attempt": attempt}
