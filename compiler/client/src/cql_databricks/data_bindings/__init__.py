@@ -10,17 +10,17 @@ from .cql import (IncludeRef, compare_versions, parse_identity, parse_includes, 
                   parse_resource_types, parse_value_sets)
 from .layout import KNOWLEDGE, TERMINOLOGY, check_layout, layout_problems
 from .resolver import ContentResolver
-from .runner import (ExecutedStatement, ResolverError, SqlRunner, StatementObserver, spark_runner,
-                     warehouse_runner)
+from .runner import (ExecutedStatement, ResolverError, SqlRunner, StatementObserver, WarehouseSession,
+                     spark_runner, warehouse_runner, warehouse_session)
 from .tags import (DATA_SOURCE_TAG, EVERYWHERE, KNOWLEDGE_TAG, TERMINOLOGY_TAG, CatalogScope, TaggedSchema,
                    declaration_statements, find_tagged, parse_scopes, tag_statement)
 
 __all__ = [
     "CatalogScope", "ContentResolver", "Corpus", "DATA_SOURCE_TAG", "EVERYWHERE", "ExecutedStatement", "IncludeRef", "KNOWLEDGE",
     "KNOWLEDGE_TAG", "Library", "LibraryId", "ResolvedClosure", "ResolvedLibrary", "ResolverError", "SqlRunner",
-    "StatementObserver", "TERMINOLOGY", "TERMINOLOGY_TAG", "TaggedSchema", "check_layout", "compare_versions",
+    "StatementObserver", "TERMINOLOGY", "TERMINOLOGY_TAG", "TaggedSchema", "WarehouseSession", "check_layout", "compare_versions",
     "declaration_statements",
     "find_tagged", "layout_problems", "load_corpus", "parse_identity", "parse_includes", "parse_model",
     "parse_resource_types", "parse_scopes", "parse_value_sets", "spark_runner", "tag_statement",
-    "warehouse_runner",
+    "warehouse_runner", "warehouse_session",
 ]

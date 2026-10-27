@@ -9,6 +9,11 @@ retrieve, each with its fingerprint and whether it may be reused. The client run
 for, in dependency order, one at a time, in your SQL session. A failed write stops the run and is never
 recorded as complete.
 
+On a SQL warehouse, each thread of a run holds one SQL session until the run ends, so the runtime
+functions' sandbox starts once per thread, not once per statement (`RUN-CLIENT-SESSION-REUSE`). The run's
+statements share one session; the background tag writes have their own and never wait on it. Pass `warehouse_session(...)` as
+`run=` and close it when the run ends. `warehouse_runner` gives each statement its own session.
+
 ## Fingerprints and reuse
 
 The compiler computes each definition's fingerprint, a SHA-256 over (`RUN-CLIENT-RESULT-IDENTITY`):

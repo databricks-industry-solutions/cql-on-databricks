@@ -30,7 +30,7 @@ SCOPE = {"dataSourceId": "synthetic", "library": "Synthetic", "version": "1",
 @pytest.fixture
 def setup(monkeypatch):
     """RUN-CLIENT-CATALOG-CHECKPOINTS — only compiler and warehouse I/O are synthesized."""
-    state = SimpleNamespace(tables={}, writes=[], sql=[], failed=False, denied=False, results=None,
+    state = SimpleNamespace(tables={}, writes=[], sql=[], sessions=[], failed=False, denied=False, results=None,
                             provisioned=False, warehouses=[], unusable=set(), logged=[], log_fails=False)
     private = PrivateDestination("synthetic_private", "synthetic-user")
     lock = Lock()
@@ -113,6 +113,23 @@ def setup(monkeypatch):
                                            started_at=started, ended_at=datetime.now(timezone.utc)))
         return observed
 
+    class Session:
+        """RUN-CLIENT-SESSION-REUSE — as warehouse_session: a runner the run closes when it ends."""
+
+        def __init__(self, runner):
+            self.runner, self.closed = runner, False
+            state.sessions.append(self)
+
+        def __call__(self, sql, params=None):
+            assert not self.closed, "statement after the session closed"
+            return self.runner(sql, params)
+
+        def close(self):
+            self.closed = True
+
+    def user_session(warehouse=None, observer=None):
+        return Session(user_run(warehouse, observer))
+
     def run_log(entry):
         if state.log_fails:
             raise RuntimeError("synthetic run log failure")
@@ -127,7 +144,7 @@ def setup(monkeypatch):
     monkeypatch.setattr(runs, "materialize", compute)
     monkeypatch.setattr(runs, "ensure_private_destination", provision)
     state.listing = {"default": "wh-default", "warehouses": [{"id": "wh-default", "name": "Shared", "state": "RUNNING"}]}
-    env = runs.CalculationEnv(user_execute=lambda warehouse=None: reader, user_run=user_run,
+    env = runs.CalculationEnv(user_execute=lambda warehouse=None: reader, user_run=user_run, user_session=user_session,
         settings=lambda: runs.CalculationSettings(private.catalog, "synthetic_runtime"),
         warehouses=lambda: state.listing, content=lambda _: object(),
         run_context=lambda warehouse: RunContext(user="synthetic-user", warehouse_id=warehouse or "wh-default",
@@ -157,6 +174,18 @@ def test_stream_executes_as_caller_and_reports_completed_empty_result(setup):
     assert done["outcomes"][0]["decision"] == "computed"
     assert len(state.writes) == 1
     assert not any("DESCRIBE" in sql or "VERSION AS OF" in sql for sql in state.sql)
+
+
+@pytest.mark.parametrize("route", ["/api/run-stream", "/api/run"])
+@pytest.mark.parametrize("fails", [False, True])
+def test_a_run_holds_one_session_and_closes_it_when_it_ends(setup, route, fails):
+    """RUN-CLIENT-SESSION-REUSE — every statement of a run goes through one session, closed however it ends."""
+    client, state = setup
+    state.failed = fails
+    client.post(route, json=BODY)
+    [session] = state.sessions
+    assert session.closed
+    assert state.writes
 
 
 def test_stream_reports_each_definition_as_it_finishes(setup):
@@ -349,7 +378,8 @@ def test_warehouse_list_is_the_callers(setup):
         raise RuntimeError("SEC-OBO: signed-in caller required")
     app = FastAPI()
     app.include_router(runs.router(compiler=SimpleNamespace(), env=runs.CalculationEnv(
-        user_execute=lambda w=None: None, user_run=lambda w=None, o=None: None, settings=lambda: None,
+        user_execute=lambda w=None: None, user_run=lambda w=None, o=None: None,
+        user_session=lambda w=None, o=None: None, settings=lambda: None,
         warehouses=refuse, run_context=lambda w: None, run_log=lambda entry: None)))
     failed = TestClient(app).get("/api/warehouses")
     assert failed.status_code == 502 and "signed-in caller" in failed.json()["error"]

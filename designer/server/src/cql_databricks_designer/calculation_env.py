@@ -9,7 +9,7 @@ on one background writer per process.
 """
 from __future__ import annotations
 
-from cql_databricks.data_bindings import warehouse_runner
+from cql_databricks.data_bindings import warehouse_runner, warehouse_session
 from cql_databricks.result.results import warehouse_execute
 from cql_databricks_common import config
 from cql_databricks_common.workspace import forwarded_identity, user_client
@@ -75,6 +75,8 @@ def calculation_env() -> CalculationEnv:
     run_log = RunLog(app_sql_runner, config.designer_catalog)
     return CalculationEnv(user_execute=lambda warehouse=None: warehouse_execute(user_client(), _chosen(warehouse)),
                           user_run=lambda warehouse=None, observer=None: warehouse_runner(
+                              user_client(), _chosen(warehouse), observer=observer),
+                          user_session=lambda warehouse=None, observer=None: warehouse_session(
                               user_client(), _chosen(warehouse), observer=observer),
                           settings=_settings, warehouses=_warehouses,
                           run_context=_run_context, run_log=run_log.submit)

@@ -27,7 +27,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from cql_databricks.compiler.resolve import ResolutionError, resolve_data_source
-from cql_databricks.data_bindings import ContentResolver, StatementObserver
+from cql_databricks.data_bindings import ContentResolver, StatementObserver, WarehouseSession
 from cql_databricks_designer.data_bindings import user_content_resolver
 from cql_databricks.result import (ResultsUnavailable, StepRecord, ensure_private_destination,
                                      find_private_destination, materialize, open_result_set,
@@ -62,9 +62,12 @@ class CalculationEnv:
     ``warehouses`` lists the warehouses the signed-in user can see, plus that default.
     APP-RUN-LOG — ``user_run`` also takes a statement observer; ``run_context`` resolves who runs and on
     which warehouse, on the request thread; ``run_log`` hands a finished run to the background writer.
+    RUN-CLIENT-SESSION-REUSE — ``user_session`` is ``user_run`` for a run: one SQL session for all its
+    statements, closed when the run ends.
     """
     user_execute: Callable[[str | None], Callable]
     user_run: Callable[[str | None, StatementObserver | None], Callable]
+    user_session: Callable[[str | None, StatementObserver | None], WarehouseSession]
     settings: Callable[[], CalculationSettings]
     run_context: Callable[[str | None], RunContext]
     run_log: Callable[[RunLogEntry], None]
@@ -184,8 +187,8 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
         run: Callable
         content: ContentResolver
 
-    def acting(warehouse: str | None, observer: StatementObserver | None = None) -> Acting:
-        run = env.user_run(warehouse, observer)
+    def acting(warehouse: str | None, run: Callable | None = None) -> Acting:
+        run = run if run is not None else env.user_run(warehouse, None)
         return Acting(env.settings(), env.user_execute(warehouse), run, env.content(run))
 
     def counts(results, root, handle, execute):
@@ -247,7 +250,8 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
     def guarded(req, a, instance, recorder: RunRecorder, emit: Callable[[dict], None]):
         """APP-RUN-LOG — the run is logged before its last frame, so a closed stream cannot lose the row.
 
-        RUN-PROGRESS-TASKS — ``emit`` receives the progress frames sent while the definitions run."""
+        RUN-PROGRESS-TASKS — ``emit`` receives the progress frames sent while the definitions run.
+        RUN-CLIENT-SESSION-REUSE — the run's session closes when the run ends, however it ends."""
         try:
             if not req.data_source_id:
                 raise ValueError("data_source_id is required — select a Data Source.")
@@ -261,15 +265,20 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
             message = f"{type(error).__name__}: {error}"
             logged(recorder, message)
             yield {"stage": "error", "error": message, "runId": recorder.run_id}
+        finally:
+            a.run.close()
 
     def acting_or_refusal(req: CalculationRequest):
-        """APP-RUN-LOG — the recorder observes every statement of the run's own runner."""
+        """APP-RUN-LOG — the recorder observes every statement of the run's own runner.
+
+        RUN-CLIENT-SESSION-REUSE — that runner is the run's session, built here on the request thread (SEC-OBO)
+        and first connected by the run's first statement."""
         try:
             overrides = req.overrides or {}
             recorder = RunRecorder(context=env.run_context(req.warehouse_id), data_source=req.data_source_id,
                                    period=(overrides.get("periodStart"), overrides.get("periodEnd")),
                                    trigger=req.trigger, mode="recompute" if req.recompute else "skip_if_computed")
-            return acting(req.warehouse_id, recorder.observe), recorder, None
+            return acting(req.warehouse_id, run=env.user_session(req.warehouse_id, recorder.observe)), recorder, None
         except Exception as error:
             return None, None, JSONResponse(status_code=503, content={"ok": False, "error": str(error)})
 

@@ -31,6 +31,9 @@ dependencies = [
     # Workspace App registry, UC tag discovery, and ambient identity — the platform tiers of BUILD-RESOLVE.
     # Floor 0.122 is data-bindings' `warehouse_runner` (BINDINGS-INTO-CLIENT), now shipped here.
     "databricks-sdk>=0.122",
+    # RUN-CLIENT-SESSION-REUSE — `warehouse_session` holds one SQL session for a run. The Statement
+    # Execution API has no session, so it cannot.
+    "databricks-sql-connector>=4.0",
 ]
 
 [project.urls]

@@ -15,7 +15,7 @@ import pytest
 from cql_databricks.data_bindings import (
     DATA_SOURCE_TAG, KNOWLEDGE_TAG, TERMINOLOGY, TERMINOLOGY_TAG, ContentResolver, LibraryId, ResolverError, TaggedSchema,
     check_layout, compare_versions, load_corpus, parse_identity, parse_includes,
-    parse_resource_types, parse_value_sets, tag_statement, warehouse_runner)
+    WarehouseSession, parse_resource_types, parse_value_sets, tag_statement, warehouse_runner, warehouse_session)
 from cql_databricks.data_bindings import corpus as corpus_module
 
 
@@ -302,3 +302,139 @@ def test_warehouse_runner_observes_a_failed_statement_before_raising():
 def test_warehouse_runner_needs_a_warehouse():
     with pytest.raises(ResolverError, match="warehouse"):
         warehouse_runner(SimpleNamespace(), "")
+
+
+# --- warehouse_session ----------------------------------------------------------------------------
+
+class FakeConnection:
+    """A SQL connector connection: each statement gets a cursor and an ID; ``fail`` makes them fail."""
+
+    def __init__(self, rows=(), columns=(), fail=False):
+        self.rows, self.columns, self.fail = list(rows), list(columns), fail
+        self.executed: list[tuple[str, dict | None]] = []
+        self.closed = False
+
+    def cursor(self):
+        connection = self
+
+        class Cursor:
+            query_id = None
+            description = None
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, statement, parameters=None):
+                from databricks.sql.exc import ServerOperationError
+
+                connection.executed.append((statement, parameters))
+                self.query_id = f"q{len(connection.executed)}"
+                if connection.fail:
+                    raise ServerOperationError("boom")
+                self.description = [(c, "string") for c in connection.columns] or None
+
+            def fetchall(self):
+                return connection.rows
+
+        return Cursor()
+
+    def close(self):
+        self.closed = True
+
+
+def test_warehouse_session_sends_every_statement_through_one_connection():
+    """RUN-CLIENT-SESSION-REUSE — one session for the run, opened by its first statement, not before."""
+    connection = FakeConnection(rows=[(1, "x"), (2, None)], columns=["a", "b"])
+    opened = []
+    session = WarehouseSession(lambda: (opened.append(1), connection)[1])
+    assert opened == []
+    assert session("SELECT :p", {"p": "v"}) == [{"a": 1, "b": "x"}, {"a": 2, "b": None}]
+    session("CREATE OR REPLACE TABLE t AS SELECT 1")
+    assert opened == [1]
+    assert connection.executed == [("SELECT :p", {"p": "v"}), ("CREATE OR REPLACE TABLE t AS SELECT 1", None)]
+
+
+def test_warehouse_session_gives_each_thread_its_own_session_and_none_waits_on_another():
+    """RUN-CLIENT-SESSION-REUSE — a tag writer's thread runs while the run's thread is mid-statement."""
+    import threading
+
+    inside, release = threading.Event(), threading.Event()
+    connections = []
+
+    class Blocking(FakeConnection):
+        def cursor(self):
+            cursor = super().cursor()
+            execute = cursor.execute
+
+            def blocked(statement, parameters=None):
+                if statement == "CREATE OR REPLACE TABLE t AS SELECT 1":
+                    inside.set()
+                    assert release.wait(5)
+                execute(statement, parameters)
+            cursor.execute = blocked
+            return cursor
+
+    session = WarehouseSession(lambda: (connections.append(Blocking()), connections[-1])[1])
+    run = threading.Thread(target=session, args=("CREATE OR REPLACE TABLE t AS SELECT 1",))
+    run.start()
+    assert inside.wait(5)
+    session("ALTER TABLE t SET TAGS ('k' = 'v')")
+    release.set()
+    run.join(5)
+    assert len(connections) == 2
+    assert [c.executed for c in connections] == [[("CREATE OR REPLACE TABLE t AS SELECT 1", None)],
+                                                  [("ALTER TABLE t SET TAGS ('k' = 'v')", None)]]
+    session.close()
+    assert all(c.closed for c in connections)
+
+
+def test_warehouse_session_closes_at_the_end_and_refuses_statements_after():
+    """RUN-CLIENT-SESSION-REUSE — the session ends with the run; a late statement fails, never reconnects."""
+    connection = FakeConnection()
+    with WarehouseSession(lambda: connection) as session:
+        session("SELECT 1")
+    assert connection.closed
+    with pytest.raises(ResolverError, match="closed"):
+        session("SELECT 1")
+    session.close()
+
+
+def test_warehouse_session_reports_each_statement_to_its_observer():
+    """APP-RUN-LOG — as warehouse_runner does: the statement ID, its final state, start before end."""
+    seen = []
+    WarehouseSession(lambda: FakeConnection(), observer=seen.append)("CREATE OR REPLACE TABLE t AS SELECT 1")
+    [statement] = seen
+    assert (statement.statement, statement.statement_id, statement.state) == (
+        "CREATE OR REPLACE TABLE t AS SELECT 1", "q1", "SUCCEEDED")
+    assert statement.started_at <= statement.ended_at
+
+
+def test_warehouse_session_observes_a_failed_statement_before_raising():
+    """APP-RUN-LOG — a failed step still has a statement ID to join to system.query.history."""
+    seen = []
+    with pytest.raises(ResolverError, match="FAILED: boom"):
+        WarehouseSession(lambda: FakeConnection(fail=True), observer=seen.append)("SELECT 1")
+    assert [(s.statement_id, s.state) for s in seen] == [("q1", "FAILED")]
+
+
+def test_warehouse_session_connects_to_the_warehouse_as_the_client(monkeypatch):
+    """RUN-CLIENT-SESSION-REUSE — the warehouse's HTTP path, the client's own credentials and host, and the
+    same statement budget warehouse_runner polls for."""
+    from databricks import sql
+
+    seen = {}
+    monkeypatch.setattr(sql, "connect", lambda **kw: (seen.update(kw), FakeConnection())[1])
+    headers = lambda: {"Authorization": "Bearer t"}
+    client = SimpleNamespace(config=SimpleNamespace(host="https://example.cloud.databricks.com", authenticate=headers))
+    warehouse_session(client, "wh")("SELECT 1")
+    assert (seen["server_hostname"], seen["http_path"]) == ("example.cloud.databricks.com", "/sql/1.0/warehouses/wh")
+    assert seen["credentials_provider"]() is headers
+    assert seen["session_configuration"] == {"STATEMENT_TIMEOUT": "600"}
+
+
+def test_warehouse_session_needs_a_warehouse():
+    with pytest.raises(ResolverError, match="warehouse"):
+        warehouse_session(SimpleNamespace(), "")

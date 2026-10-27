@@ -7,10 +7,12 @@ That is what makes the resolver one implementation for every caller (``DEC-CONTE
 """
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, Protocol
+from urllib.parse import urlparse
 
 
 class SqlRunner(Protocol):
@@ -109,6 +111,93 @@ def warehouse_runner(client, warehouse_id: str, *,
         return rows
 
     return run
+
+
+class WarehouseSession:
+    """RUN-CLIENT-SESSION-REUSE — a runner that gives each thread of a run its own SQL session.
+
+    The runtime functions' sandbox starts once per session, so a run that keeps its sessions pays that start
+    once per thread, not once per statement. The run's own statements are on one thread, so they share
+    one session; the completion writer's tag statements run on its worker threads
+    (``RUN-CLIENT-ASYNC-CHECKPOINTS``), each in its own session, so they never wait on the run's.
+
+    Build it with :func:`warehouse_session`; use it as a context manager, or call :meth:`close`, at the end
+    of the run. A thread's session opens on its first statement, so building one connects nothing. A
+    statement after ``close`` fails.
+
+    Rows come back with typed values (``int``, ``Decimal``, ``datetime`` …), as ``spark_runner``'s do, not
+    as the JSON strings of ``warehouse_runner``.
+
+    APP-RUN-LOG — ``observer``, when given, receives each statement the warehouse accepted, with its ID,
+    once it succeeds or fails, as ``warehouse_runner``'s does.
+    """
+
+    def __init__(self, connect: Callable[[], Any], observer: StatementObserver | None = None) -> None:
+        self._connect = connect
+        self._observer = observer
+        self._local = threading.local()
+        self._connections: list[Any] = []
+        self._closed = False
+
+    def __call__(self, statement: str, params: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
+        from databricks.sql.exc import Error
+
+        if self._closed:
+            raise ResolverError(f"the warehouse session is closed: {statement[:120]}")
+        connection = getattr(self._local, "connection", None)
+        if connection is None:
+            connection = self._local.connection = self._connect()
+            self._connections.append(connection)
+        started = datetime.now(timezone.utc)
+        with connection.cursor() as cursor:
+            state = "FAILED"
+            try:
+                cursor.execute(statement, parameters=dict(params) if params else None)
+                columns = [column[0] for column in cursor.description or ()]
+                rows = [dict(zip(columns, row)) for row in cursor.fetchall()] if columns else []
+                state = "SUCCEEDED"
+            except Error as error:
+                raise ResolverError(f"statement {state}: {error}: {statement[:120]}") from error
+            finally:
+                if self._observer is not None and cursor.query_id is not None:
+                    self._observer(ExecutedStatement(statement=statement, statement_id=cursor.query_id,
+                                                     state=state, started_at=started,
+                                                     ended_at=datetime.now(timezone.utc)))
+        return rows
+
+    def close(self) -> None:
+        """End every thread's session. Call it once the run's threads are done; closing twice is harmless."""
+        self._closed = True
+        connections, self._connections = self._connections, []
+        for connection in connections:
+            connection.close()
+
+    def __enter__(self) -> WarehouseSession:
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
+
+def warehouse_session(client, warehouse_id: str, *,
+                      observer: StatementObserver | None = None) -> WarehouseSession:
+    """RUN-CLIENT-SESSION-REUSE — a :class:`WarehouseSession` over ``warehouse_id`` as ``client``'s identity.
+
+    A statement still running after the same budget ``warehouse_runner`` polls for fails
+    (``STATEMENT_TIMEOUT``).
+    """
+    if not warehouse_id:
+        raise ResolverError("warehouse_session needs a SQL warehouse id; none is configured")
+
+    def connect():
+        from databricks import sql
+
+        return sql.connect(server_hostname=urlparse(client.config.host).netloc,
+                           http_path=f"/sql/1.0/warehouses/{warehouse_id}",
+                           credentials_provider=lambda: client.config.authenticate,
+                           session_configuration={"STATEMENT_TIMEOUT": str(int(_POLL_BUDGET_SECONDS))})
+
+    return WarehouseSession(connect, observer)
 
 
 def _settle(api, response, statement: str):
