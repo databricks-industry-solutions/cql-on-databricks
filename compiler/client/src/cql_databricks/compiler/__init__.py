@@ -56,12 +56,14 @@ from .library import Library, load_library, measurement_period_bounds, measureme
 # The Databricks layer (`SVC-DISCOVERY-PLUGIN`, `SVC-ZERO-CONFIG-NOTEBOOK`). `cql` here SHADOWS the core
 # binder deliberately: on a workspace, zero-config is the correct default, and it still honors an explicit
 # `client=` / `endpoint=` so nothing is taken away.
-from .zeroconfig import connect, cql, resolve_libraries, translate
+from .zeroconfig import connect, cql, publish_library, resolve_libraries, translate
 from .provider import make_provider
 from .session_libraries import register_cell
 # CLIENT-SESSION-MOUNT / CLIENT-SESSION-RESET / BIND-RESHAPE: session data, and raw FHIR JSON as a source.
 from .mount import mount, reset
 from .reshape import FhirJson
+# CLIENT-PUBLISH: a folder library into a tagged knowledge store.
+from .library_publish import PublishFailed, PublishRefused, PublishSummary, publish_folder_library
 # BIND-PUBLISH: a tagged data source from tables.
 from .publish import PublishPlan, publish_data_source
 from .providers import (
@@ -96,7 +98,7 @@ __all__ = [
     "CqlClient", "CqlClientBuilder", "CqlQuery",
     "cql", "cql_explicit", "describe", "compile_pipeline", "load_library", "Library",
     # SVC-ZERO-CONFIG-NOTEBOOK: the Databricks surface.
-    "connect", "resolve_libraries", "translate", "make_provider", "register_cell",
+    "connect", "publish_library", "resolve_libraries", "translate", "make_provider", "register_cell",
     "measurement_period_bounds",
     "measurement_period_literal",
     # BUILD-LIBRARY-PROVIDER: the library SOURCE seam. Implement `LibraryProvider` and inject it with
@@ -108,6 +110,7 @@ __all__ = [
     "mount", "reset", "FhirJson",
     # BIND-PUBLISH: write a tagged data source from tables, for review or to run.
     "publish_data_source", "PublishPlan",
+    "publish_folder_library", "PublishSummary", "PublishRefused", "PublishFailed",
     "CompileProvider", "RemoteProvider", "CompileRequest", "CompileError",
     "SqlCompileResult", "SqlStatement",
     # CLIENT-RESOURCE-SCHEMA: the model's `__resource` struct per FHIR type (`CqlClient.resource_schema`).

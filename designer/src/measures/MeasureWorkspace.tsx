@@ -16,7 +16,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { Definition } from "../catalog.ts";
-import { cqlSha256, fetchDefinitions, fetchLibrarySource, fetchStoreAccess, fetchSpecification, fetchDataRequirements, saveLibrary,
+import { fetchDefinitions, fetchLibrarySource, fetchSpecification, fetchDataRequirements, saveLibrary,
   type DataRequirement, type SpecificationOverlay } from "../library-client.ts";
 import { useRevision } from "../use-revision.ts";
 import { runMeasureStreaming, fetchDataSources, fetchWarehouses, reopenResults, type RunTrigger } from "../run-client.ts";
@@ -38,7 +38,10 @@ import { useSpecLens } from "./specLens.ts";
 import type { AssistantSelection } from "../assistant-client.ts";
 import { buildFlow, buildFlowRequest } from "./specFlow.ts";
 import { useSelectionDerivations } from "./selection-derivations.ts";
-import { Sparkle, EditCql, Save } from "../icons.tsx";
+import { Sparkle, EditCql } from "../icons.tsx";
+import { useAutoSave, writeLabel, writeTitle } from "./autoSave.ts";
+import { withInclude } from "./includeLibrary.ts";
+import { PublishForm } from "./PublishForm.tsx";
 import { ErrorBanner } from "./ErrorBanner.tsx";
 import type { NavScope } from "./ScopeNav.tsx";
 import { DefineEditContext, DefineEditor, LazyCqlEditor, type DefineEdit } from "./defineEdit.tsx";
@@ -336,24 +339,12 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   const libLocation = definition?.location ?? null;
   // DOC-CQL-EDIT — which library a compile belongs to, so one library's last good compile never renders another's.
   const libKey = `${libLocation ?? ""}\0${definition?.id ?? ""}`;
-  // DOC-EDITABLE-IN-SCOPE — whether the user can write the store the library lives in, asked as they open it. A
-  // folder is not asked. `writable` is null while the answer is out, and when the check itself failed (`error`).
-  const [access, setAccess] = useState<{ location: string; writable: boolean | null; reason: string | null;
-                                         error: string | null } | null>(null);
-  useEffect(() => {
-    if (!libLocation?.startsWith("store:")) { setAccess(null); return; }
-    const location = libLocation;
-    let live = true;
-    setAccess({ location, writable: null, reason: null, error: null });
-    fetchStoreAccess(location)
-      .then((a) => { if (live) setAccess({ location, ...a, error: null }); })
-      .catch((e) => { if (live) setAccess({ location, writable: null, reason: null,
-                                            error: e instanceof Error ? e.message : String(e) }); });
-    return () => { live = false; };
-  }, [libLocation]);
-  const [dismissedAccess, setDismissedAccess] = useState<typeof access>(null);
-  const readOnly = access?.writable === false ? access.reason ?? "You cannot write this store." : null;
-  const checkingAccess = access !== null && access.writable === null && access.error === null;
+  // DOC-EDITABLE-IN-SCOPE — a library from a tagged store is published and read-only here; it is edited as a copy in
+  // a folder (Save As). Nothing is asked first: a folder write is the user's own, and Databricks refuses one they
+  // cannot make.
+  const readOnly = libLocation?.startsWith("store:")
+    ? "Published in a tagged store, which the Designer does not edit. Save a copy to a workspace folder to change it."
+    : null;
 
   // PERF-DISCOVER-LIGHTWEIGHT — the discover endpoint omits CQL source; lazy-load it
   // from /api/libraries/{name}/{version}/source when a definition is selected. While the
@@ -362,6 +353,10 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   const [loadedSource, setLoadedSource] = useState<string | null>(null);
   const [sourceLoading, setSourceLoading] = useState(false);
   const [sourceError, setSourceError] = useState<string | null>(null);
+  // DOC-AUTO-SAVE — how many times the open library was read again, after a write was refused because its copy
+  // changed elsewhere. Each reading is a new start for the writes (`Opened.key`).
+  const [reads, setReads] = useState(0);
+  useEffect(() => { setReads(0); }, [definition?.id, libLocation]);
   useEffect(() => {
     if (!definition) { setLoadedSource(null); setSourceError(null); return; }
     if (definition.source !== undefined && definition.source.trim() !== "") {
@@ -381,7 +376,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
       .finally(() => { if (live) setSourceLoading(false); });
     return () => { live = false; };
   }, [definition?.id, libLocation]); // eslint-disable-line react-hooks/exhaustive-deps
-  // DOC-CQL-EDIT — `edited` is the CQL as edited and not yet saved, or null. Everything below reads the DEBOUNCED edit, so the
+  // DOC-CQL-EDIT — `edited` is the CQL as edited, or null while it is as opened. Everything below reads the DEBOUNCED edit, so the
   // document recompiles a beat after typing stops rather than on every key.
   const [edited, setEdited] = useState<string | null>(null);
   const [editedSource, setEditedSource] = useState<string | null>(null);
@@ -390,16 +385,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     const t = setTimeout(() => setEditedSource(edited), 700);
     return () => clearTimeout(t);
   }, [edited]);
-  // DOC-OPEN-SAVE — the digest of the CQL as opened, which a save compares with what is there now.
-  const [baseSha, setBaseSha] = useState<string | null>(null);
-  useEffect(() => {
-    setEdited(null);
-    if (loadedSource === null) { setBaseSha(null); return; }
-    let live = true;
-    void cqlSha256(loadedSource).then((d) => { if (live) setBaseSha(d); });
-    return () => { live = false; };
-  }, [loadedSource]);
-  const dirty = edited !== null && edited !== loadedSource;
+  useEffect(() => { setEdited(null); }, [loadedSource]);
   // Source is empty while loading or on error — never use a generated stub.
   const source = editedSource ?? loadedSource ?? "";
 
@@ -934,48 +920,42 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     setView("cql");
   }
 
-  // DOC-OPEN-SAVE — save the edited CQL where it was opened, as the signed-in user. A save that would leave a
-  // package's XML copies or HTML out of date names them and waits for the reader to agree; one over a library
-  // changed since it was opened, or of CQL that does not compile, writes nothing and says why.
-  const [saving, setSaving] = useState(false);
-  const [saveProblem, setSaveProblem] = useState<{ message: string; detail?: string[] } | null>(null);
-  const [stalePrompt, setStalePrompt] = useState<string[] | null>(null);
-  useEffect(() => { setSaveProblem(null); setStalePrompt(null); }, [definition?.id, libLocation]);
-  const save = useCallback(async (deleteStale?: string[]) => {
-    if (!definition || edited === null || saving || readOnly) return;
-    const cql = edited;
-    setSaving(true);
-    setSaveProblem(null);
-    try {
-      const out = await saveLibrary({ location: definition.location, name: definition.name,
-                                      version: definition.version, cql, baseSha256: baseSha, deleteStale });
-      if (out.kind === "saved") { setStalePrompt(null); setLoadedSource(cql); }
-      else if (out.kind === "stale") setStalePrompt(out.paths);
-      else if (out.kind === "invalid") setSaveProblem({ message: "Not saved: the CQL does not compile.", detail: out.diagnostics });
-      else if (out.kind === "conflict") setSaveProblem({ message: `Not saved: ${out.error}. Reopen it to see what is there now.` });
-      else setSaveProblem({ message: `Not saved: ${out.error}` });
-    } catch (e) {
-      setSaveProblem({ message: `Not saved: ${e instanceof Error ? e.message : String(e)}` });
-    } finally {
-      setSaving(false);
-    }
-  }, [definition, edited, baseSha, saving, readOnly]);
+  // DOC-AUTO-SAVE — every edit is written where the library was opened, as the signed-in user, a beat after typing
+  // stops, compiled or not. A read-only library is never written.
+  const opened = useMemo(() => definition && loadedSource !== null ? {
+    key: `${libKey}\0${reads}`, location: definition.location, name: definition.name, version: definition.version,
+    cql: loadedSource,
+  } : null, [definition, libKey, reads, loadedSource]);
+  const autoSave = useAutoSave({ opened, edited, enabled: !readOnly, save: saveLibrary });
+  const writeState = autoSave.state;
+  const unwritten = autoSave.unwritten;
+  const [dismissedWrite, setDismissedWrite] = useState<typeof writeState | null>(null);
+  // Read the library again after its copy changed elsewhere: what is there now, with the edit that was refused gone.
+  const reread = useCallback(() => {
+    if (!definition) return;
+    const { name, version, location } = definition;
+    fetchLibrarySource(name, version, location)
+      .then((s) => { setEdited(null); setLoadedSource(s); setReads((n) => n + 1); setSourceError(null); })
+      .catch((e) => setSourceError(`Failed to load source: ${e instanceof Error ? e.message : e}`));
+  }, [definition]);
+  // Cmd/Ctrl+S writes now, rather than when typing stops.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); if (dirty) void save(); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); autoSave.flush(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [dirty, save]);
-  // Leaving the page with an unsaved edit asks first; so does opening another library (`leaveEdit`).
+  }, [autoSave.flush]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Leaving the page while the latest edit is not written asks first; so does opening another library (`leaveEdit`).
   useEffect(() => {
-    if (!dirty) return;
+    if (!unwritten) return;
     const onLeave = (e: BeforeUnloadEvent) => { e.preventDefault(); };
     window.addEventListener("beforeunload", onLeave);
     return () => window.removeEventListener("beforeunload", onLeave);
-  }, [dirty]);
+  }, [unwritten]);
   const leaveEdit = useCallback(
-    () => !dirty || window.confirm("This library has unsaved changes. Discard them?"), [dirty]);
+    () => !unwritten || window.confirm("This library's latest edit is not saved. Leave it and lose the edit?"),
+    [unwritten]);
   // DOC-SCOPE-OPEN — the open scope is the location the catalog lists (`?at=`); its libraries are the catalog.
   const navScope = useMemo<NavScope | null>(() => (openAt && definition ? {
     at: openAt, libraries: definitions, openId: definition.id,
@@ -985,19 +965,45 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // first, as opening another does; Save As takes the CQL as edited into the copy.
   const [fileForm, setFileForm] = useState<NewTarget | null>(null);
   useEffect(() => { setFileForm(null); }, [definition?.id, libLocation]);
-  // A new library opens in the CQL view, to be written; a copy opens where its original was read.
+  // DOC-INCLUDE-NEW — "Include a library…" puts the new library's `include` where the compiler placed the open
+  // library's last include or using, so it runs only on an editable library whose CQL as edited is compiled as it
+  // stands, with no define open in place (that editor would write its own text back over the include).
+  const includeElm = latest?.result.ok && latest.result.elm && latest.source === (edited ?? loadedSource)
+    ? latest.result.elm : null;
+  const includeBlocked = readOnly
+    ?? (inPlace ? "Close the define you are editing first."
+        : includeElm ? null : "The CQL as edited must compile first: the include goes after its last include.");
+  // DOC-PUBLISH — Publish reads the library from its folder, so it waits until the latest edit is written there.
+  const publishBlocked = readOnly
+    ?? (unwritten ? "Wait until the latest edit is saved: Publish reads the library from its folder." : null);
+  const [publishing, setPublishing] = useState(false);
+  useEffect(() => { setPublishing(false); }, [definition?.id, libLocation]);
+  const [includeProblem, setIncludeProblem] = useState<string | null>(null);
+  useEffect(() => { setIncludeProblem(null); }, [definition?.id, libLocation]);
+  // A new library opens in the CQL view, to be written; a copy opens where its original was read; a library made to
+  // be included stays unopened, and the open library gains its `include`, written as any edit is (`DOC-AUTO-SAVE`).
   const created = useCallback((id: string, at: string) => {
-    const view = fileForm?.kind === "new" ? "cql" : "define";
+    const form = fileForm;
     setFileForm(null);
-    setEdited(null);
     setCatalogGen((g) => g + 1);
-    openArtifact(id, { view }, at);
-  }, [fileForm, openArtifact]);
+    if (form?.kind === "include") {
+      const [name = "", version = ""] = id.split("@");
+      const current = edited ?? loadedSource;
+      const out = includeElm && current !== null ? withInclude(current, includeElm, name, version)
+        : { refused: "The CQL changed while the library was being created." };
+      if ("cql" in out) setEdited(out.cql);
+      else setIncludeProblem(`${name} ${version} was created in ${at.replace(/^folder:/, "")} but not included: `
+                             + `${out.refused} Add the include by hand.`);
+      return;
+    }
+    setEdited(null);
+    openArtifact(id, { view: form?.kind === "new" ? "cql" : "define" }, at);
+  }, [fileForm, openArtifact, edited, loadedSource, includeElm]);
   const editorTheme: "light" | "dark" = themeAttr(chrome.theme)
     ?? (typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 
   // DOC-CQL-EDIT — a define edited in place. Its text replaces `[start, end)` of the draft it opened on, so
-  // the edit splices into the ONE draft the whole-library editor and Save also read.
+  // the edit splices into the ONE text the whole-library editor also edits and every write sends (`DOC-AUTO-SAVE`).
   const draftCql = edited ?? loadedSource ?? "";
   // The draft has not compiled yet: typing has not settled, or the compile of what settled is in flight.
   const pending = compiling || edited !== null && edited !== editedSource || latest?.source !== source;
@@ -1006,9 +1012,10 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // The define last closed, so it can reopen on its own text while the draft is still exactly what it left —
   // the one way back into a define closed while it did not compile, when no span on the page is current.
   const [lastInPlace, setLastInPlace] = useState<InPlace | null>(null);
-  // Another library, view or dependency closes it. A save does not: it stores exactly the draft this edit made.
-  useEffect(() => { setInPlace(null); }, [libKey, view, dep]);
-  useEffect(() => { setLastInPlace(null); }, [libKey]);
+  // Another library, view or dependency closes it, and so does reading the library again: its text is no longer the
+  // one the define was opened on. A write does not: it writes exactly the text this edit made.
+  useEffect(() => { setInPlace(null); }, [libKey, view, dep, reads]);
+  useEffect(() => { setLastInPlace(null); }, [libKey, reads]);
   const inPlaceRef = useRef(inPlace);
   inPlaceRef.current = inPlace;
   const closeInPlace = useCallback(() => {
@@ -1026,10 +1033,9 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   const defineEdit = useMemo<DefineEdit>(() => ({
     openKey: inPlace?.key ?? null,
     // The library being read; an include is a reference, edited where it lives.
-    // DOC-EDITABLE-IN-SCOPE — and only where the user can write it: a store they cannot write offers no Edit.
+    // DOC-EDITABLE-IN-SCOPE — and only in a folder: a published library from a store offers no Edit.
     offers: (entry) => !dep && !readOnly && entry.library === specModel?.root,
     blocked: (entry) => {
-      if (checkingAccess) return "Checking whether you can write this store…";
       if (entry.variants.length !== 1) return "A function with overloads is edited in the whole-library editor.";
       if (!entry.variants[0]!.span) return "The compiler gave no source position for this define.";
       if (resumes(entry)) return null;
@@ -1050,7 +1056,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
         status={pending ? "Compiling…" : broken ? `${broken.result.diagnostics.length} problem${broken.result.diagnostics.length === 1 ? "" : "s"}` : "Compiles"}
         problems={broken?.result.diagnostics ?? []} />
     ),
-  }), [inPlace, lastInPlace, dep, readOnly, checkingAccess, specModel, pending, page, draftCql, broken, changeInPlace,
+  }), [inPlace, lastInPlace, dep, readOnly, specModel, pending, page, draftCql, broken, changeInPlace,
       closeInPlace, editorTheme]);
 
   // Content to render in the body — the chrome and toolbar render unconditionally.
@@ -1107,18 +1113,13 @@ export function MeasureWorkspace({ chrome, deepLink }: {
               onClick={() => { setDep(null); setView(view === "cql" ? "define" : "cql"); }}>
               <EditCql size={16} aria-hidden="true" />
             </button>
-            {/* DOC-OPEN-SAVE — save where it was opened: its folder or its tagged store. */}
-            <button className="mw-save-btn" disabled={!dirty || saving || !!readOnly} onClick={() => void save()}
-              title={readOnly ?? (dirty ? `Save to ${definition.location.replace(/^(store|folder):/, "")} (⌘S)` : "No unsaved changes")}>
-              <Save size={14} aria-hidden="true" />{saving ? "Saving…" : dirty ? "Save" : "Saved"}
-            </button>
             <button className="mw-icon-btn" aria-pressed={askOpen}
               aria-label="Assistant" title="Ask about this measure"
               onClick={toggleAssistant}>
               <Sparkle size={16} aria-hidden="true" />
             </button>
           </>)}
-          crumb={definition && (
+          crumb={definition && (<>
             <Navigator definition={definition} definitions={definitions}
               onOpenDefinition={(id) => { if (leaveEdit()) openArtifact(id, { view: "define" }); }}
               dep={dep} onBack={() => { setDep(null); setView("define"); }}
@@ -1129,11 +1130,20 @@ export function MeasureWorkspace({ chrome, deepLink }: {
                 if (id) openArtifact(id, { view: "define" }, at);
                 else setParams({ at, open: null, crit: null });
               }}
+              includeBlocked={includeBlocked}
+              publishBlocked={publishBlocked}
               onFileAction={(action) => {
                 if (action.kind === "new") { if (leaveEdit()) setFileForm(action); }
+                else if (action.kind === "include") { if (!includeBlocked) setFileForm(action); }
+                else if (action.kind === "publish") { if (!publishBlocked) setPublishing(true); }
                 else if (loadedSource !== null) setFileForm({ kind: "saveAs", definition, cql: edited ?? loadedSource });
               }} />
-          )}
+            {/* DOC-AUTO-SAVE — whether the latest edit is written where the library was opened, or why not. */}
+            <span className={"mw-save-state " + writeState.kind} role="status"
+              title={readOnly ?? writeTitle(writeState, definition.location)}>
+              {readOnly ? "Read-only" : writeLabel(writeState)}
+            </span>
+          </>)}
           context={definition && <>
             {/* DESIGNER-SPACE-CONTEXT — show the active Data Source name when the measure belongs to one. */}
             {/* APP-EXEC-PARAMS — the execution parameters, dialled in the bar. They scope every count,
@@ -1172,7 +1182,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
 
         {/* DOC-OPEN-SAVE — New from the empty state; with a library open, the form renders with the banners below. */}
         {fileForm && !definition && (
-          <NewLibraryForm key={fileForm.kind === "new" ? fileForm.what : "saveAs"} target={fileForm} at={openAt}
+          <NewLibraryForm key={fileForm.kind === "new" ? fileForm.what : fileForm.kind} target={fileForm} at={openAt}
             onCancel={() => setFileForm(null)} onCreated={created} />
         )}
         {/* Loading / empty body — shown while definitions load or when none exist. */}
@@ -1191,28 +1201,32 @@ export function MeasureWorkspace({ chrome, deepLink }: {
                                        : "The CQL does not compile."}
               detail={broken.result.diagnostics.join("\n")} collapsible onDismiss={() => setDismissedCompile(broken)} />
           )}
-          {/* DOC-EDITABLE-IN-SCOPE — the access check itself failed. The library stays editable: the save is the
-              user's own write, so Databricks still refuses one they cannot make. */}
-          {access?.error && access !== dismissedAccess && (
-            <ErrorBanner message={`${access.error} The library is editable; a save you cannot make will be refused.`}
-              onDismiss={() => setDismissedAccess(access)} />
+          {/* DOC-AUTO-SAVE — why the latest edit was not written. A changed copy stops the writes until it is read
+              again; any other refusal is retried on the next edit. */}
+          {writeState.kind === "conflict" && (
+            <div className="mw-save-stale" role="alertdialog" aria-label="Not saved: the library changed elsewhere">
+              <p>Not saved: {writeState.error}. Saving has stopped for this library. Reload it to see what is there
+                now; your edit since the last save is lost.</p>
+              <div className="ac"><button className="go" onClick={reread}>Reload</button></div>
+            </div>
           )}
-          {/* DOC-OPEN-SAVE — why a save wrote nothing, or what it would leave out of date. */}
-          {saveProblem && (
-            <ErrorBanner message={saveProblem.message} detail={saveProblem.detail?.join("\n")}
-              onDismiss={() => setSaveProblem(null)} />
+          {writeState.kind === "refused" && writeState !== dismissedWrite && (
+            <ErrorBanner message={`Not saved: ${writeState.error}`} onDismiss={() => setDismissedWrite(writeState)} />
           )}
+          {/* DOC-INCLUDE-NEW — the library was made but its include could not be placed. */}
+          {includeProblem && <ErrorBanner message={includeProblem} onDismiss={() => setIncludeProblem(null)} />}
+          {publishing && <PublishForm definition={definition} onClose={() => setPublishing(false)} />}
           {fileForm && (
-            <NewLibraryForm key={fileForm.kind === "new" ? fileForm.what : "saveAs"} target={fileForm} at={openAt}
+            <NewLibraryForm key={fileForm.kind === "new" ? fileForm.what : fileForm.kind} target={fileForm} at={openAt}
               onCancel={() => setFileForm(null)} onCreated={created} />
           )}
-          {stalePrompt && (
+          {writeState.kind === "stale" && (
             <div className="mw-save-stale" role="alertdialog" aria-label="Files this save would leave out of date">
-              <p>Saving would leave these copies out of date. They can't be regenerated here. Delete them and save?</p>
-              <ul>{stalePrompt.map((p) => <li key={p}><code>{p}</code></li>)}</ul>
+              <p>Saving would leave these copies out of date. They can't be regenerated here, so nothing is saved
+                until you agree to delete them.</p>
+              <ul>{writeState.paths.map((p) => <li key={p}><code>{p}</code></li>)}</ul>
               <div className="ac">
-                <button onClick={() => setStalePrompt(null)}>Cancel</button>
-                <button className="go" disabled={saving} onClick={() => void save(stalePrompt)}>Delete and save</button>
+                <button className="go" onClick={autoSave.agreeStale}>Delete them and save</button>
               </div>
             </div>
           )}
@@ -1240,9 +1254,16 @@ export function MeasureWorkspace({ chrome, deepLink }: {
 
             <main className="mw-doc">
               <div className={"mw-doc-inner" + (!dep && view === "define" ? " read" : "")}>
-                {/* DOC-EDITABLE-IN-SCOPE — a store the user cannot write opens read-only, and says why. */}
+                {/* DOC-EDITABLE-IN-SCOPE — a published library opens read-only, says why, and offers the copy to edit. */}
                 {readOnly && !dep && (
-                  <div className="mw-dep-ribbon mw-readonly"><span className="ro">read-only</span><span>{readOnly}</span></div>
+                  <div className="mw-dep-ribbon mw-readonly"><span className="ro">read-only</span><span>{readOnly}</span>
+                    {loadedSource !== null && (
+                      <button className="mw-readonly-copy"
+                        onClick={() => setFileForm({ kind: "saveAs", definition, cql: edited ?? loadedSource })}>
+                        Save a copy…
+                      </button>
+                    )}
+                  </div>
                 )}
                 {dep ? (
                   <>
@@ -1291,7 +1312,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
                       <div className="mw-cqledit-body">
                         <React.Suspense fallback={<div className="mw-empty"><span className="mw-spin" /> Loading the editor…</div>}>
                           <LazyCqlEditor value={edited ?? loadedSource ?? ""} onChange={setEdited} theme={editorTheme}
-                            readOnly={!!readOnly || checkingAccess} />
+                            readOnly={!!readOnly} />
                         </React.Suspense>
                       </div>
                       {latest && !latest.result.ok && latest.result.diagnostics.length > 0 && (

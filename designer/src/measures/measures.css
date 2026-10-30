@@ -1102,8 +1102,11 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-rating .stars { color: var(--twarn); letter-spacing: 1px; }
 .mw-dep-ribbon { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-radius: 9px; background: var(--tinfo-w); border: 1px solid color-mix(in srgb, var(--tinfo) 35%, transparent); font-size: 12px; color: var(--tink-2); }
 .mw-dep-ribbon .ro { font-family: var(--f-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--tinfo); background: color-mix(in srgb, var(--tinfo) 15%, transparent); padding: 2px 6px; border-radius: 4px; font-weight: 700; }
-/* DOC-EDITABLE-IN-SCOPE — the same ribbon over a store the user cannot write, standing clear of the page below. */
+/* DOC-EDITABLE-IN-SCOPE — the same ribbon over a published library, standing clear of the page below, with the
+   one way to edit it: a copy in a folder. */
 .mw-readonly { margin-bottom: 14px; }
+.mw .mw-readonly-copy { margin-left: auto; padding: 4px 10px; border: 1px solid color-mix(in srgb, var(--tacc) 45%, var(--tline));
+  border-radius: 7px; background: var(--panel); color: var(--tacc); font-size: 12px; white-space: nowrap; }
 
 .mw-cell { background: var(--panel); border: 1px solid var(--tline); border-radius: 10px; box-shadow: var(--tshadow); scroll-margin-top: 20px; }
 .mw-cell.flash { animation: mw-flash 1.1s ease; }
@@ -3278,15 +3281,12 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw .mw-ask-send:hover:not(:disabled) { background: var(--panel-2); }
 .mw .mw-ask-send:disabled { opacity: .45; cursor: default; }
 
-/* ── DOC-CQL-EDIT / DOC-OPEN-SAVE — the CQL editor and Save ─────────────────────────────────────────
-   Save is the bar's one text button: a verb with a state ("Save" / "Saving…" / "Saved"), in the bar's outline
-   material. The accent is spent only while there is something to save. */
-.mw .mw-save-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px;
-  border: 1px solid var(--tline); border-radius: 9px; background: none; color: var(--tink-2);
-  font-size: 13px; font-weight: 600; white-space: nowrap; }
-.mw .mw-save-btn:not(:disabled) { color: var(--tacc); border-color: color-mix(in srgb, var(--tacc) 45%, var(--tline)); }
-.mw .mw-save-btn:not(:disabled):hover { background: var(--tline-2); }
-.mw .mw-save-btn:disabled { cursor: default; }
+/* ── DOC-CQL-EDIT / DOC-AUTO-SAVE — the CQL editor and the save status ─────────────────────────────────
+   Every edit saves itself, so the bar carries a status, not a button: quiet ink while saved or on its way, the
+   critical ink only when an edit was not written. */
+.mw .mw-save-state { display: inline-flex; align-items: center; height: 30px; padding: 0 4px; font-size: 12.5px;
+  color: var(--tink-3); white-space: nowrap; }
+.mw .mw-save-state.stale, .mw .mw-save-state.conflict, .mw .mw-save-state.refused { color: var(--tcrit, #b91c1c); font-weight: 600; }
 .mw-cqledit { display: flex; flex-direction: column; height: calc(100vh - 140px); min-height: 360px;
   border: 1px solid var(--tline); border-radius: 10px; overflow: hidden; background: var(--panel); }
 .mw-cqledit-bar { display: flex; align-items: baseline; gap: 10px; padding: 7px 12px; border-bottom: 1px solid var(--tline-2);
@@ -3311,3 +3311,10 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-newlib-fields label.wide input { font-family: var(--f-mono); }
 .mw-newlib-problem { margin: 0 0 8px; color: var(--tcrit, #b91c1c); }
 .mw-newlib-problem pre { margin: 4px 0 0; white-space: pre-wrap; font-size: 11.5px; }
+/* DOC-PUBLISH — what publishing did with each library: quiet ink for unchanged and not written, the critical ink
+   for a refusal, with its reason under it. */
+.mw-publish-result { margin: 4px 0 8px; padding-left: 18px; font-size: 12px; color: var(--tink-2); }
+.mw-publish-result li span { color: var(--tink-3); }
+.mw-publish-result li.published span { color: var(--tink); font-weight: 600; }
+.mw-publish-result li.refused span { color: var(--tcrit, #b91c1c); font-weight: 600; }
+.mw-publish-result pre { margin: 2px 0 4px; font-size: 11px; white-space: pre-wrap; color: var(--tcrit, #b91c1c); }

@@ -109,7 +109,7 @@ Buttons use the `control` step, weight 600 and an 8px radius. Disabled is `opaci
 
 Links use the accent color, underlined on hover, and are for navigation. Links that leave the app are
 anchors with `target="_blank" rel="noreferrer noopener"`. Never render an in-app primary action as accent
-text. Run and Save are buttons.
+text. Run is a button.
 
 ### Tabs
 

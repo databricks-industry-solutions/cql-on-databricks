@@ -279,6 +279,36 @@ def resolve_libraries(source: str, *, spark=None, catalog_scopes: Optional[Itera
     return resolve(_session_content(spark, catalog_scopes), cql=source).require_complete().include_sources
 
 
+def publish_library(name: str, version: str, *, folder: str, store: str, base: str, spark=None,
+                    catalog_scopes: Optional[Iterable[str]] = None, app_name: Optional[str] = None):
+    """Publish library ``name`` ``version`` from the workspace ``folder`` into the tagged knowledge ``store``
+    (``catalog.schema``), as this notebook's or Job's user (`CLIENT-PUBLISH`).
+
+    The library's includes held in ``folder`` go with it, dependencies first, and only what changed is written; see
+    :func:`cql_databricks.compiler.library_publish.publish_folder_library`, which the Designer's Publish calls too.
+    The folder is read from this session's ``/Workspace`` file system, includes not in it resolve from tagged
+    knowledge in the session's catalog scopes (as :func:`resolve_libraries` does), the CQL compiles through the
+    Compiler Service App (as :func:`translate` does), and the rows are written through ``spark``. ``base`` is the
+    canonical base for a library whose folder holds no ``Library`` JSON with a URL. Returns the
+    :class:`~cql_databricks.compiler.library_publish.PublishSummary`; raises ``PublishRefused`` when nothing was
+    written and ``PublishFailed`` when a write failed after others."""
+    from cql_databricks.data_bindings import spark_runner
+
+    from .libraries import LocalLibraryFiles
+    from .library_publish import publish_folder_library
+
+    catalog, _, schema = store.partition(".")
+    if not catalog or not schema or "." in schema:
+        raise ValueError(f"store {store!r} is not catalog.schema")
+    if spark is None:
+        from pyspark.sql import SparkSession  # lazy
+        spark = SparkSession.active()
+    provider = make_provider({CONF_APP_NAME: app_name} if app_name else {})
+    return publish_folder_library(_session_content(spark, catalog_scopes), LocalLibraryFiles(), folder, name, version,
+                                  store=(catalog, schema), run=spark_runner(spark), translate=provider.translate_result,
+                                  base=base)
+
+
 def translate(source: str, *, includes: Sequence[str] = (), app_name: Optional[str] = None) -> str:
     """CQL → ELM JSON via the Compiler Service App's ``/translate`` endpoint (`EMIT-INTERCHANGE`).
 

@@ -97,19 +97,10 @@ def test_one_merge_serves_a_staged_view_and_a_single_parameterized_row():
     assert ":resource_json" in row
 
 
-def test_a_save_replaces_a_row_only_while_it_is_unchanged():
-    """DOC-OPEN-SAVE — the guard is on the MATCHED branch, so a row changed since it was read updates nothing."""
-    assert "resource_sha256" not in knowledge_merge_sql("k.m.library", "stg")
-    guarded = knowledge_merge_sql("k.m.library", SINGLE_ROW, unchanged_digest=True)
-    assert "WHEN MATCHED AND sha2(to_json(target.`resource`), 256) = :resource_sha256 THEN UPDATE" in guarded
-
-
-def test_a_new_library_in_a_store_never_replaces_a_row():
-    """DOC-OPEN-SAVE — insert-only has no MATCHED branch, so a (url, version) already there writes nothing."""
-    created = knowledge_merge_sql("k.m.library", SINGLE_ROW, insert_only=True)
-    assert "WHEN MATCHED" not in created and "WHEN NOT MATCHED THEN INSERT" in created
-    with pytest.raises(ValueError):
-        knowledge_merge_sql("k.m.library", SINGLE_ROW, insert_only=True, unchanged_digest=True)
+def test_a_version_already_there_is_replaced():
+    """DEC-PUBLISH-IMMUTABLE — the import and publishing both replace a published (url, version)."""
+    row = knowledge_merge_sql("k.m.library", SINGLE_ROW)
+    assert "WHEN MATCHED THEN UPDATE" in row and "WHEN NOT MATCHED THEN INSERT" in row
 
 
 # --- CONTENT-IMPORT-TARGET-TAG ---------------------------------------------------------------------

@@ -33,12 +33,11 @@ from cql_databricks.compiler.folder_content import folder_libraries, folder_libr
 from cql_databricks.compiler.libraries import FileLibraryProvider, LibraryRef, LibraryResolutionError
 from cql_databricks.compiler.location import Location
 from cql_databricks.compiler.resolve import resolve
-from cql_databricks.data_bindings import KNOWLEDGE_TAG, TERMINOLOGY_TAG, ContentResolver, ResolverError
+from cql_databricks.data_bindings import KNOWLEDGE_TAG, TERMINOLOGY_TAG, ContentResolver
 from cql_databricks.data_bindings.bindings import bind_knowledge_views
 from cql_databricks_common.warehouse import user_session
 from cql_databricks_common.workspace import forwarded_identity, user_client
 
-from ..store_access import store_refusal
 from .data_sources import runtime_location
 
 log = logging.getLogger("cql_databricks_designer")
@@ -62,23 +61,6 @@ def router(*, content: ContentResolver, warehouse: Callable[[], str]) -> APIRout
             "folders": [{"location": f"folder:/Workspace/Users/{email}", "label": "My folder"},
                         {"location": "folder:/Workspace/Shared", "label": "Shared"}],
         }
-
-    @router.get("/api/locations/access")
-    def location_access(location: str) -> JSONResponse:
-        """DOC-EDITABLE-IN-SCOPE — whether the signed-in user can write the tagged store ``location``, asked as them
-        through the warehouse before a library there opens. A folder is not asked: no call states a user's own level
-        on one, so its libraries open editable and a save the user cannot make is refused by Databricks."""
-        at = Location.parse(location)
-        if at.kind != "store":
-            return JSONResponse(status_code=400, content={
-                "error": f"{location}: only a tagged store's access is checked before a library opens"})
-        catalog, schema = at.catalog_schema
-        try:
-            reason = store_refusal(user_session(warehouse()), catalog, schema)
-        except ResolverError as e:
-            log.warning("store access check failed for %s: %s", location, e)
-            return JSONResponse(status_code=502, content={"error": f"Could not check access to {catalog}.{schema}: {e}"})
-        return JSONResponse(content={"writable": reason is None, "reason": reason})
 
     @router.get("/api/folders")
     def folder(path: str) -> JSONResponse:

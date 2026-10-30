@@ -111,17 +111,6 @@ export async function fetchLocations(): Promise<Locations> {
   return (await res.json()) as Locations;
 }
 
-/** DOC-EDITABLE-IN-SCOPE — whether the signed-in user can write a tagged store, and why not. A folder is never
- *  asked (the server refuses one): its libraries open editable and Databricks refuses a save the user cannot make. */
-export interface StoreAccess { writable: boolean; reason: string | null }
-
-export async function fetchStoreAccess(location: string): Promise<StoreAccess> {
-  const res = await fetch(`/api/locations/access?location=${encodeURIComponent(location)}`);
-  const body = await res.json().catch(() => null) as (StoreAccess & { error?: string }) | null;
-  if (!res.ok || !body) throw new Error(body?.error ?? `access check failed: ${res.status}`);
-  return { writable: body.writable, reason: body.reason };
-}
-
 /** DOC-OPEN-SAVE — one workspace folder: its subfolders, and the libraries it holds when it holds CQL. */
 export interface FolderListing {
   path: string;
@@ -591,12 +580,13 @@ export interface SaveBody {
   deleteStale?: string[];
 }
 
-/** What a save answered. `stale` and `conflict` wrote nothing. */
+/** What a save answered. Only `saved` wrote anything. DOC-AUTO-SAVE — CQL that does not compile is written too,
+ *  with no ELM: `compiled` is false and `diagnostics` says why. */
 export type SaveOutcome =
-  | { kind: "saved"; location: string; saved: string[]; deleted: string[]; sha256: string }
+  | { kind: "saved"; location: string; saved: string[]; deleted: string[]; sha256: string; compiled: boolean;
+      diagnostics: string[] }
   | { kind: "stale"; paths: string[] }
   | { kind: "conflict"; error: string }
-  | { kind: "invalid"; error: string; diagnostics: string[] }
   | { kind: "refused"; error: string };
 
 export async function saveLibrary(body: SaveBody): Promise<SaveOutcome> {
@@ -609,8 +599,34 @@ export async function saveLibrary(body: SaveBody): Promise<SaveOutcome> {
   const error = String(answer.error ?? `save failed: ${res.status}`);
   if (res.status === 409 && answer.kind === "stale") return { kind: "stale", paths: answer.paths as string[] };
   if (res.status === 409) return { kind: "conflict", error };
-  if (res.status === 422) return { kind: "invalid", error, diagnostics: (answer.diagnostics as string[]) ?? [] };
   return { kind: "refused", error };
+}
+
+/** DOC-PUBLISH — what publishing did with each library, dependencies first, the one published last
+ *  (`CLIENT-PUBLISH`). */
+export interface PublishSummary {
+  store: string;
+  libraries: { name: string; version: string; url: string;
+               outcome: "published" | "unchanged" | "refused" | "not written"; detail: string[] }[];
+}
+
+/** `refused` wrote nothing; `failed` wrote the libraries the summary marks published, then stopped. */
+export type PublishOutcome =
+  | { kind: "published"; summary: PublishSummary }
+  | { kind: "refused" | "failed"; error: string; summary: PublishSummary | null };
+
+/** DOC-PUBLISH — publish the folder library at `location` into the tagged store `store` (`catalog.schema`), as the
+ *  signed-in user. */
+export async function publishLibrary(body: { location: string; name: string; version: string; store: string }):
+    Promise<PublishOutcome> {
+  // `mutate`: publishing moves the server's revision, which must clear what the page cached from the store.
+  const res = await mutate("/api/libraries/publish", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  });
+  const answer = await res.json().catch(() => ({})) as Record<string, unknown>;
+  if (res.ok) return { kind: "published", summary: answer as unknown as PublishSummary };
+  return { kind: res.status === 400 ? "refused" : "failed", error: String(answer.error ?? `publish failed: ${res.status}`),
+           summary: (answer.summary as PublishSummary | null) ?? null };
 }
 
 /** DOC-OPEN-SAVE — New and Save As: create a library at `location`. New starts from the server's starting CQL
@@ -636,6 +652,5 @@ export async function createLibrary(body: NewBody): Promise<CreateOutcome> {
   if (res.ok) return { kind: "saved", ...(answer as Omit<Extract<SaveOutcome, { kind: "saved" }>, "kind">) };
   const error = String(answer.error ?? `create failed: ${res.status}`);
   if (res.status === 409) return { kind: "conflict", error };
-  if (res.status === 422) return { kind: "invalid", error, diagnostics: (answer.diagnostics as string[]) ?? [] };
   return { kind: "refused", error };
 }

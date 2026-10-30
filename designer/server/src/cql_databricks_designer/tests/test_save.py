@@ -1,11 +1,11 @@
-"""DOC-OPEN-SAVE — saving a library where it was opened: a package folder, or a tagged store in place.
+"""DOC-OPEN-SAVE, DOC-AUTO-SAVE, DOC-EDITABLE-IN-SCOPE — saving a library back to its package folder; a tagged store is
+never written, only copied from.
 
-The folder is a dict standing in for the Workspace API; the store is a fake runner answering the two statements a
-store save runs. Every fixture is synthetic."""
+The folder is a dict standing in for the Workspace API; the store is a fake runner answering the row reads and MERGEs
+publishing runs (`DOC-PUBLISH`, `CLIENT-PUBLISH`, tested whole in the client). Every fixture is synthetic."""
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 
 import pytest
@@ -13,7 +13,7 @@ import pytest
 from cql_databricks.compiler.libraries import LibraryFiles, glob_match
 from cql_databricks.data_bindings import KNOWLEDGE_TAG, Corpus, Library, TaggedSchema
 from cql_databricks_designer.save import (SaveConflict, SaveRefused, SaveRequest, StaleCopies, cql_sha256,
-                                          save_to_folder, save_to_store, with_content)
+                                          save_to_folder)
 
 OLD = "library Measure version '1.0.0'\ndefine X: 1\n"
 NEW = "library Measure version '1.0.0'\ndefine X: 2\n"
@@ -130,15 +130,18 @@ def test_a_new_library_goes_where_a_package_keeps_its_cql():
     assert folder.mkdirs_calls == [f"{F}/cql"] and folder.files[f"{F}/cql/Measure-1.0.0.cql"] == NEW
 
 
-def test_with_content_changes_only_the_cql_and_elm():
-    resource = {**_library(OLD), "description": "kept"}
-    updated = with_content(resource, NEW, ELM)
-    assert updated["description"] == "kept" and resource["content"][0]["data"] == _b64(OLD)
-    assert with_content({"resourceType": "Library"}, NEW, ELM)["content"] == [
-        {"contentType": "text/cql", "data": _b64(NEW)}]
+def test_a_folder_save_of_cql_that_does_not_compile_drops_the_elm_from_every_json_copy():
+    folder = _package()
+    save_to_folder(_request(delete_stale=[f"{F}/CMS1-FHIR.xml", f"{F}/CMS1-FHIR.html",
+                                          f"{F}/resources/library-Measure-1.0.0.xml"]),
+                   F, files=folder, writer=folder, elm=None)
+    library = json.loads(folder.files[f"{F}/resources/library-Measure-1.0.0.json"])
+    bundled = json.loads(folder.files[f"{F}/CMS1-FHIR.json"])["entry"][0]["resource"]
+    assert folder.files[f"{F}/cql/Measure-1.0.0.cql"] == NEW
+    assert library["content"] == bundled["content"] == [{"contentType": "text/cql", "data": _b64(NEW)}]
 
 
-# ── a tagged store, in place ──────────────────────────────────────────────────────────────────────
+# ── a tagged store: read-only, copied from by Save As ──────────────────────────────────────────────────────────────────────
 
 STORE = TaggedSchema(tag=KNOWLEDGE_TAG, name="measures", catalog="k", schema="measures", position=0)
 
@@ -150,45 +153,10 @@ def _corpus(measure=None):
         data_requirements=[], knowledge=STORE, measure=measure)])
 
 
-class _Store:
-    """Answers the read and the guarded MERGE a store save runs."""
-
-    def __init__(self, stored, updated=1):
-        self.stored, self.updated, self.statements = stored, updated, []
-
-    def __call__(self, sql, params=None):
-        self.statements.append((sql, params or {}))
-        if sql.startswith("SELECT to_json(resource)"):
-            return [{"resource": self.stored, "source_package": "pkg", "source_year": 2026}]
-        return [{"num_affected_rows": self.updated, "num_updated_rows": self.updated, "num_inserted_rows": 0}]
-
-
-def test_a_store_save_replaces_the_row_only_while_it_is_unchanged():
-    stored = json.dumps(_library(OLD))
-    run = _Store(stored)
-    out = save_to_store(_request(), ("k", "measures"), corpus=_corpus(), run=run, elm=ELM)
-    merge, params = run.statements[1]
-    assert "MERGE INTO `k`.`measures`.`library`" in merge and ":resource_sha256" in merge
-    assert params["resource_sha256"] == hashlib.sha256(stored.encode()).hexdigest()
-    written = json.loads(params["resource_json"])
-    assert base64.b64decode(written["content"][0]["data"]).decode() == NEW
-    assert (params["source_package"], params["source_lineage"]) == ("pkg", "designer")
-    assert out["location"] == "store:k.measures"
-
-
-def test_a_store_row_changed_by_someone_else_is_not_overwritten():
-    with pytest.raises(SaveConflict):   # the CQL in the row is not what was opened
-        save_to_store(_request(), ("k", "measures"), corpus=_corpus(), run=_Store(json.dumps(_library(NEW))), elm=ELM)
-    with pytest.raises(SaveConflict):   # changed between the read and the MERGE
-        save_to_store(_request(), ("k", "measures"), corpus=_corpus(), run=_Store(json.dumps(_library(OLD)), 0), elm=ELM)
-
-
-def test_a_store_save_never_creates_a_library():
-    with pytest.raises(SaveRefused, match="save a new library to a folder"):
-        save_to_store(_request(name="Other"), ("k", "measures"), corpus=_corpus(), run=_Store("{}"), elm=ELM)
-
-
 # ── the route ─────────────────────────────────────────────────────────────────────────────────────
+
+reloads: list[int] = []
+
 
 def _route(monkeypatch, folder, *, compiles=True):
     from types import SimpleNamespace
@@ -200,7 +168,7 @@ def _route(monkeypatch, folder, *, compiles=True):
     monkeypatch.setattr(save_routes, "WorkspaceFolderWriter", lambda client: folder)
     compiler = SimpleNamespace(translate=lambda cql, includes: {
         "ok": compiles, "elm": ELM if compiles else None, "diagnostics": [] if compiles else ["Syntax error at 2:9"]})
-    content = SimpleNamespace(corpus=_corpus)
+    content = SimpleNamespace(corpus=_corpus, knowledge_sources=lambda: [STORE], reload=lambda: reloads.append(1))
     app = FastAPI()
     app.include_router(save_routes.router(compiler=compiler, content=content, warehouse=lambda: "wh"))
     return TestClient(app)
@@ -209,11 +177,15 @@ def _route(monkeypatch, folder, *, compiles=True):
 BODY = {"location": f"folder:{F}", "name": "Measure", "version": "1.0.0", "cql": NEW, "baseSha256": cql_sha256(OLD)}
 
 
-def test_the_route_refuses_cql_that_does_not_compile(monkeypatch):
+def test_the_route_writes_cql_that_does_not_compile_and_says_why(monkeypatch):
+    # DOC-AUTO-SAVE — every edit is written, whether or not it compiles.
     folder = _package()
-    response = _route(monkeypatch, folder, compiles=False).post("/api/libraries/save", json=BODY)
-    assert response.status_code == 422 and response.json()["diagnostics"] == ["Syntax error at 2:9"]
-    assert folder.files[f"{F}/cql/Measure-1.0.0.cql"] == OLD
+    client = _route(monkeypatch, folder, compiles=False)
+    asked = client.post("/api/libraries/save", json=BODY)
+    response = client.post("/api/libraries/save", json={**BODY, "deleteStale": asked.json()["paths"]})
+    assert response.status_code == 200
+    assert (response.json()["compiled"], response.json()["diagnostics"]) == (False, ["Syntax error at 2:9"])
+    assert folder.files[f"{F}/cql/Measure-1.0.0.cql"] == NEW
 
 
 def test_the_route_asks_before_deleting_and_saves_once_told(monkeypatch):
@@ -223,8 +195,31 @@ def test_the_route_asks_before_deleting_and_saves_once_told(monkeypatch):
     assert asked.status_code == 409 and asked.json()["kind"] == "stale"
     saved = client.post("/api/libraries/save", json={**BODY, "deleteStale": asked.json()["paths"]})
     assert saved.status_code == 200 and folder.files[f"{F}/cql/Measure-1.0.0.cql"] == NEW
+    assert (saved.json()["compiled"], saved.json()["diagnostics"]) == (True, [])
     again = client.post("/api/libraries/save", json=BODY)   # the base is now out of date
     assert again.status_code == 409 and again.json()["kind"] == "conflict"
+
+
+def test_the_route_never_writes_a_tagged_store(monkeypatch):
+    # DOC-EDITABLE-IN-SCOPE — a store is published and read-only in the Designer; New and Save As go to a folder.
+    client = _route(monkeypatch, _package())
+    saved = client.post("/api/libraries/save", json={**BODY, "location": "store:k.measures"})
+    created = client.post("/api/libraries/new", json={"location": "store:k.measures", "name": "Screening",
+                                                      "version": "0.1.0", "kind": "library"})
+    for response in (saved, created):
+        assert response.status_code == 400 and "save a copy to a workspace folder" in response.json()["error"]
+
+
+def test_save_as_copies_a_library_from_a_store_into_a_folder(monkeypatch):
+    monkeypatch.setenv("CQL_CANONICAL_BASE", BASE)
+    folder = _package()
+    response = _route(monkeypatch, folder).post("/api/libraries/new", json={
+        "location": f"folder:{P}", "name": "MyCopy", "version": "0.1.0", "cql": OLD,
+        "copyOf": {"location": "store:k.measures", "name": "Measure", "version": "1.0.0"}})
+    assert response.status_code == 200, response.json()
+    library = json.loads(folder.files[f"{P}/resources/library-MyCopy-0.1.0.json"])
+    assert library["relatedArtifact"] == [{"type": "derived-from",
+                                           "resource": "https://example.org/Library/Measure|1.0.0"}]
 
 
 def test_the_route_refuses_cql_that_names_another_library(monkeypatch):
@@ -314,47 +309,6 @@ def test_a_name_that_cannot_be_a_file_or_a_url_is_refused():
             check_identity(name, version)
 
 
-class _NewStore:
-    """Answers the Measure key check and the insert-only MERGEs a store create runs."""
-
-    def __init__(self, *, measure_held=False, inserted=1):
-        self.measure_held, self.inserted, self.statements = measure_held, inserted, []
-
-    def __call__(self, sql, params=None):
-        self.statements.append((sql, params or {}))
-        if sql.startswith("SELECT 1"):
-            return [{"held": 1}] if self.measure_held else []
-        return [{"num_affected_rows": self.inserted, "num_updated_rows": 0, "num_inserted_rows": self.inserted}]
-
-
-def test_a_new_measure_in_a_store_inserts_its_library_and_measure_rows():
-    from cql_databricks_designer.save import create_in_store
-    run = _NewStore()
-    out = create_in_store(_new(), ("k", "measures"), corpus=_corpus(), run=run, elm=ELM, base=BASE)
-    merges = [(sql, params) for sql, params in run.statements if "MERGE" in sql]
-    assert [sql.split("AS target")[0].split("INTO")[1].strip() for sql, _ in merges] == [
-        "`k`.`measures`.`library`", "`k`.`measures`.`measure`"]
-    assert all("WHEN MATCHED" not in sql for sql, _ in merges)
-    assert json.loads(merges[0][1]["resource_json"])["url"] == f"{BASE}/Library/Screening"
-    assert merges[0][1]["source_lineage"] == "designer"
-    assert out["location"] == "store:k.measures" and len(out["saved"]) == 2
-
-
-def test_a_store_create_writes_nothing_over_what_is_there():
-    from cql_databricks_designer.save import create_in_store
-    with pytest.raises(SaveConflict, match="already in"):   # the store holds the library by name and version
-        create_in_store(_new(name="Measure", version="1.0.0", cql=OLD), ("k", "measures"), corpus=_corpus(),
-                        run=_NewStore(), elm=ELM, base=BASE)
-    run = _NewStore(measure_held=True)
-    with pytest.raises(SaveConflict):   # the Measure key is taken: nothing is written
-        create_in_store(_new(), ("k", "measures"), corpus=_corpus(), run=run, elm=ELM, base=BASE)
-    assert not any("MERGE" in sql for sql, _ in run.statements)
-    with pytest.raises(SaveConflict):   # the Library (url, version) is taken: the insert-only MERGE wrote nothing
-        create_in_store(_new(), ("k", "measures"), corpus=_corpus(), run=_NewStore(inserted=0), elm=ELM, base=BASE)
-    with pytest.raises(SaveRefused, match="not a tagged knowledge store"):
-        create_in_store(_new(), ("k", "other"), corpus=_corpus(), run=_NewStore(), elm=ELM, base=BASE)
-
-
 NEW_BODY = {"location": f"folder:{P}", "name": "Screening", "version": "0.1.0"}
 
 
@@ -392,3 +346,58 @@ def test_the_route_refuses_a_new_library_with_no_base(monkeypatch):
     monkeypatch.delenv("CQL_CANONICAL_BASE", raising=False)
     with pytest.raises(RuntimeError, match="canonical_base"):
         _route(monkeypatch, _Folder({})).post("/api/libraries/new", json=NEW_BODY)
+
+
+# ── Publish ──────────────────────────────────────────────────────────────────────────────────────
+
+class _PublishStore:
+    """The store's rows by (url, version), read and MERGEd as the client's publish does."""
+
+    def __init__(self, fail=False):
+        self.rows, self.fail, self.merged = {}, fail, []
+
+    def __call__(self, sql, params=None):
+        if sql.startswith("SELECT"):
+            held = self.rows.get((params["url"], params["version"]))
+            return [{"resource": json.dumps(held)}] if held else []
+        if self.fail:
+            raise RuntimeError("PERMISSION_DENIED")
+        resource = json.loads(params["resource_json"])
+        self.rows[(resource["url"], resource["version"])] = resource
+        self.merged.append(resource["resourceType"])
+        return [{"num_affected_rows": 1}]
+
+
+def _publishing(monkeypatch, store):
+    from cql_databricks_designer.routes import save as save_routes
+    monkeypatch.setenv("CQL_CANONICAL_BASE", BASE)
+    monkeypatch.setattr(save_routes, "user_session", lambda warehouse: store)
+    folder = _package()
+    folder.files[f"{F}/resources/measure-Measure-1.0.0.json"] = json.dumps({**MEASURE, "url": f"{BASE}/Measure/M"})
+    reloads.clear()
+    return _route(monkeypatch, folder)
+
+
+PUBLISH = {"location": f"folder:{F}", "name": "Measure", "version": "1.0.0", "store": "k.measures"}
+
+
+def test_publish_writes_the_folder_library_into_the_store_as_the_user(monkeypatch):
+    # DOC-PUBLISH — through the client's publish (CLIENT-PUBLISH), then the corpus is read again.
+    store = _PublishStore()
+    response = _publishing(monkeypatch, store).post("/api/libraries/publish", json=PUBLISH)
+    assert response.status_code == 200, response.json()
+    assert [(lib["name"], lib["outcome"]) for lib in response.json()["libraries"]] == [("Measure", "published")]
+    assert store.merged == ["Library", "Measure"] and reloads == [1]
+    again = _publishing(monkeypatch, store).post("/api/libraries/publish", json=PUBLISH)
+    assert [lib["outcome"] for lib in again.json()["libraries"]] == ["unchanged"]
+
+
+def test_publish_says_what_was_refused_and_what_failed(monkeypatch):
+    client = _publishing(monkeypatch, _PublishStore())
+    refused = client.post("/api/libraries/publish", json={**PUBLISH, "store": "k.other"})
+    assert refused.status_code == 400 and "not a tagged knowledge store" in refused.json()["error"]
+    from_store = client.post("/api/libraries/publish", json={**PUBLISH, "location": "store:k.measures"})
+    assert from_store.status_code == 400
+    failed = _publishing(monkeypatch, _PublishStore(fail=True)).post("/api/libraries/publish", json=PUBLISH)
+    assert failed.status_code == 502 and failed.json()["summary"]["libraries"][0]["outcome"] == "refused"
+    assert reloads == [1]

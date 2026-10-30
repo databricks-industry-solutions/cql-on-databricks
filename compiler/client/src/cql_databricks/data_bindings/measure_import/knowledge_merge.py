@@ -1,8 +1,8 @@
-"""CONTENT-INCREMENTAL, DOC-OPEN-SAVE — the one MERGE that writes a knowledge row, keyed on FHIR ``(url, version)``.
+"""CONTENT-INCREMENTAL, CLIENT-PUBLISH — the one MERGE that writes a knowledge row, keyed on FHIR ``(url, version)``.
 
-The import stages rows in a Spark view; the Designer's Save stages one row as SQL parameters on a warehouse. Both
-hand this the staged relation, so there is one statement for what a knowledge row is and how it is written. No
-Spark import here: the Designer has none.
+The import stages rows in a Spark view; publishing a library (`library_publish.py`) stages one row as SQL parameters,
+on Spark or a warehouse. Both hand this the staged relation, so there is one statement for what a knowledge row is
+and how it is written. No Spark import here: a warehouse caller has none.
 
 A staged relation has the columns ``resource_json, source_package, source_year, source_lineage, ingested_at``.
 """
@@ -32,21 +32,11 @@ SINGLE_ROW = ("(SELECT :resource_json AS resource_json, :source_package AS sourc
               ":ingested_at AS ingested_at)")
 
 
-def knowledge_merge_sql(table: str, staged: str, *, unchanged_digest: bool = False, insert_only: bool = False) -> str:
+def knowledge_merge_sql(table: str, staged: str) -> str:
     """The MERGE of ``staged`` into the knowledge ``table``: new versions insert, an existing version's payload and
-    provenance are replaced.
-
-    ``unchanged_digest`` (DOC-OPEN-SAVE) replaces an existing row only while its resource still hashes to the
-    ``:resource_sha256`` parameter, so a save over a row someone else changed since it was read updates nothing. The
-    caller reads ``num_updated_rows`` to tell.
-
-    ``insert_only`` (DOC-OPEN-SAVE) never replaces a row: a new library saved into a store inserts, and one whose
-    ``(url, version)`` is already there writes nothing. The caller reads ``num_inserted_rows`` to tell."""
-    if unchanged_digest and insert_only:
-        raise ValueError("a MERGE that never replaces a row has no replace to guard")
-    guard = " AND sha2(to_json(target.`resource`), 256) = :resource_sha256" if unchanged_digest else ""
-    replace = "" if insert_only else f"""
-        WHEN MATCHED{guard} THEN UPDATE SET
+    provenance are replaced (`DEC-PUBLISH-IMMUTABLE`)."""
+    replace = """
+        WHEN MATCHED THEN UPDATE SET
           target.`resource` = source.`resource`,
           target.`source_package` = source.`source_package`,
           target.`source_year` = source.`source_year`,

@@ -1,6 +1,6 @@
 // KNOWLEDGE-LAKE-DIRECT (PROC-TDD) — the SPA library client: record→Definition mapping + fetch.
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { toDefinition, fetchDefinitions, fetchDefineProfile, fetchLibrarySource, fetchMeasureMetrics, fetchStoreAccess, peekDefineProfile } from "./library-client.ts";
+import { toDefinition, fetchDefinitions, fetchDefineProfile, fetchLibrarySource, fetchMeasureMetrics, publishLibrary, peekDefineProfile } from "./library-client.ts";
 import { fetchResults } from "./run-client.ts";
 import type { ResultSetAddress } from "./wire.ts";
 
@@ -71,19 +71,17 @@ describe("figure reads (RUN-CLIENT-RESULT-SETS)", () => {
   });
 });
 
-describe("store access (DOC-EDITABLE-IN-SCOPE)", () => {
+describe("publishLibrary (DOC-PUBLISH)", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("asks for the store and reads the answer", async () => {
-    const fetchMock = vi.fn(async (_url: string) => new Response(JSON.stringify({ writable: false, reason: "You cannot write k.m." })));
-    vi.stubGlobal("fetch", fetchMock);
-    expect(await fetchStoreAccess("store:k.m")).toEqual({ writable: false, reason: "You cannot write k.m." });
-    expect(fetchMock.mock.calls[0]![0]).toBe("/api/locations/access?location=store%3Ak.m");
-  });
-
-  it("throws the server's error when the check could not run", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "Could not check access to k.m: x" }), { status: 502 })));
-    await expect(fetchStoreAccess("store:k.m")).rejects.toThrow("Could not check access to k.m: x");
+  it("reads a refusal and a failed write apart, each with its summary", async () => {
+    const summary = { store: "k.m", libraries: [] };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "no", summary }), { status: 400 })));
+    expect(await publishLibrary({ location: "folder:/x", name: "S", version: "1", store: "k.m" }))
+      .toEqual({ kind: "refused", error: "no", summary });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "denied", summary }), { status: 502 })));
+    expect(await publishLibrary({ location: "folder:/x", name: "S", version: "1", store: "k.m" }))
+      .toEqual({ kind: "failed", error: "denied", summary });
   });
 });
 

@@ -52,7 +52,6 @@ EXPECTED: dict[tuple[str, str], str] = {
     # DOC-OPEN-SAVE, RUN-ADDRESS-LOCATION — where a library can be opened from, and one workspace folder.
     ("/api/locations", "GET"): "locations",
     # DOC-EDITABLE-IN-SCOPE — whether the signed-in user can write a tagged store, asked before a library opens.
-    ("/api/locations/access", "GET"): "location_access",
     ("/api/folders", "GET"): "folder",
     ("/api/libraries/discover", "GET"): "discover",
     ("/api/libraries/{name}/{version}/source", "GET"): "library_source",
@@ -67,6 +66,7 @@ EXPECTED: dict[tuple[str, str], str] = {
     ("/api/libraries/save", "POST"): "save_library",
     # DOC-OPEN-SAVE — New and Save As: create a library at a location, as the signed-in user.
     ("/api/libraries/new", "POST"): "new_library",
+    ("/api/libraries/publish", "POST"): "publish",
     ("/api/libraries/{name}/{version}/defines/{define}/profile", "POST"): "define_profile",
     ("/api/libraries/{name}/{version}/metrics", "POST"): "measure_metrics",
     ("/api/libraries/{name}/{version}/reads", "POST"): "read_metrics",
