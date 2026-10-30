@@ -1,0 +1,22 @@
+Library(TrivialBoolean v1.0.0)
+  UsingDef(System)
+  ExpressionDef(AgeThreshold, ctx=Unfiltered)
+    Literal(18: Integer)
+  ExpressionDef(PatientAgeForTest, ctx=Unfiltered)
+    Literal(42: Integer)
+  ExpressionDef(MeetsThreshold, ctx=Unfiltered)
+    GreaterOrEqual
+      ExpressionRef(PatientAgeForTest)
+      ExpressionRef(AgeThreshold)
+  ExpressionDef(InInitialPopulation, ctx=Unfiltered)
+    And
+      ExpressionRef(MeetsThreshold)
+      Literal(true: Boolean)
+  ExpressionDef(InDenominator, ctx=Unfiltered)
+    ExpressionRef(InInitialPopulation)
+  ExpressionDef(InNumerator, ctx=Unfiltered)
+    And
+      ExpressionRef(InInitialPopulation)
+      Less
+        ExpressionRef(PatientAgeForTest)
+        Literal(65: Integer)

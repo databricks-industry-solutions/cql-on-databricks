@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cql-databricks-synth"
+version = "0.1.0"
+description = "Patient Data Synthesizer — coverage-directed synthetic cohorts from measure ELM (SYNTH-PDS-MODULE)"
+requires-python = ">=3.10"
+license = { text = "Databricks License" }
+authors = [{ name = "Databricks, Inc." }]
+# The generation core is dependency-free (stdlib only): it needs no third-party packages and no
+# network egress, so it runs in locked-down environments (SYNTH-PDS-MODULE).
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+Repository = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+# The `load` subcommand lands a cohort as a CQL on Databricks Data Source. It imports the app
+# server's seams (seed_fhir reshape, seed constants, the shared workspace client) plus
+# databricks-connect — run it from the app venv, which has all of these.
+
+[project.scripts]
+cql-synth = "cql_databricks_synth.__main__:main"
+
+# src layout (PyPA's recommendation), matching every other component in this repository -- the JVM
+# projects and the web bundle all keep their sources under `src/`. It also closes a real bug class: with a
+# flat layout, `import <pkg>` from the repository root resolves the WORKING TREE rather than the installed
+# distribution, so the tests can pass while the built wheel is broken. This project has already shipped a
+# wheel missing declared package data once.
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cql_databricks_synth*"]
+
+[tool.setuptools.package-data]
+cql_databricks_synth = ["pins.json", "tests/__fixtures__/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/cql_databricks_synth/tests"]

@@ -1,0 +1,39 @@
+# The agent's skills (BUILD-TAXONOMY, SVC-MCP-SKILLS, DEPLOY-AGENT-SKILLS): one folder per skill, each a
+# standard `SKILL.md` with `name` and `description` frontmatter over its body.
+#
+# One definition, three readers: the server serves each file verbatim through `get_skill`, and the deploy
+# publishes the same file as a Unity Catalog skill (Genie One) and to the workspace skills folder (Genie Code).
+#
+# The package IS this folder (`package-dir` below), so the skills sit at the top of the component rather than
+# under `src/`, and `__init__.py` beside them is the code that reads them. A skill added here is served by an
+# editable install at once, with no reinstall.
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cql-databricks-agent-skills"
+version = "0.1.0"
+description = "The CQL on Databricks agent's skills, and the code that reads them."
+requires-python = ">=3.10"
+license = { text = "Databricks License" }
+authors = [{ name = "Databricks, Inc." }]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+Repository = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.setuptools]
+packages = ["cql_databricks.agent.skills"]
+
+[tool.setuptools.package-dir]
+"cql_databricks.agent.skills" = "."
+
+# The skill bodies are DATA, and they must be installed, not just present in a checkout: `get_skill` returns
+# the file verbatim, so a wheel that omitted them would leave the agent answering from no contract at all.
+[tool.setuptools.package-data]
+"cql_databricks.agent.skills" = ["*/SKILL.md"]

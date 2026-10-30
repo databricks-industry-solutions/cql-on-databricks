@@ -1,0 +1,67 @@
+// PHASE-10 (BUILD-COMPILE-SERVICE) — service: the compile-service
+// boundary + a local host for development and tests. compile(request) -> {unresolved Spark Connect plan proto, metadata};
+// the plan proto is extracted SERVER-FREE by reflection off the Connect Dataset (its plan() is the
+// proto.Plan the client would send), so the service depends on the COMPILER ONLY — no runtime, no
+// execution, and it touches NO data (UC governance stays at the executor, BUILD-COMPILE-SERVICE).
+//
+// Locally hostable with zero external dependency (the default host is a JDK com.sun.net.httpserver
+// HttpServer, no-auth on localhost). A platform host (the Databricks App, OAuth-fronted) is a SEPARATE
+// host of this SAME service in the accelerator repo — this module has no platform tie.
+
+dependencies {
+    // The SQL back end (`…cqldatabricks.transpiler.*`, for /compile-sql) is folded into the compiler, so this
+    // one dep carries the front end AND the SQL emitter.
+    implementation project(':compiler:core')
+    // ujson for the HTTP request/response JSON.
+    implementation "com.lihaoyi:ujson_${scalaBinaryVersion}:${upickleVersion}"
+    // Spark Connect client API (SparkSession/DataFrame types) — compileOnly, like the compiler: the host
+    // env supplies the (shaded) client jar at runtime; the service ships none. The plan-proto reflection
+    // needs no Connect type at compile.
+    compileOnly "org.apache.spark:spark-connect-client-jvm_${scalaBinaryVersion}:${sparkVersion}"
+}
+
+// The runnable standalone host (OssCompileHostMain) needs a REAL Connect CLIENT jar at runtime (the
+// service declares it compileOnly, so it is absent from the default runtime classpath). `hostRuntime`
+// EXTENDS the module runtime and adds the client, so Gradle resolves the whole graph as ONE and dedupes
+// transitive Scala (the client pulls scala-library/-reflect on a slightly higher patch than the pinned
+// 2.13.16 — resolving them together yields a SINGLE consistent scala-library; concatenating two
+// independently-resolved configs instead left two on the classpath, which broke scala-reflect at
+// startup). This is the CLIENT jar (connects over `sc://`), never the server jar; it runs in its own
+// JVM, exactly like the conformance test JVM. Confined to `runCompileHost`.
+configurations {
+    hostRuntime { extendsFrom runtimeClasspath }
+}
+dependencies {
+    hostRuntime "org.apache.spark:spark-connect-client-jvm_${scalaBinaryVersion}:${sparkVersion}"
+}
+
+// JDK 17 module opens Spark/Arrow off-heap access needs on the client JVM (mirrors conformance).
+def sparkJvmOpens = [
+    '--add-opens=java.base/java.nio=ALL-UNNAMED',
+    '--add-opens=java.base/sun.nio.ch=ALL-UNNAMED',
+    '--add-opens=java.base/java.lang=ALL-UNNAMED',
+    '--add-opens=java.base/java.util=ALL-UNNAMED',
+    '--add-opens=java.base/java.lang.invoke=ALL-UNNAMED'
+]
+
+// Stand up the local compile host, for development and tests, as a real process (BUILD-COMPILE-SERVICE): a Connect client
+// session against `-Dcqldatabricks.sparkRemote` (default sc://localhost:15002) fronted by the JDK HttpServer.
+// The Python client points its RemoteProvider at the endpoint the host prints on startup.
+//   ./gradlew :compiler:service:runCompileHost                       # ephemeral port, printed
+//   ./gradlew :compiler:service:runCompileHost -Dcqldatabricks.hostPort=8765
+tasks.register('runCompileHost', JavaExec) {
+    group = 'cql'
+    description = 'Run the local compile host (HTTP), for development and tests, as a Connect client against a running server.'
+    classpath = sourceSets.main.output + configurations.hostRuntime
+    mainClass = 'com.databricks.cql.service.OssCompileHostMain'
+    jvmArgs sparkJvmOpens
+    // The Spark URL is a lazy CLIENT handle for building plans; compilation is server-free
+    // (TYPE-OFFLINE-COMPILE), so it need not be reachable. The main defaults it to sc://localhost:15002;
+    // pass through an explicit -Dcqldatabricks.sparkRemote override when present.
+    def sparkRemote = System.getProperty('cqldatabricks.sparkRemote')
+    if (sparkRemote != null) systemProperty 'cqldatabricks.sparkRemote', sparkRemote
+    def hostPort = System.getProperty('cqldatabricks.hostPort')
+    if (hostPort != null) systemProperty 'cqldatabricks.hostPort', hostPort
+    // Keep the console attached so Ctrl-C reaches the JVM and the shutdown hook frees the port.
+    standardInput = System.in
+}

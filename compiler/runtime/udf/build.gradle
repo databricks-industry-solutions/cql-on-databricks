@@ -1,0 +1,34 @@
+// EXEC-UDF-LIBRARY (compiler/docs/execution-model.md): the deployed opaque-UDF catalog JAR.
+//
+// MINIMAL DEPENDENCIES BY DESIGN. This module's compiled classes are SHIPPED to the Spark Connect
+// server at session init (`spark.addArtifact(jar)`, the OSS/local path proven in UdfFeasibilitySpec;
+// UC `CREATE FUNCTION … USING JAR` on Databricks). A UDF whose closure captured an enclosing class
+// would drag that class's transitive deps onto the server (the spike hit this twice with scalatest).
+// So the catalog lives in a standalone no-capture object with NOTHING on the classpath but:
+//   * scala-library (inherited from the root `subprojects` block);
+//   * spark-connect-client-jvm as `compileOnly` — for `Row`/`functions.udf`/`UserDefinedFunction`.
+//     The Spark classes already exist on the server; we ship ONLY our own classes. compileOnly is
+//     never transitive, so a consumer that depends on this module does NOT inherit a Spark dep.
+// It depends on NO other module in this repo (esp. NOT the compiler): the emit<->UDF wire contract
+// (the `__choice` discriminator + `as<Member>` slot naming, EXEC-NATIVE-DISCRIMINATOR) is duplicated
+// here as a documented constant, so no compiler class can ever ride a closure onto the server.
+dependencies {
+    compileOnly "org.apache.spark:spark-connect-client-jvm_${scalaBinaryVersion}:${sparkVersion}"
+}
+
+// EXEC-UDF-LIBRARY version pin (TECH-ELM-INPUT discipline): the JAR version is the project version, so
+// a compiler that emits `cql_choice_nav_*` calls is pinned to the catalog that answers them. Injected as
+// a resource the catalog reads at load time (CqlRuntimeUdfs.Version), rather than hardcoded in source.
+tasks.register('writeVersionResource') {
+    def outDir = layout.buildDirectory.dir('generated-resources')
+    def version = project.version.toString()
+    inputs.property('version', version)
+    outputs.dir(outDir)
+    doLast {
+        def f = outDir.get().file('runtime.version').asFile
+        f.parentFile.mkdirs()
+        f.text = version
+    }
+}
+sourceSets.main.resources.srcDir(layout.buildDirectory.dir('generated-resources'))
+tasks.named('processResources') { dependsOn 'writeVersionResource' }

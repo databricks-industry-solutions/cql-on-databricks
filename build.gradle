@@ -1,0 +1,198 @@
+// Root build configuration shared by every system (TECH-TOOLCHAIN, BUILD-TAXONOMY).
+// Decisions realized here:
+//   TECH-SCALA       Scala for the engine core.
+//   TECH-TOOLCHAIN   Scala 2.13.16 / JDK 17 / Spark 4.1.2 pin (DBR 18 floor).
+//   ARCH-PURITY      the neutrality wall, enforced by `checkNeutrality` below.
+//   PROC-CITE-REQ    requirement ids are cited in code, here included.
+
+plugins {
+    id 'scala'
+}
+
+allprojects {
+    // The group mirrors the PARENT PATH, so that group:name is unique for every project.
+    //
+    // This is load-bearing, not cosmetic. A project's Maven module name is `project.name`, NOT
+    // `archivesName` — so with one shared group, two projects both named `compiler` would
+    // both resolve to `com.databricks.cql:compiler`. Gradle then conflict-resolves them as ONE module and
+    // substitutes a project for itself, which surfaces as a circular dependency between a project's
+    // `compileJava` and its own `jar`. Deriving the group from the parent path keeps the subject name
+    // reusable across components without collision.
+    group = (['com.databricks.cql'] + project.path.tokenize(':').dropRight(1)).join('.')
+    version = '0.0.0-phase0'
+
+    // Maven Central is the DEFAULT so that a fresh clone — and a fork's CI — builds with no
+    // internal access of any kind. Pass `-PmavenRepoUrl=<url>` (or set it in gradle.properties) to
+    // redirect to an approved mirror behind a corporate proxy. Credentials are optional: a mirror
+    // that needs Basic auth reads them from the MAVEN_REPO_USER / MAVEN_REPO_TOKEN environment
+    // variables, so no credential is ever committed and an anonymous mirror needs neither.
+    repositories {
+        def mirror = providers.gradleProperty('mavenRepoUrl').getOrNull()
+        if (mirror) {
+            def user  = providers.environmentVariable('MAVEN_REPO_USER').getOrNull()
+            def token = providers.environmentVariable('MAVEN_REPO_TOKEN').getOrNull()
+            maven {
+                url = mirror
+                if (user && token) {
+                    credentials {
+                        username = user
+                        password = token
+                    }
+                }
+            }
+        } else {
+            mavenCentral()
+        }
+    }
+}
+
+subprojects {
+    apply plugin: 'scala'
+
+    // Published artifacts carry the product name; the directory inside the repo stays short.
+    // The name carries the FULL path, so `:compiler:service` does not collide with the library's jar.
+    // ONE exception: `:compiler:core` publishes as `cql-databricks-compiler`, because the compiler
+    // library is the artifact an outside consumer would name, and `-core` is a component role that
+    // means nothing outside this repository.
+    // The components MERGE-COMPILER-FEATURE moved under `compiler/` keep the names they published before
+    // (`cql-databricks-runtime-udf`, ...): the uploaded jar's basename is what the registered UC functions
+    // name, so a rename here would be a deployment change hiding inside a directory move.
+    base {
+        def merged = [':compiler:runtime:udf', ':compiler:runtime:uc', ':compiler:conformance']
+        archivesName = project.path == ':compiler:core'
+            ? 'cql-databricks-compiler'
+            : 'cql-databricks' + (project.path in merged ? project.path.replaceFirst(':compiler', '') : project.path).replace(':', '-')
+    }
+
+    // Compile to JDK 17 bytecode (TECH-TOOLCHAIN): runs on the DBR default (Zulu 17) and
+    // forward-compatibly on 21.
+    java {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    dependencies {
+        implementation "org.scala-lang:scala-library:${scalaVersion}"
+
+        // Test stack: ScalaTest driven through the JUnit platform so Gradle's built-in `test`
+        // task runs it without an external Gradle plugin.
+        testImplementation "org.scalatest:scalatest_${scalaBinaryVersion}:${scalatestVersion}"
+        testImplementation "org.scalatestplus:junit-4-13_${scalaBinaryVersion}:${scalatestVersion}.0"
+        testImplementation "junit:junit:4.13.2"
+        // Run JUnit4-style ScalaTest suites under the JUnit Platform (Gradle 9 needs the
+        // launcher explicitly on the test runtime classpath).
+        testRuntimeOnly "org.junit.vintage:junit-vintage-engine:5.10.2"
+        testRuntimeOnly "org.junit.platform:junit-platform-launcher:1.10.2"
+    }
+
+    tasks.withType(ScalaCompile).configureEach {
+        scalaCompileOptions.additionalParameters = [
+            '-deprecation',
+            '-feature',
+            '-unchecked',
+            // ARCH-ROBUSTNESS pillar 1: sealed ADT + no default case must be a hard error, so a
+            // non-exhaustive match over the kernel fails the build.
+            '-Xfatal-warnings',
+            '-Wconf:cat=other-match-analysis:e'
+        ]
+    }
+
+    test {
+        useJUnitPlatform()
+        testLogging {
+            events 'passed', 'skipped', 'failed'
+            exceptionFormat 'full'
+        }
+    }
+
+    // Scala API documentation. The source is heavily annotated with requirement ids
+    // (PROC-CITE-REQ), so the generated docs read as a requirement-traced API reference.
+    tasks.withType(ScalaDoc).configureEach {
+        title = "CQL on Databricks — ${project.name} ${project.version}"
+    }
+}
+
+// ARCH-PURITY, decision 1: the neutrality wall, enforced by the build rather than by review.
+//
+// `compiler` and `runtime` must keep compiling and running on open-source Apache Spark, so they stay
+// testable on a local Spark server. No Databricks or platform artifact may resolve into either — not
+// directly, and not transitively, which is why this walks the fully resolved runtime classpath rather
+// than the declared dependencies. The Python client is outside this wall (decision 10).
+//
+// A breach fails CI. If this task ever seems to be in the way, that is the signal to argue the
+// architecture in a PR, not to widen the allowlist.
+def NEUTRAL_PROJECTS = [':compiler:core', ':compiler:runtime:udf']
+def FORBIDDEN_DEPS = ['databricks-sdk', 'databricks-connect', 'databricks-jdbc', 'unitycatalog']
+
+tasks.register('checkNeutrality') {
+    group = 'verification'
+    description = 'Fail if a Databricks/platform dependency resolves into a platform-neutral project (ARCH-PURITY).'
+    def offenders = []
+    dependsOn NEUTRAL_PROJECTS.collect { "${it}:classes" }
+    doLast {
+        NEUTRAL_PROJECTS.each { projectPath ->
+            def neutral = project(projectPath)
+            neutral.configurations.matching { it.canBeResolved }.each { cfg ->
+                def ids
+                try {
+                    ids = cfg.incoming.resolutionResult.allComponents*.id*.displayName
+                } catch (ignored) {
+                    return  // an unresolvable-in-isolation configuration tells us nothing
+                }
+                ids.each { id ->
+                    def lower = id.toLowerCase()
+                    FORBIDDEN_DEPS.each { bad ->
+                        if (lower.contains(bad)) offenders << "${projectPath} (${cfg.name}) -> ${id}"
+                    }
+                }
+            }
+        }
+        if (offenders) {
+            throw new GradleException(
+                "ARCH-PURITY breach: a platform dependency reached a platform-neutral project.\n  " +
+                offenders.unique().join('\n  ') +
+                "\n\nThe compiler and runtime must build and run on open-source Apache Spark. Move the " +
+                "platform concern downstream (service/app/client) rather than widening this check.")
+        }
+        logger.lifecycle("ARCH-PURITY: ${NEUTRAL_PROJECTS.join(', ')} are free of platform dependencies.")
+    }
+}
+
+// BUILD-CLIENT: the cql-databricks (Python) unit tests, run with the repo-root dev venv (`scripts/setup.sh`).
+// The tests import the Databricks SDK and pytest helpers, which a bare system python3 does not have; the
+// venv is the one interpreter every other Python lane uses. A missing venv fails the task, naming the fix.
+// Its own task rather than wired into every build, so a python-less host can still build the Scala
+// systems; `checkAll` includes it.
+tasks.register('clientTest', Exec) {
+    group = 'verification'
+    description = 'Run the cql-databricks (Python) client unit tests.'
+    workingDir = file('compiler/client')
+    def venvPython = file("${rootDir}/.venv/bin/python")
+    doFirst {
+        if (!venvPython.canExecute()) {
+            throw new GradleException("BUILD-CLIENT: ${venvPython} is missing — run scripts/setup.sh")
+        }
+    }
+    // PYTHONPATH=src because the package lives under `src/` (src layout): this lane imports the WORKING
+    // TREE, while the venv's installed packages supply the dependencies.
+    environment 'PYTHONPATH', 'src'
+    commandLine venvPython.path, '-m', 'unittest', 'discover', '-s', 'tests', '-t', '.'
+}
+
+tasks.register('checkAll') {
+    group = 'verification'
+    description = 'The gate: neutrality wall + every project\'s tests + the client tests.'
+    dependsOn 'checkNeutrality'
+    dependsOn subprojects.collect { "${it.path}:test" }
+    dependsOn 'clientTest'
+}
+
+// Aggregate entry point for generating every system's API docs.
+tasks.register('aggregateScaladoc') {
+    group = 'documentation'
+    description = 'Generate Scala API docs (scaladoc) for every project.'
+    dependsOn subprojects.collect { "${it.path}:scaladoc" }
+    doLast {
+        println 'Scala API docs generated under each project: <project>/build/docs/scaladoc/index.html'
+    }
+}

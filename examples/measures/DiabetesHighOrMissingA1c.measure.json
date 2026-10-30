@@ -1,0 +1,111 @@
+{
+  "resourceType": "Measure",
+  "id": "DiabetesHighOrMissingA1c",
+  "url": "http://example.org/fhir/Measure/DiabetesHighOrMissingA1c",
+  "version": "1.0.0",
+  "name": "DiabetesHighOrMissingA1c",
+  "title": "Diabetes: HbA1c above 9% or missing",
+  "status": "active",
+  "experimental": true,
+  "publisher": "CQL on Databricks examples",
+  "description": "Adults 18 to 75 with diabetes whose most recent HbA1c in the measurement period is above 9%, has no result, or who had no HbA1c test in the period. An example measure, written for this repository; not a published measure.",
+  "rationale": "Poorly controlled blood sugar raises the risk of diabetes complications, and a missing test is a gap in care.",
+  "guidance": "An inverse measure: a lower rate is better. A test with no result, or no test in the period, counts as poor control. Patients in hospice or palliative care are excluded.",
+  "library": [
+    "http://example.org/fhir/Library/DiabetesHighOrMissingA1c"
+  ],
+  "scoring": {
+    "coding": [
+      {
+        "system": "http://terminology.hl7.org/CodeSystem/measure-scoring",
+        "code": "proportion"
+      }
+    ]
+  },
+  "type": [
+    {
+      "coding": [
+        {
+          "system": "http://terminology.hl7.org/CodeSystem/measure-type",
+          "code": "outcome"
+        }
+      ]
+    }
+  ],
+  "improvementNotation": {
+    "coding": [
+      {
+        "system": "http://terminology.hl7.org/CodeSystem/measure-improvement-notation",
+        "code": "decrease"
+      }
+    ]
+  },
+  "group": [
+    {
+      "extension": [
+        {
+          "url": "http://hl7.org/fhir/us/cqfmeasures/StructureDefinition/cqfm-populationBasis",
+          "valueCode": "boolean"
+        }
+      ],
+      "population": [
+        {
+          "code": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/measure-population",
+                "code": "initial-population"
+              }
+            ]
+          },
+          "criteria": {
+            "language": "text/cql-identifier",
+            "expression": "Initial Population"
+          }
+        },
+        {
+          "code": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/measure-population",
+                "code": "denominator"
+              }
+            ]
+          },
+          "criteria": {
+            "language": "text/cql-identifier",
+            "expression": "Denominator"
+          }
+        },
+        {
+          "code": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/measure-population",
+                "code": "denominator-exclusion"
+              }
+            ]
+          },
+          "criteria": {
+            "language": "text/cql-identifier",
+            "expression": "Denominator Exclusions"
+          }
+        },
+        {
+          "code": {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/measure-population",
+                "code": "numerator"
+              }
+            ]
+          },
+          "criteria": {
+            "language": "text/cql-identifier",
+            "expression": "Numerator"
+          }
+        }
+      ]
+    }
+  ]
+}

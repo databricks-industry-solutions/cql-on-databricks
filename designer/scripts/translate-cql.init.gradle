@@ -1,0 +1,15 @@
+// Gradle init script for build-ui-fixtures.sh: registers `translateCql` on :compiler:conformance, the
+// same CqlToElmCli the conformance corpus is translated with, over a caller-chosen directory.
+//   ./gradlew -I designer/scripts/translate-cql.init.gradle :compiler:conformance:translateCql \
+//     -PcqlDir=<dir of .cql> -PelmDir=<output dir>
+allprojects {
+  afterEvaluate { p ->
+    if (p.path == ':compiler:conformance') {
+      p.tasks.register('translateCql', JavaExec) {
+        classpath = p.sourceSets.main.runtimeClasspath
+        mainClass = 'com.databricks.cql.translate.CqlToElmCli'
+        args = [p.property('cqlDir'), p.property('elmDir')]
+      }
+    }
+  }
+}

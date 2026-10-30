@@ -1,0 +1,38 @@
+# The agent's service (BUILD-TAXONOMY, SVC-MCP-TOOLS): the tools, as plain functions over the client.
+#
+# Host-agnostic: no MCP, no HTTP, no App. Each tool takes what it reads through as an argument (a SQL runner,
+# a corpus, a warehouse seam), and the server supplies those as the signed-in user (`SEC-OBO`).
+# `tests/test_host_agnostic.py` refuses an import of anything that hosts it.
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cql-databricks-agent-service"
+version = "0.1.0"
+description = "The CQL on Databricks agent's tools, as host-agnostic functions over the client."
+requires-python = ">=3.10"
+license = { text = "Databricks License" }
+authors = [{ name = "Databricks, Inc." }]
+dependencies = [
+    # RESULT-INTO-CLIENT, DATA-BINDINGS — result selections, scoring, the knowledge corpus and inline runs,
+    # read through the client rather than its internals.
+    "cql-databricks",
+]
+
+[project.urls]
+Homepage = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+Repository = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+# src layout (PyPA's recommendation), matching every other component in this repository. With a flat
+# layout, `import <pkg>` from the component root resolves the WORKING TREE rather than the installed
+# distribution, so the tests can pass while the built wheel is broken.
+# BUILD-CLIENT-NAMESPACE: `cql_databricks` and `cql_databricks.agent` are PEP 420 namespaces with no
+# `__init__.py`; the server and the skills ship the other two packages under `cql_databricks.agent`.
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cql_databricks.agent.service*"]
+namespaces = true

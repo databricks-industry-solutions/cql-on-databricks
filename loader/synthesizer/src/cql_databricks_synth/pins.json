@@ -1,0 +1,366 @@
+{
+ "AdultFluImmunization": {
+  "config": {
+   "path": "examples/measures/AdultFluImmunization.synth.json",
+   "sha256": "ec1a6cd17b67a6b4a35726f76a4f67425f1355cfa4a533393444d78cb875908d"
+  },
+  "cql": [
+   {
+    "emitElm": true,
+    "path": "examples/measures/AdultFluImmunization.cql",
+    "sha256": "c512595993c3ac06a36f284786d9eac42a2ba529c0a4d4f718d7253c02fc10d6"
+   },
+   {
+    "emitElm": true,
+    "path": "examples/measures/MeasureCommon.cql",
+    "sha256": "dcfbd0345f2befb150e1e4fcc12c1635984657ec0793b661ce0034999ac4f383"
+   },
+   {
+    "emitElm": false,
+    "path": "examples/measures/FHIRHelpers.cql",
+    "sha256": "6748661c16fe66dd07a68f07f77f7fea44e8b933d265dcc3c575964ba8329591"
+   }
+  ],
+  "elm": {
+   "AdultFluImmunization": "115b81e45cf4fd5160fee9b4cd9bd7c3ae2eab98e6af213c2e6f2a3d0bf49f9b",
+   "MeasureCommon": "6bf666da061373c970706b34698fb3667b785800a72ebf6f2025cc08ec1dfe30"
+  },
+  "root": "AdultFluImmunization",
+  "valuesets": {
+   "files": [
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-discharge-to-hospice.ndjson",
+     "sha256": "c8830d3c1c4b29a2f53345734073b7185360244bda244b3de4f494008912373f"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-hospice-care.ndjson",
+     "sha256": "c65ee80ade893f94c5a4cd508f7c0be996cc8b97326d862d32e1a2203e9b4e54"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-influenza-vaccine.ndjson",
+     "sha256": "31a88f0bef0fdf88c17da4144b0bbbc798cde624276d6b8eea990f6b5bf042c8"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-medical-reason-not-given.ndjson",
+     "sha256": "c726c706bc33462255a03cb56e9ad1ddf1ec3aa729ba1892a9b535bca3a14309"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-outpatient-visit.ndjson",
+     "sha256": "dab8e407b4627698634f51dd6c492124cbd747af6b2066ad59f3407095997959"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-palliative-care.ndjson",
+     "sha256": "436fa8b498ab40b4e26f4ca53bb5ac8863f5bc35f4fab6fcd5f415c774c9ec66"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-patient-objection.ndjson",
+     "sha256": "598e5d5535da6d4babfb2959122094bb41c8e90b8443270d7d94d80981e90660"
+    }
+   ],
+   "source": "repo"
+  }
+ },
+ "ColorectalScreening": {
+  "config": {
+   "path": "examples/measures/ColorectalScreening.synth.json",
+   "sha256": "742fae53fd4a552505a276d8b864a8d56b14221e2029371785e477e71e11f522"
+  },
+  "cql": [
+   {
+    "emitElm": true,
+    "path": "examples/measures/ColorectalScreening.cql",
+    "sha256": "06bbf071d82d2bf9a7e80670a3e3d621339d7b7274cb5797b92d89532f3584c1"
+   },
+   {
+    "emitElm": true,
+    "path": "examples/measures/MeasureCommon.cql",
+    "sha256": "dcfbd0345f2befb150e1e4fcc12c1635984657ec0793b661ce0034999ac4f383"
+   },
+   {
+    "emitElm": false,
+    "path": "examples/measures/FHIRHelpers.cql",
+    "sha256": "6748661c16fe66dd07a68f07f77f7fea44e8b933d265dcc3c575964ba8329591"
+   }
+  ],
+  "elm": {
+   "ColorectalScreening": "29fdc65b06f13f346b70a807d0b473f8ee6e586a3d593a65d1a5c6b8552aa473",
+   "MeasureCommon": "6bf666da061373c970706b34698fb3667b785800a72ebf6f2025cc08ec1dfe30"
+  },
+  "root": "ColorectalScreening",
+  "valuesets": {
+   "files": [
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-colonoscopy.ndjson",
+     "sha256": "c3ca4246caad537a9ebedae90066e52f99989d89012ca91303f085865df4840c"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-colorectal-cancer.ndjson",
+     "sha256": "207961ce7d1bf1fecb55638233e2e184889c16d64325b31f40b7e9845d70bd81"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-ct-colonography.ndjson",
+     "sha256": "b0c27b827cfd24c7e5d66ff3ef1c1fe7abb34c99bad4551c6366cbfc72b07ca5"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-discharge-to-hospice.ndjson",
+     "sha256": "c8830d3c1c4b29a2f53345734073b7185360244bda244b3de4f494008912373f"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-fecal-immunochemical-test.ndjson",
+     "sha256": "ebd52140a437290d197ad14b09af095aae30c35a5d2b4c9391b0e04195b6dc14"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-flexible-sigmoidoscopy.ndjson",
+     "sha256": "1c518692167acbcda843a352788dea41be94c89dc6edbce774fb4cdeb3fbb1eb"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-hospice-care.ndjson",
+     "sha256": "c65ee80ade893f94c5a4cd508f7c0be996cc8b97326d862d32e1a2203e9b4e54"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-outpatient-visit.ndjson",
+     "sha256": "dab8e407b4627698634f51dd6c492124cbd747af6b2066ad59f3407095997959"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-palliative-care.ndjson",
+     "sha256": "436fa8b498ab40b4e26f4ca53bb5ac8863f5bc35f4fab6fcd5f415c774c9ec66"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-stool-dna-test.ndjson",
+     "sha256": "fc1c2aeb1bee6d8cbff287adb8019009ff552c85395ebc15488af1a3358d8e34"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-total-colectomy.ndjson",
+     "sha256": "5a0a953103877c35d117620fe7e285a8d1a5b4cfd3207038ad2e212369472fdc"
+    }
+   ],
+   "source": "repo"
+  }
+ },
+ "DiabetesHighOrMissingA1c": {
+  "config": {
+   "path": "examples/measures/DiabetesHighOrMissingA1c.synth.json",
+   "sha256": "2971bf19bc97de9fd3e2431017a055dc2342842af5957e2d4dc1b9fd556e1ba4"
+  },
+  "cql": [
+   {
+    "emitElm": true,
+    "path": "examples/measures/DiabetesHighOrMissingA1c.cql",
+    "sha256": "3fc709bef82e5cbd88173fdb999e42dde1d11cec71e716ad366006fa1fd2313f"
+   },
+   {
+    "emitElm": true,
+    "path": "examples/measures/MeasureCommon.cql",
+    "sha256": "dcfbd0345f2befb150e1e4fcc12c1635984657ec0793b661ce0034999ac4f383"
+   },
+   {
+    "emitElm": false,
+    "path": "examples/measures/FHIRHelpers.cql",
+    "sha256": "6748661c16fe66dd07a68f07f77f7fea44e8b933d265dcc3c575964ba8329591"
+   }
+  ],
+  "elm": {
+   "DiabetesHighOrMissingA1c": "e09b65c900de178f3332cf22fbe4debcaf91fa124a79088a56641e77bd331be7",
+   "MeasureCommon": "6bf666da061373c970706b34698fb3667b785800a72ebf6f2025cc08ec1dfe30"
+  },
+  "root": "DiabetesHighOrMissingA1c",
+  "valuesets": {
+   "files": [
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-diabetes.ndjson",
+     "sha256": "644b0df6c0f36208db495b07e27111246f6294a21f60a64842b3513b73373ffa"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-discharge-to-hospice.ndjson",
+     "sha256": "c8830d3c1c4b29a2f53345734073b7185360244bda244b3de4f494008912373f"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-hba1c-lab-test.ndjson",
+     "sha256": "50a2fc27c0cb2dae3b8b8faabe6a917f3466a63b2db0077a34b7edfcdaae63b9"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-hospice-care.ndjson",
+     "sha256": "c65ee80ade893f94c5a4cd508f7c0be996cc8b97326d862d32e1a2203e9b4e54"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-outpatient-visit.ndjson",
+     "sha256": "dab8e407b4627698634f51dd6c492124cbd747af6b2066ad59f3407095997959"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-palliative-care.ndjson",
+     "sha256": "436fa8b498ab40b4e26f4ca53bb5ac8863f5bc35f4fab6fcd5f415c774c9ec66"
+    }
+   ],
+   "source": "repo"
+  }
+ },
+ "HypertensionBPControl": {
+  "config": {
+   "path": "examples/measures/HypertensionBPControl.synth.json",
+   "sha256": "56e77b538af3890510068646e26915d08b9da3e49c86a928eff95d559bec415d"
+  },
+  "cql": [
+   {
+    "emitElm": true,
+    "path": "examples/measures/HypertensionBPControl.cql",
+    "sha256": "916d3599cac25f1903c7a81bd2a5629ee7d27521f7eb3f3d9b49c31571fcc090"
+   },
+   {
+    "emitElm": true,
+    "path": "examples/measures/MeasureCommon.cql",
+    "sha256": "dcfbd0345f2befb150e1e4fcc12c1635984657ec0793b661ce0034999ac4f383"
+   },
+   {
+    "emitElm": false,
+    "path": "examples/measures/FHIRHelpers.cql",
+    "sha256": "6748661c16fe66dd07a68f07f77f7fea44e8b933d265dcc3c575964ba8329591"
+   }
+  ],
+  "elm": {
+   "HypertensionBPControl": "5f555fbf1195adf6a04ff9218e1280c60f0beacb8f35950c0b3db1050f7d2216",
+   "MeasureCommon": "6bf666da061373c970706b34698fb3667b785800a72ebf6f2025cc08ec1dfe30"
+  },
+  "root": "HypertensionBPControl",
+  "valuesets": {
+   "files": [
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-dialysis-or-kidney-transplant.ndjson",
+     "sha256": "474f16c7b1503301d0191f220ec9060b9812c463b89d6879d59c30c0a3feeb7c"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-discharge-to-hospice.ndjson",
+     "sha256": "c8830d3c1c4b29a2f53345734073b7185360244bda244b3de4f494008912373f"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-essential-hypertension.ndjson",
+     "sha256": "79832f1f9e1451fafb32c6e081c3f5d5536745a289cc6087b5b985b9baa798f0"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-hospice-care.ndjson",
+     "sha256": "c65ee80ade893f94c5a4cd508f7c0be996cc8b97326d862d32e1a2203e9b4e54"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-kidney-failure.ndjson",
+     "sha256": "143c54ec38ab0ee8bc4f059a4ee959ba1e44a76d1d9aae3969b4ef4b8a715068"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-outpatient-visit.ndjson",
+     "sha256": "dab8e407b4627698634f51dd6c492124cbd747af6b2066ad59f3407095997959"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-palliative-care.ndjson",
+     "sha256": "436fa8b498ab40b4e26f4ca53bb5ac8863f5bc35f4fab6fcd5f415c774c9ec66"
+    },
+    {
+     "path": "compiler/conformance/src/test/resources/data/valuesets/valueset-pregnancy.ndjson",
+     "sha256": "09c591738870603982320bf66fe5f97b9c6cda4114c3d22755dc0bc7241a026c"
+    }
+   ],
+   "source": "repo"
+  }
+ },
+ "patterns": {
+  "cql": [
+   {
+    "emitElm": true,
+    "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/patterns/SynthesizerPatterns.cql",
+    "sha256": "983f6d3095f94f7866679600fbc5645634d7e305f43305f6fbf1fc23d88341f7"
+   },
+   {
+    "emitElm": true,
+    "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/patterns/SynthesizerPatternsCommon.cql",
+    "sha256": "628e63637529e47b99155e5fa711bf860333d08e546fec89ff607c330278ebbc"
+   },
+   {
+    "emitElm": false,
+    "path": "examples/measures/FHIRHelpers.cql",
+    "sha256": "6748661c16fe66dd07a68f07f77f7fea44e8b933d265dcc3c575964ba8329591"
+   }
+  ],
+  "elm": {
+   "SynthesizerPatterns": "a7a8a9313fd88545bef6523c66e980a061d5da36200f07f664ca1e211fdb8e9d",
+   "SynthesizerPatternsCommon": "d04eef47eb97ce83e28617ee41c93b285817c1a3fed2f0a1c25eda5b871d20c2"
+  },
+  "root": "SynthesizerPatterns",
+  "valuesets": {
+   "files": [
+    {
+     "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/patterns/valueset-cql-test-patterns-condition.ndjson",
+     "sha256": "403f8f572a8d08328c433d71f0df0e73499851f63771729635b4d92dfebc6f0a"
+    },
+    {
+     "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/patterns/valueset-cql-test-patterns-disposition.ndjson",
+     "sha256": "643cdce1786d789201325fc8c5d6a25ee77f4907de637b1ce7aa22b1c1942cdf"
+    },
+    {
+     "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/patterns/valueset-cql-test-patterns-lab-test.ndjson",
+     "sha256": "d52919cccaeda0057800205f0ca74eb98bc07439bb1706805328aa6f0a0d3abf"
+    },
+    {
+     "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/patterns/valueset-cql-test-patterns-procedure.ndjson",
+     "sha256": "298091d1db8536de7babdf753adb00e1a8cf017d586b6183e3620f35df684376"
+    },
+    {
+     "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/patterns/valueset-cql-test-patterns-reason.ndjson",
+     "sha256": "597a8ddba3be741ad558e00ef856a6cdacb04d1ade99db13e335a75930d7c629"
+    },
+    {
+     "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/patterns/valueset-cql-test-patterns-vaccine.ndjson",
+     "sha256": "02be5518ded6d7502aff34f35ccddbfd66d6bc531780e1a1cbc78f59db7da111"
+    },
+    {
+     "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/patterns/valueset-cql-test-patterns-visit.ndjson",
+     "sha256": "7206c097a147cb624f633a615abc60d156c3ff0ca6313994bddd361fa47949a9"
+    }
+   ],
+   "source": "repo"
+  }
+ },
+ "pilot": {
+  "config": {
+   "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/pilot/SynthesizerPilot.synth.json",
+   "sha256": "a1546b27436149c79ba7ec7c6aea71ce7140e9cd2b7b962299621744a24c8f67"
+  },
+  "cql": [
+   {
+    "emitElm": true,
+    "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/pilot/SynthesizerPilot.cql",
+    "sha256": "4ed470bf78e3a1898a607489c49e73a8839a5c65752caf31bbb90af283d6da97"
+   },
+   {
+    "emitElm": false,
+    "path": "examples/measures/FHIRHelpers.cql",
+    "sha256": "6748661c16fe66dd07a68f07f77f7fea44e8b933d265dcc3c575964ba8329591"
+   }
+  ],
+  "elm": {
+   "SynthesizerPilot": "1a9ec28849f00874417a1507e2267f9216a2acee108271867308ec9e296b55ff"
+  },
+  "root": "SynthesizerPilot",
+  "valuesets": {
+   "files": [
+    {
+     "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/pilot/valueset-cql-test-pilot-condition.ndjson",
+     "sha256": "746622ff174fa29635ec1bb3ae8b94fc6aad94f964804bab15590a43268793e5"
+    },
+    {
+     "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/pilot/valueset-cql-test-pilot-exclusion-a.ndjson",
+     "sha256": "0a3911366c3bf49a6654587b09f24d4a2627dd628c61068e9b549c4de13cf940"
+    },
+    {
+     "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/pilot/valueset-cql-test-pilot-exclusion-b.ndjson",
+     "sha256": "71fdba7445734d3e45a871656672a3d181dd7b9baa376a7e88bc453e6b1045e4"
+    },
+    {
+     "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/pilot/valueset-cql-test-pilot-lab-test.ndjson",
+     "sha256": "51718217fc89f5e6021767423d1d9151082b568b986432e163716eaab0d7b54b"
+    },
+    {
+     "path": "loader/synthesizer/src/cql_databricks_synth/tests/__fixtures__/pilot/valueset-cql-test-pilot-visit.ndjson",
+     "sha256": "1a1d169277ffdb210c8042f98f6b69feabbf5247e3837fe4f7c4b435aab5810c"
+    }
+   ],
+   "source": "repo"
+  }
+ }
+}

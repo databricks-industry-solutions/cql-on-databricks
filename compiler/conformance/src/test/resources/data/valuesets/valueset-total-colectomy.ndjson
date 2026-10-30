@@ -1,0 +1,2 @@
+{"valueset_id": "http://example.org/fhir/ValueSet/total-colectomy", "system": "http://www.cms.gov/Medicare/Coding/ICD10", "code": "0DTE0ZZ", "display": "Resection of Large Intestine, Open Approach"}
+{"valueset_id": "http://example.org/fhir/ValueSet/total-colectomy", "system": "http://www.cms.gov/Medicare/Coding/ICD10", "code": "0DTE4ZZ", "display": "Resection of Large Intestine, Percutaneous Endoscopic Approach"}

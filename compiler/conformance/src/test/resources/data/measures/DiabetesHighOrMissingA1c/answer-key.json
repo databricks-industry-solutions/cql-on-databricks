@@ -1,0 +1,350 @@
+{
+  "measure": "DiabetesHighOrMissingA1c",
+  "version": "1.0.0",
+  "measurementPeriod": "Interval[@2026-01-01T00:00:00.000, @2026-12-31T23:59:59.999]",
+  "populations": {
+    "Initial Population": "initial-population",
+    "Denominator": "denominator",
+    "Denominator Exclusions": "denominator-exclusion",
+    "Numerator": "numerator"
+  },
+  "about": "Written for this repository. For each example patient, the value of each population define (1 true, 0 false or null) over the measurement period, and why. These are the defines' own values: a patient can be in the numerator define and also excluded.",
+  "patients": {
+    "pat-001": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-002": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-003": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-004": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-005": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-006": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-007": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-008": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-009": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-010": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-011": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 1,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-012": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-013": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-014": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-015": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-016": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-017": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "HbA1c 7.2% in June: not poorly controlled."
+    },
+    "pat-018": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "8.0% in April, then 9.5% in October: the most recent result is above 9%."
+    },
+    "pat-019": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "10.1% in April, then exactly 9.0% in September: the most recent result is not above 9%."
+    },
+    "pat-020": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "No HbA1c test in the period (the last was November 2025): counted as poor control."
+    },
+    "pat-021": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "An HbA1c test in August with no result: counted as poor control."
+    },
+    "pat-022": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "76 at the end of the period: too old for the diabetes measure."
+    },
+    "pat-023": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 1,
+      "numerator": 1,
+      "why": "Palliative care in April: excluded."
+    },
+    "pat-024": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 0,
+      "why": "The diabetes diagnosis was refuted: not in the initial population."
+    },
+    "pat-025": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "9.1% (amended) in May; the 6.0% in November is only preliminary, so May is the most recent."
+    },
+    "pat-026": {
+      "initial-population": 1,
+      "denominator": 1,
+      "denominator-exclusion": 1,
+      "numerator": 0,
+      "why": "Discharged to hospice in August: excluded."
+    },
+    "pat-027": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-028": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-029": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-030": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-031": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-032": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-033": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-034": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-035": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 1,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-036": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-037": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-038": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-039": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-040": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-041": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-042": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-043": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-044": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-045": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-046": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-047": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    },
+    "pat-048": {
+      "initial-population": 0,
+      "denominator": 0,
+      "denominator-exclusion": 0,
+      "numerator": 1,
+      "why": "Not in this measure's initial population. The numerator define is true on its own, but counts only inside the denominator."
+    }
+  }
+}

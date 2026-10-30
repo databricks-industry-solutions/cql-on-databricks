@@ -1,0 +1,28 @@
+// CONF-GROUND-TRUTH — the CQF CQL engine wired for in-memory evaluation: the conformance oracle, with one set of
+// providers and one value normalization (`DEC-SAME-ANSWER`).
+//
+// Spark-free, and no Databricks artifact: it runs in the conformance harness.
+dependencies {
+    // The translator wiring the compiler uses (the lenient include provider, the bundled FHIRHelpers).
+    implementation project(':compiler:core')
+
+    implementation "com.lihaoyi:ujson_${scalaBinaryVersion}:${upickleVersion}"
+
+    // The cqframework 4.x stack, version-aligned through the BOM, as in `:compiler:conformance`.
+    implementation platform("org.cqframework:cql-bom:${cqlBomVersion}")
+    implementation "org.cqframework:cql-to-elm-jvm"
+    implementation "org.cqframework:engine-jvm"
+    implementation "org.cqframework:engine-fhir"
+    implementation "org.cqframework:quick"
+    implementation "org.cqframework:ucum"
+    implementation "ca.uhn.hapi.fhir:hapi-fhir-base:8.8.1"
+    implementation "ca.uhn.hapi.fhir:org.hl7.fhir.r4:6.7.9"
+    implementation "org.slf4j:slf4j-api:2.0.17"
+    testRuntimeOnly "org.slf4j:slf4j-nop:2.0.17"
+
+    // The engine's FHIR stack asks for commons-codec 1.15, whose jar is not in gradle/verification-metadata.xml;
+    // conformance resolves 1.18.0 through its other dependencies, and this module aligns to the same version.
+    constraints {
+        implementation "commons-codec:commons-codec:1.18.0"
+    }
+}

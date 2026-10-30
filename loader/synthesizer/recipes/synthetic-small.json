@@ -1,0 +1,11 @@
+{
+  "about": "DATA-SYNTH-SMALL: the recipe for the patients in examples/data, the synthetic population small data source the deploy lands. Fabricated. Regenerate by hand with: scripts/generate-example-data.sh",
+  "patients": 1000,
+  "measurementPeriod": "2026-01-01/2026-12-31",
+  "cohorts": [
+    {"measure": "HypertensionBPControl", "seed": 201},
+    {"measure": "DiabetesHighOrMissingA1c", "seed": 202},
+    {"measure": "AdultFluImmunization", "seed": 203},
+    {"measure": "ColorectalScreening", "seed": 204}
+  ]
+}

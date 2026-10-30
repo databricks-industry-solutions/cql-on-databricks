@@ -1,0 +1,56 @@
+# The Designer's server (RENAME-DESIGNER, DEC-RENAME-DESIGNER): the FastAPI backend (BFF) of the SPA one
+# directory up. It serves the built SPA (dist/) and the /api surface, and reaches the evaluator and the
+# compiler as their client (SVC-APP-TOPOLOGY).
+#
+# Shared server infrastructure (config, the workspace client, the compiler's HTTP client) comes from
+# `cql-databricks-common` (COMMON-LIBRARY, `DEC-COMMON-HOME`).
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cql-databricks-designer"
+version = "0.1.0"
+description = "CQL on Databricks Designer: the Specification authoring App's backend (FastAPI)."
+requires-python = ">=3.10"
+license = { text = "Databricks License" }
+authors = [{ name = "Databricks, Inc." }]
+dependencies = [
+    "fastapi>=0.115",
+    # PERF-RESPONSE-GZIP — the floor is the release that stopped `GZipMiddleware` compressing
+    # `text/event-stream` (starlette 0.46). Declared explicitly: below it the SSE run streams are buffered
+    # until they close, and the App's base image preinstalls an older starlette that `fastapi>=0.115`
+    # would leave alone.
+    "starlette>=0.46",
+    "uvicorn[standard]>=0.30",
+    "requests>=2.25",
+    "python-dotenv>=1.0",
+    "cql-databricks",
+    # COMMON-LIBRARY — config, the workspace client (SEC-OBO), the compiler's HTTP client.
+    "cql-databricks-common",
+    # The agent's server: the drawer's tool loop, the tool registry and the MCP surface it dispatches through.
+    "cql-databricks-agent-server",
+    # APP-ASSISTANT — the in-product drawer runs on the Foundation Model API (`get_open_ai_client`).
+    "databricks-sdk>=0.122",
+    "openai>=1.40",
+]
+
+[project.urls]
+Homepage = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+Repository = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+
+[project.optional-dependencies]
+# `pyyaml` reads `databricks.yml` and `deploy/app.yaml` in the deploy tests. `pyflakes` backs
+# `test_no_undefined_names.py`. `xmlschema` validates the example instances against
+# `schema/specification.xsd` (`test_specification_schema.py`, SPEC-XSD).
+dev = ["pytest>=8", "pyyaml>=6", "pyflakes>=3", "xmlschema>=3"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cql_databricks_designer*"]
+# Tests are not part of the distribution.
+exclude = ["*.tests", "*.tests.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/cql_databricks_designer/tests"]
+

@@ -1,0 +1,74 @@
+/* APP-AUDIENCE / APP-STYLE-GUIDE — the CQL on Databricks CANONICAL DESIGN TOKENS + global resets, and
+   nothing else.
+
+   The component styles that used to fill this file (the classic top bar, shell, left nav, Home,
+   detail, community, the AI pane, Authoring, the classic evaluation + narrative + data-requirement
+   views) went with the classic shell they belonged to: that codebase was unreachable from
+   `main.tsx` and has been deleted (DESIGNER-TOP-BAR). What remains is the single source of VALUES
+   — the Databricks palette primitives and the canonical semantic tokens the workspace's `.mw`
+   `--t*` set aliases (design-system.md section 2) — plus the document-level resets and the three
+   type registers. The workspace's own components live in `measures/measures.css`.
+
+   Dark is workspace-only: `.mw` overrides these tokens within itself (design-system decision 1). */
+:root {
+  /* ── Type registers ──────────────────────────────────────────────
+     spec  = authored reference text — a warm book serif (the reviewed prototype face), weight 400
+     code  = machine layer — DM Mono
+     ui    = app chrome — DM Sans */
+  --font-spec:ui-serif,"Iowan Old Style","Palatino Linotype",Palatino,"Palatino LT STD",Georgia,"Times New Roman",serif;
+  --font-spec-display:var(--font-spec);
+  --font-ui:"DM Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-code:"DM Mono","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+
+  /* ── Databricks palette (official values from the extended brand guidelines) ── */
+  --lava:#FF3621; --lava-700:#BD2B26; --lava-800:#801C17;                 /* accent ONLY */
+  --navy:#1B3139; --navy-900:#0B2026; --navy-700:#143D4A; --navy-600:#1B5162;
+  --navy-500:#618794; --navy-400:#90A5B1; --navy-300:#C4CCD6;
+  --oat:#EEEDE9; --oat-light:#F9F7F4; --paper:#FFFFFF;
+  --gray-nav:#303F47; --gray-text:#5A6F77; --gray-lines:#DCE0E2;
+  --green:#00875C; --green-800:#095A35; --green-300:#9ED6C4;
+  --yellow-800:#7D5319; --yellow-600:#FFAB00; --yellow-300:#FFDB96;
+  --blue:#2272B4; --blue-700:#0E538B; --blue-300:#BAE1FC;
+  --maroon:#98102A; --maroon-300:#D69EA8;
+
+  /* ── semantic tokens ── */
+  --bg-app:var(--oat-light);     /* soothing warm near-white (oat & white are the brand's background colors) */
+  --bg-spec:var(--paper);        /* the spec reads on crisp white (per review) */
+  --bg-code:var(--navy-900);     /* code on deep navy */
+  --fg:var(--navy);
+  --fg-muted:var(--gray-text);
+  --accent:var(--lava);
+  --accent-strong:var(--lava-700);
+  --border:var(--gray-lines);
+
+  /* ── classic theme tokens, remapped onto the brand palette ── */
+  --ground:var(--oat-light);
+  --surface:var(--paper);
+  --surface-2:#F1F0EC;
+  --surface-3:#E9E8E3;
+  --ink:var(--navy);
+  --ink-2:var(--gray-text);
+  --ink-3:var(--navy-400);
+  --line:var(--gray-lines);
+  --line-2:#EAE9E4;
+  --accent-soft:color-mix(in oklch, var(--lava) 10%, var(--paper));
+  --good:var(--green);--good-soft:color-mix(in oklch,var(--green) 12%, var(--paper));
+  --warn:var(--yellow-800);--warn-soft:color-mix(in oklch,var(--yellow-600) 16%, var(--paper));
+  --crit:var(--maroon);--crit-soft:color-mix(in oklch,var(--maroon) 10%, var(--paper));
+  --info:var(--blue);--info-soft:color-mix(in oklch,var(--blue) 12%, var(--paper));
+  --serif:var(--font-ui);   /* classic headings are UI chrome → DM Sans */
+  --sans:var(--font-ui);
+  --mono:var(--font-code);
+  --shadow:0 1px 2px rgba(27,49,57,.05),0 4px 16px rgba(27,49,57,.06);--shadow-lg:0 12px 44px rgba(27,49,57,.18);
+}
+*{box-sizing:border-box;}
+body{margin:0;font-family:var(--font-ui);color:var(--fg);background:var(--bg-app);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;}
+
+/* ── code register: mono everywhere code appears ── */
+pre,code,kbd,samp{font-family:var(--font-code);}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;}
+a{color:var(--accent);}
+.eyebrow{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);font-weight:600;}
+.tnum{font-variant-numeric:tabular-nums;}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px;}
+.muted{color:var(--ink-3);font-size:12px;}

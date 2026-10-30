@@ -1,0 +1,20 @@
+{
+  "measure": "AdultFluImmunization",
+  "version": "1.0.0",
+  "populations": {
+    "Initial Population": 0.6,
+    "Denominator Exclusions": 0.03,
+    "Numerator": 0.5,
+    "Denominator Exceptions": 0.08
+  },
+  "members": {
+    "Influenza Vaccine": {
+      "150": 5,
+      "171": 2,
+      "197": 2
+    },
+    "Medical Reason Not Given": {
+      "MEDPREC": 2
+    }
+  }
+}

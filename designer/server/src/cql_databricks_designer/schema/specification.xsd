@@ -1,0 +1,1392 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CQL on Databricks Specification — the normative element model (SPEC-XSD).
+
+  This schema is the CQL on Databricks standard, not an internal serialization detail. It is the normative
+  answer to "what IS a Specification": the document derived from a CQL measure's ELM that says what
+  the measure means, in terms a clinician can read and an auditor can trace.
+
+  THE GOVERNING CONSTRAINT (SPEC-CONCEPTS / SPEC-RULES). Every structural element of a Specification
+  is a CQL DEFINE — never a function, never an ELM sub-branch. Defines are the only unit that the
+  engine already counts per subject, that carries an author-given name, and that can show its own
+  source. An earlier draft decomposed defines into ELM branches; that invented unnamed nodes, forced
+  generated aliases as identity, and made per-element counts unobtainable. Elements are defines.
+
+  DERIVED STRUCTURE, NARRATED PROSE (SPEC-PROVENANCE). A Specification is an overlay on the CQL: its
+  SHAPE is derived from the ELM and is faithful by construction, while its PROSE is narrated and
+  therefore reviewable. The two never share a provenance attribute — see RuleType, where the element's
+  structure is `derived` and its Text/Rationale are `narrated` independently.
+
+  ENFORCEMENT. Instances are schema-validated in CI. The Python dataclasses
+  (`cql_databricks_pipeline/specification/`) and the TypeScript wire interfaces MIRROR this schema; when they
+  disagree with it, they are wrong.
+
+  TAG ALIGNMENT (SPEC-NARRATIVE-TAGS). Every prose element is named for the CQL annotation tag that
+  carries it — `@intent` → Overview/Intent/Statement, `@guidance` → Rule/Guidance — and each declares
+  that tag in `sourceTag`. The static instances CQL on Databricks ships today and the ELM-derived instances it
+  will generate later therefore produce the SAME document, because they populate the same elements
+  from the same named tags. The vocabulary is designer/docs/narrative-tags.md.
+
+  TWO SOURCES OF AUTHORED PROSE (SPEC-MEASURE-METADATA). A CQL annotation tag is one; a field of the
+  measure's published FHIR `Measure` resource is the other. Both are `authored` — a named organisation
+  asserted them and takes responsibility — so both carry `author` and `sourceRef` naming who and from
+  where. This matters for external content: its CQL may carry no tags, but the steward's own description,
+  rationale, recommendation and guidance are published in the resource, and quoting them is strictly
+  better than narrating over them.
+
+  DERIVATION-OWNED SECTIONS. Identity, Provenance and Appendix hold FACTS, not prose: they are derived
+  from the ELM, the resource and the terminology tables at render or export time. A narration instance
+  states them only to identify itself (Identity) — it may not restate a derived fact, and CI enforces
+  that (SPEC-DERIVED-APPENDIX).
+
+  Realizes: SPEC-XSD, SPEC-DOCUMENT, SPEC-CONCEPTS, SPEC-RULES, SPEC-PLACEMENT, SPEC-POLARITY,
+  SPEC-METRIC, SPEC-ANCHOR, SPEC-DEFINITIONS, SPEC-NARRATIVE-TAGS, APP-NARRATIVE-OVERLAY,
+  SPEC-MEASURE-METADATA, SPEC-DERIVED-APPENDIX, REND-BADGES.
+  Requirements: the SPEC-* rows in designer/docs/requirements.md.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns="https://cql-databricks.databricks.com/spec/1.0"
+           targetNamespace="https://cql-databricks.databricks.com/spec/1.0"
+           elementFormDefault="qualified"
+           version="1.0">
+
+  <!-- ══ Root ══════════════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:element name="Specification">
+    <xs:annotation>
+      <xs:documentation>
+        SPEC-DOCUMENT — the derived view, named "Specification". Section order is normative and is the
+        reading order: what the measure is, who it counts, what is shared, then reference material.
+        Definitions and Appendix are REFERENCE (SPEC-DEFINITIONS) and are deliberately subordinate to
+        the narrated criteria above them.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Identity" type="IdentityType"/>
+        <xs:element name="Provenance" type="ProvenanceType"/>
+        <xs:element name="Overview" type="OverviewType" minOccurs="0"/>
+        <xs:element name="PopulationCriteria" type="PopulationCriteriaType" minOccurs="0"/>
+        <xs:element name="Common" type="ScopeBodyType" minOccurs="0">
+          <xs:annotation>
+            <xs:documentation>
+              SPEC-PLACEMENT — NOT a separate mechanism. Common holds the elements whose lowest common
+              dominator is the measure root: reached from two or more population criteria that do not
+              reach each other. Its content model is identical to a Population's body, so it renders in
+              the same card format.
+
+              The non-reaching qualifier is load-bearing. Populations routinely reach each other
+              (a Denominator is often literally "Initial Population"); unqualified sharing would hoist
+              the whole Initial Population closure into Common and the section would become the
+              document. Where population A reaches population B, A links to B instead.
+            </xs:documentation>
+          </xs:annotation>
+        </xs:element>
+        <xs:element name="Definitions" type="DefinitionsType" minOccurs="0"/>
+        <xs:element name="Appendix" type="AppendixType" minOccurs="0"/>
+      </xs:sequence>
+      <xs:attribute name="schemaVersion" type="xs:string" use="required" fixed="1.0"/>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- ══ Identity and provenance ═══════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="IdentityType">
+    <xs:annotation>
+      <xs:documentation>
+        What this Specification is OF. `context` is normative for metric units (SPEC-METRIC): an
+        episode-of-care measure counts episodes, and a document that labels them "patients" is wrong.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="Title" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="library" type="xs:string" use="required"/>
+    <xs:attribute name="version" type="xs:string" use="required"/>
+    <xs:attribute name="fhirVersion" type="xs:string" use="optional"/>
+    <xs:attribute name="scoring" type="ScoringKind" use="optional"/>
+    <xs:attribute name="context" type="ContextKind" use="required"/>
+    <xs:attribute name="lane" type="LaneKind" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="ProvenanceType">
+    <xs:annotation>
+      <xs:documentation>
+        Where the document came from and what it is pinned to. The pin covers the ELM hash and the
+        translator version, not only the CQL sha256: the derivation reads ELM, so a translator change
+        silently rewrites the document if only the source is pinned.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="LibraryPin" minOccurs="0" maxOccurs="unbounded">
+        <xs:complexType>
+          <xs:attribute name="library" type="xs:string" use="required"/>
+          <xs:attribute name="version" type="xs:string" use="optional"/>
+          <xs:attribute name="cqlSha256" type="Sha256" use="optional"/>
+          <xs:attribute name="elmSha256" type="Sha256" use="optional"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="Precedence" type="xs:string" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            The stated precedence rule between this document and the CQL it derives from. Rendered in
+            the document header so a reader never has to guess which artifact wins.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="Copyright" type="NarratedTextType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            SPEC-LICENSE / SPEC-MEASURE-METADATA — the steward's copyright notice, verbatim from
+            `Measure.copyright`. Displayed, never summarised: for a steward's content the notice states
+            the terms under which the measure may be reproduced at all, so a document that carries the
+            measure and drops the notice is not redistributable.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="Disclaimer" type="NarratedTextType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            `Measure.disclaimer`, verbatim — the limits the steward places on use of the measure.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="Citation" minOccurs="0" maxOccurs="unbounded">
+        <xs:annotation>
+          <xs:documentation>
+            One `Measure.relatedArtifact` — the evidence the measure cites. Repeatable, one per
+            artifact, so a reader can follow a single claim rather than a blob of references.
+          </xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+          <xs:attribute name="label" type="xs:string" use="optional"/>
+          <xs:attribute name="citation" type="xs:string" use="optional"/>
+          <xs:attribute name="url" type="xs:anyURI" use="optional"/>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+    <xs:attribute name="translatorVersion" type="xs:string" use="optional"/>
+    <xs:attribute name="derivedAt" type="xs:dateTime" use="optional"/>
+  </xs:complexType>
+
+  <!-- ══ Overview ══════════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="OverviewType">
+    <xs:annotation>
+      <xs:documentation>
+        The measure read as a whole, before any criterion. Every child is ROOT-TAG ALIGNED
+        (SPEC-NARRATIVE-TAGS): it carries the prose that a library-level CQL annotation tag of the
+        same name holds, so the static instance we ship today and the compiled ELM we read tomorrow
+        populate the identical element. `sourceTag` on each records which tag that is, making the
+        alignment machine-checkable rather than a convention in a comment.
+
+        Section order is the reading order: what the measure computes, WHY it exists, what it does
+        and does not cover, then how to read the document.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="Description" type="NarratedTextType" minOccurs="0"/>
+      <xs:element name="Intent" type="IntentType" minOccurs="0"/>
+      <xs:element name="ScopeNonGoals" type="ScopeNonGoalsType" minOccurs="0"/>
+      <xs:element name="Guidance" type="NarratedTextType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            The measure-level counterpart of a define's `@guidance`: how to read the measure
+            correctly, from its author. `Measure.usage` carries it for published eCQMs, and it is
+            typically the single most useful authored field in the resource — it can state which
+            readings may be used and which are excluded from consideration entirely.
+
+            NOT the same thing as HowToRead, which is about this DOCUMENT (which artifact wins, how to
+            navigate the sections) and is the product's own voice.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="HowToRead" type="NarratedTextType" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="IntentType">
+    <xs:annotation>
+      <xs:documentation>
+        WHY the measure exists — the question CQL cannot answer about itself. `Statement` is the
+        purpose (`@intent`); `ClinicalRationale` is the evidence and reasoning behind it
+        (`@clinicalRationale`). Kept as two elements rather than one blob because they are reviewed
+        by different people: intent by whoever commissioned the measure, rationale by a clinician.
+
+        `Recommendation` is the guideline text the measure operationalises
+        (`@clinicalRecommendation`, `Measure.clinicalRecommendationStatement`) — a THIRD element
+        rather than prose appended to ClinicalRationale, because they are separately authored and
+        concatenating two authored fields into one would misattribute both.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="Statement" type="NarratedTextType" minOccurs="0"/>
+      <xs:element name="ClinicalRationale" type="NarratedTextType" minOccurs="0"/>
+      <xs:element name="Recommendation" type="NarratedTextType" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ScopeNonGoalsType">
+    <xs:annotation>
+      <xs:documentation>
+        The boundary of the measure. `InScope` states what it does cover (`@scope`); each `NonGoal`
+        states one thing it deliberately does NOT (`@nonGoal`, repeatable — the CQL spec permits a tag
+        name to occur more than once, and one non-goal per tag reads and reviews far better than a
+        semicolon-separated list).
+
+        Both lanes are optional here (fixing the v0.3 draft's B8, which required a NonGoal from a
+        reverse-engineered measure that may genuinely have none recorded). An ABSENT non-goal list is
+        "nobody wrote one down", which is not the same claim as "there are none".
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="InScope" type="NarratedTextType" minOccurs="0"/>
+      <xs:element name="NonGoal" type="NarratedTextType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ══ Population criteria ═══════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="PopulationCriteriaType">
+    <xs:sequence>
+      <xs:element name="Population" type="PopulationType" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="PopulationType">
+    <xs:annotation>
+      <xs:documentation>
+        One population criterion — the root of a derived subtree. Carries `stableId` (fixing the v0.3
+        draft's B2: run-scoped measurements join on stableId, and populations are what carry the
+        counts).
+
+        `reaches` names other populations this one depends on. When it is non-empty the renderer LINKS
+        to them rather than duplicating their content, which is the same rule that keeps Common from
+        swallowing the document.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:complexContent>
+      <xs:extension base="ScopeBodyType">
+        <xs:attribute name="kind" type="PopulationKind" use="required"/>
+        <xs:attribute name="define" type="xs:string" use="required"/>
+        <xs:attribute name="library" type="xs:string" use="required"/>
+        <xs:attribute name="stableId" type="xs:string" use="required"/>
+        <xs:attribute name="id" type="xs:ID" use="required"/>
+        <xs:attribute name="reaches" type="xs:string" use="optional"/>
+        <xs:attribute name="group" type="xs:string" use="optional">
+          <xs:annotation>
+            <xs:documentation>
+              Population group, for ratio and continuous-variable measures that carry more than one
+              numerator/denominator pair.
+            </xs:documentation>
+          </xs:annotation>
+        </xs:attribute>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="ScopeBodyType">
+    <xs:annotation>
+      <xs:documentation>
+        The body shared by a Population and by Common: narration, its metric and badges, then the
+        Concepts it decomposes into and any Rules hoisted to this level by SPEC-PLACEMENT (a define
+        reached from two Concepts under one population belongs to neither and rises to the scope above
+        them).
+
+        THE NARRATION TRIPLE (SPEC-NARRATIVE-TAGS) is the same on a Population, a Concept and a Rule,
+        because a reader asks the same three questions of each: Narrative says WHAT it is, Rationale
+        says WHY it matters clinically, Guidance says HOW TO READ IT — the boundary conditions,
+        tie-breaks and misreadings that a clinician would otherwise have to recover from the CQL.
+        A criterion narrated only by its `what` is the failure this triple exists to fix.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="Narrative" type="NarratedTextType" minOccurs="0"/>
+      <xs:element name="Rationale" type="NarratedTextType" minOccurs="0"/>
+      <xs:element name="Guidance" type="NarratedTextType" minOccurs="0"/>
+      <xs:element name="Metric" type="MetricType" minOccurs="0"/>
+      <xs:element name="Badges" type="BadgesType" minOccurs="0"/>
+      <xs:element name="Sources" type="SourcesType" minOccurs="0"/>
+      <xs:element name="RetrieveMetric" type="RetrieveMetricType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="Concept" type="ConceptType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="Rule" type="RuleType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ══ Concepts and Rules ════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="ConceptType">
+    <xs:annotation>
+      <xs:documentation>
+        SPEC-CONCEPTS — a coarse clinical idea the reader must understand: a DEFINE reached at depth 1
+        from a population criterion. Derived from the ELM define graph; there is no clustering
+        heuristic and no curated membership overlay.
+
+        The element's STRUCTURE is `derived` (fixed below, and not negotiable — it is a faithful
+        reflection of the ELM). Its Title and Narrative are `narrated` and carry their own provenance.
+        A Concept with no narration is valid and renders under its define name: degraded, never wrong.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="Title" type="NarratedTextType" minOccurs="0"/>
+      <xs:element name="Narrative" type="NarratedTextType" minOccurs="0"/>
+      <xs:element name="Rationale" type="NarratedTextType" minOccurs="0"/>
+      <xs:element name="Guidance" type="NarratedTextType" minOccurs="0"/>
+      <xs:element name="Metric" type="MetricType" minOccurs="0"/>
+      <xs:element name="Badges" type="BadgesType" minOccurs="0"/>
+      <xs:element name="Sources" type="SourcesType" minOccurs="0"/>
+      <xs:element name="Code" type="CodeType" minOccurs="0"/>
+      <xs:element name="RetrieveMetric" type="RetrieveMetricType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="Rule" type="RuleType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="define" type="xs:string" use="required"/>
+    <xs:attribute name="library" type="xs:string" use="required"/>
+    <xs:attribute name="stableId" type="xs:string" use="required"/>
+    <xs:attribute name="id" type="xs:ID" use="required"/>
+    <xs:attribute name="alias" type="xs:string" use="optional">
+      <xs:annotation>
+        <xs:documentation>
+          SPEC-ANCHOR — the human-facing short label ("C1", "QBR"). PRESENTATIONAL ONLY. It renumbers
+          when an element is inserted, so nothing may key off it: anchors, citations and cross-document
+          references use `id` / the library-qualified `define`, which survive a recompile.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="provenance" type="ProvenanceKind" use="required" fixed="derived"/>
+  </xs:complexType>
+
+  <xs:complexType name="RuleType">
+    <xs:annotation>
+      <xs:documentation>
+        SPEC-RULES — a granular idea composing a Concept: a DEFINE in that Concept's transitive
+        closure, rendered in a flat list however deep it sits. Functions are transparent — never a Rule
+        themselves, but the walk passes through them, so a clinical define invoked as
+        Exclusions."Has End Of Life Care" surfaces while FHIRHelpers does not.
+
+        ORDER IS PRESENTATIONAL. ELM has no evaluation order for `A and not B and not C`, so document
+        order is graph layer then declaration order. Two consequences a renderer must honour: sequence
+        must not be implied, and per-rule counts DO NOT SUM — a subject failing two rules is counted by
+        both.
+
+        PROVENANCE IS SPLIT (fixing the v0.3 draft's B10). The rule's existence, order, polarity and
+        sources are `derived`; its Text and Rationale are `narrated`. A single provenance attribute on
+        the element would have been wrong for one half of it.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="Text" type="NarratedTextType" minOccurs="0"/>
+      <xs:element name="Rationale" type="NarratedTextType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            WHY the rule exists clinically — the expanded card's MEANING line. Distinct from Schematic,
+            which is a worked example as notation. Already shipped as the `@rationale` CQL annotation
+            tag (APP-NARRATIVE-TAGS); the v0.3 draft dropped a capability we have.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="Guidance" type="NarratedTextType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            HOW TO READ THE RULE without going to the code: which boundary is inclusive, what a null
+            does, which tie-break applies, what a reader routinely gets wrong here. This is the third
+            leg of the narration triple (see ScopeBodyType) and the one that decides whether a
+            clinician can review the rule at all — Text alone restates the define's name in prose.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="Schematic" type="xs:string" minOccurs="0"/>
+      <xs:element name="Metric" type="MetricType" minOccurs="0"/>
+      <xs:element name="Badges" type="BadgesType" minOccurs="0"/>
+      <xs:element name="Sources" type="SourcesType" minOccurs="0"/>
+      <xs:element name="Code" type="CodeType" minOccurs="0"/>
+      <xs:element name="RetrieveMetric" type="RetrieveMetricType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="SemanticsFlag" type="SemanticsFlagType" minOccurs="0" maxOccurs="unbounded">
+        <xs:annotation>
+          <xs:documentation>
+            Compiler-detected divergence between computed behaviour and a naive reading. `unbounded`
+            fixes the v0.3 draft's B1 — the flag categories are independent and co-occur.
+
+            CAPABILITY GAP: no such analysis exists in the engine today, and it cannot be approximated
+            client-side without violating the data-provenance standard. Instances therefore carry no
+            flags until the engine emits them; the renderer must show "capability absent" rather than
+            implying a clean bill of health.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:sequence>
+    <xs:attribute name="define" type="xs:string" use="required"/>
+    <xs:attribute name="library" type="xs:string" use="required"/>
+    <xs:attribute name="stableId" type="xs:string" use="required"/>
+    <xs:attribute name="id" type="xs:ID" use="required"/>
+    <xs:attribute name="alias" type="xs:string" use="optional"/>
+    <xs:attribute name="polarity" type="PolarityKind" use="required">
+      <xs:annotation>
+        <xs:documentation>
+          SPEC-POLARITY — DERIVED, not narrated: the negation parity of the ExpressionRef's ancestor
+          chain in the referring define's ELM, plus exclusion-population membership. `disqualifying` is
+          what the renderer emphasises as "does not count".
+        </xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="provenance" type="ProvenanceKind" use="required" fixed="derived"/>
+  </xs:complexType>
+
+  <xs:complexType name="SemanticsFlagType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="category" type="SemanticsCategory" use="required"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <!-- ══ Metric ════════════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="MetricType">
+    <xs:annotation>
+      <xs:documentation>
+        SPEC-METRIC — the salient visual, not decoration. Every element carries one because every
+        element is a define, and the engine already computes results and a truthy-subject count for
+        every define.
+
+        TWO GRAINS. A resource-valued define counts at both: `value` distinct SUBJECTS (the ELM
+        context — patients, episodes) and `elementValue` distinct ELEMENTS of `elementGrain`
+        (Encounters, Conditions). "149,882 patients · 412,003 encounters" answers two different
+        questions and the document should not have to choose. A Boolean define has only the subject
+        grain — there is no second thing to count.
+
+        WHAT IS COUNTABLE. A define returning whole resources yields only their IDs, which is enough
+        to count elements and to size each subject's list, and NOT enough for a distribution over
+        resource attributes. No metric may promise one.
+
+        `form` is a TYPED DISPATCH off the define's ELM result type, never a guess. `base` must be
+        stated: a bare "149,882 patients" invites comparison against the wrong denominator, so the
+        metric names what it is a share OF.
+
+        NOT-COMPUTED IS A STATE, NOT A BLANK. With no run, `computed` is false and the renderer shows
+        that; there is no fallback figure and no synthesised number.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="Bucket" minOccurs="0" maxOccurs="unbounded">
+        <xs:annotation>
+          <xs:documentation>Histogram/distribution buckets, for the non-scalar forms.</xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+          <xs:attribute name="label" type="xs:string" use="required"/>
+          <xs:attribute name="count" type="xs:nonNegativeInteger" use="required"/>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+    <xs:attribute name="form" type="MetricForm" use="required"/>
+    <xs:attribute name="subjectUnit" type="ContextKind" use="required"/>
+    <xs:attribute name="resultType" type="xs:string" use="optional">
+      <xs:annotation>
+        <xs:documentation>The ELM result type both grains were dispatched from — the audit trail.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="value" type="xs:nonNegativeInteger" use="optional">
+      <xs:annotation>
+        <xs:documentation>Distinct SUBJECTS meeting the define, in `subjectUnit`.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="elementGrain" type="xs:string" use="optional">
+      <xs:annotation>
+        <xs:documentation>
+          The thing counted at the second grain — "Encounter", "Condition" — read off the result type.
+          Absent for a Boolean define, which says something about the subject and nothing else.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="elementValue" type="xs:nonNegativeInteger" use="optional">
+      <xs:annotation>
+        <xs:documentation>Distinct elements of `elementGrain`, across all subjects.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="base" type="xs:string" use="optional">
+      <xs:annotation>
+        <xs:documentation>
+          What the value is a share of: the stableId of the enclosing population, or
+          `evaluated-subjects` for Common.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="baseValue" type="xs:nonNegativeInteger" use="optional"/>
+    <xs:attribute name="computed" type="xs:boolean" use="required"/>
+    <xs:attribute name="runId" type="xs:string" use="optional"/>
+    <xs:attribute name="provenance" use="required">
+      <xs:annotation>
+        <xs:documentation>
+          `derived` — measured by a run, `runId` names which. `sample` — illustrative, never measured
+          (`SPEC-SAMPLE-METRIC`); `computed` MUST be false and `runId` MUST be absent, because there
+          was no run. Those two are the whole vocabulary here: a metric is never `authored` (nobody
+          asserts a count) and never `narrated` (a number is not prose).
+        </xs:documentation>
+      </xs:annotation>
+      <xs:simpleType>
+        <xs:restriction base="ProvenanceKind">
+          <xs:enumeration value="derived"/>
+          <xs:enumeration value="sample"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <xs:attribute name="sampleNote" type="xs:string" use="optional">
+      <xs:annotation>
+        <xs:documentation>
+          What this sample is meant to show ("a plausible mid-size commercial panel"). Read only when
+          `provenance="sample"`; it is the tooltip behind the mark, and the place to say what the shape
+          of the number is FOR so a reviewer can judge whether it demonstrates the right thing.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+  </xs:complexType>
+
+  <xs:complexType name="RetrieveMetricType">
+    <xs:annotation>
+      <xs:documentation>
+        SPEC-RETRIEVE-LENS — a figure attached to ONE retrieve inside a define's body, so hovering
+        `[ConditionExampleDiagnosis: "Example Condition"]` answers what that clause actually pulled.
+
+        WHAT IS NOT HERE, DELIBERATELY: the resource type, the value set name and its OID. Those are
+        properties of the retrieve, the compiler materialises them from the ELM, and the lens reads
+        them from there (`SPEC-DERIVED-APPENDIX`). An instance that restated them would be a second
+        copy of an OID going stale with nothing to catch it — the exact failure the Appendix rule
+        exists to prevent. This element carries the one thing the ELM cannot supply before a run: a
+        count. It is therefore, in practice, always `sample`.
+
+        THE JOIN IS THE SPAN. `sourceSpan` is a line range into the enclosing define's own body, the
+        same anchor a narrated claim uses, and the renderer matches it to the retrieve the compiler
+        reports at that location. A span matching no retrieve renders nothing rather than guessing —
+        the lens is missing, which is visible, instead of attached to the wrong clause, which is not.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="Metric" type="MetricType"/>
+    </xs:sequence>
+    <xs:attribute name="sourceSpan" type="SourceSpan" use="required"/>
+  </xs:complexType>
+
+  <!-- ══ Badges ════════════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="BadgesType">
+    <xs:annotation>
+      <xs:documentation>
+        REND-BADGES — section-level health clues, each scoped to this section's defines and each a
+        portal to exactly one lens. Distinct in kind from DESIGNER-DEFINE-STATUS, which is operational
+        processing status at root level.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="Validation" type="BadgeType" minOccurs="0"/>
+      <xs:element name="Mapping" type="BadgeType" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>
+            The demand side (which resources and value sets these defines read) is exact from the ELM
+            today; the SUPPLY side is not wired, so `state` is `unknown` and `count` is absent until
+            `describe` → RetrieveHints lands. A coverage number here would be fabricated.
+          </xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="BadgeType">
+    <xs:attribute name="state" type="BadgeState" use="required"/>
+    <xs:attribute name="count" type="xs:nonNegativeInteger" use="optional"/>
+    <xs:attribute name="lens" type="LensKind" use="required"/>
+  </xs:complexType>
+
+  <!-- ══ Sources and code ══════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="SourcesType">
+    <xs:sequence>
+      <xs:element name="DefineRef" type="DefineRefType" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DefineRefType">
+    <xs:annotation>
+      <xs:documentation>
+        SPEC-ANCHOR — a link to another element, ALWAYS library-qualified. Two libraries may declare one
+        name (a helper library can declare both `ToInterval` and `toInterval`; FHIRHelpers declares `ToString`
+        251 times), so an unqualified chip resolves to the wrong define.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="library" type="xs:string" use="required"/>
+    <xs:attribute name="define" type="xs:string" use="required"/>
+    <xs:attribute name="ref" type="xs:IDREF" use="optional">
+      <xs:annotation>
+        <xs:documentation>The in-document anchor, when the referenced element is present in this Specification.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+  </xs:complexType>
+
+  <xs:complexType name="MetricRefType">
+    <xs:annotation>
+      <xs:documentation>
+        SPEC-METRIC-REF — a CITATION OF A FIGURE inside prose. The instance carries the reference; the
+        renderer substitutes the number from the metric set at render time.
+
+        This is what makes a narrated figure falsifiable. A narrator who may type "12,431 encounters"
+        states a number nobody can check and that goes stale on the next run with nothing to catch it;
+        a narrator who may only cite one **cannot be wrong about it**, because they never assert it.
+        The same argument `SPEC-NARRATIVE-TAGS` makes for structure, applied to quantities: prose is
+        held to the shape of a claim so the claim can be checked mechanically.
+
+        The reference is library-qualified for the same reason `DefineRefType` is — two libraries may
+        declare one name, and an unqualified reference substitutes the wrong figure. A reference that
+        resolves to no metric renders NOTHING VISIBLE IN ITS PLACE beyond a muted absence mark: a
+        sentence built around a figure that has not been computed says so, rather than silently reading
+        as though the figure were zero.
+
+        It carries no `provenance`. A figure's provenance is the RUN's (`sample` or `run`, on the
+        metric payload) and never the prose's, so an attribute here would be a second claim about the
+        same thing, able to disagree.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="library" type="xs:string" use="required"/>
+    <xs:attribute name="define" type="xs:string" use="required">
+      <xs:annotation>
+        <xs:documentation>The define whose metric is cited. Its own, never a base or a total.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="grain" type="MetricGrain" use="optional" default="subject"/>
+    <xs:attribute name="as" type="MetricRendering" use="optional" default="count"/>
+  </xs:complexType>
+
+  <xs:simpleType name="MetricGrain">
+    <xs:annotation>
+      <xs:documentation>
+        SPEC-METRIC — which of a metric's TWO grains is cited. `subject` counts distinct subjects (the
+        ELM context: patients, episodes); `element` counts distinct elements of the result type's grain
+        (encounters, conditions). "149,882 patients" and "412,003 encounters" answer different
+        questions, so a sentence has to say which one it is asking.
+
+        `element` on a define with no element grain resolves to nothing — a Boolean says something about
+        the subject and nothing else, and an invented element count is the defect this vocabulary exists
+        to prevent.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="subject"/>
+      <xs:enumeration value="element"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="MetricRendering">
+    <xs:annotation>
+      <xs:documentation>
+        How the cited figure reads in the sentence. `count` is the figure itself ("12,431"); `share` is
+        it as a percentage of the define's base ("83%"), which is the enclosing population — the base
+        `SPEC-METRIC` already requires be stated. A `share` whose base has no figure resolves to
+        nothing rather than to a percentage of an unknown denominator.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="count"/>
+      <xs:enumeration value="share"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="CodeType">
+    <xs:annotation>
+      <xs:documentation>
+        SPEC-ANCHOR — the CQL of the define this element derives from, sliced at the ELM statement's
+        locator. A derived claim is inspectable at the point it is made, so `derived` is not something
+        the reader has to take on trust.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="locator" type="xs:string" use="optional"/>
+        <xs:attribute name="provenance" type="ProvenanceKind" use="required" fixed="derived"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <!-- ══ Narrated text ═════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="NarratedTextType" mixed="true">
+    <xs:annotation>
+      <xs:documentation>
+        Prose with INLINE STRUCTURAL REFERENCES (fixing the v0.3 draft's B6, where Text was xs:string
+        and references were unrepresentable). Today's renderer scans prose for known define names — a
+        heuristic this element exists to retire.
+
+        Review state admits `unreviewed` and reviewedBy/reviewedOn are optional (fixing B3): a
+        generated draft must be serialisable before anyone has reviewed it, which is the working state
+        the generate → edit → Accept cycle depends on.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="ConceptRef" type="NarratedDefineRefType"/>
+      <xs:element name="RuleRef" type="NarratedDefineRefType"/>
+      <xs:element name="MetricRef" type="MetricRefType"/>
+      <xs:element name="Read" type="ReadRefType"/>
+      <xs:element name="ParameterRef" type="ParameterRefType"/>
+      <xs:element name="TerminologyRef" type="TerminologyRefType"/>
+      <xs:element name="Emphasis" type="xs:string"/>
+      <xs:element name="List" type="NarratedListType"/>
+      <xs:element name="Table" type="NarratedTableType"/>
+    </xs:choice>
+    <xs:attribute name="provenance" type="ProvenanceKind" use="required"/>
+    <xs:attribute name="author" type="xs:string" use="optional">
+      <xs:annotation>
+        <xs:documentation>
+          WHO asserted it — decided in O2 ("`authored` … WHO is a separate field, not a provenance
+          value") and unrepresentable until now. Required in practice for `authored` prose: "authored"
+          without an author is an unattributable claim, and the reader's question about a sentence in a
+          clinical document is whose it is: the steward named by `Measure.publisher`.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="sourceRef" type="xs:string" use="optional">
+      <xs:annotation>
+        <xs:documentation>
+          WHERE it was read from, as `canonical|version` (the FHIR reference form) — e.g.
+          `http://example.org/fhir/Measure/ExampleMeasure|1.0.0`. Prose quoted verbatim from a
+          published artifact must say which artifact and which version of it, or the quotation cannot
+          be checked. `sourceTag` names the CQL tag; this names the resource.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="method" type="MethodKind" use="optional"/>
+    <xs:attribute name="reviewState" type="ReviewState" use="optional" default="unreviewed"/>
+    <xs:attribute name="reviewedBy" type="xs:string" use="optional"/>
+    <xs:attribute name="reviewedOn" type="xs:date" use="optional"/>
+    <xs:attribute name="sourceSpan" type="SourceSpan" use="optional">
+      <xs:annotation>
+        <xs:documentation>
+          SPEC-NARRATIVE-DEVICES — WHICH LINES OF THE CQL this prose is about, as a line range within
+          the define's own body (`"2-5"`, or `"6"` for one line).
+
+          `provenance` says whose words these are; this says what they describe. Without it
+          "traceable" degrades to a disclaimer — the reader is told the sentence is interpreted and
+          given no way to check it against the thing it interprets. With it the claim and the code
+          highlight together, and the reverse direction becomes possible too: code no claim cites is
+          code nobody has explained, which is a coverage number rather than an opinion.
+
+          Hand-authored in the instances CQL on Databricks ships, and that is a known weakness — a line range
+          breaks silently when the registry's CQL is reformatted. The generated form must derive it
+          from the ELM locator of the node the claim is about.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="sourceTag" type="TagName" use="optional">
+      <xs:annotation>
+        <xs:documentation>
+          SPEC-NARRATIVE-TAGS — the CQL annotation tag this prose belongs in: `intent`,
+          `clinicalRationale`, `clinicalRecommendation`, `scope`, `nonGoal`, `guidance`, `howToRead`
+          at library level; `title`, `description`, `rationale`, `guidance` on a define. A tag name
+          is recorded even for prose read from the FHIR resource rather than the CQL: it is the slot
+          the prose occupies, which is what makes the two sources comparable. Naming the tag in the
+          instance is what makes the
+          alignment CHECKABLE: a static Specification hand-written today and an ELM-derived one
+          produced later must land the same prose in the same element, and `sourceTag` is the only
+          machine-readable statement of that correspondence.
+
+          Absent means the prose has no tag home yet. Present with `provenance="authored"` means it
+          WAS read from that tag; present with `provenance="narrated"` means it is a draft OF that
+          tag, awaiting Accept (APP-NARRATIVE-OVERLAY) to be written back into the CQL.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+  </xs:complexType>
+
+  <xs:simpleType name="SourceSpan">
+    <xs:annotation>
+      <xs:documentation>
+        A line or line range within a define's rendered CQL body, 1-based and inclusive: `"4"` or
+        `"2-5"`. Deliberately coarser than the ELM's `line:col-line:col` locator, because a claim is
+        about a clause a reader can see, and highlighting half a line is precision without meaning.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9]+(-[0-9]+)?"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="NarratedDefineRefType" mixed="true">
+    <xs:annotation>
+      <xs:documentation>
+        SPEC-DEFINE-REF — a PHRASE IN THE PROSE THAT NAMES ANOTHER ELEMENT, bound to the define it names.
+
+        The third and last of the inline bindings, and the one that closes the asymmetry the other two
+        exposed. `MetricRefType` made a figure citable and `ReadRefType` made a read bindable; a DEFINE
+        named in a clinical sentence stayed inert prose while the very same name inside the rendered CQL
+        was a followable reference with a lens over it. That is backwards for a document whose premise is
+        that the reader should not have to open the code (`SPEC-EXPLAIN-ACCOUNTING`): the sentence is the
+        surface a clinician reads, so it is the surface a reference has to work from.
+
+        WHY THIS TYPE EXISTS RATHER THAN REUSING `DefineRefType`. That type is a pure POINTER — it is
+        what a `Sources` chip and an anchor are made of, attributes only, no content. This one must be
+        `mixed`, because the text is the PROSE and not the define's name: a sentence says "example
+        condition diagnosis", and substituting the declared `Example Condition Diagnosis` would
+        drop a title-cased identifier into a clinical paragraph. Keeping them as two types is what stops
+        the pointer growing content it has no use for.
+
+        `ConceptRef` and `RuleRef` exist for exactly this, and they are honoured end to end: the
+        renderer never scans prose for known define names.
+
+        LIBRARY-QUALIFIED, ALWAYS, and an unqualified reference is DROPPED rather than guessed. Two
+        libraries may declare one name (a helper library can declare both `ToInterval` and `toInterval`;
+        FHIRHelpers declares `ToString` 251 times), so resolving without the library lands the reader on
+        whichever the client happened to index first — a link to the wrong criterion, indistinguishable
+        from a right one. A reference to a define this document does not render degrades to plain prose.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="library" type="xs:string" use="required"/>
+    <xs:attribute name="define" type="xs:string" use="required"/>
+    <xs:attribute name="sourceSpan" type="SourceSpan" use="optional">
+      <xs:annotation>
+        <xs:documentation>
+          SPEC-INLINE-ANCHOR — the line of the enclosing define this PHRASE is about, where the phrase
+          names something that define actually reaches. Optional, and its absence is meaningful: a
+          reference to an element the sentence merely MENTIONS (a transitive one, two steps down the
+          chain) has no line in this body, and the reference itself is the anchor. Present, it must be a
+          real reference site — enforced against the reference set (`SPEC-EXPLAIN-INPUTS`).
+        </xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+  </xs:complexType>
+
+  <xs:complexType name="TerminologyRefType" mixed="true">
+    <xs:annotation>
+      <xs:documentation>
+        SPEC-TERMINOLOGY-REF — a PHRASE IN THE PROSE THAT NAMES A VALUE SET OR A DIRECT REFERENCE CODE.
+
+        THE LAST GAP IN `SPEC-EXPLAIN-ACCOUNTING`'s outward coverage, and the one that mattered most.
+        A define, a read, a figure and a parameter were all bindable; terminology — the thing a clinical
+        reviewer is most likely to want to check, because it decides which patients match — was
+        accounted for in PROSE ONLY. The value set's OID lived in the Appendix and the reader had no
+        way to get from the sentence naming it to the row stating it, while the identical name inside
+        the rendered CQL was a followable link. The same backwards asymmetry `SPEC-DEFINE-REF` closed
+        for defines, closed here for the terminology the criterion is actually about.
+
+        ONE ELEMENT FOR BOTH KINDS, AND THE KIND IS DERIVED RATHER THAN DECLARED. A value set and a
+        direct reference code are both declarations in the library header and both resolve out of the
+        Appendix by (library, name), so the renderer reads which one it found and labels it. This is
+        deliberately UNLIKE `ConceptRef` / `RuleRef`, and the difference is what the narrator is
+        asserting: Concept-versus-Rule is a claim about the DOCUMENT's structure that a narrator makes,
+        while valueset-versus-code is a fact about the CQL DECLARATION that the ELM already states.
+        Making a narrator type it would be writing an identifier the compiler established, which
+        `SPEC-EXPLAIN-INPUTS` forbids ("the generator SELECTS identifiers, it never WRITES them") — and
+        a `ValueSetRef` pointing at a code would be an authoring error the schema could not catch.
+
+        IT IS `mixed`, and the text is the PROSE, not the declaration's name. A sentence says
+        "an example condition diagnosis"; the declaration is named `Example Condition`. Substituting the
+        name drops a title-cased identifier into a clinical paragraph, and the whole point of these
+        bindings is that the sentence goes on reading as a sentence.
+
+        LIBRARY-QUALIFIED, ALWAYS, for the reason `NarratedDefineRefType` is: value-set names are not
+        unique across an include closure, and a measure and its dependency may each declare one.
+        Unqualified is DROPPED rather than guessed — a link to the wrong OID is indistinguishable from
+        a right one, and on terminology that is a clinical error rather than a navigation one.
+
+        THE OID IS NEVER IN THE INSTANCE. A narrator names the declaration; the renderer resolves the
+        OID out of the ELM-derived Appendix (`SPEC-DERIVED-APPENDIX`). A typed OID is wrong the moment
+        the binding is rebound, with nothing to catch it — the same rule every other reference here
+        follows.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="library" type="xs:string" use="required"/>
+    <xs:attribute name="name" type="xs:string" use="required">
+      <xs:annotation>
+        <xs:documentation>
+          The DECLARED name of the value set or code, as the CQL header declares it and the Appendix
+          lists it — `Example Condition Diagnoses`, not its OID and not the prose.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="sourceSpan" type="SourceSpan" use="optional">
+      <xs:annotation>
+        <xs:documentation>
+          SPEC-INLINE-ANCHOR — the line of the enclosing define where this terminology is USED (the
+          retrieve or comparison that binds it), never the header line that declares it: the reader is
+          checking a claim about this criterion, and the declaration is what the reference already
+          leads to. Optional, with the same meaning its absence has elsewhere.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+  </xs:complexType>
+
+  <xs:complexType name="ParameterRefType">
+    <xs:annotation>
+      <xs:documentation>
+        SPEC-PARAMETER-REF — a CITATION OF AN EXECUTION PARAMETER'S VALUE inside prose.
+
+        The last of the four inline references, and the only one whose value is a property of the RUN
+        rather than of the logic or its results. "During the measurement period" is true and says less
+        than it could: the reader is looking at a document scoped to a specific year, and the year is
+        already selected in the toolbar, so a sentence that will not say which one makes the reader
+        carry it. `the <ParameterRef name="Measurement Period"/> measurement period` renders as *the 2026
+        measurement period*.
+
+        IT IS A REFERENCE FOR THE REASON `MetricRefType` IS. A narrator who types "2026" is wrong the
+        moment anyone steps the period, with nothing to catch it; one who may only cite it cannot be.
+
+        IT NEEDS NO RUN, which distinguishes it from every other citation here. A parameter is an
+        execution INPUT (`APP-EXEC-PARAMS`) — selected in the compute pill, not computed — so this
+        resolves in a document with no data source attached, and Static reads the same as Live.
+
+        THE JOIN IS THE CQL PARAMETER'S OWN NAME, declared on the control that dials it rather than
+        matched by convention here. Unresolved, it renders NOTHING and the sentence closes over the gap:
+        write around the citation, exactly as `SPEC-METRIC-REF` requires.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="name" type="xs:string" use="required">
+      <xs:annotation>
+        <xs:documentation>The CQL parameter's declared name — `Measurement Period`.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+  </xs:complexType>
+
+  <xs:complexType name="ReadRefType" mixed="true">
+    <xs:annotation>
+      <xs:documentation>
+        SPEC-READ-REF — a PHRASE IN THE PROSE THAT NAMES A READ, bound to the retrieve it names.
+
+        The same argument `MetricRefType` makes for quantities, applied to data requirements. When a
+        Concept says "recorded on the problem list or as an encounter diagnosis", those two phrases are
+        not decoration: each names a distinct FHIR profile the logic actually retrieves, and a reader
+        who wants to know how much data is behind one has nowhere to click. Binding the phrase makes it
+        a real reference — resolvable, countable, and selectable into the inspector exactly as the
+        retrieve token in the CQL already is.
+
+        THE INSTANCE CARRIES THE BINDING, NEVER THE FIGURE. A narrator states which read a phrase names;
+        the renderer resolves the count against the retrieve model derived from the ELM. A narrator who
+        may only name a read cannot state a wrong number about it, and a phrase bound to a read the
+        measure does not issue resolves to nothing rather than to a plausible invention.
+
+        IT IS `mixed`, and the text is the PROSE, not the read's name. The sentence must go on reading
+        as a sentence: "the problem list" is what belongs in the paragraph, and
+        `qicore-condition-problems-health-concerns` is what identifies the read. Splitting them is what
+        keeps the clinical voice out of the profile identifiers and the identifiers out of the prose.
+
+        RESOLUTION IS BY PROFILE, and it is exact rather than conventional. QICore names the type
+        `ConditionEncounterDiagnosis` and profiles it `…/qicore-condition-encounter-diagnosis`; the ELM
+        `Retrieve` carries that `templateId`, so a phrase bound to the profile matches a value the
+        compiler emitted rather than a naming convention we hoped held. `type` is the fallback for a
+        read the measure issues unprofiled, and a binding that resolves to no retrieve renders as plain
+        prose — degraded, never wrong.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="profile" type="xs:string" use="optional">
+      <xs:annotation>
+        <xs:documentation>
+          The QICore / US Core profile, last segment only — `qicore-condition-encounter-diagnosis`.
+          Preferred over `type`: a measure that reads Condition through two profiles has two reads, and
+          only the profile tells them apart.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="sourceSpan" type="SourceSpan" use="optional">
+      <xs:annotation>
+        <xs:documentation>
+          SPEC-INLINE-ANCHOR — the line of the enclosing define where this read is issued. A bullet naming
+          two reads used to carry ONE widened span covering both, which cannot say which phrase is which
+          line — the precise failure the "two anchors mean a list, not a wider range" rule exists to
+          prevent, one level down. The line is taken from the retrieve's own locator, never counted.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="type" type="xs:string" use="optional">
+      <xs:annotation>
+        <xs:documentation>
+          The unqualified FHIR resource type — `Condition`, `Encounter`. Used where the read is
+          unprofiled, and resolves to the FIRST read of that type, which is why `profile` is preferred
+          wherever the measure issues more than one.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+  </xs:complexType>
+
+  <xs:complexType name="NarratedListType">
+    <xs:annotation>
+      <xs:documentation>
+        SPEC-NARRATIVE-DEVICES — a rule set, as a list. `kind` carries the device: `include` and
+        `exclude` are the AHRQ Include/Exclude blocks, kept as two lists rather than one paragraph
+        alternating between them, because two blocks show a reader there are two decisions.
+
+        Each `Item` may cite its own lines. That is what makes the list countable: a list of three
+        items citing three of a define's five clauses is a coverage gap a test can find, where the
+        same claim in prose ("the conditions are…") can be checked against nothing.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="Item" type="ListItemType" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="kind" use="optional" default="plain">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="include"/>
+          <xs:enumeration value="exclude"/>
+          <xs:enumeration value="plain"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <xs:attribute name="title" type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="ListItemType" mixed="true">
+    <xs:annotation>
+      <xs:documentation>
+        One line of a rule set. It does NOT carry its own `provenance`: an item inherits the
+        provenance of the prose field it sits in, and repeating the attribute on every bullet would
+        be noise that can silently disagree with its parent. What it does carry is its own
+        `sourceSpan`, which is what makes the list countable — three items citing three of a define's
+        five clauses is a gap a test can find.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="ConceptRef" type="NarratedDefineRefType"/>
+      <xs:element name="RuleRef" type="NarratedDefineRefType"/>
+      <!-- SPEC-READ-REF — an Item is where a read is most often named ("recorded on the problem list
+           or as an encounter diagnosis"), so the binding has to be available inside a bullet and not
+           only in the lead sentence. An Item therefore carries SEGMENTS like the prose above it. -->
+      <xs:element name="Read" type="ReadRefType"/>
+      <xs:element name="ParameterRef" type="ParameterRefType"/>
+      <xs:element name="TerminologyRef" type="TerminologyRefType"/>
+      <xs:element name="Emphasis" type="xs:string"/>
+    </xs:choice>
+    <xs:attribute name="sourceSpan" type="SourceSpan" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="NarratedTableType">
+    <xs:annotation>
+      <xs:documentation>
+        SPEC-NARRATIVE-DEVICES — a code table, and the most checkable device there is. Six acute
+        encounter classes as six rows can be diffed against the ELM literal and fails loudly when a
+        seventh is added; "the six acute classes" as a sentence cannot be checked against anything.
+
+        `checkAgainst` names what the rows are supposed to match — a value set, or the define whose
+        ELM literal they transcribe — so the check is stated in the instance rather than being a
+        convention someone has to remember. Nothing enforces it yet; the attribute is what makes
+        enforcement possible without another schema change.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="Column" type="xs:string" maxOccurs="unbounded"/>
+      <xs:element name="Row" maxOccurs="unbounded">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="Cell" type="xs:string" maxOccurs="unbounded"/>
+          </xs:sequence>
+          <xs:attribute name="sourceSpan" type="SourceSpan" use="optional"/>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+    <xs:attribute name="title" type="xs:string" use="optional"/>
+    <xs:attribute name="checkAgainst" type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <xs:simpleType name="TagName">
+    <xs:annotation>
+      <xs:documentation>
+        A CQL annotation tag name: "a valid, unquoted identifier" per the CQL specification. The tag
+        set is deliberately OPEN — APP-NARRATIVE-TAGS reads standard and custom tags alike — so
+        this constrains the lexical form and not the vocabulary. The vocabulary CQL on Databricks gives meaning
+        to is enumerated in designer/docs/narrative-tags.md; an unrecognised tag is carried, never guessed at.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[A-Za-z_][A-Za-z0-9_]*"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- ══ Definitions — the compact reference catalogue ═════════════════════════════════════════ -->
+
+  <xs:complexType name="DefinitionsType">
+    <xs:annotation>
+      <xs:documentation>
+        SPEC-DEFINITIONS — the reference catalogue, deliberately subordinate to the narrated sections
+        above it. It is the only place FUNCTIONS and ELIMINATED defines appear, since the derived
+        sections exclude both.
+
+        The content model is intentionally THIN: one row per entry with a one-line summary. It carries
+        no Narrative, no Badges and no per-entry cell chrome, because vertical economy is the point —
+        a 297-entry library must stay skimmable.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="Library" maxOccurs="unbounded">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="Overview" type="NarratedTextType" minOccurs="0">
+              <xs:annotation>
+                <xs:documentation>
+                  What this library is FOR, in one or two sentences — the only narration the catalogue
+                  carries above the row level. An included library is otherwise just a name and a
+                  count, and a reader cannot tell a shared exclusion library apart from a bag of type
+                  conversions without being told.
+                </xs:documentation>
+              </xs:annotation>
+            </xs:element>
+            <xs:element name="Entry" type="EntryType" minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence>
+          <xs:attribute name="name" type="xs:string" use="required"/>
+          <xs:attribute name="root" type="xs:boolean" use="required"/>
+          <xs:attribute name="resolved" type="xs:boolean" use="required">
+            <xs:annotation>
+              <xs:documentation>
+                False when an include failed to compile — its entries are UNKNOWN, not empty, and the
+                reader is told why rather than shown a silent gap.
+              </xs:documentation>
+            </xs:annotation>
+          </xs:attribute>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="EntryType">
+    <xs:sequence>
+      <xs:element name="Summary" type="NarratedTextType" minOccurs="0"/>
+      <xs:element name="Metric" type="MetricType" minOccurs="0"/>
+      <xs:element name="Variant" minOccurs="0" maxOccurs="unbounded">
+        <xs:annotation>
+          <xs:documentation>
+            One declaration of an overload group. CQL permits many declarations of one name differing
+            only in operand types; they are ONE entry carrying its variants, never repeated rows.
+          </xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+          <xs:attribute name="params" type="xs:string" use="optional"/>
+          <xs:attribute name="returns" type="xs:string" use="optional"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="Code" type="CodeType" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="name" type="xs:string" use="required"/>
+    <xs:attribute name="kind" type="EntryKind" use="required"/>
+    <xs:attribute name="stableId" type="xs:string" use="required"/>
+    <xs:attribute name="id" type="xs:ID" use="required"/>
+    <xs:attribute name="eliminated" type="xs:boolean" use="required">
+      <xs:annotation>
+        <xs:documentation>
+          Unreachable from any population: present in the library, absent from the measure. Reachability
+          walks the compiler's describe map, or the ELM-derived graph when no Data Source has produced
+          one — equally exact, equally cross-library either way.
+        </xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+  </xs:complexType>
+
+  <!-- ══ Appendix ══════════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="AppendixType">
+    <xs:annotation>
+      <xs:documentation>
+        SPEC-DERIVED-APPENDIX — reference facts, DERIVED, never hand-written. Value sets, direct
+        reference codes and parameters are declarations of the ELM (`valueSets.def`, `codes.def`,
+        `parameters.def`); code counts and expansion dates belong to the terminology tables
+        (CONTENT-TERMINOLOGY-SCHEMA). A narration instance may not carry this element: prose it can be
+        wrong about, but a hand-copied OID goes stale silently and nothing catches it. A figure the
+        derivation cannot obtain is OMITTED rather than transcribed.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="ValueSet" minOccurs="0" maxOccurs="unbounded">
+        <xs:complexType>
+          <xs:attribute name="name" type="xs:string" use="required"/>
+          <xs:attribute name="oid" type="xs:string" use="optional"/>
+          <xs:attribute name="codeCount" type="xs:nonNegativeInteger" use="optional"/>
+          <xs:attribute name="expansionDate" type="xs:date" use="optional">
+            <xs:annotation>
+              <xs:documentation>
+                PRECEDENCE (fixing the v0.3 draft's B7, which allowed two pins to disagree with no rule):
+                where this date and a terminology pin in Provenance differ, the EXPANSION DATE HERE
+                governs what the document reports, because it is what the codes were actually drawn from.
+              </xs:documentation>
+            </xs:annotation>
+          </xs:attribute>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="Code" minOccurs="0" maxOccurs="unbounded">
+        <xs:complexType>
+          <xs:attribute name="name" type="xs:string" use="required"/>
+          <xs:attribute name="system" type="xs:string" use="optional"/>
+          <xs:attribute name="code" type="xs:string" use="optional"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="Parameter" minOccurs="0" maxOccurs="unbounded">
+        <xs:complexType>
+          <xs:attribute name="name" type="xs:string" use="required"/>
+          <xs:attribute name="type" type="xs:string" use="optional"/>
+          <xs:attribute name="note" type="xs:string" use="optional"/>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ══ Vocabularies ══════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:simpleType name="ProvenanceKind">
+    <xs:annotation>
+      <xs:documentation>
+        `authored` — a human or org asserted it and takes responsibility (WHO is a separate field, not
+        a provenance value; editing is a transition INTO this state, not another value). `narrated` —
+        meaning-bearing prose, reviewable. `derived` — organised from the CQL, trustworthy as a
+        faithful reflection of it.
+
+        `sample` — ILLUSTRATIVE, NOT MEASURED (`SPEC-SAMPLE-METRIC`). A figure that shows what the
+        document looks like populated, before any run has populated it. It exists because a
+        specification full of "not computed" cannot be reviewed as a document, and because a design
+        cannot be judged on placeholders — not because a number was unavailable and one was needed.
+
+        It is a FOURTH PROVENANCE rather than an unmarked value precisely so it cannot be mistaken for
+        a fifth kind of `derived`. `SPEC-METRIC` says never a fabricated number; this does not relax
+        that, it names the exception so the exception is visible. Three obligations follow, and a
+        `sample` figure that meets fewer than all three is a defect:
+
+          1. The renderer MARKS it, everywhere it appears, as plainly as the Narrative chip marks
+             interpreted prose. A reader must never have to know which lane the document is in.
+          2. It is stripped from, or fails, any instance whose `Identity/@lane` is not a demo lane.
+          3. It never satisfies a requirement that asks for a real figure — validation, conformance
+             and reported rates read `derived` metrics only, and treat `sample` as absent.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="authored"/>
+      <xs:enumeration value="narrated"/>
+      <xs:enumeration value="derived"/>
+      <xs:enumeration value="sample"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="MethodKind">
+    <xs:annotation>
+      <xs:documentation>A separate axis UNDER `narrated` — how the prose was produced, not what it is.</xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="ai-drafted"/>
+      <xs:enumeration value="human-written"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="ReviewState">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="unreviewed"/>
+      <xs:enumeration value="reviewed"/>
+      <xs:enumeration value="accepted"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="PolarityKind">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="qualifying"/>
+      <xs:enumeration value="disqualifying"/>
+      <xs:enumeration value="computational"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="PopulationKind">
+    <xs:annotation>
+      <xs:documentation>
+        Includes measure-observation, stratifier and supplemental-data-element: ratio and
+        continuous-variable measures need the first, and CMS eCQMs — the stated demo corpus — use the
+        other two. A model without them cannot express the content we ship.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="initial-population"/>
+      <xs:enumeration value="denominator"/>
+      <xs:enumeration value="denominator-exclusion"/>
+      <xs:enumeration value="denominator-exception"/>
+      <xs:enumeration value="numerator"/>
+      <xs:enumeration value="numerator-exclusion"/>
+      <xs:enumeration value="measure-population"/>
+      <xs:enumeration value="measure-population-exclusion"/>
+      <xs:enumeration value="measure-observation"/>
+      <xs:enumeration value="stratifier"/>
+      <xs:enumeration value="supplemental-data-element"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="ScoringKind">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="proportion"/>
+      <xs:enumeration value="ratio"/>
+      <xs:enumeration value="continuous-variable"/>
+      <xs:enumeration value="cohort"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="ContextKind">
+    <xs:annotation>
+      <xs:documentation>
+        Doubles as the metric UNIT (SPEC-METRIC). An episode-of-care measure does not count patients,
+        and a document that says it does is stating something false.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="patients"/>
+      <xs:enumeration value="episodes"/>
+      <xs:enumeration value="encounters"/>
+      <xs:enumeration value="records"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="LaneKind">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="reverse-engineered"/>
+      <xs:enumeration value="new-knowledge"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="EntryKind">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="define"/>
+      <xs:enumeration value="function"/>
+      <xs:enumeration value="population"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="MetricForm">
+    <xs:annotation>
+      <xs:documentation>
+        Dispatched from the ELM result type: Boolean → count; List → cardinality-histogram; numeric or
+        Quantity → distribution; Interval or DateTime → none. `none` means OMITTED, not empty — a metric
+        that cannot be honestly drawn is not drawn.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="count"/>
+      <xs:enumeration value="cardinality-histogram"/>
+      <xs:enumeration value="distribution"/>
+      <xs:enumeration value="none"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="BadgeState">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="pass"/>
+      <xs:enumeration value="findings"/>
+      <xs:enumeration value="not-run"/>
+      <xs:enumeration value="unknown"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="LensKind">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="validate"/>
+      <xs:enumeration value="map"/>
+      <xs:enumeration value="analyze"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="SemanticsCategory">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="aggregation"/>
+      <xs:enumeration value="tie-breaking"/>
+      <xs:enumeration value="null-propagation"/>
+      <xs:enumeration value="boundary-semantics"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="Sha256">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9a-f]{64}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+</xs:schema>

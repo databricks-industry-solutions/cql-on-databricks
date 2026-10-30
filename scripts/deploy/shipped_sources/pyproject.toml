@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cql-databricks-shipped-sources"
+version = "0.1.0"
+description = "The deploy's own data: load the example content and the shipped FHIR data sources into Unity Catalog (DEPLOY-SHIPPED-SOURCES)"
+requires-python = ">=3.10"
+license = { text = "Databricks License" }
+authors = [{ name = "Databricks, Inc." }]
+dependencies = [
+    # pyspark is NOT a base dep — it comes from either the [spark] extra (local Spark, for tests) or
+    # databricks-connect (Databricks path). The two are mutually exclusive (SVC-RUN-DBCONNECT).
+    # CONTENT-IMPORT-MEASURES — the measures go through the client's one import path,
+    # `cql_databricks.data_bindings.measure_import`.
+    "cql-databricks",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+# Local open-source Spark, for development and tests: adds pyspark. Mutually exclusive with [databricks].
+spark = ["pyspark>=4.0"]
+# databricks-connect ships its own pyspark; do NOT combine with [spark].
+databricks = ["databricks-connect"]
+
+# Installed editable in the repository venv (scripts/setup.sh) and never built into a wheel for the Volume: only
+# the deploy and the synthetic-population loader run it, from a checkout.
+#
+# src layout (PyPA's recommendation), matching every other component in this repository. With a flat layout,
+# `import shipped_sources` from the repository root resolves the WORKING TREE rather than the installed
+# distribution, so the tests can pass while the package is broken. Stated EXPLICITLY rather than left to
+# setuptools auto-discovery.
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["shipped_sources*"]
+
+# RUNTIME DATA. `population.py` reads `resource-schemas.json` for its `__resource` DDL — this package's OWN
+# copy (CONTENT-IMPORTER-FHIR-SCHEMAS): the compiler no longer writes it.
+[tool.setuptools.package-data]
+shipped_sources = ["*.json"]

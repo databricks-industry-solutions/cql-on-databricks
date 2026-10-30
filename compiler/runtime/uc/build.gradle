@@ -1,0 +1,36 @@
+// The UC / session runtime bridge (SVC-RUNTIME-UDF). A thin JAR shipped to the runtime cluster, hosting
+// `com.databricks.cql.platform.CqlDatabricks` — the stable entry point a notebook's `%scala` cell calls to
+// register the compiler's opaque `cql_*` catalog on the session.
+//
+// Why a `%scala` cell is the primary path on shared (USER_ISOLATION) clusters: the Python client there is
+// a Spark Connect session with no py4j gateway, so it cannot register by name. A `%scala` cell runs in
+// the driver JVM and shares the session, so it can. `UcCatalogTool` covers the other deployment shape,
+// emitting the UC `CREATE FUNCTION ... LANGUAGE SCALA` DDL for serverless.
+//
+// Like compiler-app, this is the DOWNSTREAM side of the neutrality wall: it depends on `:runtime` and
+// registers through it, and re-implements no UDF. The compiler's runtime gains no dependency on this,
+// which `./gradlew checkNeutrality` now enforces mechanically.
+dependencies {
+    // The compiler's opaque-UDF catalog (CqlRuntimeUdfs.registerAll) and the UC function manifest.
+    implementation project(':compiler:runtime:udf')
+
+    // Spark comes from the runtime cluster — compileOnly, exactly as `:runtime` itself declares it, so
+    // this JAR ships only our own classes (SVC-PACKAGING). SparkSession and functions.udf are supplied
+    // by spark-connect-client-jvm on the driver.
+    compileOnly "org.apache.spark:spark-connect-client-jvm_${scalaBinaryVersion}:${sparkVersion}"
+
+    // Tests need SparkSession on the classpath because the delegation guard reflects over it. No live
+    // session is started; the guard itself is Spark-free.
+    testImplementation "org.apache.spark:spark-connect-client-jvm_${scalaBinaryVersion}:${sparkVersion}"
+}
+
+// SVC-RUNTIME-UDF-UC: print the UC `CREATE OR REPLACE FUNCTION` DDL as a JSON array, generated from the
+// manifest in `:runtime`, for the deploy step to submit in one SQL warehouse session. No Spark is
+// needed to GENERATE the DDL. Run quietly so stdout carries only the JSON:
+//   ./gradlew -q :platform:uc-runtime:printUcDdl --args="--catalog C --schema S --jar /Volumes/.../runtime.jar"
+tasks.register('printUcDdl', JavaExec) {
+    group = 'application'
+    description = 'Print UC Scala UDF CREATE FUNCTION DDL (JSON array) for the deploy registration step.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.databricks.cql.platform.UcCatalogTool'
+}

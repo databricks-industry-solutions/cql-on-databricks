@@ -1,0 +1,473 @@
+# CQL on Databricks — Databricks Asset Bundle (SVC-DEPLOY-BUNDLE, docs/deploy.md).
+#
+# THE atomic deploy/redeploy/permissions unit for CQL on Databricks. `scripts/deploy/deploy.sh -t default` installs
+# the feature Apps — compiler, Designer, agent (SVC-APP-TOPOLOGY, APP-PER-FEATURE) — as ONE bundle; there is no other install tooling (only the thin
+# helper scripts in scripts/ and the VS Code tasks). OAuth throughout — the CLI authenticates with a
+# `databricks auth login` profile (U2M OAuth), and the deployed Apps use their App service principal +
+# serverless->App token-exchange (SVC-DISCOVERY-PLUGIN); static bearer tokens are a local-dev fallback.
+#
+# Three Apps (APP-PER-FEATURE). The JVM-in-App hosting of the compiler
+# service (a Databricks App container ships Python/Node, not Java, so the App bundles a jlink JRE,
+# SVC-PACKAGING) is the one piece to VALIDATE on a real workspace — run `databricks bundle validate -t default`
+# after `databricks auth login`, then `scripts/deploy/deploy.sh`. See docs/deploy.md.
+
+bundle:
+  name: cql-databricks
+
+# Local, UNCOMMITTED environment config (SVC-DEPLOY-BUNDLE). This committed file carries NO workspace
+# hosts, cluster ids, warehouse ids, or catalog overrides — those are environment specifics that must not
+# live in source. Instead, each engineer keeps a gitignored `databricks.local.yml` (glob below) that adds
+# their real `targets:` (host + per-target variable overrides); the bundle MERGES it over this base. Copy
+# `databricks.local.yml.example` to `databricks.local.yml` and fill in your workspace. The glob matching
+# no file is a no-op, so the repo stays deployable (host resolves from the active CLI profile) without one.
+include:
+  - "*.local.yml"
+
+# The Apps' source_code_paths are STAGED payloads under build/ (gitignored, so bundle sync excludes them by
+# default). Force-include them so `bundle deploy` uploads the installDist trees + bootstrap.py. Re-stage
+# (scripts/deploy/stage-compiler.sh, scripts/deploy/stage-app.sh) before each deploy.
+sync:
+  include:
+    - compiler/server/build/app/**
+    - designer/server/build/app/**
+    # SVC-MCP-TOOLS — the agent's App payload. `build/` is gitignored, so a staged payload reaches the
+    # workspace ONLY by being listed here. A payload left off this list once deployed "successfully"
+    # (`bundle deploy` validates the LOCAL path) and then failed on the App's own source:
+    #   Invalid source code path: .../files/<payload>. Path does not exist.
+    # Adding an App means adding its payload here.
+    - agent/server/build/app/**
+
+# DEPLOY-APP-GRANTS — the App service-principal grants, as part of the bundle.
+#
+# The Designer has no Lakebase (`SPLIT-LAKEBASE` SUPERSEDED). The UNITY CATALOG grants cannot be declarative: an App
+# `uc_securable` resource covers only CONNECTION/FUNCTION/TABLE/VOLUME, and what the BFF needs
+# is CATALOG-level (USE CATALOG / CREATE SCHEMA). The only declarative route would be `resources.catalogs`,
+# which would put the product's data catalog under bundle management — and therefore under
+# `bundle destroy` — for a catalog this bundle does not create and must not own.
+#
+# So it is a bundle SCRIPT: `databricks bundle run grant_app_access` executes it in the bundle's own auth
+# + target context (DATABRICKS_BUNDLE_TARGET), which is what makes it part of the deployment rather than
+# a loose command someone has to remember. `scripts/deploy/deploy.sh` (step 5.7) also calls it directly, so a
+# normal deploy applies it without a second command. Granting requires OWNERSHIP of the catalog (or
+# MANAGE); the script prints the equivalent SQL if the caller lacks it.
+scripts:
+  grant_maintenance_access:
+    content: bash ./scripts/deploy/grant-maintenance-access.sh
+  grant_app_access:
+    content: ./scripts/deploy/grant-app-access.sh
+  # SVC-EXAMPLE-NOTEBOOKS — publish the example notebooks to /Shared/CqlDatabricks/examples, the one workspace
+  # path that is the same for every user. `bundle deploy` alone only lands them in the DEPLOYER's home
+  # under .bundle/<target>/files/, which nobody else can reach. Same rationale as grant_app_access for
+  # being a bundle SCRIPT rather than a resource: there is no DAB resource type for a workspace folder
+  # of notebooks with an ACL, so it runs in the bundle's own auth + target context
+  # (DATABRICKS_BUNDLE_TARGET). `scripts/deploy/deploy.sh` (step 6.7) also calls it directly.
+  publish_examples:
+    content: ./scripts/deploy/publish-examples.sh
+  # DEPLOY-AGENT-SKILLS — publish every skill, from one definition, as a Unity Catalog skill (Genie One) and to the
+  # workspace skills folder (Genie Code). A script for the same reason as publish_examples: there is no DAB resource
+  # type for a skill or a workspace folder. `scripts/deploy/deploy.sh` (step 7.5) also calls it directly.
+  publish_skills:
+    content: ./scripts/deploy/publish-skills.sh
+
+variables:
+  compiler_token:
+    description: >-
+      RFC 6750 bearer the Designer BFF / notebook client send to the Compiler Service. Local-dev fallback
+      only; on Databricks this is replaced by serverless->App OAuth token-exchange (SVC-COMPILE-ENDPOINT).
+    default: ""
+  terminology_mounted:
+    description: Whether the compiler signals runtime-mounted value-set views (CQL_TERMINOLOGY; on = default).
+    default: "on"
+  # The runtime LAYER (SVC-CATALOG-LAYOUT): catalog = product, `runtime` schema = the execution machinery
+  # (deploy-once / version-pinned, its own grant). The bundle CREATES the schema + volume (resources below);
+  # these three knobs make its location configurable. The volume holds: the opaque-UDF catalog JAR (the
+  # `java_dependencies` target of the cql_* UC Scala UDFs, SVC-RUNTIME-UDF-UC), the compiler/runtime/uc jar,
+  # and the compiler App's JRE + 3
+  # oversized public jars (the App reads them via its `uc_securable` grant instead of the public internet).
+  # Path convention: /Volumes/<uc_catalog>/<uc_schema>/<runtime_volume>, e.g. /Volumes/<uc_catalog>/runtime/artifacts.
+  uc_catalog:
+    description: >-
+      UC catalog = the product (SVC-CATALOG-LAYOUT); deployer needs CREATE SCHEMA/VOLUME on it. Required:
+      set it in databricks.local.yml; scripts/deploy/deploy.sh refuses to deploy while it is empty.
+    default: ""
+  uc_schema:
+    description: The runtime LAYER schema under uc_catalog (SVC-CATALOG-LAYOUT) — holds the cql_* UC UDF catalog + the artifact volume. Bundle-created (resources.schemas.cql_databricks_runtime).
+    default: "runtime"
+  runtime_volume:
+    description: Managed volume the bundle creates under uc_catalog.uc_schema (<uc_catalog>.runtime) for the runtime artifacts — a mixed store (jre/ + udf/ jars + wheels/). Named `artifacts` (not `runtime`, which would stutter as runtime.runtime; SVC-CATALOG-LAYOUT).
+    default: "artifacts"
+  warehouse_id:
+    description: >-
+      Serverless SQL warehouse id used at deploy time to register the cql_* UC Scala UDFs
+      (SVC-RUNTIME-UDF-UC) in one SQL session. Also the warehouse the run log, the
+      example provisioning and the Apps use. Required: scripts/deploy/deploy.sh stops while it is empty.
+    default: ""
+  designer_results_catalog:
+    description: >-
+      RUN-CLIENT-PRIVATE-PROVISIONING — the catalog holding the Designer's per-user result schemas. A
+      platform administrator creates it and grants Designer users USE CATALOG and CREATE SCHEMA;
+      deployment does neither. Callers create their own stable schemas. May equal uc_catalog for a
+      single-catalog deployment. No exclusive-access guarantee. Not bundle-owned, so bundle destroy
+      cannot delete its data. It is the only results catalog (PIPE-RESULTS-CATALOG-ISOLATION SUPERSEDED).
+      Required: set it in databricks.local.yml; scripts/deploy/deploy.sh refuses to deploy while it is empty.
+    default: ""
+  assistant_endpoint:
+    description: >-
+      APP-ASSISTANT — the Model Serving chat endpoint the assistant drawer's tool loop calls
+      (agent/README.md). Any chat endpoint works. A NAME rather than a discovery call: resolving
+      "the best available model" at startup would change the answer a clinician got whenever the
+      workspace's endpoint list changed, with nothing recording which model produced it. Set it in
+      databricks.local.yml; scripts/deploy/deploy.sh refuses to deploy while it is empty.
+    default: ""
+  canonical_base:
+    description: >-
+      DOC-OPEN-SAVE — the base of the canonical URL every library and measure created in the Designer (New,
+      Save As) gets: <base>/Library/<Name> and <base>/Measure/<Name>. One base for the deployment. The default
+      is the base the example measures use; set your organization's own in databricks.local.yml before anyone
+      creates a library, since a canonical URL is an identity a library keeps.
+    default: "http://example.org/fhir"
+  catalog_scopes:
+    description: >-
+      CLIENT-DISCOVERY-SCOPE — the ordered, comma-separated catalog scopes (`catalog` or `catalog.schema`) the
+      Apps and the deploy's knowledge-view bind discover data sources, knowledge and terminology in; an earlier
+      scope wins a name. Required: set it in databricks.local.yml; scripts/deploy/deploy.sh refuses to deploy while it
+      is empty. A customer's own notebooks and Jobs set their own scopes in their client session.
+    default: ""
+  designer_catalog:
+    description: >-
+      APP-RUN-LOG, DEC-RUN-LOG-LOCATION — the catalog of the shared, bundle-created `designer` schema, which
+      holds the Designer run log (`designer.runs`, `designer.run_steps`) and later Designer-owned shared
+      tables. Not designer_results_catalog: that one holds users' private schemas. The deployer needs CREATE
+      SCHEMA on it.
+    default: "${var.uc_catalog}"
+  run_log_readers_group:
+    description: >-
+      APP-RUN-LOG — the account group granted SELECT on the Designer run log (operators). Set it in
+      databricks.local.yml; scripts/deploy/deploy.sh refuses to deploy while it is empty.
+    default: ""
+  app_users_group:
+    description: >-
+      APP-PER-FEATURE — the account group granted CAN_USE on the Designer and agent Apps. A user
+      reached through another App is reached as themselves (APP-TO-APP-OBO), so each App must grant them.
+      Set it in databricks.local.yml; scripts/deploy/deploy.sh refuses to deploy while it is empty. Empty by
+      default so local runs, which read the bundle, do not need it.
+    default: ""
+  agent_users_group:
+    description: >-
+      DEPLOY-AGENT-SKILLS, DEPLOY-AGENT-REGISTRATION — the ACCOUNT group granted READ VOLUME on the agent's UC skills
+      and EXECUTE on its MCP Service. Unity Catalog grants take account principals only. Set it in
+      databricks.local.yml; scripts/deploy/deploy.sh refuses to deploy while it is empty.
+    default: ""
+  agent_account_profile:
+    description: >-
+      DEPLOY-AGENT-REGISTRATION — the account-level CLI profile, signed in by an account admin, the deploy creates
+      the agent's OAuth client with (docs/deploy.md). A profile name, read here and never written in source. Set it
+      in databricks.local.yml. Optional: empty, the deploy connects Genie One only if its connection is already in
+      place, and says so otherwise.
+    default: ""
+  # DEPLOY-WORKSPACE-SETTINGS — the workspace settings the deploy relies on. Each is workspace-wide, so the default
+  # false leaves it as it is (never turning it off); true turns it on, as a workspace admin. scripts/deploy/deploy.sh
+  # applies them before the Apps are built.
+  enable_databricks_apps:
+    description: "DEPLOY-WORKSPACE-SETTINGS — true turns on Databricks Apps (custom_apps_preview)."
+    default: false
+  enable_apps_user_authorization:
+    description: >-
+      DEPLOY-WORKSPACE-SETTINGS — true turns on user authorization for Apps (enable_obo_user_apps), so the Apps act
+      as the signed-in user (SEC-OBO).
+    default: false
+  enable_unity_gateway:
+    description: >-
+      DEPLOY-WORKSPACE-SETTINGS — true turns on Unity Gateway (ai_gateway_ga_ws), which holds the agent's MCP Service
+      (DEPLOY-AGENT-REGISTRATION).
+    default: false
+  enable_genie_uc_skills:
+    description: >-
+      DEPLOY-WORKSPACE-SETTINGS — true turns on the preview "Unity Gateway skills in Genie" (genie_uc_skills), so
+      Genie One loads the agent's UC skills (DEPLOY-AGENT-SKILLS).
+    default: false
+  agent_skills_schema:
+    description: >-
+      DEPLOY-AGENT-SKILLS — the catalog.schema the agent's research skills are published in as Unity Catalog
+      skills. scripts/deploy/publish_skills.py creates the schema if it is missing. Set it in
+      databricks.local.yml; scripts/deploy/deploy.sh refuses to deploy while it is empty.
+    default: ""
+  maintenance_principal:
+    description: >-
+      RUN-CLIENT-MAINTENANCE — the application ID of the service principal the cql-databricks-designer-maintenance
+      Job runs as. scripts/deploy/deploy.sh creates the principal (scripts/deploy/grant-maintenance-access.sh) and
+      passes its ID here; there is nothing to set by hand.
+    default: ""
+  client_wheel_version:
+    description: >-
+      SVC-WHEEL-VERSION — the cql-databricks wheel version this deploy builds and uploads to the runtime volume,
+      which the cql-databricks-designer-maintenance Job installs. scripts/deploy/deploy.sh sets it; there is nothing
+      to set by hand.
+    default: ""
+
+targets:
+  # ONE generic, environment-neutral target lives in source. It carries NO `workspace.host` and NO
+  # env-specific variable overrides — auth (and thus the host) resolves from the active CLI profile
+  # (`-p <profile>`, DATABRICKS_CONFIG_PROFILE, or DATABRICKS_HOST). Real named targets with hosts +
+  # cluster/warehouse/catalog overrides go in your gitignored `databricks.local.yml` (see the `include`
+  # at the top and `databricks.local.yml.example`); the bundle merges them over this base, so
+  # `scripts/deploy/deploy.sh -t <your-target>` works once your local file defines `<your-target>`.
+  #
+  # No `mode: development` (SVC-CATALOG-LAYOUT): dev mode prefixes UC SCHEMA names with `dev_<user>_` (and
+  # `presets.name_prefix: ""` does NOT suppress the schema prefix — only jobs/apps/volumes). But the
+  # `runtime` layer is a SHARED, version-pinned schema whose `cql_*` UDFs need a STABLE `catalog.runtime.fn`
+  # FQN — a per-dev `dev_<user>_runtime` would make every deploy a separate, unresolvable catalog. A default
+  # (no-mode) target deploys resources under their declared names: schema `runtime`, apps `cql-databricks-*`.
+  # A local target that wants deployer-prefixed isolation can add `mode: development` itself.
+  default:
+    default: true
+
+resources:
+  apps:
+    # --- CQL Compiler Service (JVM) — the only cql-on-databricks-dependent deployable (SVC-COMPILE-ENDPOINT).
+    # source_code_path points at the STAGED payload (scripts/deploy/stage-compiler.sh): the installDist tree
+    # (bin/ + lib/, engine jars baked in) + bootstrap.py + a bundled linux-x64 JRE tarball (jre.tar.gz),
+    # since the App container has no Java (SVC-PACKAGING). app.yaml runs `python bootstrap.py`, which
+    # extracts the JRE and execs the launcher. Spark-free at runtime (EXEC-SQL-BACKEND): compiles
+    # CQL/ELM -> SQL text; no SparkSession, touches no data.
+    cql_databricks_compiler:
+      name: cql-databricks-compiler
+      description: "CQL on Databricks Compiler Service — CQL/ELM -> SQL compile endpoint (/translate, /compile-sql, /compile-pipeline, /describe). SVC-COMPILE-ENDPOINT."
+      source_code_path: ./compiler/server/build/app
+      # Grant the App's service principal READ on the runtime volume (SVC-PACKAGING). bootstrap.py then
+      # pulls the JRE + 3 oversized jars from the volume via the Databricks SDK (auth is the ambient App
+      # identity) instead of the public internet — falling back to the public URLs if the read fails.
+      resources:
+        - name: runtime_artifacts
+          uc_securable:
+            securable_type: VOLUME
+            # Reference the volume RESOURCE (its full-name id) so the bundle creates the volume BEFORE it
+            # grants the App read on it (without this edge the grant can race the volume creation).
+            securable_full_name: ${resources.volumes.cql_databricks_runtime_volume.id}
+            permission: READ_VOLUME
+
+    # --- The Designer — React/TS SPA + Python/FastAPI BFF (SVC-APP-TOPOLOGY, APP-PER-FEATURE).
+    # source_code_path is the STAGED payload (scripts/deploy/stage-app.sh): app.yaml + cql_databricks_designer/ +
+    # the agent + common + the built SPA (dist/) + requirements.txt. It serves the SPA + its /api,
+    # proxies /translate to the compiler App (SEC-APP-TO-APP), runs durable calculations through the client
+    # (`cql_databricks.result`) and serves the data sources and the Bind action itself, all as the signed-in user
+    # (`DEC-EVALUATOR-APP-REHOME`).
+    cql_databricks_designer:
+      name: cql-databricks-designer
+      description: "CQL-on-Databricks Designer — the Specification authoring UI (SPA + FastAPI BFF). SVC-APP-TOPOLOGY."
+      source_code_path: ./designer/server/build/app
+      # SEC-OBO — USER AUTHORIZATION. Declaring these scopes is what makes the platform forward the
+      # signed-in user's OAuth access token (`x-forwarded-access-token`), which is the whole of
+      # `workspace.user_client()`. Without them the App receives only the two IAM defaults the
+      # platform always adds (`iam.access-control:read`, `iam.current-user:read`), no token is
+      # forwarded, and every data-touching request raises rather than quietly running as the App's
+      # own service principal.
+      #
+      # THESE NAMES COME FROM THE APPS ALLOWLIST, NOT FROM THE WORKSPACE'S OAUTH SCOPE LIST. The two
+      # look alike and are different enumerations, which is the trap: the workspace advertises 56
+      # scopes (`databricks api get /oidc/.well-known/oauth-authorization-server`, `scopes_supported`)
+      # and Apps accepts about a dozen of them. A name outside the Apps set fails the DEPLOY, not the
+      # request — `terraform apply` answers `The specified scope <x> is not a valid scope` against
+      # `databricks_app.cql_databricks_app` and NOTHING ships, including every unrelated resource in the
+      # bundle. Probed one name at a time against this workspace 2026-08-09:
+      #   accepted — sql, sql.statement-execution, sql.warehouses, workspace.workspace, files,
+      #              files.files, genie, dashboards.genie, model-serving, serving.serving-endpoints,
+      #              vector-search, apps, postgres, ai-gateway, catalog.tables
+      #   refused  — jobs, pipelines, clusters, compute, unity-catalog, secrets, query-history,
+      #              alerts, all-apis, ... and bare `workspace` (ONLY `workspace.workspace` is taken).
+      #
+      # NO `jobs` OR `pipelines` SCOPE EXISTS (`SEC-OBO-SCOPE-GAP`, probed 2026-08-09: every spelling refused), so
+      # nothing this App does as the user may create a Job or a pipeline.
+      #
+      # PREREQUISITE, and it is not declarative: a workspace admin must enable user authorization
+      # for Apps (Public Preview) before these take effect. `databricks apps get app` reports
+      # what actually landed as `effective_user_api_scopes`.
+      #
+      # AND EACH USER CONSENTS ONCE, per scope set. Adding a scope does not re-prompt anyone: the
+      # auth proxy holds a refresh token and keeps minting fresh tokens against the ORIGINAL grant,
+      # so the App reports the new scope as effective while every call still fails with
+      # `does not have required scopes`. Restarting the App does not help — it restarts the
+      # container, not a session. See `docs/deploy.md`
+      #
+      # This App's scopes:
+      #   sql — every warehouse statement as the user: durable calculations, result reads, the data-source
+      #         lookups and the knowledge-view Bind, and the assistant drawer's result reads.
+      #   serving.serving-endpoints — the assistant drawer's Foundation Model call (`APP-ASSISTANT`). The
+      #         prompt carries whatever the tool loop just read, so it is a data-touching call and runs
+      #         as the reader.
+      #   workspace.workspace — Save writes a library's CQL to a /Workspace folder as the user, through the
+      #         Workspace API (`DOC-OPEN-SAVE`). The Files API refuses /Workspace paths.
+      #   files — Save writes a library's CQL to a /Volumes folder as the user, through the Files API.
+      #         Both checked on the workspace 2026-10-30 (`DOC-WRITE-SCOPE-CHECK`).
+      user_api_scopes:
+        - sql
+        - serving.serving-endpoints
+        - workspace.workspace
+        - files
+      # APP-PER-FEATURE — the users who reach this App, directly or through another App, need CAN_USE on it:
+      # an App called with a user's token is reached AS that user (APP-TO-APP-OBO), and the Apps OAuth gate
+      # turns away a user without the grant. One group, set in databricks.local.yml; deploy.sh refuses to
+      # deploy while it is empty.
+      permissions:
+        - level: CAN_USE
+          group_name: ${var.app_users_group}
+      resources:
+        # SEC-APP-TO-APP — CAN_USE on the compiler App for this App's service principal, or every call to it
+        # is answered by the platform OAuth gate with a redirect to the sign-in page. Declared as an `app`
+        # resource (DEPLOY-APP-GRANTS): the service principal is created BY this deploy, so nothing that ran
+        # earlier could have granted it anything. `app.yaml` binds CQL_COMPILER_APP to this resource's App
+        # name (`valueFrom: compiler`), and config.py reads its URL from the Apps API (APP-PER-FEATURE).
+        - name: compiler
+          description: "CQL Compiler Service (SVC-COMPILE-ENDPOINT)."
+          app:
+            name: ${resources.apps.cql_databricks_compiler.name}
+            permission: CAN_USE
+        # SVC-PACKAGING — requirements.txt installs the cql-databricks wheel from the runtime volume (not on
+        # PyPI, and an App's requirements.txt takes no relative path). pip reads it as the App's service
+        # principal, so the App needs READ_VOLUME, like the compiler for its JRE.
+        - name: runtime_artifacts
+          description: "Runtime artifact volume (SVC-PACKAGING) — holds the wheels pip installs."
+          uc_securable:
+            securable_type: VOLUME
+            securable_full_name: ${resources.volumes.cql_databricks_runtime_volume.id}
+            permission: READ_VOLUME
+        # APP-ASSISTANT — NO `serving_endpoint` RESOURCE HERE, and its absence is the decision.
+        # The drawer's tool loop queries the FM API endpoint as the SIGNED-IN USER
+        # (`SEC-OBO`, `assistant/ask.py`), because the prompt carries whatever the loop just read —
+        # measure results, define profiles, the rows behind a rate — which makes it a data-touching
+        # call. A CAN_QUERY grant to the App would leave it holding an authority nothing uses, which
+        # is the ambient authority `SEC-OBO` gives up on purpose. The `serving.serving-endpoints`
+        # scope above is what carries the call.
+        #
+        # THE GRANT MOVES TO THE USER, and a deploy does not do it: the reader needs `CAN QUERY` on
+        # ${var.assistant_endpoint}, the same shape as the UC grants under `SEC-OBO`. Grant the
+        # `app_users_group` once rather than a person at a time (`docs/deploy.md`).
+
+    # --- The agent's MCP server (SVC-MCP-TOOLS, APP-PER-FEATURE, agent/README.md). The
+    # AGENT-FACING surface: the agent's tools and nothing else — no SPA, no /api, no compiler proxy.
+    # `python -m cql_databricks.agent.server.app`; source_code_path is the staged payload scripts/deploy/stage-app.sh
+    # assembles beside the others.
+    #
+    # THE DEPLOYED NAME MUST BEGIN WITH `mcp-`: Databricks recognizes an App as an MCP server by that
+    # prefix, and without it the server is reachable by URL but never appears in AI Playground's MCP
+    # list. The prefix is a PLATFORM contract and lives here only (ACC-BRAND-NAMING).
+    cql_databricks_agent:
+      name: mcp-cql-databricks
+      description: "CQL-on-Databricks agent — MCP tools over definitions, saved results and inline experiments (SVC-MCP-TOOLS)."
+      source_code_path: ./agent/server/build/app
+      # SEC-OBO — the tools read result tables and run CQL inline through the SQL warehouse, so they act as
+      # the caller (`workspace.user_client()`), not as this App's service principal. `sql` only: this server
+      # saves nothing, deploys nothing and writes no workspace files (SVC-MCP-TOOLS).
+      user_api_scopes:
+        - sql
+      # APP-PER-FEATURE — the users who reach this App, directly or through another App, need CAN_USE on it:
+      # an App called with a user's token is reached AS that user (APP-TO-APP-OBO), and the Apps OAuth gate
+      # turns away a user without the grant. One group, set in databricks.local.yml; deploy.sh refuses to
+      # deploy while it is empty.
+      permissions:
+        - level: CAN_USE
+          group_name: ${var.app_users_group}
+      resources:
+        # DEPLOY-APP-GRANTS: this App has its own service principal, created BY this deploy. It needs NO
+        # Lakebase (data sources are tagged schemas, `DATA-SOURCE-UC-TAG`). It compiles nothing, but the
+        # data-source layout check reads the compiler's modeled FHIR types (`BIND-DATA-SOURCE-LAYOUT`).
+        # SEC-APP-TO-APP — CAN_USE on the compiler App for this App's service principal, or every call to it
+        # is answered by the platform OAuth gate with a redirect to the sign-in page. Declared as an `app`
+        # resource (DEPLOY-APP-GRANTS): the service principal is created BY this deploy, so nothing that ran
+        # earlier could have granted it anything. `app.yaml` binds CQL_COMPILER_APP to this resource's App
+        # name (`valueFrom: compiler`), and config.py reads its URL from the Apps API (APP-PER-FEATURE).
+        - name: compiler
+          description: "CQL Compiler Service (SVC-COMPILE-ENDPOINT)."
+          app:
+            name: ${resources.apps.cql_databricks_compiler.name}
+            permission: CAN_USE
+        # SVC-PACKAGING — requirements.txt installs the cql-databricks wheel from the runtime volume (not on
+        # PyPI, and an App's requirements.txt takes no relative path). pip reads it as the App's service
+        # principal, so the App needs READ_VOLUME, like the compiler for its JRE.
+        - name: runtime_artifacts
+          description: "Runtime artifact volume (SVC-PACKAGING) — holds the wheels pip installs."
+          uc_securable:
+            securable_type: VOLUME
+            securable_full_name: ${resources.volumes.cql_databricks_runtime_volume.id}
+            permission: READ_VOLUME
+
+  # --- Runtime-artifact store (SVC-RUNTIME-UDF, SVC-PACKAGING). The bundle CREATES the `runtime` layer schema
+  # (SVC-CATALOG-LAYOUT) + the `jars` volume under it (`cql-databricks`.`runtime`.`jars`) so
+  # `databricks bundle deploy` provisions the whole layer — no manual UC setup beyond the catalog existing.
+  # deploy.sh then uploads the artifacts into it (the UDF catalog JAR the cql_* UC functions point at, the
+  # runtime jar, the compiler's JRE + 3 oversized jars). Volume references the schema RESOURCE so the bundle
+  # creates the schema BEFORE the volume (avoids a create race).
+  volumes:
+    cql_databricks_runtime_volume:
+      catalog_name: ${var.uc_catalog}
+      schema_name: ${resources.schemas.cql_databricks_runtime.name}
+      name: ${var.runtime_volume}
+      volume_type: MANAGED
+      comment: "CQL on Databricks runtime artifacts (JRE + jars + wheels). Populated by scripts/deploy/deploy.sh; read by the compiler App + the cql_* UC UDFs' java_dependencies."
+
+  schemas:
+    # The runtime LAYER schema (SVC-CATALOG-LAYOUT): the execution machinery — the cql_* UC Scala UDF catalog
+    # (SVC-RUNTIME-UDF-UC) + the artifact volume. Deploy-once / version-pinned, one occupant, its own grant;
+    # orthogonal to the per-source data schemas below. Bundle-created so `bundle deploy` provisions the layer.
+    cql_databricks_runtime:
+      catalog_name: ${var.uc_catalog}
+      name: ${var.uc_schema}
+      comment: "CQL on Databricks runtime layer (SVC-CATALOG-LAYOUT): cql_* UC Scala UDF catalog + the artifact volume."
+    # APP-RUN-LOG, DEC-RUN-LOG-LOCATION — the Designer's shared schema: the run log, and later other Designer-owned
+    # shared tables. Bundle-created so it is deploy-owned; its tables and grants are applied as the deployer by
+    # scripts/deploy/provision-run-log.py (deploy.sh), never by the App. No `grants:` here: a bundle's grants are
+    # authoritative and would revoke the App's MODIFY, which the deploy can only grant once the App exists.
+    # Keyed `_shared`: `cql_databricks_designer` is the Designer App's key, and bundle keys are unique across types.
+    cql_databricks_designer_shared:
+      catalog_name: ${var.designer_catalog}
+      name: designer
+      comment: "CQL on Databricks Designer shared schema (APP-RUN-LOG): the run log, runs and run_steps."
+
+  jobs:
+
+    # --- RUN-CLIENT-MAINTENANCE: the daily expiry of the Designer's private results. It drops completed private
+    # result tables older than the retention period, found by their UC tags, in every user's schema of
+    # designer_results_catalog (cql_databricks.result.maintenance). It runs as the deployment's dedicated
+    # maintenance principal, which deploy.sh creates and grants before this Job is deployed
+    # (scripts/deploy/grant-maintenance-access.sh). The schedule deploys PAUSED: unpause it once one run has been
+    # checked on the workspace, because MANAGE exposing every user's tables to the principal is not yet verified.
+    cql_databricks_maintenance:
+      name: cql-databricks-designer-maintenance
+      description: "Deployment maintenance: expire completed private Designer results (RUN-CLIENT-MAINTENANCE)."
+      run_as:
+        service_principal_name: ${var.maintenance_principal}
+      max_concurrent_runs: 1
+      queue:
+        enabled: false
+      performance_target: STANDARD
+      schedule:
+        quartz_cron_expression: "0 0 3 * * ?"
+        timezone_id: UTC
+        pause_status: PAUSED
+      environments:
+        - environment_key: maintenance
+          spec:
+            client: "4"
+            dependencies:
+              - /Volumes/${var.uc_catalog}/${var.uc_schema}/${var.runtime_volume}/wheels/cql_databricks-${var.client_wheel_version}-py3-none-any.whl
+      tasks:
+        - task_key: expire_private_results
+          environment_key: maintenance
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          retry_on_timeout: false
+          timeout_seconds: 14400
+          spark_python_task:
+            python_file: ./scripts/jobs/maintenance.py
+            parameters:
+              - --private-catalog
+              - ${var.designer_results_catalog}
+              - --warehouse
+              - ${var.warehouse_id}
+              - --retention-days
+              - "7"
+              - --limit
+              - "1000"
+              - --apply
+              - --job-run-as
+

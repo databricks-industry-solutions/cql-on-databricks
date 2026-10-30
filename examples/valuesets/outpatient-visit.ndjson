@@ -1,0 +1,5 @@
+{"valueset_id": "http://example.org/fhir/ValueSet/outpatient-visit", "system": "http://example.org/fhir/CodeSystem/local-codes", "code": "office-visit", "display": "Office visit"}
+{"valueset_id": "http://example.org/fhir/ValueSet/outpatient-visit", "system": "http://example.org/fhir/CodeSystem/local-codes", "code": "telehealth-visit", "display": "Telehealth visit"}
+{"valueset_id": "http://example.org/fhir/ValueSet/outpatient-visit", "system": "http://example.org/fhir/CodeSystem/local-codes", "code": "preventive-visit", "display": "Preventive care visit"}
+{"valueset_id": "http://example.org/fhir/ValueSet/outpatient-visit", "system": "https://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets", "code": "G0438", "display": "Annual wellness visit; includes a personalized prevention plan of service (PPPS), initial visit"}
+{"valueset_id": "http://example.org/fhir/ValueSet/outpatient-visit", "system": "https://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets", "code": "G0439", "display": "Annual wellness visit, includes a personalized prevention plan of service (PPPS), subsequent visit"}

@@ -1,0 +1,91 @@
+// PHASE-0 / PHASE-10 (BUILD-MODULES) — compiler: a multi-pass compiler over a typed IR
+// emitting a lazy Spark plan (Connect proto + dataset-graph metadata), plus the CQL operator
+// semantics it lowers to. PURE lowering — NO EXECUTION. ARCH-PURITY is a MODULE WALL: no EXECUTING
+// Materializer is on this module's classpath — the staging impl (`localCheckpoint` + temp views) lives
+// in the conformance test harness (validation-only; the sole production run path is the Python client).
+// The compiler DOES hold the non-executing boundary-CAPTURE seam (`BarrierCaptureMaterializer`) — it only
+// builds plan references + records the cost decision, so the metadata (graph shape + boundaries) this
+// repo DESCRIBES is computed here without running anything. Its PUBLIC API surface is CQL
+// (TECH-ELM-INPUT): it translates CQL→ELM in-process and ships that capability — ELM is an internal
+// IR-input. (Renamed from cql-spark-engine, PHASE-10.)
+//
+// Holds (see modules.md):
+//   * the in-process CQL→ELM front end (`com.databricks.cql.translate`, TECH-ELM-INPUT);
+//   * the IR sealed ADT + TreeNode/RuleExecutor (ARCH-IR), the immutable Env + frozen
+//     Config (ARCH-ENV, TECH-CONFIG), the pass pipeline (ARCH-PIPELINE), Load/Emit, the
+//     verifier scaffold (CONF-VERIFIER), the lowering seam (TECH-LOWERING-TARGET), and the
+//     UnsupportedNode loud-failure path (CORE-NO-SILENT-MISLOWER);
+//   * the CQL operator semantics in the `com.databricks.cql.sema` package (LANG-3VL today),
+//     kept as a package boundary so it can be split into its own versioned module later
+//     (TECH-SEMANTIC-LIB) if independent versioning is needed — not before.
+
+dependencies {
+    // ujson: lift ELM JSON into the IR (Load) and serialize it back (Emit).
+    implementation "com.lihaoyi:ujson_${scalaBinaryVersion}:${upickleVersion}"
+
+    // CQL is the engine's PUBLIC API surface (TECH-ELM-INPUT): translate CQL→ELM IN-PROCESS
+    // via our own tool on the cqframework cql-to-elm library, then Load the ELM. The translator
+    // uses the Kotlin ANTLR (com.strumenta), NOT Spark's org.antlr, so it does not collide with
+    // Spark on a shared classpath; under Spark Connect the engine is a client process anyway.
+    // Only the ground-truth *reference* (engine-jvm) stays test-only in :conformance.
+    // Version-pinned via cql-bom so engine + reference share one ELM schema (TECH-REUSE).
+    implementation platform("org.cqframework:cql-bom:${cqlBomVersion}")
+    implementation "org.cqframework:cql-to-elm-jvm"
+    // The 4.x translator validates quantity units and refuses to emit ELM without a UCUM
+    // implementation on the classpath (LANG-QUANTITY).
+    implementation "org.cqframework:ucum"
+    // FHIR model-info for `using FHIR` (DATA-RETRIEVER, Phase 2): `quick` bundles the FHIR /
+    // QICore ModelInfoProviders and registers them via META-INF/services, so the translator
+    // auto-discovers FHIR 4.0.1 type/context info. Without it, `using FHIR` fails to translate.
+    implementation "org.cqframework:quick"
+    // The cqframework 4.x stack logs via kotlin-logging → slf4j; the slf4j API is not
+    // transitive, so add it. The binding is the consumer's choice; tests use a no-op binding.
+    implementation "org.slf4j:slf4j-api:2.0.17"
+    testRuntimeOnly "org.slf4j:slf4j-nop:2.0.17"
+
+    // Spark Connect is the lowering target (TECH-LOWERING-TARGET). The engine builds lazy
+    // DataFrame/Column plans against the SPARK CONNECT CLIENT API and ships no driver — at
+    // runtime it is a Connect client to a Databricks Connect (or local OSS) Connect server.
+    // compileOnly per the pin (TECH-TOOLCHAIN): the Connect runtime is supplied by the host
+    // (the conformance module / the deployed app), not bundled. The client jar is SHADED
+    // (relocates its gRPC/protobuf/Guava), so it does not collide with the cqframework stack.
+    compileOnly "org.apache.spark:spark-connect-client-jvm_${scalaBinaryVersion}:${sparkVersion}"
+}
+
+// BUILD-FHIR-CODEGEN (compiler/docs/data-model.md, compiler/docs/data-model.md):
+// the static FHIR R4 element model is CODE-GENERATED at build time from the vendored XSDs, which live
+// under this project's model-schemas/fhir-r4 (an ASSET dir owned by its ONLY consumer — a reusable
+// input/specification, referenced via rootProject.file), into build/generated-sources/fhir-model (NOT
+// committed — a build artifact, mirroring how :compiler:conformance:translateCorpus generates ELM from
+// its authored corpus). The generator lives in its OWN `codegen`
+// source set so it compiles BEFORE the task runs — putting it in `main` would cycle (main dependsOn
+// the task). The XSDs are a root asset, so they are NOT packaged into the shipped engine jar (only
+// `src/main/resources` is) — they are never read at runtime.
+sourceSets {
+    codegen {
+        scala { srcDir 'src/codegen/scala' }
+    }
+    // Wire the generated model onto main's scala sources so the engine types against it.
+    main {
+        scala { srcDir layout.buildDirectory.dir('generated-sources/fhir-model').get().asFile }
+    }
+}
+// The generator needs only scala-library (it parses XSD via the JDK's built-in DOM).
+configurations { codegenImplementation.extendsFrom implementation }
+
+def fhirXsdDir = file('model-schemas/fhir-r4')
+def fhirModelOut = layout.buildDirectory.dir('generated-sources/fhir-model')
+
+tasks.register('generateFhirModel', JavaExec) {
+    group = 'cql'
+    description = 'Generate the static FHIR R4 element model (sema.generated.FhirR4Model) from the vendored XSDs.'
+    classpath = sourceSets.codegen.runtimeClasspath
+    mainClass = 'com.databricks.cql.codegen.FhirModelGenerator'
+    args = [fhirXsdDir.absolutePath, fhirModelOut.get().asFile.absolutePath]
+    // Incremental/cached: re-runs only when the XSDs (or generator) change; output is the generated dir.
+    inputs.dir(fhirXsdDir).withPropertyName('fhirXsd')
+    inputs.files(sourceSets.codegen.output).withPropertyName('generator')
+    outputs.dir(fhirModelOut).withPropertyName('fhirModel')
+}
+
+tasks.named('compileScala') { dependsOn 'generateFhirModel' }

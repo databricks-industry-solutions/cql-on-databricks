@@ -1,0 +1,8 @@
+{"resourceType":"Patient","id":"p1","gender":"female","birthDate":"1980-05-01"}
+{"resourceType":"Patient","id":"p2","gender":"male","birthDate":"1975-11-20"}
+{"resourceType":"Patient","id":"p3","gender":"female","birthDate":"1990-02-14"}
+{"resourceType":"Patient","id":"p4","gender":"male"}
+{"resourceType":"Patient","id":"p5","gender":"female"}
+{"resourceType":"Patient","id":"p6","gender":"female","birthDate":"1985-07-07"}
+{"resourceType":"Patient","id":"p7","gender":"male","birthDate":"1970-03-03"}
+{"resourceType":"Patient","id":"p8","gender":"male","birthDate":"1975-02-02"}

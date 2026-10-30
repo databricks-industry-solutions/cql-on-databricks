@@ -1,0 +1,73 @@
+# Databricks App descriptor — the Designer (SVC-APP-TOPOLOGY, APP-PER-FEATURE).
+#
+# A React/TS SPA + a Python/FastAPI backend (cql_databricks_designer/). It hosts no JVM: it reaches the compiler
+# App over HTTP for authoring compiles, and runs calculations, result reads and the data-source lookups through
+# the client (cql_databricks.result, cql_databricks.compiler.data_source) on the SQL warehouse. The container runs the Python backend, which serves the built SPA (dist/) and the /api surface.
+#
+# SEC-OBO — every data-touching call acts as the SIGNED-IN USER, from the OAuth access token the
+# platform forwards as `x-forwarded-access-token` (cql_databricks_common/workspace.py `user_client()`).
+# What turns it on is the App's
+# `user_api_scopes` declaration in databricks.yml plus a workspace admin enabling user authorization.
+
+command:
+  - "python"
+  - "-m"
+  - "cql_databricks_designer"
+
+env:
+  # No PORT here: the App injects DATABRICKS_APP_PORT and cql_databricks_designer/serve.py binds it on 0.0.0.0.
+
+  # The other feature Apps, by NAME (APP-PER-FEATURE). `valueFrom` an `app` resource resolves to that
+  # App's name; config.py reads its URL from the Apps API. The resources are declared on this App in
+  # databricks.yml, which is also what grants this App's service principal CAN_USE on them.
+  - name: "CQL_COMPILER_APP"
+    valueFrom: "compiler"
+
+  # Deploy target label surfaced on /api/health.
+  - name: "CQL_APP_TARGET"
+    value: "dev"
+
+  # UC catalog = the product (SVC-CATALOG-LAYOUT, PIPE-DEPLOY-CATALOG-VARS). Substituted at stage
+  # time by stage-app.sh from the bundle's uc_catalog variable. A `__PLACEHOLDER__` value is never
+  # shipped: with no value to substitute, stage-app.sh DROPS the entry entirely
+  # (PIPE-DEPLOY-NO-PLACEHOLDER-ENV) so config.py's fallback chain is what decides.
+  - name: "UC_CATALOG"
+    value: "__UC_CATALOG__"
+
+  # SVC-RUNTIME-UDF-UC, RUN-CLIENT-MIGRATION — the catalog holding the cql_* runtime UDFs and knowledge
+  # views. Designer runs compile and execute against it (calculation_env.py refuses to run without it).
+  - name: "CQL_RUNTIME_CATALOG"
+    value: "__CQL_RUNTIME_CATALOG__"
+
+  # RUN-CLIENT-PRIVATE-PROVISIONING — the catalog holding the Designer's per-user result schemas.
+  - name: "CQL_DESIGNER_RESULTS_CATALOG"
+    value: "__CQL_DESIGNER_RESULTS_CATALOG__"
+
+  # APP-RUN-LOG, DEC-RUN-LOG-LOCATION — the catalog of the shared `designer` schema the run log is written to.
+  - name: "CQL_DESIGNER_CATALOG"
+    value: "__CQL_DESIGNER_CATALOG__"
+
+  # APP-RUN-LOG — the deployed build (source revision), recorded on every run log row.
+  - name: "CQL_APP_VERSION"
+    value: "__CQL_APP_VERSION__"
+
+  # CLIENT-DISCOVERY-SCOPE — the ordered catalog scopes discovery reads (the client's own session setting).
+  - name: "CQL_DATABRICKS_CATALOG_SCOPES"
+    value: "__CQL_DATABRICKS_CATALOG_SCOPES__"
+
+  # The serverless SQL warehouse the content resolver and the drawer's tools read through.
+  - name: "WAREHOUSE_ID"
+    value: "__WAREHOUSE_ID__"
+
+  # APP-ASSISTANT — the Foundation Model API endpoint the assistant drawer's tool loop calls
+  # (agent/README.md). A NAME, substituted at stage time from the bundle variable
+  # (stage-app.sh), NOT a `valueFrom` binding to an App resource: the call runs as the reader (SEC-OBO),
+  # so there is no App-side grant for a binding to stay in step with. The reader needs CAN QUERY on
+  # this endpoint. Unset at stage time => entry dropped (PIPE-DEPLOY-NO-PLACEHOLDER-ENV) and
+  # config.py's default applies.
+  - name: "CQL_ASSISTANT_ENDPOINT"
+    value: "__CQL_ASSISTANT_ENDPOINT__"
+
+  # DOC-OPEN-SAVE — the canonical URL base of libraries created in the Designer (New, Save As).
+  - name: "CQL_CANONICAL_BASE"
+    value: "__CQL_CANONICAL_BASE__"

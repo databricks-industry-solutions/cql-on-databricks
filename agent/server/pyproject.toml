@@ -1,0 +1,45 @@
+# The agent's server (BUILD-TAXONOMY, SVC-MCP-TOOLS, APP-PER-FEATURE): the MCP surface over the service, and
+# the App that hosts it.
+#
+# `mcp.py` publishes every tool and the skill pair on a FastMCP server, `app.py` is the App that serves it at
+# `/mcp`, `wiring.py` binds the service's seams to the signed-in user's session, `registry.py` takes the tools
+# another feature contributes, and `ask.py` is the Designer drawer's tool loop over the same server.
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cql-databricks-agent-server"
+version = "0.1.0"
+description = "The CQL on Databricks agent's MCP server and App."
+requires-python = ">=3.10"
+license = { text = "Databricks License" }
+authors = [{ name = "Databricks, Inc." }]
+dependencies = [
+    # The tools this server publishes, and the skills it serves (SVC-MCP-SKILLS).
+    "cql-databricks-agent-service",
+    "cql-databricks-agent-skills",
+    # COMMON-LIBRARY — config, the workspace client (SEC-OBO), the compiler's HTTP client.
+    "cql-databricks-common",
+    # SDP-DEPLOY-ADDRESS — the results address (`cql_databricks.result.address`), read through the client
+    # (RESULT-INTO-CLIENT) rather than its internals.
+    "cql-databricks",
+    # SVC-MCP-TOOLS — the MCP surface, mounted at /mcp. `fastmcp` alone, which brings the official `mcp` SDK
+    # transitively: two pins that must stay mutually compatible is a version puzzle with no upside.
+    "fastmcp>=2.0",
+    # The Foundation Model API endpoint the tool loop calls, reached with the signed-in user's identity.
+    "databricks-sdk>=0.122",
+]
+
+[project.urls]
+Homepage = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+Repository = "https://github.com/databricks-industry-solutions/cql-on-databricks"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+# src layout and the PEP 420 namespaces, as in `agent/service/pyproject.toml` (BUILD-CLIENT-NAMESPACE).
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cql_databricks.agent.server*"]
+namespaces = true

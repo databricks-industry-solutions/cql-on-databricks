@@ -1,0 +1,7 @@
+{
+  "measure": "SynthesizerPilot",
+  "version": "1.0.0",
+  "populations": {"Initial Population": 0.6, "Denominator Exclusions": 0.1, "Numerator": 0.5},
+  "routes": {"Denominator Exclusions": {"Pilot Exclusion Procedures": 3, "Repeated Exclusion Procedure": 1}},
+  "members": {"Pilot Condition": {"pilot-condition-1": 20}}
+}

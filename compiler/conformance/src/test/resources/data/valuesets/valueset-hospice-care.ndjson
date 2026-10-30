@@ -1,0 +1,4 @@
+{"valueset_id": "http://example.org/fhir/ValueSet/hospice-care", "system": "https://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets", "code": "Q5003", "display": "Hospice care provided in nursing long term care facility (LTC) or non-skilled nursing facility (NF)"}
+{"valueset_id": "http://example.org/fhir/ValueSet/hospice-care", "system": "https://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets", "code": "Q5004", "display": "Hospice care provided in skilled nursing facility (SNF)"}
+{"valueset_id": "http://example.org/fhir/ValueSet/hospice-care", "system": "https://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets", "code": "Q5006", "display": "Hospice care provided in inpatient hospice facility"}
+{"valueset_id": "http://example.org/fhir/ValueSet/hospice-care", "system": "https://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets", "code": "Q5010", "display": "Hospice home care provided in a hospice facility"}

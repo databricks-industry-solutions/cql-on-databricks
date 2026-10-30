@@ -1,0 +1,11 @@
+{
+  "about": "DATA-SYNTH-LARGE: the recipe for the synthetic population large data source, one cohort of this many patients per measure, each landed with its expected results. Fabricated. Generate and land by hand with: scripts/generate-large-data.sh",
+  "patients": 250000,
+  "measurementPeriod": "2026-01-01/2026-12-31",
+  "cohorts": [
+    {"measure": "HypertensionBPControl", "seed": 1},
+    {"measure": "DiabetesHighOrMissingA1c", "seed": 2},
+    {"measure": "AdultFluImmunization", "seed": 3},
+    {"measure": "ColorectalScreening", "seed": 4}
+  ]
+}

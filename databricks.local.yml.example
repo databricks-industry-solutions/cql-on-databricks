@@ -1,0 +1,79 @@
+# databricks.local.yml — your per-workspace config (gitignored): the ONE home of every workspace
+# setting, for deploys AND local runs (SVC-DEPLOY-ENV-LOCAL, SVC-LOCAL-CONFIG-BUNDLE).
+#
+# The DAB `include: ["*.local.yml"]` in databricks.yml merges this over the committed base.
+# Auth resolves from ~/.databrickscfg (run `databricks auth login` once). `workspace.profile` below is
+# THE place the profile is named: deploy scripts, scripts/auth-preflight.sh, run-app.sh and the synthesizer
+# and population loaders all resolve it from here (cql_databricks_common/databricks_profile.py); -p <profile>
+# overrides per run. Local runs (run-app.sh, setup.sh, scripts/with-local-env.sh, the backend) export
+# the host, profile, catalogs and warehouse from here; the optional .env holds only local-run
+# settings and secrets, and is refused if it repeats one of these.
+#
+# SETUP:
+#   1. cp databricks.local.yml.example databricks.local.yml
+#   2. Fill in your workspace host, profile + variable overrides below.
+#   3. Deploy: scripts/deploy/deploy.sh -t default [-p <profile>]
+
+targets:
+  default:
+    workspace:
+      # AWS: https://<workspace>.cloud.databricks.com, Azure: https://adb-<id>.<n>.azuredatabricks.net,
+      # GCP: https://<id>.<n>.gcp.databricks.com
+      host: https://<your-workspace>.cloud.databricks.com
+      profile: <profile-name>
+    variables:
+      # SVC-CATALOG-LAYOUT — must exist. The deploy creates the `runtime` schema and Volume in it, and the
+      # deployer must own the catalog or hold MANAGE on it (the deploy grants the Apps on it). Required: there
+      # is no default.
+      uc_catalog: "<catalog>"
+      # SVC-RUNTIME-UDF-UC — a SERVERLESS SQL warehouse. Required by scripts/deploy/deploy.sh.
+      warehouse_id: "<serverless-warehouse-id>"
+      # RUN-CLIENT-PRIVATE-PROVISIONING — the Designer's per-user result schemas live here. Created by a
+      # platform administrator, who grants Designer users USE CATALOG and CREATE SCHEMA on it. Deployment
+      # does not create it. May equal uc_catalog for a single-catalog deployment. Required: there is no default.
+      designer_results_catalog: "<results-catalog>"
+      # CLIENT-DISCOVERY-SCOPE — the ordered, comma-separated catalogs or catalog.schemas the Apps discover data
+      # sources, knowledge and terminology in; an earlier scope wins a name. Required by scripts/deploy/deploy.sh.
+      catalog_scopes: "<catalog>"
+      # APP-PER-FEATURE — account group granted CAN_USE on the Apps.
+      # Required by scripts/deploy/deploy.sh; local runs do not read it.
+      app_users_group: "<account-group>"
+      # DOC-OPEN-SAVE — the base of the canonical URL of every library and measure created in the Designer:
+      # <base>/Library/<Name>. Defaults to http://example.org/fhir, the examples' base. Set your own before
+      # anyone creates a library: the URL is an identity a library keeps.
+      # canonical_base: "https://<your-organization>/fhir"
+      # APP-RUN-LOG — the catalog of the shared `designer` schema (the run log). Defaults to uc_catalog.
+      # designer_catalog: "<catalog>"
+      # APP-RUN-LOG — the account group that may read the run log. Required by scripts/deploy/deploy.sh.
+      run_log_readers_group: "<operators-group>"
+      # APP-ASSISTANT — the Model Serving chat endpoint the assistant drawer calls. Required: there is no
+      # default. Check the endpoint exists in your workspace's Serving list.
+      assistant_endpoint: "<chat-endpoint>"
+      # DEPLOY-AGENT-SKILLS — the catalog.schema the agent's skills are published in as UC skills; created if
+      # missing. app_users_group gets READ VOLUME on them. Required by scripts/deploy/deploy.sh.
+      agent_skills_schema: "<catalog>.<schema>"
+      # DEPLOY-AGENT-SKILLS, DEPLOY-AGENT-REGISTRATION — the ACCOUNT group that may use the agent from Genie One:
+      # READ VOLUME on its skills, EXECUTE on its MCP Service. Required by scripts/deploy/deploy.sh.
+      agent_users_group: "<account-group>"
+      # DEPLOY-AGENT-REGISTRATION — an account admin's account-level CLI profile. The deploy creates the agent's
+      # OAuth client with it (docs/deploy.md, The agent in Genie One). Optional: needed only to create or repoint the
+      # agent's Genie One connection. Empty, the deploy says Genie One is not connected.
+      agent_account_profile: "<account-profile-name>"
+      # DEPLOY-WORKSPACE-SETTINGS — the workspace settings the deploy relies on. Workspace-wide, so each is false
+      # by default, which leaves it as it is. true turns it on, as a workspace admin. Set the ones you want.
+      # enable_databricks_apps: true          # Databricks Apps
+      # enable_apps_user_authorization: true  # Apps act as the signed-in user (SEC-OBO)
+      # enable_unity_gateway: true            # Unity Gateway, for the agent's MCP Service
+      # enable_genie_uc_skills: true          # Genie One loads the agent's UC skills
+
+  # Example: a second workspace with different catalog/warehouse.
+  # staging:
+  #   workspace:
+  #     host: https://<staging-workspace>.cloud.databricks.com
+  #   variables:
+  #     uc_catalog: "<staging-catalog>"
+  #     warehouse_id: "<staging-warehouse-id>"
+  #     designer_results_catalog: "<staging-results-catalog>"
+  #     catalog_scopes: "<staging-catalog>"
+  #     app_users_group: "<account-group>"
+  #     run_log_readers_group: "<operators-group>"

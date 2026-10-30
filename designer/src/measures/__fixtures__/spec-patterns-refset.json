@@ -1,0 +1,634 @@
+{
+  "root": {
+    "library": "ExampleReadingControl",
+    "version": "1.0.0",
+    "translatorOptions": "EnableAnnotations,EnableLocators,DisableListDemotion,DisableListPromotion,EnableResultTypes",
+    "includes": [
+      {
+        "localIdentifier": "FHIRHelpers",
+        "path": "FHIRHelpers",
+        "version": "4.0.1"
+      }
+    ],
+    "declared": {
+      "valueSets": [
+        {
+          "name": "Example Condition Diagnoses",
+          "id": "http://example.org/fhir/ValueSet/example-condition-diagnoses"
+        },
+        {
+          "name": "Example Exclusion Conditions",
+          "id": "http://example.org/fhir/ValueSet/example-exclusion-conditions"
+        },
+        {
+          "name": "Example Unreached Conditions",
+          "id": "http://example.org/fhir/ValueSet/example-unreached-conditions"
+        },
+        {
+          "name": "Example Office Visit",
+          "id": "http://example.org/fhir/ValueSet/example-office-visit"
+        },
+        {
+          "name": "Example Excluding Encounter",
+          "id": "http://example.org/fhir/ValueSet/example-excluding-encounter"
+        }
+      ],
+      "codes": [
+        {
+          "name": "Example Reading A",
+          "code": "example-reading-a",
+          "system": "CqlTest"
+        },
+        {
+          "name": "Example Reading B",
+          "code": "example-reading-b",
+          "system": "CqlTest"
+        }
+      ],
+      "parameters": [
+        {
+          "name": "Measurement Period",
+          "type": "Interval<DateTime>"
+        }
+      ]
+    },
+    "defines": [
+      {
+        "name": "Example Condition Diagnosis",
+        "library": "ExampleReadingControl",
+        "returns": "List<Choice<Condition, Condition>>",
+        "locator": "30:1-32:70",
+        "bodyLines": 2,
+        "body": "[ConditionProblemsHealthConcerns: \"Example Condition Diagnoses\"]\n  union [ConditionEncounterDiagnosis: \"Example Condition Diagnoses\"]",
+        "metric": {
+          "key": "ExampleReadingControl::Example Condition Diagnosis",
+          "grain": "element"
+        },
+        "references": [],
+        "reads": [
+          {
+            "resourceType": "Condition",
+            "profile": "qicore-condition-problems-health-concerns",
+            "valueSet": "Example Condition Diagnoses",
+            "codeProperty": "code",
+            "line": 1
+          },
+          {
+            "resourceType": "Condition",
+            "profile": "qicore-condition-encounter-diagnosis",
+            "valueSet": "Example Condition Diagnoses",
+            "codeProperty": "code",
+            "line": 2
+          }
+        ],
+        "valueSets": [
+          {
+            "name": "Example Condition Diagnoses",
+            "library": "ExampleReadingControl",
+            "line": 1
+          }
+        ],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "Has Example Condition",
+        "library": "ExampleReadingControl",
+        "returns": "Boolean",
+        "locator": "34:1-35:38",
+        "bodyLines": 1,
+        "body": "exists \"Example Condition Diagnosis\"",
+        "metric": {
+          "key": "ExampleReadingControl::Has Example Condition",
+          "grain": "subject"
+        },
+        "references": [
+          {
+            "name": "Example Condition Diagnosis",
+            "line": 1
+          }
+        ],
+        "reads": [],
+        "valueSets": [],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "Visits During Period",
+        "library": "ExampleReadingControl",
+        "returns": "List<Encounter>",
+        "locator": "37:1-40:50",
+        "bodyLines": 3,
+        "body": "[Encounter: \"Example Office Visit\"] Visit\n  where Visit.status = 'finished'\n    and Visit.period during \"Measurement Period\"",
+        "metric": {
+          "key": "ExampleReadingControl::Visits During Period",
+          "grain": "element"
+        },
+        "references": [
+          {
+            "name": "ToInterval",
+            "library": "FHIRHelpers",
+            "line": 3
+          }
+        ],
+        "reads": [
+          {
+            "resourceType": "Encounter",
+            "profile": "qicore-encounter",
+            "valueSet": "Example Office Visit",
+            "codeProperty": "type",
+            "line": 1
+          }
+        ],
+        "valueSets": [
+          {
+            "name": "Example Office Visit",
+            "library": "ExampleReadingControl",
+            "line": 1
+          }
+        ],
+        "codes": [],
+        "parameters": [
+          "Measurement Period"
+        ]
+      },
+      {
+        "name": "Has Visit During Period",
+        "library": "ExampleReadingControl",
+        "returns": "Boolean",
+        "locator": "42:1-43:31",
+        "bodyLines": 1,
+        "body": "exists \"Visits During Period\"",
+        "metric": {
+          "key": "ExampleReadingControl::Has Visit During Period",
+          "grain": "subject"
+        },
+        "references": [
+          {
+            "name": "Visits During Period",
+            "line": 1
+          }
+        ],
+        "reads": [],
+        "valueSets": [],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "Initial Population",
+        "library": "ExampleReadingControl",
+        "returns": "Boolean",
+        "locator": "45:1-47:33",
+        "bodyLines": 2,
+        "body": "\"Has Example Condition\"\n  and \"Has Visit During Period\"",
+        "metric": {
+          "key": "ExampleReadingControl::Initial Population",
+          "grain": "subject"
+        },
+        "references": [
+          {
+            "name": "Has Example Condition",
+            "line": 1
+          },
+          {
+            "name": "Has Visit During Period",
+            "line": 2
+          }
+        ],
+        "reads": [],
+        "valueSets": [],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "Denominator",
+        "library": "ExampleReadingControl",
+        "returns": "Boolean",
+        "locator": "49:1-50:22",
+        "bodyLines": 1,
+        "body": "\"Initial Population\"",
+        "metric": {
+          "key": "ExampleReadingControl::Denominator",
+          "grain": "subject"
+        },
+        "references": [
+          {
+            "name": "Initial Population",
+            "line": 1
+          }
+        ],
+        "reads": [],
+        "valueSets": [],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "Exclusion Condition",
+        "library": "ExampleReadingControl",
+        "returns": "List<Choice<Condition, Condition>>",
+        "locator": "52:1-54:71",
+        "bodyLines": 2,
+        "body": "[ConditionProblemsHealthConcerns: \"Example Exclusion Conditions\"]\n  union [ConditionEncounterDiagnosis: \"Example Exclusion Conditions\"]",
+        "metric": {
+          "key": "ExampleReadingControl::Exclusion Condition",
+          "grain": "element"
+        },
+        "references": [],
+        "reads": [
+          {
+            "resourceType": "Condition",
+            "profile": "qicore-condition-problems-health-concerns",
+            "valueSet": "Example Exclusion Conditions",
+            "codeProperty": "code",
+            "line": 1
+          },
+          {
+            "resourceType": "Condition",
+            "profile": "qicore-condition-encounter-diagnosis",
+            "valueSet": "Example Exclusion Conditions",
+            "codeProperty": "code",
+            "line": 2
+          }
+        ],
+        "valueSets": [
+          {
+            "name": "Example Exclusion Conditions",
+            "library": "ExampleReadingControl",
+            "line": 1
+          }
+        ],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "Has Exclusion Condition",
+        "library": "ExampleReadingControl",
+        "returns": "Boolean",
+        "locator": "56:1-57:30",
+        "bodyLines": 1,
+        "body": "exists \"Exclusion Condition\"",
+        "metric": {
+          "key": "ExampleReadingControl::Has Exclusion Condition",
+          "grain": "subject"
+        },
+        "references": [
+          {
+            "name": "Exclusion Condition",
+            "line": 1
+          }
+        ],
+        "reads": [],
+        "valueSets": [],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "Has Excluding Encounter",
+        "library": "ExampleReadingControl",
+        "returns": "Boolean",
+        "locator": "59:1-61:52",
+        "bodyLines": 2,
+        "body": "exists ([Encounter: \"Example Excluding Encounter\"] Stay\n  where Stay.period overlaps \"Measurement Period\")",
+        "metric": {
+          "key": "ExampleReadingControl::Has Excluding Encounter",
+          "grain": "subject"
+        },
+        "references": [
+          {
+            "name": "ToInterval",
+            "library": "FHIRHelpers",
+            "line": 2
+          }
+        ],
+        "reads": [
+          {
+            "resourceType": "Encounter",
+            "profile": "qicore-encounter",
+            "valueSet": "Example Excluding Encounter",
+            "codeProperty": "type",
+            "line": 1
+          }
+        ],
+        "valueSets": [
+          {
+            "name": "Example Excluding Encounter",
+            "library": "ExampleReadingControl",
+            "line": 1
+          }
+        ],
+        "codes": [],
+        "parameters": [
+          "Measurement Period"
+        ]
+      },
+      {
+        "name": "Denominator Exclusions",
+        "library": "ExampleReadingControl",
+        "returns": "Boolean",
+        "locator": "63:1-65:32",
+        "bodyLines": 2,
+        "body": "\"Has Exclusion Condition\"\n  or \"Has Excluding Encounter\"",
+        "metric": {
+          "key": "ExampleReadingControl::Denominator Exclusions",
+          "grain": "subject"
+        },
+        "references": [
+          {
+            "name": "Has Exclusion Condition",
+            "line": 1
+          },
+          {
+            "name": "Has Excluding Encounter",
+            "line": 2
+          }
+        ],
+        "reads": [],
+        "valueSets": [],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "visitsFor",
+        "library": "ExampleReadingControl",
+        "returns": "List<Encounter>",
+        "locator": "67:1-69:63",
+        "bodyLines": 2,
+        "body": "[Encounter: \"Example Office Visit\"] Visit\n  where reading.encounter.reference = 'Encounter/' + Visit.id",
+        "metric": {
+          "key": "ExampleReadingControl::visitsFor",
+          "grain": "element"
+        },
+        "references": [],
+        "reads": [
+          {
+            "resourceType": "Encounter",
+            "profile": "qicore-encounter",
+            "valueSet": "Example Office Visit",
+            "codeProperty": "type",
+            "line": 1
+          }
+        ],
+        "valueSets": [
+          {
+            "name": "Example Office Visit",
+            "library": "ExampleReadingControl",
+            "line": 1
+          }
+        ],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "Qualifying Reading",
+        "library": "ExampleReadingControl",
+        "returns": "List<Observation>",
+        "locator": "71:1-75:37",
+        "bodyLines": 4,
+        "body": "[SimpleObservation] Reading\n  where Reading.status in { 'final', 'amended', 'corrected' }\n    and (Reading.effective as DateTime) during \"Measurement Period\"\n    and exists \"visitsFor\"(Reading)",
+        "metric": {
+          "key": "ExampleReadingControl::Qualifying Reading",
+          "grain": "element"
+        },
+        "references": [
+          {
+            "name": "ToValue",
+            "library": "FHIRHelpers",
+            "line": 3
+          },
+          {
+            "name": "visitsFor",
+            "line": 4
+          }
+        ],
+        "reads": [
+          {
+            "resourceType": "Observation",
+            "profile": "qicore-simple-observation",
+            "line": 1
+          }
+        ],
+        "valueSets": [],
+        "codes": [],
+        "parameters": [
+          "Measurement Period"
+        ]
+      },
+      {
+        "name": "Most Recent Reading Day",
+        "library": "ExampleReadingControl",
+        "returns": "Date",
+        "locator": "77:1-79:53",
+        "bodyLines": 2,
+        "body": "Max(\"Qualifying Reading\" Reading\n  return date from (Reading.effective as DateTime))",
+        "metric": null,
+        "references": [
+          {
+            "name": "Qualifying Reading",
+            "line": 1
+          },
+          {
+            "name": "ToValue",
+            "library": "FHIRHelpers",
+            "line": 2
+          }
+        ],
+        "reads": [],
+        "valueSets": [],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "Lowest Reading A On Most Recent Day",
+        "library": "ExampleReadingControl",
+        "returns": "Decimal",
+        "locator": "81:1-85:45",
+        "bodyLines": 4,
+        "body": "Min(\"Qualifying Reading\" Reading\n  where date from (Reading.effective as DateTime) = \"Most Recent Reading Day\"\n    and Reading.code ~ \"Example Reading A\"\n  return (Reading.value as Quantity).value)",
+        "metric": {
+          "key": "ExampleReadingControl::Lowest Reading A On Most Recent Day",
+          "grain": "subject"
+        },
+        "references": [
+          {
+            "name": "Qualifying Reading",
+            "line": 1
+          },
+          {
+            "name": "Most Recent Reading Day",
+            "line": 2
+          },
+          {
+            "name": "ToValue",
+            "library": "FHIRHelpers",
+            "line": 2
+          },
+          {
+            "name": "ToConcept",
+            "library": "FHIRHelpers",
+            "line": 3
+          }
+        ],
+        "reads": [],
+        "valueSets": [],
+        "codes": [
+          {
+            "name": "Example Reading A",
+            "library": "ExampleReadingControl",
+            "line": 3
+          }
+        ],
+        "parameters": []
+      },
+      {
+        "name": "Lowest Reading B On Most Recent Day",
+        "library": "ExampleReadingControl",
+        "returns": "Decimal",
+        "locator": "87:1-91:45",
+        "bodyLines": 4,
+        "body": "Min(\"Qualifying Reading\" Reading\n  where date from (Reading.effective as DateTime) = \"Most Recent Reading Day\"\n    and Reading.code ~ \"Example Reading B\"\n  return (Reading.value as Quantity).value)",
+        "metric": {
+          "key": "ExampleReadingControl::Lowest Reading B On Most Recent Day",
+          "grain": "subject"
+        },
+        "references": [
+          {
+            "name": "Qualifying Reading",
+            "line": 1
+          },
+          {
+            "name": "Most Recent Reading Day",
+            "line": 2
+          },
+          {
+            "name": "ToValue",
+            "library": "FHIRHelpers",
+            "line": 2
+          },
+          {
+            "name": "ToConcept",
+            "library": "FHIRHelpers",
+            "line": 3
+          }
+        ],
+        "reads": [],
+        "valueSets": [],
+        "codes": [
+          {
+            "name": "Example Reading B",
+            "library": "ExampleReadingControl",
+            "line": 3
+          }
+        ],
+        "parameters": []
+      },
+      {
+        "name": "Has Reading A Below Threshold",
+        "library": "ExampleReadingControl",
+        "returns": "Boolean",
+        "locator": "93:1-94:45",
+        "bodyLines": 1,
+        "body": "\"Lowest Reading A On Most Recent Day\" < 100",
+        "metric": {
+          "key": "ExampleReadingControl::Has Reading A Below Threshold",
+          "grain": "subject"
+        },
+        "references": [
+          {
+            "name": "Lowest Reading A On Most Recent Day",
+            "line": 1
+          }
+        ],
+        "reads": [],
+        "valueSets": [],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "Has Reading B Below Threshold",
+        "library": "ExampleReadingControl",
+        "returns": "Boolean",
+        "locator": "96:1-97:44",
+        "bodyLines": 1,
+        "body": "\"Lowest Reading B On Most Recent Day\" < 60",
+        "metric": {
+          "key": "ExampleReadingControl::Has Reading B Below Threshold",
+          "grain": "subject"
+        },
+        "references": [
+          {
+            "name": "Lowest Reading B On Most Recent Day",
+            "line": 1
+          }
+        ],
+        "reads": [],
+        "valueSets": [],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "Numerator",
+        "library": "ExampleReadingControl",
+        "returns": "Boolean",
+        "locator": "99:1-101:39",
+        "bodyLines": 2,
+        "body": "\"Has Reading A Below Threshold\"\n  and \"Has Reading B Below Threshold\"",
+        "metric": {
+          "key": "ExampleReadingControl::Numerator",
+          "grain": "subject"
+        },
+        "references": [
+          {
+            "name": "Has Reading A Below Threshold",
+            "line": 1
+          },
+          {
+            "name": "Has Reading B Below Threshold",
+            "line": 2
+          }
+        ],
+        "reads": [],
+        "valueSets": [],
+        "codes": [],
+        "parameters": []
+      },
+      {
+        "name": "Unreached Condition",
+        "library": "ExampleReadingControl",
+        "returns": "List<Choice<Condition, Condition>>",
+        "locator": "103:1-105:71",
+        "bodyLines": 2,
+        "body": "[ConditionProblemsHealthConcerns: \"Example Unreached Conditions\"]\n  union [ConditionEncounterDiagnosis: \"Example Unreached Conditions\"]",
+        "metric": {
+          "key": "ExampleReadingControl::Unreached Condition",
+          "grain": "element"
+        },
+        "references": [],
+        "reads": [
+          {
+            "resourceType": "Condition",
+            "profile": "qicore-condition-problems-health-concerns",
+            "valueSet": "Example Unreached Conditions",
+            "codeProperty": "code",
+            "line": 1
+          },
+          {
+            "resourceType": "Condition",
+            "profile": "qicore-condition-encounter-diagnosis",
+            "valueSet": "Example Unreached Conditions",
+            "codeProperty": "code",
+            "line": 2
+          }
+        ],
+        "valueSets": [
+          {
+            "name": "Example Unreached Conditions",
+            "library": "ExampleReadingControl",
+            "line": 1
+          }
+        ],
+        "codes": [],
+        "parameters": []
+      }
+    ]
+  }
+}

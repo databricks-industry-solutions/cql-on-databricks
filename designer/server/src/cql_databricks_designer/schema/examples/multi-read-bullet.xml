@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A synthetic Specification demonstrating a multi-read bullet — an Item that references two
+  different FHIR profiles within the same narrative bullet. This fixture satisfies the test
+  `test_the_multi_read_bullet_rule_has_something_to_protect`, which validates that the
+  multi-read-anchor guard rule has meaningful test coverage.
+-->
+<Specification xmlns="https://cql-databricks.databricks.com/spec/1.0" schemaVersion="1.0">
+  <Identity library="MultiReadBulletExample" version="1.0.0" fhirVersion="4.0.1"
+            scoring="proportion" context="patients">
+    <Title>Example with multi-read bullet</Title>
+  </Identity>
+  <Provenance>
+    <LibraryPin library="MultiReadBulletExample" version="1.0.0"/>
+  </Provenance>
+  <PopulationCriteria>
+    <Population kind="initial-population" define="Initial Population"
+                library="MultiReadBulletExample" stableId="pop-initial-population" id="pop-IP">
+      <Narrative provenance="authored" author="synthetic-test" sourceTag="description">
+        Test population with multi-read bullet.
+        <List>
+          <Item sourceSpan="1-2">
+            Patients recorded on the problem list
+            <Read profile="http://hl7.org/fhir/us/core/StructureDefinition/us-core-condition" sourceSpan="1"/>
+            or as an encounter diagnosis
+            <Read profile="http://hl7.org/fhir/us/core/StructureDefinition/us-core-encounter" sourceSpan="2"/>.
+          </Item>
+        </List>
+      </Narrative>
+    </Population>
+  </PopulationCriteria>
+</Specification>

@@ -1,0 +1,45 @@
+# Databricks App descriptor — CQL on Databricks Compiler Service (SVC-COMPILE-ENDPOINT, compiler/docs/compiler-service.md).
+#
+# This App hosts the JVM compiler endpoint that BOTH the CQL on Databricks BFF (authoring) and deployed
+# runtime-compiled cql() SDP pipelines call (SVC-APP-TOPOLOGY). It is the ONLY cql-on-databricks-dependent
+# deployable.
+#
+# JAVA-IN-APP hosting (SVC-PACKAGING): an App runs Python (not Java) and its source is Workspace files
+# (10 MB/file). Our jars are all < 10 MB, so they ship as normal app source (lib/); the ONLY oversized
+# artifacts are a JRE + 3 PUBLIC Maven jars. bootstrap.py pulls those from the runtime UC Volume
+# (CQL_DATABRICKS_ARTIFACT_VOLUME, authorized by the App's uc_securable READ_VOLUME grant), falling back to the
+# public URLs (CQL_DATABRICKS_JRE_URL / CQL_DATABRICKS_MAVEN_URL) if the volume read fails, then execs the JVM. Spark-free
+# (EXEC-SQL-BACKEND). requirements.txt brings the databricks-sdk used for the volume read.
+
+command:
+  - "python"
+  - "bootstrap.py"
+
+env:
+  # The App container injects the port; bootstrap.py reads DATABRICKS_APP_PORT and binds it (HostConfig).
+  - name: "PORT"
+    value: "8080"
+
+  # Signal that the runtime mounts value-set views (hasTerminology); "off" for a strictly data-free host.
+  - name: "CQL_TERMINOLOGY"
+    value: "on"
+
+  # SVC-COMPILER-IDENTITY / PIPE-BARRIER-HASH — the identity CQL on Databricks keys its materialization cache on.
+  # stage-compiler.sh substitutes the git sha of the build, so it is STABLE for the life of a deployment:
+  # an App restart (scaling, idle wake, crash) must NOT invalidate anyone's result tables, and a new
+  # deploy MUST. Left as the placeholder (a local run), the service mints an ephemeral per-startup id
+  # instead — correct for local engine iteration, ruinous in a deployment, which is why the deploy stamps
+  # it and the service says loudly at startup which mode it is in.
+  - name: "CQL_COMPILER_VERSION"
+    value: "__CQL_COMPILER_VERSION__"
+
+  # The runtime UC Volume bootstrap.py pulls the JRE + oversized jars from (SVC-PACKAGING). stage-compiler.sh
+  # substitutes the placeholder with the deploy-resolved /Volumes/<catalog>/<schema>/<volume> path; left as
+  # the placeholder (e.g. a local run) => bootstrap.py ignores it and uses the public URLs.
+  - name: "CQL_DATABRICKS_ARTIFACT_VOLUME"
+    value: "__CQL_DATABRICKS_ARTIFACT_VOLUME__"
+
+  # Optional overrides (defaults in bootstrap.py): CQL_DATABRICKS_JRE_URL (JRE tarball), CQL_DATABRICKS_MAVEN_URL (the
+  # base for the 3 oversized public jars). These are the FALLBACK source when the volume read fails.
+  # NOTE: no CQL_COMPILER_TOKEN — the Databricks App fronts the endpoint with platform OAuth; add a
+  # bearer/OAuth check (SVC-COMPILE-ENDPOINT) when wiring serverless->App token-exchange.

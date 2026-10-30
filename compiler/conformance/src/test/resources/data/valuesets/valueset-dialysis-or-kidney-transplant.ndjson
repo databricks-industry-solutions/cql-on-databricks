@@ -1,0 +1,3 @@
+{"valueset_id": "http://example.org/fhir/ValueSet/dialysis-or-kidney-transplant", "system": "http://www.cms.gov/Medicare/Coding/ICD10", "code": "5A1D70Z", "display": "Performance of Urinary Filtration, Intermittent, Less than 6 Hours Per Day"}
+{"valueset_id": "http://example.org/fhir/ValueSet/dialysis-or-kidney-transplant", "system": "http://www.cms.gov/Medicare/Coding/ICD10", "code": "0TY00Z0", "display": "Transplantation of Right Kidney, Allogeneic, Open Approach"}
+{"valueset_id": "http://example.org/fhir/ValueSet/dialysis-or-kidney-transplant", "system": "http://www.cms.gov/Medicare/Coding/ICD10", "code": "0TY10Z0", "display": "Transplantation of Left Kidney, Allogeneic, Open Approach"}

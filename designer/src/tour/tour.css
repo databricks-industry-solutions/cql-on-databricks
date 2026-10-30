@@ -1,0 +1,211 @@
+/* APP-TOUR / APP-DESIGN-SYSTEM — the Product Tour, styled in the platform-vision language using
+   the app's OWN tokens (defined in the .mw scope): serif display headings, oat ground, lava held in
+   reserve for the accent, DM Sans / DM Mono. Scoped under .mw-tour. */
+
+.mw-tour { height: 100vh; overflow: hidden; background: var(--canvas); color: var(--tink); }
+.mw-tour-app { height: 100vh; display: flex; flex-direction: column; }
+.mw-tour-scroll { flex: 1; min-height: 0; overflow-y: auto; scroll-behavior: smooth; }
+.mw-tour-page { max-width: 1080px; margin: 0 auto; padding: 0 32px; }
+
+/* masthead */
+.mw-tour-mast { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--canvas) 88%, transparent);
+  backdrop-filter: saturate(1.4) blur(10px); border-bottom: 1px solid var(--tline); }
+.mw-tour-mast .mw-tour-page { display: flex; align-items: center; gap: 14px; height: 56px; }
+.mw-tour-wordmark { font-family: var(--f-serif-display); font-size: 21px; font-weight: 700; letter-spacing: -.02em; color: var(--tink); }
+.mw-tour-wordmark .dot { color: var(--tacc); }
+.mw-tour-tag { font-size: 12px; color: var(--tink-2); }
+.mw-tour-spacer { flex: 1; }
+/* The masthead throughline. It replaces `.mw-tour-live`, a pulsing accent dot beside the word
+   "Glass-box": a LIVE indicator is a claim about state, and nothing on this page is live, so the dot
+   animated for decoration — the one thing section 2 of the design system forbids accent from doing.
+   The treatment it kept is the uppercase micro label; what it dropped is the dot, the keyframes, and
+   the reduced-motion exception they needed (APP-STYLE-GUIDE). */
+.mw-tour-tagline { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--tink-2); }
+
+.mw-tour .eyebrow { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; font-weight: 700; color: var(--tacc); font-family: var(--f-ui); }
+.mw-tour .eyebrow.muted { color: var(--tink-3); }
+.mw-tour .dek { color: var(--tink-2); font-size: 16px; line-height: 1.55; max-width: 62ch; }
+.mw-tour .dek b { color: var(--tink); font-weight: 600; }
+
+/* hero */
+.mw-tour-hero { padding: 60px 0 30px; }
+.mw-tour-kicker { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+.mw-tour-kicker .r { height: 1px; flex: 1; background: linear-gradient(90deg, var(--tline), transparent); }
+.mw-tour-hero h1 { font-family: var(--f-serif-display); font-weight: 400; font-size: clamp(34px, 5.4vw, 60px); line-height: 1.02; letter-spacing: -.03em; max-width: 16ch; margin: 0 0 22px; }
+.mw-tour-hero h1 em { font-style: italic; color: var(--tacc-i); }
+.mw-tour-hero-cta { display: flex; gap: 12px; margin-top: 26px; flex-wrap: wrap; }
+
+/* EVERY BUTTON RULE HERE IS `.mw`-QUALIFIED, AND THAT IS LOAD-BEARING — not style.
+   `measures.css` line 88 carries the app-wide reset `.mw button { color: inherit; background: none;
+   border: 0 }` at specificity (0,1,1). A bare `.mw-tour-primary` is (0,1,0), so it LOST: every `<button>`
+   on this page — the hero's "Open the example", every "Show me", every "Take me there" — computed no
+   accent fill and inherited ink, rendering as plain text, while the one action that is an `<a>` (the
+   notebooks link, which the reset cannot reach) was the only thing on the page that looked like a
+   button. The ghost buttons lost their border to the same rule, and the close control its panel.
+   Qualified to (0,2,0) they win, and the page has ONE button style again. This is the standing caveat
+   in design-system.md section 6 that has already bitten the pane tabs, the ref lens and the badges;
+   `tourButtonStyle.test.tsx` now pins it here so it cannot come back a fifth time. */
+.mw .mw-tour-primary { display: inline-flex; align-items: center; gap: 7px; background: var(--tacc); color: #fff;
+  font-family: var(--f-ui); font-size: 14px; font-weight: 600; padding: 10px 18px; border-radius: 9px; white-space: nowrap; }
+/* The anchor states its own `color`/`text-decoration` so the global `a { color: var(--accent) }` and the
+   browser's underline do not reach it. Same look, either element. */
+.mw a.mw-tour-primary { color: #fff; text-decoration: none; }
+.mw .mw-tour-primary:hover { background: var(--tacc-h); }
+.mw .mw-tour-ghost { font-family: var(--f-ui); font-size: 14px; font-weight: 600; color: var(--tink-2); padding: 10px 16px; border-radius: 9px; border: 1px solid var(--tline); }
+.mw .mw-tour-ghost:hover { color: var(--tink); border-color: var(--tink-3); }
+
+/* A workspace path is machine data, so it is mono (the mono rule, APP-STYLE-GUIDE) at `caption`. */
+.mw-tour-path { font-family: var(--f-mono); font-size: 11px; color: var(--tink-3); margin: 0 0 18px; }
+
+/* feature sections */
+.mw-tour-feature { display: grid; grid-template-columns: 1.05fr .95fr; gap: 32px; align-items: center;
+  padding: 56px 0; border-top: 1px solid var(--tline); }
+.mw-tour-feature-head h2 { font-family: var(--f-serif-display); font-weight: 400; font-size: clamp(24px, 3.4vw, 34px);
+  line-height: 1.1; letter-spacing: -.02em; margin: 12px 0 12px; }
+.mw-tour-chips { display: flex; flex-wrap: wrap; gap: 7px; margin: 16px 0 20px; }
+.mw-tour-chip { font-size: 12px; font-weight: 600; color: var(--tink-2); background: var(--panel-2); border: 1px solid var(--tline-2); border-radius: 999px; padding: 4px 11px; }
+.mw-tour-actions { margin-top: 4px; }
+/* A pillar's applications (`TourFeature.applications`) — read as the dek's continuation, so the same ink
+   and measure; the accent rule on the left marks each as one use rather than one paragraph. */
+.mw-tour-apps { list-style: none; padding: 0; margin: 18px 0 20px; display: grid; gap: 12px; max-width: 62ch; }
+.mw-tour-apps li { color: var(--tink-2); font-size: 15px; line-height: 1.5; padding-left: 14px;
+  border-left: 2px solid var(--tacc); }
+.mw-tour-apps b { color: var(--tink); font-weight: 600; }
+
+/* ── the section art: ONE MARK PER PILLAR (APP-TOUR, APP-STYLE-GUIDE) ───────────────────────
+   Every section used to draw the SAME rotated square — a diamond, which was the Designer module's
+   retired Unicode glyph — while `TourGlyph` built a per-feature class (`g-<id>`) that styled nothing.
+   Seven identical shapes in a panel taking half the row is decoration pretending to be information.
+
+   These are NOT icons and must not borrow the module switcher's lucide marks: five of the seven
+   pillars have no module, and a switcher mark names a place you can go — which is exactly what those
+   five are not (they carry no action, for the same reason). So each pillar gets an abstract
+   composition instead, drawn from the same tokens the product uses, saying something about the idea
+   rather than naming a destination.
+
+   Each mark is built from ONE 88px stage plus its two pseudo-elements — three shapes, which is the
+   budget that keeps them reading as marks rather than illustrations. Accent lands ONCE per mark
+   (design system section 2): on the one thing the pillar is about. */
+.mw-tour-feature-art { display: grid; place-items: center; min-height: 180px; background: var(--panel);
+  border: 1px solid var(--tline); border-radius: 16px; box-shadow: var(--tshadow); overflow: hidden; }
+.mw-tour-glyph { width: 100%; height: 100%; min-height: 180px; display: grid; place-items: center;
+  background:
+    radial-gradient(120px 120px at 30% 30%, color-mix(in srgb, var(--tacc) 12%, transparent), transparent),
+    radial-gradient(160px 160px at 75% 70%, color-mix(in srgb, var(--tvio) 12%, transparent), transparent); }
+.mw-tour-glyph span { position: relative; display: block; width: 88px; height: 88px; }
+.mw-tour-glyph span::before, .mw-tour-glyph span::after { content: ""; position: absolute; }
+
+/* Use what you already own — an architecture read top to bottom: a layer, two services beside each other,
+   and the PLATFORM bar underneath, which is the accent. The accent is on the bottom deliberately: the
+   claim is that the thing you already run is what everything above it stands on. FOUR shapes out of two
+   pseudo-elements, both by box-shadow — and the top and platform bars are ONE shape copied downwards,
+   which is what makes them identical in size and radius by construction rather than by two rules that
+   have to be kept in step. A shadow takes its own colour but the source's geometry, so "same bar, other
+   ink" is exactly the tool for it. */
+/* ONE COLUMN, EQUAL GAPS. Every shape lives between x=8 and x=80, and the three rows are separated by the
+   same 9px: 8 margin · 16 bar · 9 · 22 services · 9 · 16 bar · 8 margin = 88. The service pair splits that
+   column into two 32px blocks with the same 8px between them as the frame leaves at either edge, so the
+   diagram lines up on every axis instead of approximately. */
+.g-commoditize span::before { left: 8px; right: 8px; top: 8px; height: 16px; border-radius: 4px;
+  background: color-mix(in srgb, var(--tink-3) 45%, transparent);
+  box-shadow: 0 56px 0 var(--tacc); }
+.g-commoditize span::after { left: 8px; top: 33px; width: 32px; height: 22px; border-radius: 4px;
+  background: color-mix(in srgb, var(--tink-3) 45%, transparent);
+  box-shadow: 40px 0 0 color-mix(in srgb, var(--tink-3) 45%, transparent); }
+
+/* Computable knowledge — a page of rules, the middle one live. */
+.g-living-doc span::before { inset: 8px 16px; border: 2px solid color-mix(in srgb, var(--tink-3) 50%, transparent);
+  border-radius: 8px; }
+.g-living-doc span::after { left: 28px; right: 28px; top: 43px; height: 2px; background: var(--tacc);
+  box-shadow: 0 -14px 0 color-mix(in srgb, var(--tink-3) 50%, transparent),
+              0  14px 0 color-mix(in srgb, var(--tink-3) 50%, transparent); }
+
+/* Numbers you trust — the funnel, narrowing to the one member you can step into. */
+.g-trust span::before { inset: 10px 8px 30px; clip-path: polygon(0 0, 100% 0, 64% 100%, 36% 100%);
+  background: color-mix(in srgb, var(--tink-3) 32%, transparent); }
+.g-trust span::after { left: 50%; bottom: 10px; width: 14px; height: 14px; margin-left: -7px;
+  border-radius: 999px; background: var(--tacc); }
+
+/* Mapping — two shapes, offset: what your data is, and the shape the logic expects. */
+.g-mapping span::before { left: 4px; top: 12px; width: 44px; height: 44px; border-radius: 10px;
+  border: 2px solid color-mix(in srgb, var(--tink-3) 55%, transparent); }
+.g-mapping span::after { right: 4px; bottom: 12px; width: 44px; height: 44px; border-radius: 10px;
+  border: 2px solid var(--tacc); background: color-mix(in srgb, var(--tacc) 10%, transparent); }
+
+/* Publish once, share with another organization — two organizations, one live link between them. The link RUNS BETWEEN the
+   nodes rather than across them, and that is geometry rather than stacking: it spans only the gap
+   (24 → 52, where the nodes end at 24 and begin at 52), so nothing overlaps and no `z-index` decides the
+   picture. The `z-index` stays as a belt: a shadow-drawn node is painted by `::before`, which without it
+   would sit under the later `::after` if either shape is ever widened. */
+.g-sharing span::before { left: 6px; top: 36px; width: 18px; height: 18px; border-radius: 999px; z-index: 1;
+  background: color-mix(in srgb, var(--tink-3) 55%, transparent);
+  box-shadow: 46px 0 0 color-mix(in srgb, var(--tink-3) 55%, transparent); }
+.g-sharing span::after { left: 24px; top: 43px; width: 28px; height: 3px; border-radius: 2px; background: var(--tacc); }
+
+/* Where the data stays — a perimeter, and everything still inside it. The accent is the BOUNDARY rather
+   than anything within: the claim of this pillar is the line, not the contents. */
+.g-governance span::before { inset: 6px; border-radius: 12px; border: 2px solid var(--tacc); }
+.g-governance span::after { left: 22px; top: 34px; width: 20px; height: 20px; border-radius: 4px;
+  background: color-mix(in srgb, var(--tink-3) 50%, transparent);
+  box-shadow: 24px 0 0 color-mix(in srgb, var(--tink-3) 50%, transparent); }
+
+/* Clinical Ontology — one definition at the centre, three things that consume it. */
+.g-ontology span::before { inset: 10px; border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--tink-3) 35%, transparent); }
+.g-ontology span::after { left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px;
+  border-radius: 999px; background: var(--tacc);
+  box-shadow: 0 -32px 0 -2px color-mix(in srgb, var(--tink-3) 60%, transparent),
+              28px 17px 0 -2px color-mix(in srgb, var(--tink-3) 60%, transparent),
+             -28px 17px 0 -2px color-mix(in srgb, var(--tink-3) 60%, transparent); }
+
+/* Into the analytical world — a chart that climbs, the last bar tallest and the accent: the measure is
+   what the columns before it were building towards.
+   THREE NEUTRAL BARS FROM ONE BACKGROUND. A box-shadow copy is the same height as its source, and these
+   have to differ, so the neutral bars are three background layers on the stage — each with its own size
+   and position, sharing a baseline at y=74. Square, not rounded, because a background layer takes no
+   radius and one rounded accent bar beside three square ones would read as two different objects. */
+.g-analytics span {
+  --g-bar: color-mix(in srgb, var(--tink-3) 45%, transparent);
+  background-image: linear-gradient(var(--g-bar), var(--g-bar)), linear-gradient(var(--g-bar), var(--g-bar)),
+    linear-gradient(var(--g-bar), var(--g-bar));
+  background-repeat: no-repeat;
+  background-size: 14px 16px, 14px 26px, 14px 36px;
+  background-position: 6px 58px, 26px 48px, 46px 38px; }
+.g-analytics span::after { left: 66px; bottom: 14px; width: 14px; height: 48px; background: var(--tacc); }
+
+/* A clinical decision layer — four uses standing on one layer. The accent is the LAYER, as in
+   `g-commoditize`: the claim is what everything above it rests on. Nodes at x = 8, 28, 48, 68 (12 wide)
+   end at 80, where the layer ends, so the row and the bar share both edges. */
+.g-decision-layer span::before { left: 8px; right: 8px; top: 58px; height: 14px; border-radius: 4px;
+  background: var(--tacc); }
+.g-decision-layer span::after { left: 8px; top: 26px; width: 12px; height: 12px; border-radius: 999px;
+  background: color-mix(in srgb, var(--tink-3) 55%, transparent);
+  box-shadow: 20px 0 0 color-mix(in srgb, var(--tink-3) 55%, transparent),
+              40px 0 0 color-mix(in srgb, var(--tink-3) 55%, transparent),
+              60px 0 0 color-mix(in srgb, var(--tink-3) 55%, transparent); }
+
+/* reveal-on-scroll */
+.mw-tour-reveal { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s cubic-bezier(.2,.7,.2,1); }
+.mw-tour-reveal.in { opacity: 1; transform: none; }
+
+.mw-tour-foot { display: flex; align-items: center; gap: 14px; padding: 30px 0 56px; margin-top: 20px;
+  border-top: 1px solid var(--tline); color: var(--tink-3); font-size: 13px; }
+
+/* overlay variant — flex column so .mw-tour-scroll (flex:1, min-height:0) is clamped to the viewport
+   and actually scrolls; without this wrapper the scroll region grows to content height and the
+   overflow:hidden shell clips it (APP-TOUR). The fixed close button stays out of flow. */
+.mw-tour-overlay { position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); }
+/* `.mw`-qualified for the reason given above the primary button: unqualified, the app-wide `.mw button`
+   reset stripped this control's panel and hairline and left a bare glyph floating over the page. */
+.mw .mw-tour-close { position: fixed; top: 14px; right: 18px; z-index: 210; width: 34px; height: 34px; border-radius: 999px;
+  display: grid; place-items: center; padding: 0;
+  background: var(--panel); border: 1px solid var(--tline); color: var(--tink-2); font-size: 18px; box-shadow: var(--tshadow); }
+.mw .mw-tour-close:hover { color: var(--tink); border-color: var(--tink-3); }
+
+@media (max-width: 900px) {
+  .mw-tour-feature { grid-template-columns: 1fr; gap: 20px; padding: 44px 0; }
+  .mw-tour-feature-art { min-height: 140px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mw-tour-reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+}

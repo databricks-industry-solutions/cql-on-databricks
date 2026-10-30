@@ -1,0 +1,40 @@
+# ---- JVM / Gradle ----
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+*.class
+spark-warehouse/
+.bloop/
+.bsp/
+.metals/
+metals.sbt
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+.venv-dbx/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ---- Node / frontend ----
+node_modules/
+dist/
+.vite/
+
+# ---- Local config: never commit. Templates are the *.example files. ----
+.env
+databricks.local.yml
+.databricks/
+
+# ---- Editors / OS ----
+.DS_Store
+.idea/
+*.swp
+
+# ELM is always GENERATED from CQL by the compiler, never authored. The UI test fixture is produced by
+# designer/scripts/build-ui-fixtures.sh (npm `pretest` calls it), from the vendored corpus in this repo.
+*.elm.json
+

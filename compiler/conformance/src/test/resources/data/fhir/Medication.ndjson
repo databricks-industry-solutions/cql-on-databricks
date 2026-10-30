@@ -1,0 +1,1 @@
+{"resourceType": "Medication", "id": "med1", "status": "active", "code": {"coding": [{"system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "860975"}]}}

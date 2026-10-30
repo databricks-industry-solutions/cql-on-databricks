@@ -1,0 +1,113 @@
+// The Compiler Service's DATABRICKS APP HOST (SVC-COMPILE-ENDPOINT / SVC-API-HOST). One JVM serving
+// authoring compiles (/translate) and runtime compiles (/compile-sql, /compile-pipeline, /describe)
+// behind one endpoint. Every operation is Spark-free: the compiler's target is a SQL script, so this
+// host is pure IR -> text/metadata and starts no Spark session (EXEC-SQL-BACKEND).
+//
+// This is the DOWNSTREAM side of the neutrality wall (ARCH-PURITY, decision 1): the compiler knows
+// nothing about Databricks, and everything platform-shaped about hosting it lives here. Before the
+// merge that separation was a REPOSITORY boundary crossed by a Gradle composite build, and the
+// bridging cost two extra Gradle roots plus a `dependencySubstitution` block that no fresh clone
+// could resolve. Now it is an ordinary project dependency, and the wall is enforced by
+// `./gradlew checkNeutrality` instead of by the difficulty of reaching across repositories.
+plugins {
+    // `application` gives `run` and `installDist` — a dist with a bin/ launcher and lib/ jars, which
+    // is the deployable the App container runs.
+    id 'application'
+}
+
+dependencies {
+    // The compiler holds CqlToElmCli (CQL->ELM) for /translate; the service holds CompileService and
+    // the request/result types (ELM->SQL script) for the compile endpoints. Both are named explicitly
+    // because `implementation` is not transitive on a consumer's compile classpath.
+    implementation project(':compiler:core')
+    implementation project(':compiler:service')
+
+    // ujson for the request/response JSON (SVC-PROTOCOL) — the same library and version the compiler uses.
+    implementation "com.lihaoyi:ujson_${scalaBinaryVersion}:${upickleVersion}"
+
+    // Shipped for CLASS LOADING, not for a session (SVC-PACKAGING). The compiler and service declare
+    // spark-connect-client-jvm `compileOnly` because a host supplies the runtime; this host starts no
+    // session at all, but the provider seams name `org.apache.spark.sql.DataFrame` in their signatures,
+    // so the classes must be loadable. Declared as ONE `implementation` so Gradle resolves the whole
+    // graph together and dedupes scala-library to a single 2.13.16 — two independently resolved
+    // configurations previously left two scala-libraries on the classpath and broke scala-reflect at
+    // startup. The client jar is shaded (relocated gRPC/protobuf/guava), so it does not collide with
+    // the cqframework stack the compiler brings in.
+    implementation "org.apache.spark:spark-connect-client-jvm_${scalaBinaryVersion}:${sparkVersion}"
+
+    // Route cqframework / kotlin-logging through slf4j to a no-op binding, so compiler logging never
+    // pollutes stdout — the launcher parses the startup line from it.
+    runtimeOnly "org.slf4j:slf4j-nop:2.0.17"
+}
+
+application {
+    mainClass = 'com.databricks.cql.platform.compiler.CompilerServiceApp'
+    applicationName = 'compiler-app'
+
+    // Spark 4 on JDK 17 needs these opens for off-heap / Arrow buffer access and the Unsafe the shaded
+    // protobuf and guava use; without them the Connect client throws InaccessibleObjectException at
+    // startup. Baked in so BOTH `run` and the installDist launcher carry them and no deployer has to
+    // remember the flags. Mirrors the conformance JVM.
+    applicationDefaultJvmArgs = [
+        '--add-opens=java.base/java.nio=ALL-UNNAMED',
+        '--add-opens=java.base/sun.nio.ch=ALL-UNNAMED',
+        '--add-opens=java.base/java.lang=ALL-UNNAMED',
+        '--add-opens=java.base/java.util=ALL-UNNAMED',
+        '--add-opens=java.base/java.lang.invoke=ALL-UNNAMED'
+    ]
+}
+
+// SVC-COMPILER-UC: fingerprint the host's sources and resolved runtime artifacts, not an environment
+// variable or a JVM startup time. This includes dirty source changes and transitive dependency versions.
+// No self-reference: the generated resource is outside src/main and the classpath excludes this JAR.
+def ucVersionDir = layout.buildDirectory.dir('generated-resources/uc-compiler')
+tasks.register('writeUcCompilerVersion') {
+    def sources = fileTree('src/main')
+    inputs.files(sources, configurations.runtimeClasspath)
+    outputs.dir(ucVersionDir)
+    doLast {
+        def digest = java.security.MessageDigest.getInstance('SHA-256')
+        def entries = [:]
+        sources.files.each { entries['source/' + relativePath(it)] = it }
+        configurations.runtimeClasspath.files.each { entries['dependency/' + it.name] = it }
+        entries.sort().each { name, artifact ->
+            digest.update(name.getBytes('UTF-8'))
+            digest.update((byte) 0)
+            digest.update(java.security.MessageDigest.getInstance('SHA-256').digest(artifact.bytes))
+        }
+        def output = ucVersionDir.get().file('compiler-uc.version').asFile
+        output.parentFile.mkdirs()
+        output.text = 'uc-sha256-' + digest.digest().encodeHex().toString() + '\n'
+    }
+}
+sourceSets.main.resources.srcDir(ucVersionDir)
+tasks.named('processResources') { dependsOn 'writeUcCompilerVersion' }
+
+// Dump the canonical __resource mount DDL for every modeled FHIR resource type (SVC-RESOURCE-SCHEMA).
+// ON-DEMAND, into this project's build directory. The loader's importer owns its own copy of these schemas
+// (CONTENT-IMPORTER-FHIR-SCHEMAS, DEC-CONTENT-FEATURE) and is no longer written by this task: the retrieve UDTF is the adaptation layer,
+// so the two may drift without breaking a run. Diff against loader/importer when the FHIR model changes.
+tasks.register('dumpResourceSchemas', JavaExec) {
+    group = 'distribution'
+    description = 'Dump resource-schema DDLs to build/resource-schemas.json (SVC-RESOURCE-SCHEMA).'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.databricks.cql.platform.compiler.DumpResourceSchemas'
+    args layout.buildDirectory.file('resource-schemas.json').get().asFile.absolutePath
+    dependsOn classes
+}
+
+// SVC-PACKAGING: a trimmed JRE for the App image via jlink. ON-DEMAND, deliberately not wired into
+// `build` so a jlink hiccup can never break CI. v1 links the SE aggregate plus jdk.unsupported (for the
+// Unsafe the shaded protobuf/guava use); true minimal-module trimming and native-image are later work
+// behind the same protocol (SVC-PROTOCOL).
+tasks.register('jlinkImage', Exec) {
+    group = 'distribution'
+    description = 'Build a trimmed JRE for the Compiler Service App image (SVC-PACKAGING groundwork).'
+    def javaHome = System.getenv('JAVA_HOME')
+    def outDir = layout.buildDirectory.dir('jlink-runtime').get().asFile
+    doFirst { delete outDir }
+    commandLine "${javaHome}/bin/jlink",
+        '--add-modules', 'java.se,jdk.unsupported',
+        '--strip-debug', '--no-header-files', '--no-man-pages', '--compress=2',
+        '--output', outDir.absolutePath
+}
