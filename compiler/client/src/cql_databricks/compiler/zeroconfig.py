@@ -28,6 +28,8 @@ from typing import Iterable, Optional, Sequence
 from cql_databricks.compiler import CqlClient, CqlQuery
 from cql_databricks.compiler.libraries import resolve_library_provider
 
+from .knowledge_providers import library_provider
+from .provider_binder import ProviderBinder
 from ._udfs import register_runtime_udfs
 from .compile_shim import CqlDatabricksCompileProvider, discover_udf_schema
 from .discovery import DatabricksDataBinder
@@ -41,7 +43,8 @@ def connect(spark=None, *, app_name: Optional[str] = None, data_catalog: Optiona
             valueset_table: Optional[str] = None, udf_schema: Optional[str] = None,
             library_path: Optional[str | Iterable[str]] = None, engine: Optional[str] = None,
             data_source: Optional[str] = None, measurement_period: Optional[tuple[str, str]] = None,
-            recompute: Optional[bool] = None, catalog_scopes: Optional[Iterable[str]] = None) -> CqlClient:
+            recompute: Optional[bool] = None, catalog_scopes: Optional[Iterable[str]] = None,
+            data=None, terminology=None, knowledge=None) -> CqlClient:
     """A :class:`~cql_databricks.compiler.CqlClient` wired for Databricks auto-discovery. The Compiler Service App
     endpoint + OAuth are resolved ON INIT via this package's ``databricks-app`` provider (built directly,
     so it needs no ``provider.kind`` selection). Each run reads the data source found by its tag, in the
@@ -101,7 +104,26 @@ def connect(spark=None, *, app_name: Optional[str] = None, data_catalog: Optiona
     builder = builder.udf_schema(udf)
     if spark is not None:
         builder = builder.spark(spark)
-    if data_catalog:
+    # BUILD-RESOLVE: a data source named by keyword, Spark conf or env is read through providers alike.
+    from . import config as settings
+
+    named = settings.resolve_setting(
+        "data source", explicit=data_source, conf_key=settings.CONF_DATA_SOURCE, env=settings.ENV_DATA_SOURCE,
+        conf={} if session is None else {settings.CONF_DATA_SOURCE: _conf_or_empty(session, settings.CONF_DATA_SOURCE)})
+    if data is not None or terminology is not None or (named and not data_catalog):
+        # CLIENT-DATA-PROVIDER, CLIENT-DEFAULT-RESOLVER: the run reads through providers. A named data source and
+        # the default terminology come from the tags in this session's scopes, as this user.
+        if data is not None and named:
+            raise ValueError("give data= or data_source=, not both")
+        if data_catalog or valueset_table:
+            raise ValueError("data_catalog= and valueset_table= are not used with providers: name a data "
+                             "provider or data_source=, and a terminology source")
+        resolver = _resolver(session, scopes)
+        builder = builder.data_binder(ProviderBinder(
+            data=data if data is not None else (lambda: resolver().data(named)) if named else None,
+            terminology=terminology if terminology is not None else lambda: resolver().terminology(),
+            run=lambda: _spark_runner(session), spark=session, schemas=provider.resource_schemas))
+    elif data_catalog:
         builder = builder.data_catalog(data_catalog)
     else:
         builder = builder.data_binder(DatabricksDataBinder(
@@ -122,7 +144,9 @@ def connect(spark=None, *, app_name: Optional[str] = None, data_catalog: Optiona
         # Recorded as ordinary session config too, so the mount stays visible on the client — the injected
         # provider below is built from these same roots, never from a second source of truth.
         builder = builder.library_path(*roots)
-    builder = builder.library_provider(_library_provider(roots, spark, scopes))
+    # CLIENT-KNOWLEDGE-PROVIDER: a knowledge source given replaces the default order (cells, folder, tagged).
+    builder = builder.library_provider(library_provider(knowledge) if knowledge is not None
+                                       else _library_provider(roots, spark, scopes))
     # SVC-NOTEBOOK-SESSION-SCOPE: header-less CQL joins the session library, kept beside the cells.
     builder = builder.session_scope(SessionScope(SessionRecord(spark)))
     client = builder.build()
@@ -132,6 +156,19 @@ def connect(spark=None, *, app_name: Optional[str] = None, data_catalog: Optiona
     # is formally retired in favour of SVC-RUNTIME-UDF-UC. Best-effort no-op on Spark Connect (serverless).
     register_runtime_udfs(session)
     return client
+
+
+def _resolver(session, scopes):
+    """CLIENT-DEFAULT-RESOLVER — the tag resolver over this session, built on first use."""
+    built = []
+
+    def get():
+        if not built:
+            from .tagged import TaggedResolver
+
+            built.append(TaggedResolver(_session_content(session, scopes), _spark_runner(session)))
+        return built[0]
+    return get
 
 
 def _library_provider(roots: list[str], spark=None, catalog_scopes: Optional[list[str]] = None):

@@ -1,6 +1,6 @@
 package com.databricks.cql.service
 
-import com.databricks.cql.env.{Config, Context, SourceBinding}
+import com.databricks.cql.env.{Config, Context, RetrieveRelation, SourceBinding}
 import com.databricks.cql.ir.{Expr, ExpressionDef, Library}
 import com.databricks.cql.meta.{LibraryDescribe, LibraryGraph}
 import com.databricks.cql.passes.{BuildInfo, LibraryLinker, Optimize, Pipeline, RetrieveCatalog, RetrieveReads}
@@ -103,7 +103,13 @@ final case class CompileRequest(
     /** SVC-COMPILE-BATCH — raw bounds are typed against the root's ELM on the service. */
     measurementPeriod: Option[(String, String)] = None,
     /** SVC-COMPILE-BATCH — caller-discovered routine names; the compiler owns model validation. */
-    dataSource: Option[DataSourceRoutines] = None)
+    dataSource: Option[DataSourceRoutines] = None,
+    /** BIND-PROVIDER-REQUEST: each retrieve id (from `describe`) to the relation the client's data provider
+      * returned. `Some` (even empty, for CQL that retrieves nothing) binds per retrieve, never per type. */
+    data: Option[Map[String, RetrieveRelation]] = None,
+    /** BIND-PROVIDER-REQUEST: the value-set relations in precedence order; a set is read from the first that
+      * holds it. Parsed from the wire's `terminology`. */
+    terminologyRelations: Option[Seq[RetrieveRelation]] = None)
 
 object CompileRequest {
   /** Parse the wire JSON `{elm, cql?, deps?, libraries?, target?, boundaries?, context?, overrides?,
@@ -117,16 +123,25 @@ object CompileRequest {
     * (EMIT-UDF-QUALIFY). */
   def fromJson(json: String): CompileRequest = {
     val o = ujson.read(json)
+    // BIND-PROVIDER-REQUEST: one field per role. A request carrying them never also carries the per-type
+    // `sources`, `dataSource`, `deps` or `libraries` they replace.
+    val present = (key: String) => o.obj.get(key).exists(v => !v.isNull)
+    val roles = Seq("data", "terminology", "knowledge", "runtime").filter(present)
+    val replaced = Seq("sources", "dataSource", "deps", "libraries").filter(present)
+    require(roles.isEmpty || replaced.isEmpty,
+      s"a request with ${roles.mkString(", ")} has no ${replaced.mkString(", ")} (BIND-PROVIDER-REQUEST)")
     val sourcesObj = o.obj.get("sources").filterNot(_.isNull)
+    // BUILD-COMPILE-LINK: `knowledge` is the include closure, each entry as a `deps` entry is.
+    val closure = o.obj.get("knowledge").filterNot(_.isNull).orElse(o.obj.get("deps").filterNot(_.isNull))
     CompileRequest(
       elmJson = o.obj.get("elm").filterNot(_.isNull).map(_.str).getOrElse(""),
       cql = o.obj.get("cql").flatMap(v => if (v.isNull) None else Some(v.str)),
       // BUILD-COMPILE-LINK: a `deps` entry is EITHER an ELM JSON string (the long-standing form) or a
       // `{ "cql": "…" }` object (a caller-resolved CQL closure). Split by JSON type so both may be mixed
       // in one array and an old caller's all-string array parses exactly as before.
-      deps = o.obj.get("deps").filterNot(_.isNull)
+      deps = closure
         .map(_.arr.iterator.filter(_.isInstanceOf[ujson.Str]).map(_.str).toSeq).getOrElse(Seq.empty),
-      depCql = o.obj.get("deps").filterNot(_.isNull)
+      depCql = closure
         .map(_.arr.iterator.collect { case v: ujson.Obj => v }
           .flatMap(_.obj.get("cql").filterNot(_.isNull).map(_.str)).toSeq).getOrElse(Seq.empty),
       target = o.obj.get("target").flatMap(v => if (v.isNull) None else Some(v.str)),
@@ -160,8 +175,11 @@ object CompileRequest {
       terminologyTable = sourcesObj.flatMap(_.obj.get("valuesets")).filterNot(_.isNull)
         .flatMap(_.obj.get("table")).filterNot(_.isNull).map(_.str),
       // EMIT-UDF-QUALIFY: sources.udfs.schema → schema qualifier for cql_* UDF calls.
-      udfSchema = sourcesObj.flatMap(_.obj.get("udfs")).filterNot(_.isNull)
-        .flatMap(_.obj.get("schema")).filterNot(_.isNull).map(_.str).filter(_.nonEmpty),
+      udfSchema = o.obj.get("runtime").filterNot(_.isNull).orElse(sourcesObj.flatMap(_.obj.get("udfs")))
+        .filterNot(_.isNull).flatMap(_.obj.get("schema")).filterNot(_.isNull).map(_.str).filter(_.nonEmpty),
+      data = o.obj.get("data").filterNot(_.isNull).map(_.obj.map { case (id, v) => id -> RetrieveRelation.fromJson(v) }.toMap),
+      terminologyRelations = o.obj.get("terminology").filterNot(_.isNull)
+        .map(_.arr.map(RetrieveRelation.fromJson).toSeq),
       // EMIT-SQL-OBJECT-PREFIX: absent/empty ⇒ None ⇒ bare object names (the default).
       objectPrefix = o.obj.get("objectPrefix").filterNot(_.isNull).map(_.str).filter(_.nonEmpty),
       // RUN-RESULTS-BY-EVAL: absent/empty ⇒ None ⇒ bare published reads.
@@ -372,7 +390,7 @@ object CompileService {
     val loaded = normalizedInput(req)
     val optimized = Optimize.run(Pipeline().normalize(loaded), config)
     val env = SqlEvalEnv(resolveContext(req, loaded), config, terminology = hasTerminology, sources = req.sources,
-      terminologyTable = req.terminologyTable)
+      terminologyTable = req.terminologyTable, data = req.data, terminologyRelations = req.terminologyRelations)
     val lowered = SqlFrameLowering.lower(optimized, env, req.target)
     // EMIT-UDF-QUALIFY: scope the UDF schema qualifier so every cql_* call renders qualified.
     SqlRender.withUdfSchema(req.udfSchema) {
@@ -441,7 +459,7 @@ object CompileService {
     val env = SqlEvalEnv(resolveContext(req, loaded), config, terminology = hasTerminology,
       sources = req.sources, cutSiblings = Some(mutable.Set.empty[String]),
       datasetNameCtx = Some(dsCtx), terminologyTable = req.terminologyTable,
-      publishedEvalId = req.evalId)
+      publishedEvalId = req.evalId, data = req.data, terminologyRelations = req.terminologyRelations)
     // Build the library-id → version mapping for ELM origin metadata on each recipe.
     // Multi-library: each root's id and version extracted from its ELM; single-library: empty (the root
     // library's own id/version is used directly).
@@ -470,11 +488,25 @@ object CompileService {
         val nonReusable = dependencies.keys.filter(isVolatile).map(SqlNames.datasetName(_, dsCtx)).toSet
         // RUN-CLIENT-RESULT-IDENTITY: a kept result is identified by the tagged data source it read. An
         // explicit per-type manifest or a bare `retrieve_<Type>` names no source, so it fails here.
-        val source = request.dataSource.map(d => s"${d.catalog}.${d.schema}")
-        require(source.nonEmpty || RetrieveCatalog.analyze(optimized).retrieves.isEmpty,
-          "a durable compile that retrieves data needs a tagged data source (dataSource), not explicit " +
-            "source bindings or the bare retrieve_<Type> convention: its results are kept under that source")
-        DurablePlan.annotate(plan, nonReusable, DurablePlan.parameterClaims(loaded, dsCtx), source)
+        val retrieves = RetrieveCatalog.analyze(optimized).retrieves.nonEmpty
+        val bound = req.data match {
+          case Some(data) =>
+            // CLIENT-PROVIDER-IDENTITY: the identities of the providers whose relations this compile binds.
+            val identities = (relations: Seq[RetrieveRelation]) => relations.map(r => r.identity.getOrElse(
+              throw new IllegalArgumentException(s"a durable compile's relation $r has no identity " +
+                "(CLIENT-PROVIDER-IDENTITY)"))).distinct.sorted
+            val dataIds = identities(data.values.toSeq)
+            require(dataIds.nonEmpty || !retrieves,
+              "a durable compile that retrieves data needs data relations (CLIENT-PROVIDER-IDENTITY)")
+            DurablePlan.Providers(dataIds, identities(req.terminologyRelations.getOrElse(Nil)))
+          case None =>
+            val source = request.dataSource.map(d => s"${d.catalog}.${d.schema}")
+            require(source.nonEmpty || !retrieves,
+              "a durable compile that retrieves data needs a tagged data source (dataSource), not explicit " +
+                "source bindings or the bare retrieve_<Type> convention: its results are kept under that source")
+            DurablePlan.Address(source)
+        }
+        DurablePlan.annotate(plan, nonReusable, DurablePlan.parameterClaims(loaded, dsCtx), bound)
       }
     }
   }

@@ -21,6 +21,7 @@ from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from . import config
 from .libraries import LibrarySource
+from .roles import Retrieve, ValueSetRef
 
 log = logging.getLogger(__name__)
 
@@ -90,8 +91,17 @@ class CompileRequest:
     # SVC-COMPILE-BATCH: service-owned period typing and binding validation, no preparation HTTP calls.
     measurement_period: tuple[str, str] | None = None
     data_source: Mapping | None = None
+    # BIND-PROVIDER-REQUEST: the one-field-per-role request. ``data`` maps each retrieve id (from ``describe``) to
+    # its wire relation, ``{"table": name}`` or ``{"function": name, "parameters": [...]}``, with the
+    # ``identity`` of the provider that answered; ``terminology`` is the value-set relations in precedence
+    # order. Set, the request sends ``deps`` as ``knowledge`` and ``udf_schema`` as ``runtime.schema``, and
+    # never ``sources``, ``dataSource``, ``libraries`` or a value-set table.
+    data: Mapping[str, Mapping] | None = None
+    terminology: Sequence[Mapping] = ()
 
     def to_json(self) -> dict:
+        if self.data is not None:
+            return self._roles_json()
         return {
             "elm": self.elm,
             "cql": self.cql,
@@ -118,6 +128,35 @@ class CompileRequest:
             **({"sources": self._sources_json()} if self._sources_json() else {}),
             **({"libraries": [{"elm": lib.elm, "deps": list(lib.deps)} for lib in self.libraries]}
                if self.libraries else {}),
+        }
+
+    def _roles_json(self) -> dict:
+        """BIND-PROVIDER-REQUEST: the request with one field per role. A field it replaces, when also set, is
+        refused rather than dropped."""
+        mixed = [name for name, value in (("sources", self.sources), ("data_source", self.data_source),
+                                          ("libraries", self.libraries),
+                                          ("terminology_table", self.terminology_table)) if value]
+        if mixed:
+            raise ValueError(f"a request with data has no {', '.join(mixed)} (BIND-PROVIDER-REQUEST)")
+        return {
+            "elm": self.elm,
+            "cql": self.cql,
+            "target": self.target,
+            "boundaries": sorted(self.boundaries) if self.boundaries is not None else None,
+            "context": self.context,
+            "overrides": dict(self.overrides),
+            "grainFirst": self.grain_first,
+            "parameters": {k: self.parameters[k] for k in sorted(self.parameters)},
+            "data": {k: dict(self.data[k]) for k in sorted(self.data)},
+            "terminology": [dict(t) for t in self.terminology],
+            "knowledge": [self._dep_entry(d, root_is_cql=bool(self.cql)) for d in self.deps],
+            **({"runtime": {"schema": self.udf_schema}} if self.udf_schema else {}),
+            **({"objectPrefix": self.object_prefix} if self.object_prefix else {}),
+            **({"evalId": self.eval_id} if self.eval_id else {}),
+            **({"durable": True} if self.durable else {}),
+            **({"measurementPeriod": list(self.measurement_period)} if self.measurement_period else {}),
+            **({"sessionParameters": {k: self.session_parameters[k] for k in sorted(self.session_parameters)}}
+               if self.session_parameters else {}),
         }
 
     def _sources_json(self) -> dict:
@@ -403,6 +442,12 @@ class LibraryGraph:
     # EMIT-DESCRIBE-RETRIEVE-TYPES: every resource type the library retrieves, sorted; empty for data-free
     # CQL. ``None`` when the service does not report it, which a caller choosing data must refuse.
     retrieve_types: Optional[List[str]] = None
+    # BIND-PROVIDER-REQUEST: each retrieve with its id and request, which the client asks its data provider
+    # for. ``None`` when the service does not report them.
+    retrieves: Optional[Tuple["Retrieve", ...]] = None
+    # BIND-PROVIDER-REQUEST: every value set the linked library declares, which the client asks its terminology
+    # source for.
+    value_sets: Tuple["ValueSetRef", ...] = ()
 
     def kind_of(self, define: str) -> str:
         """The row shape of ``define`` (:data:`SCALAR` | :data:`RELATION`), defaulting to :data:`SCALAR`
@@ -679,7 +724,10 @@ class _JsonProvider(CompileProvider):
             retrieve_demand={k: list(v) for k, v in body.get("retrieveDemand", {}).items()},
             define_kinds={k: str(v) for k, v in body.get("defineKinds", {}).items()},
             value_column=body.get("valueColumn", VALUE_COLUMN),
-            retrieve_types=(sorted(body["retrieveTypes"]) if body.get("retrieveTypes") is not None else None))
+            retrieve_types=(sorted(body["retrieveTypes"]) if body.get("retrieveTypes") is not None else None),
+            retrieves=(tuple(Retrieve.from_dict(r) for r in body["retrieves"])
+                       if body.get("retrieves") is not None else None),
+            value_sets=tuple(ValueSetRef(id=v["id"], version=v.get("version")) for v in body.get("valueSets", ())))
 
 
 class RemoteProvider(_JsonProvider):

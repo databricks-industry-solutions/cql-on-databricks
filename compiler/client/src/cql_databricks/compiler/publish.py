@@ -26,7 +26,6 @@ from cql_databricks.data_bindings.runner import SqlRunner, spark_runner
 
 from .data_source import DataSourceLayout, DataSourceLayoutError, check_layout
 from .reshape import SchemaIssue, model_client, quote_name, require_ok, sql_type, structured_sql, table_name
-from .runtime import retrieve_params_ddl
 
 _SCHEMA_NAME = re.compile(r"^[^./`\s]+\.[^./`\s]+$")
 
@@ -106,9 +105,9 @@ def publish_data_source(spark, target: str, *, name: str, fhir: Mapping[str, str
 
 
 def _function_ddl(function: str, resource, source: str, body: str) -> str:
-    comment = (f"BIND-PUBLISH: retrieve_{resource.fhir_type} over {source}; ignores the pushdown arguments "
-               f"(BIND-CAPABILITY)")
-    return (f"CREATE OR REPLACE FUNCTION {quote_name(function)}({retrieve_params_ddl()})\n"
+    comment = (f"BIND-PUBLISH: retrieve_{resource.fhir_type} over {source}; the whole table, declaring no request "
+               f"field (BIND-NAMED-ARGS, BIND-CAPABILITY)")
+    return (f"CREATE OR REPLACE FUNCTION {quote_name(function)}()\n"
             f"RETURNS TABLE (`__subject_id` STRING, `__resource` {sql_type(resource.struct)})\n"
             f"LANGUAGE SQL\n"
             f"COMMENT {_literal(comment)}\n"

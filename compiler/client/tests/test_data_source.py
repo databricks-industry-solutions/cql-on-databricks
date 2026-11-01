@@ -13,7 +13,7 @@ MODELED = ["Patient", "Encounter", "MedicationRequest"]
 def _runner(routines, change_log_columns=(), period_log_columns=()):
     def run(statement, params=None):
         if "information_schema.routines" in statement:
-            return [{"routine_name": r} for r in routines]
+            return [{"routine_name": r, "name": r} for r in routines]
         if "information_schema.columns" in statement:
             columns = {"change_data_log": change_log_columns, "change_log": period_log_columns}[params["table"]]
             return [{"column_name": c} for c in columns]
@@ -26,7 +26,7 @@ class LayoutTest(unittest.TestCase):
         """RUN-CLIENT-REUSE — log presence, layout and access do not gate durable computation."""
         def run(statement, params=None):
             self.assertIn("information_schema.routines", statement)
-            return [{"routine_name": "retrieve_patient"}]
+            return [{"routine_name": "retrieve_patient", "name": "retrieve_patient"}]
         layout = check_layout(run, "synthetic", "source", MODELED, include_change_logs=False)
         self.assertEqual(layout.bindings, {"Patient": "synthetic.source.retrieve_Patient"})
         self.assertIsNone(layout.change_log)
@@ -70,7 +70,7 @@ class LayoutTest(unittest.TestCase):
         _, problems = read_layout(run, "main", "fhir", MODELED)
         self.assertEqual(problems, [
             "change_data_log is missing column updated_at",
-            "no retrieve_<Type> functions",
+            "no retrieve_<Type> table, view or function",
             "retrieve_unicorn names no FHIR type the compiler models"])
         with self.assertRaises(DataSourceLayoutError):
             check_layout(run, "main", "fhir", MODELED)

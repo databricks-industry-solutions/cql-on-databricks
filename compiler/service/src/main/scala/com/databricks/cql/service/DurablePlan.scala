@@ -23,6 +23,22 @@ final case class DurableIdentity(format: String, fingerprint: String, reusable: 
 object DurablePlan {
   val Format = "cql-result-identity-v1"
 
+  /** What a durable compile bound its data to, hashed into every recipe's fingerprint. */
+  sealed trait Bound { def input: (String, ujson.Value) }
+
+  /** RUN-CLIENT-RESULT-IDENTITY: a tagged data source's address, `catalog.schema`, or None for CQL that
+    * retrieves nothing. */
+  final case class Address(source: Option[String]) extends Bound {
+    def input: (String, ujson.Value) = "source" -> source.map(ujson.Str(_)).getOrElse(ujson.Null)
+  }
+
+  /** CLIENT-PROVIDER-IDENTITY: the sorted, distinct identities of the data and terminology providers whose
+    * relations the compile binds. */
+  final case class Providers(data: Seq[String], terminology: Seq[String]) extends Bound {
+    def input: (String, ujson.Value) =
+      "providers" -> ujson.Obj("data" -> ujson.Arr.from(data), "terminology" -> ujson.Arr.from(terminology))
+  }
+
   private def digest(value: ujson.Value): String =
     MessageDigest.getInstance("SHA-256").digest(ujson.write(value).getBytes(StandardCharsets.UTF_8))
       .map(byte => f"${byte & 0xff}%02x").mkString
@@ -42,12 +58,12 @@ object DurablePlan {
       SqlNames.datasetName(name, context) -> ujson.Obj.from(claims)
     }
 
-  /** RUN-CLIENT-RESULT-IDENTITY — retain the original SQL and wire defaults; annotate only on opt-in.
-    * `source` is the bound data source's address (`catalog.schema`), or None for CQL that retrieves nothing.
-    * It is hashed as its own input, though a bound retrieve already names it in the SQL, so the identity
-    * does not depend on how a recipe happens to reach its data. */
+  /** RUN-CLIENT-RESULT-IDENTITY, CLIENT-PROVIDER-IDENTITY — retain the original SQL and wire defaults; annotate
+    * only on opt-in. `boundTo` is what the compile bound its data to ([[Address]] or [[Providers]]). It is hashed
+    * as its own input, though each relation is already named in the SQL, so the identity does not depend on
+    * how a recipe happens to reach its data. */
   def annotate(plan: PipelinePlan, nonReusable: Set[String],
-               parameters: Map[String, ujson.Obj] = Map.empty, source: Option[String] = None): PipelinePlan = {
+               parameters: Map[String, ujson.Obj] = Map.empty, boundTo: Bound = Address(None)): PipelinePlan = {
     val recipes = plan.datasets.map(recipe => recipe.name -> recipe).toMap
     require(recipes.size == plan.datasets.size, "duplicate durable dataset names")
     val identities = mutable.Map.empty[String, DurableIdentity]
@@ -64,7 +80,7 @@ object DurablePlan {
         "query" -> recipe.query,
         "parameters" -> bound,
         "upstream" -> ujson.Arr.from(upstream.map { case (read, claim) => ujson.Arr(read, claim.fingerprint) }),
-        "source" -> source.map(ujson.Str(_)).getOrElse(ujson.Null)))
+        boundTo.input))
       visiting -= name
       DurableIdentity(Format, fingerprint, !nonReusable(name) && upstream.forall(_._2.reusable), bound)
     })

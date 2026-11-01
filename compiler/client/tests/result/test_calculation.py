@@ -5,7 +5,8 @@ from dataclasses import replace
 
 import pytest
 
-from cql_databricks.compiler.providers import PipelinePlan
+from cql_databricks.compiler.providers import LibraryGraph, PipelinePlan
+from cql_databricks.compiler.roles import Retrieve, RetrieveRequest
 from cql_databricks.data_bindings import Corpus, Library, TaggedSchema
 from cql_databricks.result.calculation import prepare_calculation
 from test_durable_plan import plan
@@ -24,13 +25,23 @@ class Content:
                      for name, source in (("Synthetic", ROOT), ("Helper", INCLUDE))]
         return Corpus(lambda *args: [], [schema], libraries)
 
+    scopes = ()
+    generation = 1
+
     def data_source_schemas(self):
         return [TaggedSchema("synthetic", "population", "synthetic", "source")]
+
+    def terminology_sources(self):
+        return [TaggedSchema("cql_databricks_terminology", "terms", "synthetic", "terminology")]
+
+
+PATIENT = Retrieve(id="Patient_0c41d2e6a95f", request=RetrieveRequest(fhir_type="Patient"))
 
 
 class Compiler:
     def __init__(self):
         self.requests = []
+        self.described = []
         self.translations = []
         compiled = plan()
         self.plan = PipelinePlan([replace(compiled.datasets[0], library="Helper"), compiled.datasets[1]],
@@ -38,6 +49,15 @@ class Compiler:
 
     def resource_types(self):
         raise AssertionError("SVC-COMPILE-BATCH must not fetch resource types separately")
+
+    def resource_schemas(self, types):
+        raise AssertionError("SVC-COMPILE-BATCH: a table relation needs no reshape")
+
+    def describe(self, request):
+        """SVC-COMPILE-BATCH, BIND-PROVIDER-REQUEST: the one other request, with the compile's own body."""
+        self.described.append(request)
+        return LibraryGraph(defines=[], dependencies={}, boundaries=[], materialized_defines=[], compiler_version="t",
+                            retrieves=(PATIENT,))
 
     def translate_result(self, source, includes):
         raise AssertionError("SVC-COMPILE-BATCH must not translate libraries separately")
@@ -48,8 +68,8 @@ class Compiler:
 
 
 def run(statement, params=None):
-    assert "information_schema.routines" in statement
-    return [{"routine_name": "retrieve_patient"}]
+    assert "AS kind" in statement  # CLIENT-DEFAULT-RESOLVER: the one layout read
+    return [{"kind": "table", "name": "retrieve_patient"}]
 
 
 def prepare(compiler, **changes):
@@ -66,15 +86,19 @@ def test_preparation_binds_actual_addresses_typed_period_and_include_closure_onc
     assert request.cql == ROOT and request.elm == ""
     assert request.parameters == {}
     assert request.measurement_period == ("2026-01-01", "2026-12-31")
-    assert request.data_source == {"catalog": "synthetic", "schema": "source", "routines": ["retrieve_patient"]}
-    assert request.terminology_table == "synthetic_runtime.runtime.valuesets"
+    # CLIENT-DEFAULT-RESOLVER: the named source's relation and the tagged terminology, with their identities.
+    assert request.data == {PATIENT.id: {"table": "synthetic.source.retrieve_patient", "identity": "synthetic.source"}}
+    assert request.terminology == [{"table": "synthetic.terminology.valueset", "identity": "synthetic.terminology"}]
+    assert request.data_source is None and request.terminology_table is None
     assert request.udf_schema == "synthetic_runtime.runtime"
     assert len(request.deps) == 1 and request.deps[0].name == "Helper"
     assert request.deps[0].cql == INCLUDE and not request.deps[0].elm
     assert compiler.translations == []
     assert prepared.targets == ("Helper.Base", "Synthetic.Output")
     assert prepared.compile_pipeline(durable=True) is compiler.plan
-    assert len(compiler.requests) == 1
+    # SVC-COMPILE-BATCH: one describe and one compile, of the same request.
+    assert len(compiler.requests) == 1 and len(compiler.described) == 1
+    assert compiler.described[0].cql == request.cql and compiler.described[0].deps == request.deps
 
 
 def test_explicit_targets_are_qualified_by_compiler_origin():

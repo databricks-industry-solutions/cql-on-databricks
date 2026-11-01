@@ -400,5 +400,8 @@ object CompilerRouter {
       "engineVersion" -> g.compilerVersion,
       "terminologyVersion" -> g.terminologyVersion.map(ujson.Str(_)).getOrElse(ujson.Null),
       // EMIT-DESCRIBE-RETRIEVE-TYPES: every retrieved type, so a caller binds exactly the data a run needs.
-      "retrieveTypes" -> ujson.Arr.from(g.retrieveTypes))
+      "retrieveTypes" -> ujson.Arr.from(g.retrieveTypes),
+      // BIND-PROVIDER-REQUEST: each retrieve with its id and request.
+      "retrieves"     -> ujson.Arr.from(g.retrieves.map(r => ujson.Obj("id" -> r.id, "request" -> r.requestJson))),
+      "valueSets"     -> ujson.Arr.from(g.valueSets.map { case (id, v) => ujson.Obj("id" -> id, "version" -> v.map(ujson.Str(_)).getOrElse(ujson.Null)) }))
 }

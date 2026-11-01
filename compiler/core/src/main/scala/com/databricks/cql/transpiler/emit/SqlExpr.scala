@@ -58,6 +58,10 @@ object SqlExpr {
   /** A windowed expression: `fn OVER (PARTITION BY … ORDER BY …)` (grain-first ordinal/rank). */
   final case class Over(fn: SqlExpr, partitionBy: Seq[SqlExpr], orderBy: Seq[SqlRel.SortKey]) extends SqlExpr
 
+  /** A named argument, `name => value` (`BIND-NAMED-ARGS`): only valid inside a [[SqlRel.TableFunc]] call to a
+    * function relation. `name` is a retrieve request field, so it is a plain identifier. */
+  final case class NamedArg(name: String, value: SqlExpr) extends SqlExpr
+
   // --- smart constructors: the ONLY sanctioned way to build literals (centralized quoting/escaping) ---
 
   val Null: SqlExpr = Lit("NULL")

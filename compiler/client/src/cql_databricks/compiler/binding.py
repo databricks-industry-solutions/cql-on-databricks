@@ -46,6 +46,9 @@ def bound_request(library, request: CompileRequest, retrieve_types: Callable[[],
     ``retrieve_types`` is called only when there is a binder to ask, so a binder-free compile makes no
     describe call. The value-set table the client named explicitly is kept over the binder's."""
     binder = getattr(library, "binder", None)
+    # BIND-PROVIDER-REQUEST: a provider binder asks describe with this very request, so the retrieve ids match.
+    if binder is not None and hasattr(binder, "bind_request"):
+        return binder.bind_request(library, request, lambda: library.provider.describe(request), durable=durable)
     if binder is None or request.sources:
         return request
     types = retrieve_types()

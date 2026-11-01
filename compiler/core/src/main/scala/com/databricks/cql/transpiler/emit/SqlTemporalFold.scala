@@ -240,6 +240,7 @@ object SqlTemporalFold {
     case Lambda(ps, b)          => Lambda(ps, f(b))
     case Struct(fs)             => Struct(fs.map { case (n, v) => n -> f(v) })
     case Over(fn, part, ord)    => Over(f(fn), part.map(f), ord.map(k => k.copy(expr = f(k.expr))))
+    case NamedArg(n, v)         => NamedArg(n, f(v))
   }
 
   /** Apply `f` to every expression embedded in a relation (recursing into sub-relations). */

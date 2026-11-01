@@ -4,7 +4,7 @@ import com.databricks.cql.env.{Config, Context}
 import com.databricks.cql.ir.{CqlType, Expr, ExpressionDef, ExpressionRef, Library}
 import com.databricks.cql.passes.{BuildInfo, Optimize, Pipeline, RetrieveCatalog, RetrieveDemand, TypeEncoding}
 import com.databricks.cql.spark.SystemColumns
-import com.databricks.cql.transpiler.lower.{SqlEvalEnv, SqlFrameLowering}
+import com.databricks.cql.transpiler.lower.{RetrieveCall, SqlEvalEnv, SqlFrameLowering}
 
 /** A NEUTRAL, pipeline-agnostic description of a CQL library's compiled graph (PHASE-10). This repo does
   * not generate a pipeline — it DESCRIBES one: an external pipeline (e.g. the parameterized SDP in the
@@ -55,7 +55,14 @@ final case class LibraryGraph(
     /** EMIT-DESCRIBE-RETRIEVE-TYPES: every FHIR resource type the library retrieves, sorted. Unlike
       * [[retrieveDemand]], a retrieve that navigates no field (`exists [Encounter]`) is listed too, so a
       * caller knows exactly which data a run needs, and that a library listing none needs no data. */
-    retrieveTypes: Seq[String] = Seq.empty)
+    retrieveTypes: Seq[String] = Seq.empty,
+    /** BIND-PROVIDER-REQUEST: each retrieve the compiled SQL makes, with its id and request, in first-seen order.
+      * The client asks its data provider for each and binds the relations by id. Read off the same lowering as
+      * everything else here, so the ids are the ones the compile looks up. */
+    retrieves: Seq[RetrieveCall] = Seq.empty,
+    /** BIND-PROVIDER-REQUEST: every value set the linked library declares, `(id, version)`, distinct by id and
+      * sorted, so the client asks its terminology source for exactly these. */
+    valueSets: Seq[(String, Option[String])] = Seq.empty)
 
 /** Compute the neutral [[LibraryGraph]] for a library (the "describe" half of the compiler's public
   * surface, beside "compile"). It runs ONE generation-mode lowering of the SQL back end
@@ -94,7 +101,9 @@ object LibraryDescribe {
     val config = Config.resolve(overrides).copy(materializeBoundaries = None, grainFirst = grainFirst)
     val lib = Pipeline().normalize(lib0)
     val optimized = Optimize.run(lib, config)
-    val env = SqlEvalEnv(context, config, terminology = hasTerminology)
+    // BIND-PROVIDER-REQUEST: describe runs before the client binds terminology, so a membership test lowers
+    // here whatever the host has; nothing describe returns depends on the value-set relation.
+    val env = SqlEvalEnv(context, config, terminology = true)
     val lowered = SqlFrameLowering.lower(optimized, env)
 
     val nodes = lowered.names
@@ -127,6 +136,8 @@ object LibraryDescribe {
     // contract (BIND-DESCRIBE-RETRIEVES) stays unpublished; only the types have a consumer.
     val retrieveTypes = RetrieveCatalog.analyze(optimized).retrieves.map(_.resourceType).distinct.sorted
     LibraryGraph(nodes, deps, boundaries, materialized, BuildInfo.version, terminologyVersion, encoding, demand,
-      defineKinds = kinds, retrieveTypes = retrieveTypes)
+      defineKinds = kinds, retrieveTypes = retrieveTypes, retrieves = env.retrieveCalls.values.toSeq,
+      valueSets = optimized.valueSets.groupBy(_.id).map { case (id, defs) => id -> defs.flatMap(_.version).headOption }
+        .toSeq.sortBy(_._1))
   }
 }

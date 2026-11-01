@@ -128,50 +128,50 @@ class SqlQueryLoweringRelationSpec extends AnyFunSuite {
     assert(out.contains("retrieve_Encounter(NULL, NULL, array(), NULL, NULL, NULL, map())"))
   }
 
-  test("EMIT-ROOT-INDEPENDENT: retrieveArgs names no library, and passes only the current define's parameters") {
+  test("EMIT-ROOT-INDEPENDENT: retrieveCall names no library, and passes only the current define's parameters") {
     val libV = lib.copy(version = Some("1.2.000"))
-    val args = SqlQueryLowering.retrieveArgs(None, "Encounter", libV, env()).map(SqlRender.expr)
+    val args = SqlQueryLowering.retrieveCall(None, "Encounter", libV, env()).positionalArgs.map(SqlRender.expr)
     assert(args.size == 7 && !args.exists(_.contains("Test")))
     // The context base belongs to no define, so its parameters map is empty.
     assert(args.last == "map()")
   }
 
-  test("retrieveArgs maps literal parameter defaults to MAP<STRING, VARIANT> (BIND-EXPLICIT-PARAMS)") {
+  test("retrieveCall maps literal parameter defaults to MAP<STRING, VARIANT> (BIND-EXPLICIT-PARAMS)") {
     val dt = "{urn:hl7-org:elm-types:r1}DateTime"
     val mp = IntervalExpr(Some(Literal(dt, Some("2026-01-01"))), Some(Literal(dt, Some("2026-12-31"))),
       lowClosed = true, highClosed = false)
     val libP = lib.copy(parameters = Seq(
       ParameterDef("Measurement Period", Some("Interval<DateTime>"), Some(mp)),
       ParameterDef("Threshold", Some("Integer"), Some(Literal("{urn:hl7-org:elm-types:r1}Integer", Some("40"))))))
-    val out = SqlRender.expr(SqlQueryLowering.retrieveArgs(None, "Encounter", libP, scoped(libP)).last)
+    val out = SqlRender.expr(SqlQueryLowering.retrieveCall(None, "Encounter", libP, scoped(libP)).positionalArgs.last)
     // An INTERVAL default lands as a `{low, high}` VARIANT OBJECT (where context.measurementPeriod went),
     // a scalar as a VARIANT SCALAR — one open container keyed by the CQL name, spaces and all.
     assert(out == "map('Measurement Period', to_variant_object(named_struct('low', '2026-01-01', 'lowClosed', true, " +
       "'high', '2026-12-31', 'highClosed', false)), 'Threshold', CAST('40' AS VARIANT))")
   }
 
-  test("retrieveArgs emits DIRECT codes and the RESOLVED code slot, not the raw choice element") {
+  test("retrieveCall emits DIRECT codes and the RESOLVED code slot, not the raw choice element") {
     // A `value[x]`-choice code property resolves to its physical slot so a binding navigates what the
     // plan filters on: MedicationRequest.medication -> medicationCodeableConcept.
     val libC = lib.copy(codes = Seq(CodeDef("Aspirin", "1191", Some("RxNorm"))),
       codeSystems = Seq(CodeSystemDef("RxNorm", "http://www.nlm.nih.gov/research/umls/rxnorm", None)))
     val r = retrieve("{http://hl7.org/fhir}MedicationRequest", codeProperty = Some("medication"),
       codes = Some(ToList(CodeRef("Aspirin", None))))
-    val args = SqlQueryLowering.retrieveArgs(Some(r), "MedicationRequest", libC, env()).map(SqlRender.expr)
+    val args = SqlQueryLowering.retrieveCall(Some(r), "MedicationRequest", libC, env()).positionalArgs.map(SqlRender.expr)
     assert(args(0) == "NULL") // no value set on a direct-code retrieve
     assert(args(1) == "'medicationCodeableConcept'")
     assert(args(2) == "array(named_struct('system', 'http://www.nlm.nih.gov/research/umls/rxnorm', 'code', '1191'))")
   }
 
-  test("retrieveArgs renders a Date/DateTime CONSTRUCTOR bound at its authored precision") {
+  test("retrieveCall renders a Date/DateTime CONSTRUCTOR bound at its authored precision") {
     // `@2023-06-01` reaches the IR as DateTimeExpr(Literal(2023), Literal(6), Literal(1)) — not a string
     // literal. A PARTIAL bound stays partial: padding would widen the window the binding prunes on.
     def dtParts(ns: Int*): Expr = DateTimeExpr(ns.map(n => lit("Integer", n.toString)))
     def window(lo: Expr, hi: Expr) = IntervalExpr(Some(lo), Some(hi), lowClosed = true, highClosed = true)
     def bounds(lo: Expr, hi: Expr): (String, String) = {
-      val a = SqlQueryLowering.retrieveArgs(
+      val a = SqlQueryLowering.retrieveCall(
         Some(retrieve(Encounter, dateProperty = Some("period"), dateRange = Some(window(lo, hi)))),
-        "Encounter", lib, env()).map(SqlRender.expr)
+        "Encounter", lib, env()).positionalArgs.map(SqlRender.expr)
       (a(4), a(5))
     }
     assert(bounds(dtParts(2023, 6, 1), dtParts(2023, 6, 30)) == ("'2023-06-01'", "'2023-06-30'"))
@@ -185,7 +185,7 @@ class SqlQueryLoweringRelationSpec extends AnyFunSuite {
     assert(bounds(DateTimeExpr(Seq(ExpressionRef("SomeYear", None))), dtParts(2024))._1 == "NULL")
   }
 
-  test("retrieveArgs carries a Measurement Period interval default into the parameters map") {
+  test("retrieveCall carries a Measurement Period interval default into the parameters map") {
     // Every eCQM declares this; the bound is a DateTime CONSTRUCTOR, which is why the retired
     // context.measurementPeriod field was always absent in the real corpus.
     val mp = IntervalExpr(
@@ -193,24 +193,24 @@ class SqlQueryLoweringRelationSpec extends AnyFunSuite {
       Some(DateTimeExpr(Seq(lit("Integer", "2026"), lit("Integer", "12"), lit("Integer", "31")))),
       lowClosed = true, highClosed = true)
     val libP = lib.copy(parameters = Seq(ParameterDef("Measurement Period", Some("Interval<DateTime>"), Some(mp))))
-    val out = SqlRender.expr(SqlQueryLowering.retrieveArgs(None, "Encounter", libP, scoped(libP)).last)
+    val out = SqlRender.expr(SqlQueryLowering.retrieveCall(None, "Encounter", libP, scoped(libP)).positionalArgs.last)
     // The CLOSURE is carried, not assumed — the standard eCQM period is HALF-OPEN, and a binding that
     // read a bare `high` as inclusive would over-select the boundary instant.
     assert(out == "map('Measurement Period', to_variant_object(named_struct('low', '2026-01-01', 'lowClosed', true, " +
       "'high', '2026-12-31', 'highClosed', true)))")
   }
 
-  test("retrieveArgs emits the folded date window as inclusive bounds; a half-open range stays absent") {
+  test("retrieveCall emits the folded date window as inclusive bounds; a half-open range stays absent") {
     val dt = "{urn:hl7-org:elm-types:r1}DateTime"
     def range(closedHigh: Boolean) = IntervalExpr(Some(Literal(dt, Some("2026-01-01"))),
       Some(Literal(dt, Some("2026-12-31"))), lowClosed = true, highClosed = closedHigh)
     val closed = retrieve(Encounter, dateProperty = Some("period"), dateRange = Some(range(true)))
-    val cArgs = SqlQueryLowering.retrieveArgs(Some(closed), "Encounter", lib, env()).map(SqlRender.expr)
+    val cArgs = SqlQueryLowering.retrieveCall(Some(closed), "Encounter", lib, env()).positionalArgs.map(SqlRender.expr)
     assert(cArgs(3) == "'period'" && cArgs(4) == "'2026-01-01'" && cArgs(5) == "'2026-12-31'")
     // A half-open interval leaves the WINDOW absent rather than shift a bound (CORE-NO-SILENT-MISLOWER);
     // the date PROPERTY is still named.
     val open = retrieve(Encounter, dateProperty = Some("period"), dateRange = Some(range(false)))
-    val oArgs = SqlQueryLowering.retrieveArgs(Some(open), "Encounter", lib, env()).map(SqlRender.expr)
+    val oArgs = SqlQueryLowering.retrieveCall(Some(open), "Encounter", lib, env()).positionalArgs.map(SqlRender.expr)
     assert(oArgs(3) == "'period'" && oArgs(4) == "NULL" && oArgs(5) == "NULL")
   }
 

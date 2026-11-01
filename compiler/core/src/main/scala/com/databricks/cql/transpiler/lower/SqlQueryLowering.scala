@@ -421,12 +421,11 @@ object SqlQueryLowering {
     *
     * `r` is `None` for the CONTEXT BASE mount (the per-subject `Patient` scan, [[contextRel]]): it has no
     * predicates and belongs to no define, so its `parameters` map is empty. */
-  private[lower] def retrieveArgs(r: Option[Retrieve], rt: String, lib: Library, env: SqlEvalEnv): Seq[SqlExpr] = {
+  private[lower] def retrieveCall(r: Option[Retrieve], rt: String, lib: Library, env: SqlEvalEnv): RetrieveCall = {
     val valueSet = r.flatMap(_.codes).collect {
       case ValueSetRef(name, _)         => valueSetId(lib, name)
       case ToList(ValueSetRef(name, _)) => valueSetId(lib, name)
     }
-    val codeProperty = r.flatMap(_.codeProperty).map(resolveCodeSlot(rt, _))
     val codes = r.flatMap(_.codes).toSeq.collect {
       case CodeRef(name, _)         => codePair(lib, name)
       case ToList(CodeRef(name, _)) => codePair(lib, name)
@@ -435,46 +434,36 @@ object SqlQueryLowering {
       case Some(IntervalExpr(Some(lo), Some(hi), true, true)) => (literalString(lo), literalString(hi))
       case _                                                  => (None, None)
     }
-    Seq(optStr(valueSet),
-        optStr(codeProperty),
-        Call("array", codes.map { case (system, code) =>
-          Struct(Seq("system" -> str(system), "code" -> str(code))) }),
-        optStr(r.flatMap(_.dateProperty)),
-        optStr(dateLow),
-        optStr(dateHigh),
-        parametersMap(env.currentDefine.flatMap(env.defineParameters.get).getOrElse(Seq.empty)))
+    RetrieveCall(
+      fhirType = rt,
+      valueSet = valueSet,
+      codeProperty = r.flatMap(_.codeProperty).map(resolveCodeSlot(rt, _)),
+      codes = codes,
+      dateProperty = r.flatMap(_.dateProperty),
+      dateLow = dateLow,
+      dateHigh = dateHigh,
+      parameters = parameterValues(env.currentDefine.flatMap(env.defineParameters.get).getOrElse(Seq.empty)))
   }
 
-  /** A present value as a string literal, an absent one as NULL — the ABSENT convention of every scalar
-    * retrieve argument (BIND-EXPLICIT-PARAMS). */
-  private def optStr(v: Option[String]): SqlExpr = v.map(str).getOrElse(Null)
-
-  /** The `parameters` argument (BIND-EXPLICIT-PARAMS): a `MAP<STRING, VARIANT>` of every parameter whose
-    * resolved default is a compile-time literal — a literal INTERVAL as a
-    * `{low, lowClosed, high, highClosed}` VARIANT object, a scalar as a VARIANT scalar. A parameter with
-    * no literal default is OMITTED (the binding reads NULL for its key) rather than guessed at
+  /** The request's `parameters` (BIND-RETRIEVE-REQUEST): every parameter whose resolved default is a
+    * compile-time literal, a literal INTERVAL with its closure flags, a scalar as its string. A parameter with
+    * no literal default is OMITTED (the relation reads NULL for its key) rather than guessed at
     * (CORE-NO-SILENT-MISLOWER).
     *
-    * The CLOSURE flags are carried, not assumed: the standard eCQM Measurement Period is
-    * `Interval[@2026-01-01T00:00:00.0, @2027-01-01T00:00:00.0)` — HALF-OPEN — so a binding that read a
-    * bare `high` as inclusive would over-select a whole instant at the boundary. Growth inside the
-    * VARIANT is free, so the exact interval is spelled out rather than narrowed to fit. */
-  private def parametersMap(scope: Seq[(String, ParameterDef)]): SqlExpr = {
-    val entries = scope.flatMap { case (key, p) =>
+    * The CLOSURE flags are carried, not assumed: the standard Measurement Period is
+    * `Interval[@2026-01-01T00:00:00.0, @2027-01-01T00:00:00.0)` — HALF-OPEN — so a relation that read a bare
+    * `high` as inclusive would over-select a whole instant at the boundary. */
+  private def parameterValues(scope: Seq[(String, ParameterDef)]): Seq[(String, RetrieveCall.Value)] =
+    scope.flatMap { case (key, p) =>
       p.default.flatMap {
         case IntervalExpr(Some(lo), Some(hi), lowClosed, highClosed) =>
           (literalString(lo), literalString(hi)) match {
-            case (Some(l), Some(h)) =>
-              Some(key -> Call("to_variant_object", Seq(Struct(Seq(
-                "low" -> str(l), "lowClosed" -> bool(lowClosed),
-                "high" -> str(h), "highClosed" -> bool(highClosed))))))
-            case _ => None
+            case (Some(l), Some(h)) => Some(key -> RetrieveCall.Interval(l, lowClosed, h, highClosed))
+            case _                  => None
           }
-        case other => literalString(other).map(v => key -> Cast(str(v), "VARIANT"))
+        case other => literalString(other).map(v => key -> RetrieveCall.Scalar(v))
       }
     }
-    Call("map", entries.flatMap { case (n, v) => Seq(str(n), v) })
-  }
 
   /** The ISO/scalar string value of a compile-time-literal expression (a resolved parameter default, a
     * folded date-range bound), unwrapping the `As` cast and `To*` conversion the front end leaves around
@@ -616,7 +605,7 @@ object SqlQueryLowering {
     * read's BODY without recursing into the substitution that would make it read itself. */
   private[lower] def filteredRetrieveInline(r: Retrieve, rt: String, env: SqlEvalEnv, lib: Library,
                                             typeOf: Expr => CqlType): SqlRel = {
-    val mount = env.retrieveMount(rt, retrieveArgs(Some(r), rt, lib, env))
+    val mount = env.retrieveMount(retrieveCall(Some(r), rt, lib, env))
     val resourceCol = Col(Resource)
     def codeProp: String = resolveCodeSlot(rt, r.codeProperty.getOrElse(throw UnsupportedNode("Retrieve",
       s"code-filtered retrieve [$rt] has no codeProperty to test membership on")))
@@ -855,7 +844,7 @@ object SqlQueryLowering {
     if (env.context.hasSubjectGrouping)
       Some(SqlRel.Select(
         projections = Seq(SqlRel.Proj(Col(SubjectId)), SqlRel.Proj(Col(Resource), env.context.name)),
-        from = env.retrieveMount(env.context.name, retrieveArgs(None, env.context.name, lib, env))))
+        from = env.retrieveMount(retrieveCall(None, env.context.name, lib, env))))
     else None
 
   /** The Cartesian combination of all sources (inner-joined on `__subject_id`), with the value[x] static
@@ -1148,6 +1137,7 @@ object SqlQueryLowering {
     case Struct(fs)        => fs.iterator.flatMap { case (_, v) => freeColRefs(v) }.toSet
     case Lambda(ps, b)     => freeColRefs(b) -- ps.toSet
     case Over(fn, pb, ob)  => freeColRefs(fn) ++ pb.flatMap(freeColRefs).toSet ++ ob.flatMap(k => freeColRefs(k.expr)).toSet
+    case NamedArg(_, v)    => freeColRefs(v)
     case _: Lit            => Set.empty
   }
 
@@ -1172,6 +1162,7 @@ object SqlQueryLowering {
       case Struct(fs)         => Struct(fs.map { case (n, v) => (n, go(v)) })
       case Lambda(ps, b)      => Lambda(ps, substCols(b, names -- ps, carrier))
       case Over(fn, pb, ob)   => Over(go(fn), pb.map(go), ob.map(k => k.copy(expr = go(k.expr))))
+      case NamedArg(n, v)     => NamedArg(n, go(v))
       case l: Lit             => l
     }
     go(e)
@@ -1359,7 +1350,7 @@ object SqlQueryLowering {
     * `FrameLowering.subjectsPresent`). */
   def subjectsPresent(r: Retrieve, env: SqlEvalEnv, lib: Library, typeOf: Expr => CqlType): SqlRel = {
     val rt = localName(r.dataType)
-    val read = if (isUnfilteredScan(r)) env.retrieveMount(rt, retrieveArgs(Some(r), rt, lib, env))
+    val read = if (isUnfilteredScan(r)) env.retrieveMount(retrieveCall(Some(r), rt, lib, env))
                else filteredRetrieve(r, rt, env, lib, typeOf)
     SqlRel.Select(projections = Seq(SqlRel.Proj(Col(SubjectId))), from = asFrom(read, "__sp"), distinct = true)
   }

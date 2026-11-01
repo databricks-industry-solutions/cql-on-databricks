@@ -1,6 +1,6 @@
 package com.databricks.cql.it
 
-import com.databricks.cql.env.{Config, Context}
+import com.databricks.cql.env.{Config, Context, RetrieveRelation}
 import com.databricks.cql.error.UnsupportedNode
 import com.databricks.cql.harness.GroundTruthRunner
 import com.databricks.cql.ir.{Library, Retrieve}
@@ -131,13 +131,29 @@ object SqlDifferential {
   private def mountedTypes(c: Differential.Case, optimized: Library): Set[String] =
     retrievedTypes(optimized) ++ (if (c.context.hasSubjectGrouping) Set(c.context.name) else Set.empty)
 
-  /** Register the `retrieve_<Type>` views and the single `valuesets` expansion table the SQL script reads,
-    * from the case's injected sample-data adapters (the SQL analog of the runtime mounting them before the
-    * script runs). Every value set lands in ONE keyed `(valueset_id, system, code)` view (BIND-TERMINOLOGY-TABLE),
-    * matching `SqlEvalEnv.valueSetMount`'s `WHERE valueset_id = '<id>'` select. */
-  private def mount(spark: SparkSession, c: Differential.Case, optimized: Library, env: SqlEvalEnv): Unit = {
-    val types = mountedTypes(c, optimized)
-    // EMIT-SQL-RETRIEVE-DEMAND-BOUND (opt-in `-Dcqldatabricks.demandMount=true`): mount each retrieve view
+  /** The request fields a conformance function relation declares (`BIND-NAMED-ARGS`): a subset, in an order
+    * unlike the request's, so a positional call or a mis-named argument fails the case. */
+  private val FunctionParameters = Seq("date_high", "fhir_type", "value_set", "date_low")
+
+  /** BIND-PROVIDER-REQUEST, BIND-RELATION, BIND-NAMED-ARGS: bind `c`'s data and value sets the way a client's
+    * providers do, and return the env to lower with. A first lowering records every retrieve the SQL makes
+    * (`SqlEvalEnv.retrieveCalls`), then each is bound by id: the context type to a TABLE relation (a temp view
+    * of the mount), every other type to a FUNCTION relation, a temp SQL table function declaring
+    * [[FunctionParameters]] that keeps only rows whose `fhir_type` argument names its type, so a wrong
+    * argument empties the retrieve. The rows are the case's injected sample data (the SAME
+    * `DataProvider` the reference reads), a correct superset the plan re-filters above the relation
+    * (BIND-CAPABILITY).
+    *
+    * Terminology is TWO layers (`CLIENT-PROVIDER-OVERLAY`). The value sets are sorted by id. An even-indexed
+    * set's expansion is in the first layer, and the second layer holds, under its id, every code of every
+    * value set. An odd-indexed set is only in the second layer. So reading a set from anything but the first
+    * layer that holds it changes the answer. */
+  private[it] def providerEnv(spark: SparkSession, c: Differential.Case, optimized: Library,
+                              base: SqlEvalEnv): SqlEvalEnv = {
+    val probe = base.copy(terminology = true, retrieveCalls = mutable.LinkedHashMap.empty)
+    SqlFrameLowering.lower(optimized, probe)
+    val calls = probe.retrieveCalls.values.toSeq
+    // EMIT-SQL-RETRIEVE-DEMAND-BOUND (opt-in `-Dcqldatabricks.demandMount=true`): mount each retrieve
     // narrowed to the compiler's DEMAND for that type (read DIRECTLY downstream — no reconstruction), so the
     // scanned `__resource` is bounded by demand, not resource width. The CONTEXT type stays full (its base
     // frame navigates it outside RetrieveDemand's define-walk); a `Full` demand keeps the whole body.
@@ -152,34 +168,42 @@ object SqlDifferential {
         case Some(RetrieveDemand.Narrow(fields)) => RetrieveHints(project = Some(fields))
         case _                                   => RetrieveHints.none
       }
-    // BIND-RETRIEVE-UDF: the runtime binds a SQL UDTF `retrieve_<Type>(<8 explicit args>)` (the sole
-    // mount contract — the bare-view mount was retired). This conformance UDTF IGNORES all eight arguments
-    // and returns the whole mount — the un-pruned but correct SUPERSET the plan re-filters above the call
-    // (BIND-CAPABILITY).
-    c.data.foreach { dp =>
-      types.foreach(rt => registerRetrieveUdtf(spark, env.retrieveMountName(rt), dp.retrieve(rt, hintsFor(rt))))
-    }
-    c.terminology.foreach { tp =>
-      val expansions = optimized.valueSets.map(vs =>
-        tp.expand(vs.id).withColumn(env.valueSetKeyColumn, F.lit(vs.id))
-          .select(env.valueSetKeyColumn, "system", "code"))
-      expansions.reduceOption(_ unionByName _)
-        .foreach(_.createOrReplaceTempView(env.valueSetsMountName))
-    }
-  }
-
-  /** BIND-RETRIEVE-UDF: register (or replace) the retrieve SQL UDTF over `df` (the
-    * `(__subject_id, __resource)` mount) — the conformance/runtime peer of the client's session mount
-    * (`mount`, CLIENT-SESSION-MOUNT). The parameter list comes from the SINGLE source of truth
-    * ([[SqlEvalEnv.retrieveParamsDdl]], BIND-EXPLICIT-PARAMS), so this mount can never drift from what the
-    * emitter CALLS. The function IGNORES all eight arguments and returns the whole mount, so it is a
-    * correct un-pruned SUPERSET the plan re-filters above the call (BIND-CAPABILITY). */
-  private def registerRetrieveUdtf(spark: SparkSession, fn: String, df: DataFrame): Unit = {
-    val src = fn + "__src"
-    df.createOrReplaceTempView(src)
-    val returns = SparkFhirData.mountReturnsDDL(df.schema)
-    spark.sql(s"CREATE OR REPLACE TEMPORARY FUNCTION `$fn`(${SqlEvalEnv.retrieveParamsDdl}) " +
-      s"RETURNS TABLE ($returns) RETURN SELECT * FROM `$src`")
+    val data: Map[String, RetrieveRelation] = c.data.map { dp =>
+      val relations = calls.map(_.fhirType).distinct.map { rt =>
+        val fn = base.retrieveMountName(rt)
+        val src = fn + "__src"
+        val df = dp.retrieve(rt, hintsFor(rt))
+        df.createOrReplaceTempView(src)
+        rt -> (if (rt == c.context.name) RetrieveRelation.Table(src, Some("conformance"))
+        else {
+          val returns = SparkFhirData.mountReturnsDDL(df.schema)
+          val params = FunctionParameters.map(p => s"$p STRING").mkString(", ")
+          spark.sql(s"CREATE OR REPLACE TEMPORARY FUNCTION `$fn`($params) RETURNS TABLE ($returns) " +
+            s"RETURN SELECT * FROM `$src` WHERE fhir_type = '$rt'")
+          RetrieveRelation.Function(fn, FunctionParameters, Some("conformance"))
+        })
+      }.toMap
+      calls.map(call => call.id -> relations(call.fhirType)).toMap
+    }.getOrElse(Map.empty)
+    val layers: Seq[RetrieveRelation] = c.terminology.map { tp =>
+      val key = base.valueSetKeyColumn
+      val sets = optimized.valueSets.map(_.id).distinct.sorted
+      val expansions = sets.map(id => id -> tp.expand(id).select("system", "code"))
+      val everyCode = expansions.map(_._2).reduceOption(_ unionByName _)
+      def keyed(id: String, df: DataFrame) = df.withColumn(key, F.lit(id)).select(key, "system", "code")
+      val first = expansions.zipWithIndex.collect { case ((id, df), i) if i % 2 == 0 => keyed(id, df) }
+      val second = expansions.zipWithIndex.map {
+        case ((id, df), i) => if (i % 2 == 0) keyed(id, everyCode.get) else keyed(id, df)
+      }
+      val names = Seq(base.valueSetsMountName, base.valueSetsMountName + "__base")
+      Seq(first, second).zip(names).foreach { case (parts, name) =>
+        parts.reduceOption(_ unionByName _).getOrElse(spark.sql(
+          s"SELECT CAST(NULL AS STRING) AS $key, CAST(NULL AS STRING) AS system, CAST(NULL AS STRING) AS code " +
+            "WHERE false")).createOrReplaceTempView(name)
+      }
+      names.map(n => RetrieveRelation.Table(n, Some("conformance-terminology")))
+    }.getOrElse(Nil)
+    base.copy(data = Some(data), terminologyRelations = Some(layers), retrieveCalls = mutable.LinkedHashMap.empty)
   }
 
   /** The self-contained MOUNT SQL a fixture's SQL script needs at runtime (EMIT-SQL-EXECUTE): the
@@ -255,6 +279,10 @@ object SqlDifferential {
     val config  = Differential.evalConfig(c.library)
     val optimized = Optimize.run(lib, config)
     val env = SqlEvalEnv(c.context, config, terminology = c.terminology.isDefined)
+    // BIND-PROVIDER-REQUEST: binding registers the relations, so it runs on the server; it is timed with the
+    // lowering it feeds, and its retrieve probe is a second, discarded lowering.
+    var boundEnv: SqlEvalEnv = env
+    def bound(): SqlEvalEnv = { boundEnv = providerEnv(spark, c, optimized, env); boundEnv }
 
     // SQL-PATH TIMING (CONF-PERF-TIME, the SQL twin of [[Differential]]'s four-bucket `Timing.record`).
     // The SQL back end has NO incidental server round-trips during lowering (it emits text, Spark-free),
@@ -272,7 +300,7 @@ object SqlDifferential {
     // cover it yet) rather than failing, so the matrix separates "not ported" from "ported but wrong".
     val cpuT0 = ThreadCpu.nanos()
     val lowered =
-      try SqlFrameLowering.lower(optimized, env)
+      try SqlFrameLowering.lower(optimized, bound())
       catch {
         // The SQL size gate (a within-define inlining blowup) is exactly when a dump is most useful — but
         // it throws INSIDE `lower`, so `run` would cancel before ever writing artifacts. Re-lower with the
@@ -280,7 +308,7 @@ object SqlDifferential {
         // (`diagnostics.txt`, `SqlRender.sizeOf` — never materializes the giant string) + a size-capped
         // `.sql` (oversized statements elided), THEN re-throw the original gate so the fixture still cancels.
         case e: UnsupportedNode if e.elmType == "SqlScript" =>
-          dumpSizeBlocked(c, optimized, env, e); cancel(s"[${c.library}] SQL lowering not yet supported: ${e.getMessage}")
+          dumpSizeBlocked(c, optimized, boundEnv, e); cancel(s"[${c.library}] SQL lowering not yet supported: ${e.getMessage}")
         case e: UnsupportedNode => cancel(s"[${c.library}] SQL lowering not yet supported: ${e.getMessage}")
       }
     val cpuT1 = ThreadCpu.nanos()
@@ -316,7 +344,6 @@ object SqlDifferential {
 
     // runtime — ALL real server execution: mount the views, register/execute each statement, and collect.
     val runtimeT0 = System.nanoTime()
-    mount(spark, c, optimized, env)
     // The Connect session is memoized across fixtures, so a barrier (`CACHE TABLE`, not "OR REPLACE")
     // would collide with a same-named object from an earlier fixture. Drop each object first so the run
     // is idempotent (best-effort; a no-op for a first-seen name). Views already use CREATE OR REPLACE.
@@ -434,9 +461,8 @@ object SqlDifferential {
     val lib       = Differential.buildLibrary(c)
     val config    = Differential.evalConfig(c.library)
     val optimized = Optimize.run(lib, config)
-    val env       = SqlEvalEnv(c.context, config, terminology = c.terminology.isDefined)
+    val env       = providerEnv(spark, c, optimized, SqlEvalEnv(c.context, config, terminology = c.terminology.isDefined))
     val lowered   = SqlFrameLowering.lower(optimized, env)
-    mount(spark, c, optimized, env)
     // Drop each object first (idempotent across fixtures in the memoized session; a barrier CACHE TABLE
     // is not "OR REPLACE"), then register/execute — mirroring [[run]].
     lowered.script.statements.foreach { s =>
@@ -479,12 +505,11 @@ object SqlDifferential {
     val config    = Differential.evalConfig(c.library)
     val optimized = Optimize.run(lib, config)
     val dsCtx     = SqlNames.DatasetNameContext(lib.id, lib.version.getOrElse(""))
-    val env       = SqlEvalEnv(c.context, config, terminology = c.terminology.isDefined,
-      cutSiblings = Some(mutable.Set.empty[String]), datasetNameCtx = Some(dsCtx),
-      publishedEvalId = evalId.filter(_ => scopeReads))
+    val env       = providerEnv(spark, c, optimized, SqlEvalEnv(c.context, config,
+      terminology = c.terminology.isDefined, cutSiblings = Some(mutable.Set.empty[String]),
+      datasetNameCtx = Some(dsCtx), publishedEvalId = evalId.filter(_ => scopeReads)))
     val lowered   = SqlFrameLowering.lower(optimized, env)
     val plan      = CompileService.cutPlan(lowered, dsCtx = dsCtx)
-    mount(spark, c, optimized, env)
     def drop(name: String): Unit = {
       val q = "`" + name.replace("`", "``") + "`"
       try spark.sql(s"DROP VIEW IF EXISTS $q") catch { case _: Throwable => () }
@@ -546,14 +571,14 @@ object SqlDifferential {
     val lib       = Differential.buildLibrary(c)
     val config    = Differential.evalConfig(c.library)
     val optimized = Optimize.run(lib, config)
-    val env       = SqlEvalEnv(c.context, config, terminology = c.terminology.isDefined)
+    val env       = providerEnv(spark, c, optimized,
+      SqlEvalEnv(c.context, config, terminology = c.terminology.isDefined))
 
     val lowerT0 = System.nanoTime()
     val lowered = SqlFrameLowering.lower(optimized, env)
     val lowerMs = (System.nanoTime() - lowerT0) / 1e6
 
     val runT0 = System.nanoTime()
-    mount(spark, c, optimized, env)
     lowered.script.statements.foreach { s =>
       val q = "`" + s.name.replace("`", "``") + "`"
       try spark.sql(s"DROP VIEW IF EXISTS $q") catch { case _: Throwable => () }

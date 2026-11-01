@@ -141,9 +141,23 @@ final class DurablePlanSpec extends AnyFunSuite {
   test("RUN-CLIENT-RESULT-IDENTITY: the source address is hashed even where the SQL is identical") {
     val plan = compile(durable = false)
     def fingerprints(source: Option[String]) =
-      DurablePlan.annotate(plan, Set.empty, source = source).datasets.map(_.durable.get.fingerprint)
+      DurablePlan.annotate(plan, Set.empty, boundTo = DurablePlan.Address(source)).datasets.map(_.durable.get.fingerprint)
     assert(fingerprints(Some("synthetic.source_a")) != fingerprints(Some("synthetic.source_b")))
     assert(fingerprints(Some("synthetic.source_a")) != fingerprints(None))
+  }
+
+  test("CLIENT-PROVIDER-IDENTITY: provider identities are hashed even where the SQL is identical") {
+    val plan = compile(durable = false)
+    def fingerprints(data: Seq[String], terminology: Seq[String]) =
+      DurablePlan.annotate(plan, Set.empty, boundTo = DurablePlan.Providers(data, terminology))
+        .datasets.map(_.durable.get.fingerprint)
+    val base = fingerprints(Seq("synthetic.source_a"), Seq("synthetic.terminology"))
+    assert(base == fingerprints(Seq("synthetic.source_a"), Seq("synthetic.terminology")))
+    assert(base != fingerprints(Seq("synthetic.source_b"), Seq("synthetic.terminology")))
+    assert(base != fingerprints(Seq("synthetic.source_a"), Seq("synthetic.other_terminology")))
+    // A provider is not the address it might happen to share a name with.
+    assert(base != DurablePlan.annotate(plan, Set.empty, boundTo = DurablePlan.Address(Some("synthetic.source_a")))
+      .datasets.map(_.durable.get.fingerprint))
   }
 
   test("RUN-CLIENT-RESULT-IDENTITY: a durable compile that retrieves needs a tagged data source") {

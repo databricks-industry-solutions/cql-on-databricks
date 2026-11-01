@@ -86,6 +86,21 @@ def json_sql(relation: str, schema, *, column: str, type_filter: Optional[str] =
             f"WHERE {where})")
 
 
+def volume_sql(path: str, schema, *, layout: str) -> str:
+    """BIND-RELATION: the reshape of ``schema``'s type in a volume folder, read with ``read_files``: its
+    ``<Type>.ndjson`` file (``layout="ndjson"``), or the entries of every FHIR Bundle in it (``"bundles"``),
+    whose resources are kept when their ``resourceType`` is the type."""
+    folder = path.rstrip("/")
+    if layout == "ndjson":
+        source = f"read_files({_literal(f'{folder}/{schema.fhir_type}.ndjson')}, format => 'text')"
+        return json_sql(source, schema, column="value")
+    entries = (f"(SELECT `__e`.`resource` AS `value` FROM (SELECT explode(from_json(`value`, "
+               f"'struct<entry: array<struct<resource: string>>>').`entry`) AS `__e` "
+               f"FROM read_files({_literal(folder)}, format => 'text', wholeText => true)))")
+    return json_sql(entries, schema, column="value",
+                    type_filter=type_predicate(schema.fhir_type, json_column="value", type_column=None))
+
+
 def type_predicate(fhir_type: str, *, json_column: str, type_column: Optional[str]) -> str:
     """The predicate that keeps rows of ``fhir_type`` in a mixed-type JSON relation."""
     if type_column is not None:

@@ -12,8 +12,10 @@ from .durable import (MaterializedResults, ResultsUnavailable, archive_session, 
                       resolve_results, search_results)
 from .private import PrivateDestination, ensure_private_destination, find_private_destination
 from .reference import ResultReference
+# CLIENT-RESULT-STORE: kept results, in Delta.
+from .store import DeltaResultStore
 
-__all__ = ["ResultReference",
+__all__ = ["ResultReference", "DeltaResultStore",
            "MaterializedResults", "ResultsUnavailable", "archive_session", "materialize", "open_result_set",
            "resolve_results", "search_results",
            "PrivateDestination", "ensure_private_destination", "find_private_destination",

@@ -6,12 +6,12 @@ in it. The layout is the mount contract customers implement:
 
 | Object | Required | Contract |
 |---|---|---|
-| ``retrieve_<Type>`` | at least one | the retrieve UDTF for one FHIR type (`BIND-RETRIEVE-UDF`) |
+| ``retrieve_<Type>`` | at least one | a table, view or SQL function returning one FHIR type on the contract (`BIND-RELATION`) |
 | ``change_data_log`` | no | ``(data_type, updated_at)``: when each type's data last changed (`DATA-CHANGE-LOG`) |
 | ``change_log`` | no | ``(parameters, changed_at)``: which evaluation sets changed, by parameter value (`DATA-CHANGE-LOG-PERIODS`) |
 
 The bindings are what the schema holds, not a list someone declared: a type is bound when its
-``retrieve_<Type>`` function exists. Unity Catalog stores names in lower case, so each function is mapped
+``retrieve_<Type>`` table, view or function exists. Unity Catalog stores names in lower case, so each function is mapped
 back to its FHIR type through the compiler's modeled types; a ``retrieve_`` function that names no
 modeled type is a layout error, not something skipped.
 
@@ -40,6 +40,16 @@ SELECT routine_name
  WHERE routine_catalog = :catalog AND routine_schema = :schema
 """
 
+_RETRIEVE_OBJECTS = """
+SELECT routine_name
+  FROM system.information_schema.routines
+ WHERE routine_catalog = :catalog AND routine_schema = :schema
+UNION ALL
+SELECT table_name AS routine_name
+  FROM system.information_schema.tables
+ WHERE table_catalog = :catalog AND table_schema = :schema
+"""
+
 _CHANGE_LOG_COLUMNS = """
 SELECT column_name
   FROM system.information_schema.columns
@@ -53,7 +63,7 @@ class DataSourceLayoutError(RuntimeError):
 
 @dataclass(frozen=True)
 class DataSourceLayout:
-    """What a data-source schema binds: ``bindings`` maps a FHIR type to its retrieve UDTF's FQN.
+    """What a data-source schema binds: ``bindings`` maps a FHIR type to its ``retrieve_<Type>`` object's FQN.
     ``change_log`` is the relation naming the evaluation sets that changed, if the schema has one
     (`DATA-CHANGE-LOG-PERIODS`)."""
     catalog: str
@@ -88,7 +98,7 @@ def read_layout(run: SqlRunner, catalog: str, schema: str,
     params = {"catalog": catalog, "schema": schema}
     problems: list[str] = []
     bindings: dict[str, str] = {}
-    for name in read_routines(run, catalog, schema):
+    for name in sorted({row["routine_name"] for row in run(_RETRIEVE_OBJECTS, params)}):
         if not name.lower().startswith(RETRIEVE_PREFIX):
             continue
         fhir_type = by_lower.get(name[len(RETRIEVE_PREFIX):].lower())
@@ -97,7 +107,7 @@ def read_layout(run: SqlRunner, catalog: str, schema: str,
             continue
         bindings[fhir_type] = _fqn(catalog, schema, RETRIEVE_PREFIX + fhir_type)
     if not bindings:
-        problems.append(f"no {RETRIEVE_PREFIX}<Type> functions")
+        problems.append(f"no {RETRIEVE_PREFIX}<Type> table, view or function")
     change_data_log = (_optional_relation(run, params, CHANGE_DATA_LOG, CHANGE_DATA_LOG_COLUMNS, problems)
                        if include_change_logs else None)
     change_log = (_optional_relation(run, params, CHANGE_LOG, CHANGE_LOG_COLUMNS, problems)

@@ -1,6 +1,6 @@
 package com.databricks.cql.transpiler.lower
 
-import com.databricks.cql.env.{Config, Context, SourceBinding}
+import com.databricks.cql.env.{Config, Context, RetrieveRelation, SourceBinding}
 import com.databricks.cql.error.UnsupportedNode
 import com.databricks.cql.transpiler.emit.{SqlExpr, SqlNames, SqlRel}
 
@@ -134,7 +134,18 @@ final case class SqlEvalEnv(
       * published sibling holds every evaluation set's rows keyed by `__eval_id`, so when this is set a read
       * of one ([[relRef]], [[scalarRef]], [[readRef]]) keeps only this evaluation's rows and drops the key.
       * `None` (the default) reads the published name bare, as before. Ignored off the cut path. */
-    publishedEvalId: Option[String] = None
+    publishedEvalId: Option[String] = None,
+    /** BIND-PROVIDER-REQUEST: each retrieve id ([[RetrieveCall.id]]) to the relation the client's data provider
+      * returned for it. `Some` binds every retrieve per id, and a retrieve with no relation fails; `None`
+      * keeps the per-type [[sources]] binding. */
+    data: Option[Map[String, RetrieveRelation]] = None,
+    /** BIND-PROVIDER-REQUEST: the value-set relations in precedence order, a set read from the first that
+      * holds it. `Some` replaces [[terminologyTable]] and [[terminology]]: an empty list has no terminology. */
+    terminologyRelations: Option[Seq[RetrieveRelation]] = None,
+    /** BIND-PROVIDER-REQUEST: every retrieve this lowering made, by id, in first-seen order, for `describe`.
+      * Shared by every copy of the env, like [[hoistCounter]]. */
+    retrieveCalls: scala.collection.mutable.LinkedHashMap[String, RetrieveCall] =
+      scala.collection.mutable.LinkedHashMap.empty
 ) {
 
   /** The published dataset name for define `n`, using the current [[datasetNameCtx]]. Falls back to a
@@ -195,19 +206,35 @@ final case class SqlEvalEnv(
     case _ => SqlRel.TableRef(name)
   }
 
-  /** The retrieve MOUNT for resource type `rt` (DATA-RETRIEVE-VIEW, BIND-RETRIEVE-UDF): a CALL of the
-    * client-supplied SQL UDTF `[catalog.]retrieve_<rt>(…)` — a [[SqlRel.TableFunc]] with the EIGHT
-    * explicit literal arguments the caller built ([[SqlQueryLowering.retrieveArgs]],
-    * BIND-EXPLICIT-PARAMS); the function + catalog resolve from the caller's binding table
-    * ([[retrieveSource]], BIND-MANIFEST), else the convention `retrieve_<rt>`. The single home for the
-    * retrieve→relation seam. A SQL UDTF inlines in Catalyst, so the sharing/pruning is native; the
-    * compiler names the function and never bodies it (`ARCH-PURITY`). The retrieve's predicates still
-    * re-apply ABOVE the call (BIND-CAPABILITY), so a UDTF that ignores its arguments is a correct
-    * un-pruned superset. (The former default-off `retrieve_<rt>` VIEW mount was RETIRED once the
-    * self-diff proved the two mounts result-identical — the UDTF is now the sole contract.) */
-  def retrieveMount(rt: String, args: Seq[SqlExpr]): SqlRel = {
-    val (fn, catalog) = retrieveSource(rt)
-    SqlRel.TableFunc(fn, args, catalog)
+  /** The retrieve MOUNT for one retrieve (BIND-RELATION, BIND-PROVIDER-REQUEST): the relation the request
+    * binds to the retrieve's id. A table or view is read as `SELECT __subject_id, __resource FROM <name>`, so
+    * a column beyond the contract never reaches a join; a function is called with the request fields it
+    * declares, by name (`BIND-NAMED-ARGS`). Without `data`, the per-type [[sources]] binding is called with
+    * the seven positional arguments. The retrieve's predicates still re-apply ABOVE the relation
+    * (BIND-CAPABILITY), so a relation that ignores its request is a correct un-pruned superset. A SQL table
+    * function inlines in Catalyst like a view; the compiler names the relation and never bodies it
+    * (`ARCH-PURITY`). Every call is recorded for `describe` ([[retrieveCalls]]). */
+  def retrieveMount(call: RetrieveCall): SqlRel = {
+    retrieveCalls.getOrElseUpdate(call.id, call)
+    data match {
+      case Some(bound) => bound.get(call.id) match {
+        case Some(RetrieveRelation.Table(name, _)) =>
+          SqlRel.Select(
+            projections = Seq(SqlRel.Proj(SqlExpr.Col(com.databricks.cql.spark.SystemColumns.SubjectId)),
+                              SqlRel.Proj(SqlExpr.Col(com.databricks.cql.spark.SystemColumns.Resource))),
+            from = SqlRel.TableRef(name))
+        case Some(RetrieveRelation.Function(name, parameters, _)) =>
+          // Each dotted segment is quoted on its own (`SqlRender.qualifiedName`).
+          val dot = name.lastIndexOf('.')
+          SqlRel.TableFunc(name.substring(dot + 1), call.namedArgs(parameters),
+            if (dot < 0) None else Some(name.substring(0, dot)))
+        case None => throw UnsupportedNode("Retrieve",
+          s"retrieve ${call.id} [${call.fhirType}] has no relation in the request's data (BIND-PROVIDER-REQUEST)")
+      }
+      case None =>
+        val (fn, catalog) = retrieveSource(call.fhirType)
+        SqlRel.TableFunc(fn, call.positionalArgs, catalog)
+    }
   }
 
   /** BIND-MANIFEST: resolve a FHIR resource type to its bound UDTF `(function, catalog)` — the caller's
@@ -226,14 +253,52 @@ final case class SqlEvalEnv(
     * physical mount (the way a real terminology export stores expansions — one long table
     * keyed by set, not one table per set), so the runtime binds ONE table instead of N. The SQL analog of
     * `TerminologyProvider.expand`; fails loudly when no terminology is mounted. */
-  def valueSetMount(vsId: String): SqlRel =
-    if (!terminology) throw UnsupportedNode("InValueSet",
-      s"value-set membership on '$vsId' needs a mounted terminology expansion (SqlEvalEnv.terminology=false)")
-    else SqlRel.Select(
+  def valueSetMount(vsId: String): SqlRel = terminologyRelations match {
+    case Some(layers) => layeredValueSet(vsId, layers)
+    case None =>
+      if (!terminology) throw UnsupportedNode("InValueSet",
+        s"value-set membership on '$vsId' needs a mounted terminology expansion (SqlEvalEnv.terminology=false)")
+      else valueSetFrom(vsId, valueSetsMountName)
+  }
+
+  /** `SELECT system, code FROM <table> WHERE valueset_id = '<vsId>'`. */
+  private def valueSetFrom(vsId: String, table: String, extra: Seq[SqlRel.Proj] = Nil): SqlRel =
+    SqlRel.Select(
       projections = Seq(SqlRel.Proj(SqlExpr.Col("system"), "system"),
-                        SqlRel.Proj(SqlExpr.Col("code"), "code")),
-      from = SqlRel.TableRef(valueSetsMountName),
+                        SqlRel.Proj(SqlExpr.Col("code"), "code")) ++ extra,
+      from = SqlRel.TableRef(table),
       where = Some(SqlExpr.Infix("=", SqlExpr.Col(valueSetKeyColumn), SqlExpr.str(vsId))))
+
+  /** BIND-PROVIDER-REQUEST: value set `vsId` read from the FIRST terminology relation that holds it, so an
+    * overlay's development set replaces its base's rather than merging with it (`CLIENT-PROVIDER-OVERLAY`).
+    * One relation reads it directly. Several are a `UNION ALL` tagged with each layer's position, kept to
+    * the rows of the lowest position present. No relation fails the membership (CORE-NO-SILENT-MISLOWER). */
+  private def layeredValueSet(vsId: String, layers: Seq[RetrieveRelation]): SqlRel = {
+    val tables = layers.map {
+      case RetrieveRelation.Table(name, _) => name
+      case other => throw new IllegalArgumentException(
+        s"a terminology relation is a table or view, not $other (BIND-PROVIDER-REQUEST)")
+    }
+    tables match {
+      case Seq() => throw UnsupportedNode("InValueSet",
+        s"value-set membership on '$vsId' needs terminology, and the request has none (BIND-PROVIDER-REQUEST)")
+      case Seq(only) => valueSetFrom(vsId, only)
+      case many =>
+        val layer = "__layer"
+        val first = "__first"
+        val tagged = SqlRel.UnionAll(many.zipWithIndex.map { case (t, i) =>
+          valueSetFrom(vsId, t, Seq(SqlRel.Proj(SqlExpr.int(i.toLong), layer))) })
+        val ranked = SqlRel.Select(
+          projections = Seq(SqlRel.Proj(SqlExpr.Col("system"), "system"), SqlRel.Proj(SqlExpr.Col("code"), "code"),
+            SqlRel.Proj(SqlExpr.Col(layer), layer),
+            SqlRel.Proj(SqlExpr.Over(SqlExpr.Call("min", Seq(SqlExpr.Col(layer))), Nil, Nil), first)),
+          from = SqlRel.AliasRel(tagged, "__layers"))
+        SqlRel.Select(
+          projections = Seq(SqlRel.Proj(SqlExpr.Col("system"), "system"), SqlRel.Proj(SqlExpr.Col("code"), "code")),
+          from = SqlRel.AliasRel(ranked, "__ranked"),
+          where = Some(SqlExpr.Infix("=", SqlExpr.Col(layer), SqlExpr.Col(first))))
+    }
+  }
 
   /** The name of the single mounted value-set expansion table (BIND-TERMINOLOGY-TABLE): `(valueset_id,
     * system, code)` rows for EVERY expanded value set the runtime mounted before the script runs.

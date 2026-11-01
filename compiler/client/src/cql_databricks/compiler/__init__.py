@@ -66,6 +66,11 @@ from .reshape import FhirJson
 from .library_publish import PublishFailed, PublishRefused, PublishSummary, publish_folder_library
 # BIND-PUBLISH: a tagged data source from tables.
 from .publish import PublishPlan, publish_data_source
+# CLIENT-DATA-PROVIDER, CLIENT-TERMINOLOGY-PROVIDER, CLIENT-KNOWLEDGE-PROVIDER, CLIENT-RESULT-STORE,
+# CLIENT-PROVIDER-OVERLAY, BIND-RETRIEVE-REQUEST, BIND-RELATION: the four roles a run reads and writes through.
+from .roles import (Code, DataFrameRelation, DataProvider, FunctionRelation, KnowledgeSource, KnowledgeStore, Overlay,
+                    PublishReport, ResultStore, RetrieveRequest, TableRef, TableRelation, TerminologySource,
+                    TerminologyStore, ValueSet, ValueSetRef, VolumeRelation)
 from .providers import (
     RELATION,
     RESOURCE,
@@ -111,6 +116,10 @@ __all__ = [
     # BIND-PUBLISH: write a tagged data source from tables, for review or to run.
     "publish_data_source", "PublishPlan",
     "publish_folder_library", "PublishSummary", "PublishRefused", "PublishFailed",
+    # CLIENT-DATA-PROVIDER and the other roles: implement these to bring your own data, value sets or knowledge.
+    "DataProvider", "TerminologySource", "TerminologyStore", "KnowledgeSource", "KnowledgeStore", "ResultStore",
+    "Overlay", "RetrieveRequest", "Code", "TableRelation", "FunctionRelation", "VolumeRelation",
+    "DataFrameRelation", "ValueSetRef", "ValueSet", "PublishReport", "TableRef",
     "CompileProvider", "RemoteProvider", "CompileRequest", "CompileError",
     "SqlCompileResult", "SqlStatement",
     # CLIENT-RESOURCE-SCHEMA: the model's `__resource` struct per FHIR type (`CqlClient.resource_schema`).

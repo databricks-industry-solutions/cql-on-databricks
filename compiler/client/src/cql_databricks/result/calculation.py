@@ -6,7 +6,9 @@ from datetime import date
 
 from cql_databricks.compiler.libraries import LibrarySource
 from cql_databricks.compiler.providers import CompileRequest, PipelinePlan
-from cql_databricks.compiler.resolve import ResolutionError, resolve, resolve_data_source_routines
+from cql_databricks.compiler.provider_binder import bind_request
+from cql_databricks.compiler.resolve import ResolutionError, resolve
+from cql_databricks.compiler.tagged import TaggedResolver
 
 from ._durable_plan import PreparedPlan
 
@@ -15,7 +17,8 @@ from ._durable_plan import PreparedPlan
 class PreparedCalculation:
     """RUN-CLIENT-RESULT-IDENTITY — one compiled closure, with targets supplied by compiler metadata.
 
-    ``population`` is the name of the data source it binds to; the compiler hashes that source's address."""
+    ``population`` is the name of the data source it binds to; the compiler hashes its identity, the source's
+    ``catalog.schema`` (`CLIENT-PROVIDER-IDENTITY`)."""
 
     library: str
     version: str
@@ -29,6 +32,17 @@ class PreparedCalculation:
         if not durable:
             raise ValueError("prepared calculations support durable execution only")
         return self.plan
+
+
+def tagged_request(request: CompileRequest, *, compiler, content, run, data_source: str,
+                   durable: bool = False) -> CompileRequest:
+    """CLIENT-DEFAULT-RESOLVER, BIND-PROVIDER-REQUEST: ``request`` bound to the data source tagged ``data_source`` and
+    the tagged terminology in ``content``'s scopes, read through ``run``, as its identity."""
+    resolver = TaggedResolver(content, run)
+    bound, _ = bind_request(request, compiler.describe(request), data=resolver.data(data_source),
+                            terminology=resolver.terminology(), run=run, schemas=compiler.resource_schemas,
+                            durable=durable)
+    return bound
 
 
 def prepare_calculation(*, content, run, compiler, data_source: str,
@@ -52,16 +66,17 @@ def prepare_calculation(*, content, run, compiler, data_source: str,
     if not resolution.name or not resolution.version:
         raise ResolutionError("a calculation needs a library name and version")
     # SVC-COMPILE-BATCH: the compiler translates/types the whole closure; the caller only discovers it.
-    layout = resolve_data_source_routines(content, run, data_source)
     year = date.today().year
-    plan = compiler.compile_pipeline(CompileRequest(
+    request = CompileRequest(
         cql=resolution.source, durable=True,
         measurement_period=(period[0] or f"{year}-01-01", period[1] or f"{year}-12-31"),
-        data_source=layout,
-        terminology_table=f"{runtime_catalog}.{runtime_schema}.valuesets",
         udf_schema=f"{runtime_catalog}.{runtime_schema}",
         deps=tuple(LibrarySource(name=inc.id.name, version=inc.id.version, cql=inc.source)
-                   for inc in resolution.includes)))
+                   for inc in resolution.includes))
+    # CLIENT-DEFAULT-RESOLVER: the named data source and every tagged terminology schema in scope, as the caller.
+    request = tagged_request(request, compiler=compiler, content=content, run=run, data_source=data_source,
+                             durable=True)
+    plan = compiler.compile_pipeline(request)
     PreparedPlan(plan)  # Validate the compiler contract before any caller provisions storage.
     available = {f"{recipe.library}.{recipe.define}": recipe for recipe in plan.datasets
                  if recipe.define and recipe.retrieve_read is None}

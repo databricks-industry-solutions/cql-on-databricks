@@ -21,6 +21,7 @@ from ._durable_delta import table_sql
 from ._durable_plan import PreparedPlan
 from .calculation import PreparedCalculation
 from .lifecycle import check_capacity
+from .store import DeltaResultStore
 from .private import PrivateDestination, checked_destination
 
 
@@ -206,9 +207,11 @@ def _run(query, targets, *, spark, run, destination,
     try:
         if capacity is not None:
             check_capacity(execute, destination, {table_name(definition) for definition in planned}, capacity)
-        outcomes = _execute(prepared, tuple(selected.values()), destination=destination, run=execute, mode=mode,
-                            computed_since=computed_since, read_only=read_only, on_step=on_step,
-                            on_plan=on_plan, on_start=on_start, sources=sources, parallelism=parallelism)
+        # CLIENT-RESULT-STORE: the run's results are found and written in one Delta store.
+        store = DeltaResultStore(destination, execute, sources)
+        outcomes = _execute(prepared, tuple(selected.values()), destination=store.destination, run=execute,
+                            mode=mode, computed_since=computed_since, read_only=read_only, on_step=on_step,
+                            on_plan=on_plan, on_start=on_start, sources=store.sources, parallelism=parallelism)
         selection = CatalogSelection.completed(session_id, destination, selected, prepared.definitions, outcomes,
                                                computed_since=computed_since, purpose=purpose)
         backend = CatalogReader(destination, execute, spark, sources)

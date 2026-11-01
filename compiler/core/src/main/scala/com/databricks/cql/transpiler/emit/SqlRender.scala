@@ -142,6 +142,7 @@ object SqlRender {
     case SqlExpr.Struct(fields) =>
       val args = fields.flatMap { case (n, v) => Seq(s"'${n.replace("'", "''")}'", expr(v)) }
       s"named_struct(${args.mkString(", ")})"
+    case SqlExpr.NamedArg(name, value) => s"$name => ${expr(value)}"
     case SqlExpr.Over(fn, part, ord) =>
       val p = if (part.isEmpty) "" else part.map(expr).mkString("PARTITION BY ", ", ", "")
       val o = if (ord.isEmpty) "" else ord.map(sortKey).mkString("ORDER BY ", ", ", "")
@@ -191,6 +192,7 @@ object SqlRender {
     case SqlExpr.Lambda(ps, body)  => ps.map(_.length + 2L).sum + sizeOf(body) + 6L
     case SqlExpr.Struct(fields)    => fields.map { case (n, v) => n.length + sizeOf(v) + 16L }.sum + 14L
     case SqlExpr.Over(fn, p, o)    => sizeOf(fn) + p.map(sizeOf).sum + o.map(k => sizeOf(k.expr) + 8L).sum + 20L
+    case SqlExpr.NamedArg(n, v)    => n.length + sizeOf(v) + 4L
   }
 
   // ---------------------------------------------------------------- structural dependency scan

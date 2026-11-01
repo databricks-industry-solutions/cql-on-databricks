@@ -36,24 +36,19 @@ TABLES = {
                                       ("subject", _s(("reference", StringType())))),
 }
 
-PARAMS = ("value_set STRING DEFAULT NULL, "
-          "code_property STRING DEFAULT NULL, codes ARRAY<STRUCT<system STRING, code STRING>> DEFAULT array(), "
-          "date_property STRING DEFAULT NULL, date_low STRING DEFAULT NULL, date_high STRING DEFAULT NULL, "
-          "parameters MAP<STRING, VARIANT> DEFAULT map()")
-
 GOLDEN = f"""\
 CREATE SCHEMA IF NOT EXISTS `acme`.`cql_fhir`;
 
-CREATE OR REPLACE FUNCTION `acme`.`cql_fhir`.`retrieve_Observation`({PARAMS})
+CREATE OR REPLACE FUNCTION `acme`.`cql_fhir`.`retrieve_Observation`()
 RETURNS TABLE (`__subject_id` STRING, `__resource` STRUCT<`id`: string, `status`: string, `subject`: STRUCT<`reference`: string>, `valueQuantity`: STRUCT<`value`: bigint>, `__resource_type`: string, `__resource_id`: string>)
 LANGUAGE SQL
-COMMENT 'BIND-PUBLISH: retrieve_Observation over acme.silver.observation; ignores the pushdown arguments (BIND-CAPABILITY)'
+COMMENT 'BIND-PUBLISH: retrieve_Observation over acme.silver.observation; the whole table, declaring no request field (BIND-NAMED-ARGS, BIND-CAPABILITY)'
 RETURN SELECT nullif(regexp_extract(`__r`.`subject`.`reference`, '([^/:]+)$', 1), '') AS `__subject_id`, named_struct('id', `__r`.`id`, 'status', `__r`.`status`, 'subject', `__r`.`subject`, 'valueQuantity', CASE WHEN `__r`.`valueQuantity` IS NULL THEN NULL ELSE named_struct('value', CAST(`__r`.`valueQuantity`.`value` AS bigint)) END, '__resource_type', CAST(CASE WHEN true THEN 'Observation' END AS STRING), '__resource_id', CAST(`__r`.`id` AS STRING)) AS `__resource` FROM (SELECT struct(*) AS `__r` FROM `acme`.`silver`.`observation`);
 
-CREATE OR REPLACE FUNCTION `acme`.`cql_fhir`.`retrieve_Patient`({PARAMS})
+CREATE OR REPLACE FUNCTION `acme`.`cql_fhir`.`retrieve_Patient`()
 RETURNS TABLE (`__subject_id` STRING, `__resource` STRUCT<`id`: string, `birthDate`: string, `__resource_type`: string, `__resource_id`: string>)
 LANGUAGE SQL
-COMMENT 'BIND-PUBLISH: retrieve_Patient over acme.silver.patient; ignores the pushdown arguments (BIND-CAPABILITY)'
+COMMENT 'BIND-PUBLISH: retrieve_Patient over acme.silver.patient; the whole table, declaring no request field (BIND-NAMED-ARGS, BIND-CAPABILITY)'
 RETURN SELECT CAST(`__r`.`id` AS STRING) AS `__subject_id`, named_struct('id', `__r`.`id`, 'birthDate', `__r`.`birthDate`, '__resource_type', CAST(CASE WHEN true THEN 'Patient' END AS STRING), '__resource_id', CAST(`__r`.`id` AS STRING)) AS `__resource` FROM (SELECT struct(*) AS `__r` FROM `acme`.`silver`.`patient`);
 
 ALTER SCHEMA `acme`.`cql_fhir` SET TAGS ('cql_databricks_data_source' = 'acme_fhir');
@@ -86,7 +81,7 @@ class _Runner:
 
     def __call__(self, statement, params=None):
         if "information_schema.routines" in statement:
-            return [{"routine_name": r} for r in self.routines]
+            return [{"routine_name": r, "name": r} for r in self.routines]
         if "information_schema.columns" in statement:
             return []
         self.statements.append(statement)

@@ -14,10 +14,10 @@ from cql_databricks.compiler.config import resolve_catalog_scopes
 from cql_databricks.compiler.location import Location
 from cql_databricks.compiler.workspace_files import WorkspaceLibraryFiles
 from cql_databricks.compiler.resolve import resolve
+from cql_databricks.compiler.tagged import TaggedResolver
 from cql_databricks.data_bindings import ContentResolver
 from cql_databricks.result import ResultsUnavailable, run_inline
 from cql_databricks.result.insights import parse_scoring
-from cql_databricks.result.relation import quote
 from cql_databricks.result.selection_reading import SelectedOutput, open_selection
 from cql_databricks_common import config
 from cql_databricks_common.compiler import compile_provider
@@ -102,12 +102,13 @@ def research(runner) -> Research:
         return content(runner()).corpus()
 
     def code_lookup(code: str, system: str | None):
-        catalog, schema = runtime()
-        params = {"code": code, **({"system": system} if system else {})}
-        rows = runner()(f"SELECT DISTINCT valueset_id, system, code FROM {quote(catalog)}.{quote(schema)}.valuesets "
-                        f"WHERE code = :code{' AND system = :system' if system else ''} "
-                        f"ORDER BY valueset_id LIMIT {CODE_HIT_LIMIT}", params)
-        return [(r["valueset_id"], r["system"], r["code"]) for r in rows]
+        """AGENT-VALUE-SET-LOOKUP, CLIENT-DEFAULT-RESOLVER: the tagged terminology in scope, as the caller."""
+        run = runner()
+        terminology = TaggedResolver(content(run), run).terminology()
+        if terminology is None:
+            raise RuntimeError("no schema tagged cql_databricks_terminology is in scope, so no value set holds a code")
+        hits = terminology.find_code(code, system)[:CODE_HIT_LIMIT]
+        return [(hit.id, getattr(hit, "system", None) or system, code) for hit in hits]
 
     def translate(cql: str, location: str | None = None) -> dict:
         resolution = resolve(content(runner()), cql=cql, location=location, files=user_files() if location else None)
