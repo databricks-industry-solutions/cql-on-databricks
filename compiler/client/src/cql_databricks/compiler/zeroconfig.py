@@ -41,7 +41,8 @@ from .session_state import SessionRecord, session_resolvers, set_session_resolve
 def connect(spark=None, *, app_name: Optional[str] = None, udf_schema: Optional[str] = None,
             library_path: Optional[str | Iterable[str]] = None, engine: Optional[str] = None,
             environment: Optional[str] = None, measurement_period: Optional[tuple[str, str]] = None,
-            recompute: Optional[bool] = None, data=None, terminology=None, knowledge=None) -> CqlClient:
+            recompute: Optional[bool] = None, data=None, terminology=None, knowledge=None,
+            results=None) -> CqlClient:
     """A :class:`~cql_databricks.compiler.CqlClient` wired for Databricks. The Compiler Service App endpoint + OAuth
     are resolved ON INIT via this package's ``databricks-app`` provider (built directly, so it needs no
     ``provider.kind`` selection). Call inside a Databricks notebook/job.
@@ -51,7 +52,8 @@ def connect(spark=None, *, app_name: Optional[str] = None, udf_schema: Optional[
     compile (`CLIENT-ENVIRONMENT-RESOLVER`). Its published views serve the data and value sets, bound by rule, so a run
     makes one compiler call and reads no catalog (`BIND-PUBLISHED-VIEW`). ``data``, ``terminology`` and ``knowledge``
     replace the environment's resolver for that role (`CLIENT-RESOLVERS`); a resolver that binds per call site makes
-    the run ask ``describe`` first (`BIND-CALL-SITE`).
+    the run ask ``describe`` first (`BIND-CALL-SITE`). ``results`` replaces the environment's result resolver, through
+    which ``exec()`` reads kept results in place of computing them (`CLIENT-QUERY-REUSE`).
 
     Emitted ``cql_*`` calls are schema-qualified through the OSS ``.udf_schema()`` knob (`EMIT-UDF-QUALIFY`) and the
     provider is wrapped in :class:`~.compile_shim.CqlDatabricksCompileProvider` so materialization barriers are
@@ -65,7 +67,7 @@ def connect(spark=None, *, app_name: Optional[str] = None, udf_schema: Optional[
     ``library`` header joins the session library instead (`SVC-NOTEBOOK-SESSION-SCOPE`).
 
     ``engine``, ``measurement_period`` and ``recompute`` set the session's engine settings once
-    (`DEC-ENGINE-SESSION-OPTIONS`)."""
+    (`DEC-ENGINE-SESSION-OPTIONS`); ``recompute=True`` reads no kept result."""
     conf = {CONF_APP_NAME: app_name} if app_name else {}
     session = spark if spark is not None else _active_spark()
     provider = CqlDatabricksCompileProvider(make_provider(conf))
@@ -80,7 +82,8 @@ def connect(spark=None, *, app_name: Optional[str] = None, udf_schema: Optional[
     builder = builder.data_binder(ResolverBinder(
         data=data if data is not None else lambda: env.resolver().data(env.get()),
         terminology=terminology if terminology is not None else lambda: env.resolver().terminology(env.get()),
-        run=lambda: _spark_runner(session), spark=session, schemas=provider.resource_schemas))
+        run=lambda: _spark_runner(session), spark=session, schemas=provider.resource_schemas,
+        results=results if results is not None else lambda: env.resolver().results(env.get())))
     if engine:
         builder = builder.engine(engine)
     if measurement_period:
@@ -206,7 +209,7 @@ _default_client: Optional[CqlClient] = None
 _default_resolvers = None
 
 
-def use_resolvers(*, data=None, terminology=None, knowledge=None) -> None:
+def use_resolvers(*, data=None, terminology=None, knowledge=None, results=None) -> None:
     """CLIENT-SESSION-RESOLVERS — set the resolvers this notebook's ``cql()`` calls and ``%%cql`` cells run through::
 
         from cql_databricks.compiler import use_resolvers
@@ -215,13 +218,15 @@ def use_resolvers(*, data=None, terminology=None, knowledge=None) -> None:
                       terminology=FolderTerminologyResolver("/Volumes/main/cql/tests/valuesets"))
 
     Each role given replaces the environment's resolver for that role; each role not given is the environment's
-    (`CLIENT-RESOLVERS`). A call sets every role, so ``use_resolvers()`` returns to the environment. Nothing is read
+    (`CLIENT-RESOLVERS`). ``results`` is where ``exec()`` reads kept results (`CLIENT-QUERY-REUSE`). A call sets every
+    role, so ``use_resolvers()`` returns to the environment. Nothing is read
     here: the next ``cql()`` or cell builds its client with them. ``reset(spark)`` drops them
     (`CLIENT-SESSION-RESET`). A client from :func:`connect` is not changed by them."""
-    from cql_databricks.resolvers.interfaces import DataResolver, KnowledgeResolver, TerminologyResolver
+    from cql_databricks.resolvers.interfaces import (DataResolver, KnowledgeResolver, ResultResolver,
+                                                      TerminologyResolver)
 
     roles = {"data": (data, DataResolver), "terminology": (terminology, TerminologyResolver),
-             "knowledge": (knowledge, KnowledgeResolver)}
+             "knowledge": (knowledge, KnowledgeResolver), "results": (results, ResultResolver)}
     for role, (given, kind) in roles.items():
         if given is not None and not isinstance(given, kind):
             raise TypeError(f"{role}= takes a {kind.__name__}, not {type(given).__name__} (CLIENT-SESSION-RESOLVERS)")

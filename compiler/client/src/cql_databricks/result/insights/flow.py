@@ -42,7 +42,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ..relation import SUBJECT_ID, literal, met_expr, quote, value_column
-from ..results import Execute, RelationRef, relation_columns, result_relation
+from ..results import Execute, PinnedRelation, relation_columns, result_relation
 from .evaluation import ClosureSource, MetricsUnavailable, locate
 from .model import PROVENANCE_RUN, _clean
 
@@ -188,7 +188,7 @@ def cohort_flow(
     which silently inflates every sibling's decisive count and still sums to a plausible-looking
     partition. A gate that cannot be decomposed correctly is not decomposed.
     """
-    # RUN-EVAL-ID-INPUTS: the evaluation set, named by the route (`evaluation_key.EvaluationKeys`).
+    # RUN-CLIENT-RESULT-SETS: the complete selection's identity, which the closure is checked against.
     suffix = eval_id
     libraries = closure.closure(data_source_id, suffix, root=library, draft=draft)
     if not libraries:
@@ -196,22 +196,20 @@ def cohort_flow(
             f"no compiled libraries for data source {data_source_id!r} at evaluation {suffix} — "
             f"the measure has not been run against this data source and measurement period")
 
-    # Every relation any gate mentions, resolved through the compiler's own record of what it emitted
-    # (`pipeline_defines`), never by re-deriving a table name from a define name.
-    wanted: dict[tuple[str, str], RelationRef | None] = {}
+    # Every relation any gate mentions, resolved through the selection's own record of what the compiler emitted,
+    # never by re-deriving a table name from a define name.
+    wanted: dict[tuple[str, str], PinnedRelation | None] = {}
     for gate in gates:
         for lib, name in [(gate.stage_library, gate.stage), *gate.criteria]:
-            wanted.setdefault((lib, name), locate(libraries, lib, name, results_catalog))
+            wanted.setdefault((lib, name), locate(libraries, lib, name))
         if gate.base and gate.base_library:
-            wanted.setdefault((gate.base_library, gate.base),
-                              locate(libraries, gate.base_library, gate.base, results_catalog))
+            wanted.setdefault((gate.base_library, gate.base), locate(libraries, gate.base_library, gate.base))
 
     refs = [r for r in wanted.values() if r is not None]
-    columns = relation_columns(results_catalog, refs, execute=execute) if refs else {}
+    columns = relation_columns(results_catalog, refs) if refs else {}
 
-    def resolved(key: tuple[str, str]) -> RelationRef | None:
-        ref = wanted.get(key)
-        return ref if ref is not None and ref in columns else None
+    def resolved(key: tuple[str, str]) -> PinnedRelation | None:
+        return wanted.get(key)
 
     usable: list[GateRequest] = []
     omitted: list[str] = []
@@ -279,7 +277,7 @@ def _caveat(omitted: list[str]) -> str | None:
 def _subject_ctes(
     gates: list[GateRequest],
     resolved,
-    columns: dict[RelationRef, dict[str, str]],
+    columns: dict[PinnedRelation, dict[str, str]],
     eval_id: str,
 ) -> tuple[list[str], dict[tuple[str, str], str]]:
     """One CTE per DISTINCT relation, collapsing it to the subjects who met it.

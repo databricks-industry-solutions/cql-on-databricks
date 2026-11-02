@@ -37,7 +37,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from ..results import Execute, RelationRef, count_relations, relation_columns
+from ..results import Execute, PinnedRelation, count_relations, relation_columns
 from .evaluation import ClosureSource
 from .evaluation import MetricsUnavailable
 from .model import PROVENANCE_RUN
@@ -69,7 +69,7 @@ def read_metrics(
     The response is keyed by the client's ``key``, so the caller joins on the identity it already holds
     rather than on a table name it has no business knowing.
     """
-    # RUN-EVAL-ID-INPUTS: the evaluation set, named by the route (`evaluation_key.EvaluationKeys`).
+    # RUN-CLIENT-RESULT-SETS: the complete selection's identity, which the closure is checked against.
     suffix = eval_id
 
     # Every read this evaluation MATERIALIZED, across the whole include closure. A materialized read
@@ -79,15 +79,13 @@ def read_metrics(
     #
     # Named `materialized`, not `reads`: `reads` is this function's PARAMETER — the reads the client
     # asked about — and the whole job below is matching the asked-for set against the written one.
-    materialized: list[tuple[RelationRef, dict]] = []
-    # The closure's libraries, with the root's draft or published rows as asked (`RUN-ADDRESS-BY-LIBRARY`);
-    # this evaluation set is rows keyed by the suffix (`RUN-RESULTS-BY-EVAL`).
+    materialized: list[tuple[PinnedRelation, dict]] = []
     libraries = closure.closure(data_source_id, suffix, root=library, draft=draft)
     for entry in libraries.values():
         for define in entry.defines:
             # The descriptor is the discriminator, never the name (`RUN-READ-BARRIER`).
             if define.read:
-                materialized.append((entry.relation(results_catalog, define.mv_name), define.read))
+                materialized.append((entry.relation(define.mv_name), define.read))
 
     if not materialized:
         # NOT an error, and deliberately distinguished from one. `MetricsUnavailable` means "this
@@ -101,8 +99,7 @@ def read_metrics(
                  suffix)
         return _payload(library, version, [])
 
-    columns = relation_columns(results_catalog, [ref for ref, _ in materialized],
-                               execute=execute)
+    columns = relation_columns(results_catalog, [ref for ref, _ in materialized])
     counts = count_relations(execute, columns, eval_id=suffix)
 
     out: list[dict] = []
@@ -119,7 +116,7 @@ def read_metrics(
     return _payload(library, version, out)
 
 
-def _match(read: dict, materialized: list[tuple[RelationRef, dict]]) -> RelationRef | None:
+def _match(read: dict, materialized: list[tuple[PinnedRelation, dict]]) -> PinnedRelation | None:
     """The materialized read answering one requested read, or ``None``.
 
     PROFILE FIRST, AND IT IS THE EXACT DISCRIMINATOR. A measure that reads Condition through two

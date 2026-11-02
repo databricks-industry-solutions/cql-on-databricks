@@ -39,6 +39,14 @@ result = (client.cql(library="HypertensionBPControl")
 `exec("X")` returns one DataFrame. `exec()` or `exec("X", "Y")` returns a dict of define name to
 DataFrame. `describe()` returns the library's defines, their shapes and dependencies.
 
+A library's `exec()` reads kept results where they match: yours, then the environment's official ones
+(`CLIENT-QUERY-REUSE`). Only the defines with no kept result are computed. It writes nothing.
+
+- A kept result is as fresh as when it was computed. Pass `recompute=True` to `connect()` or `cql()`, or call
+  `.with_recompute()`, to compute everything from the data as it is now.
+- CQL with no `library` header, and data from a resolver that is never reused (a DataFrame), are always computed.
+- `boundaries=` needs `recompute=True`.
+
 ## The session library
 
 CQL with no `library` header joins one library per Spark session (`SVC-NOTEBOOK-SESSION-SCOPE`). This
@@ -139,6 +147,7 @@ use_resolvers(data=VolumeDataResolver("/Volumes/acme/dev/tests/fhir"),
 - Each call sets every role, so `use_resolvers()` with nothing returns to the environment. So does
   `reset(spark)`.
 - They live in the Python process: restarting Python drops them.
+- `results=` replaces where `exec()` reads kept results.
 - A client from `connect()` is not affected. Pass it its resolvers.
 - Notebook `07_test_files_in_a_volume` runs CQL over FHIR NDJSON and value sets in a Volume this way.
 

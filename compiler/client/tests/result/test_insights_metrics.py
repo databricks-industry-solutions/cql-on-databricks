@@ -1,8 +1,8 @@
 """SPEC-METRIC, SPEC-ATTRITION — the real, warehouse-backed measure metric set.
 
-Fixtures use mock synthetic measure data (ExampleMeasure plus its include closure): the state layer's
-real naming — a root measure's defines recorded bare, a dependency's recorded library-prefixed — and
-a library whose defines are compiled but whose MVs do not exist.
+Fixtures use mock synthetic measure data (ExampleMeasure plus its include closure), described as one complete
+selection: a root measure's defines, a dependency's, a second ExampleMeasure variant declaring the same define
+names (`SPEC-ANCHOR`), and a library compiled but with no relation materialized.
 """
 from __future__ import annotations
 
@@ -11,8 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from cql_databricks.result.insights.metrics import Cohort, MetricsUnavailable, cohort_count_sql, measure_metrics
-from cql_databricks.result.insights.evaluation import StateClosure
-from cql_databricks.result.address import evaluation_version
+from closure_fixture import CATALOG, DATA_SOURCE, SELECTION_ID, FixedClosure, library, pinned
 
 
 def _warehouse(warehouse_id, sql):
@@ -25,60 +24,29 @@ def _execute(warehouse_id="wh-1"):
     return lambda sql: _warehouse(warehouse_id, sql)
 
 
-CATALOG = "acme_results"
-DATA_SOURCE = "conformance"
+MEASURE_SCHEMA = "examplemeasure_1_0_0"
+PATIENT_VIEW = "acme.data.patient"
 PERIOD = ("2022-01-01", "2022-12-31")
-SUFFIX = evaluation_version(DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1])
 
-MEASURE_SCHEMA = f"{CATALOG}.examplemeasure_1_0_0"
-DEPENDENCY_SCHEMA = f"{CATALOG}.exampledependency_1_0_0"
+INITIAL = pinned(MEASURE_SCHEMA, "initial_population", {"__subject_id": "STRING", "Initial_Population": "BOOLEAN"})
+NUMERATOR = pinned(MEASURE_SCHEMA, "numerator", {"__subject_id": "STRING", "Numerator": "BOOLEAN"})
+EXAMPLE_RESULTS = pinned(MEASURE_SCHEMA, "example_results",
+                         {"__subject_id": "STRING", "__ordinal": "STRING", "__val": "STRUCT"})
+ENCOUNTERS = pinned("exampledependency_1_0_0", "exampledependency_example_encounters",
+                    {"__subject_id": "STRING", "__ordinal": "STRING", "__val": "STRUCT"})
+VARIANT_NUMERATOR = pinned("examplemeasurevariant_1_0_0", "numerator",
+                           {"__subject_id": "STRING", "Numerator": "BOOLEAN"})
 
-
-class _Row:
-    def __init__(self, id_: str, name: str, version: str) -> None:
-        self.id, self.library_name, self.library_version = id_, name, version
-
-
-class _Define:
-    def __init__(self, define_name: str, mv_name: str) -> None:
-        self.define_name, self.mv_name = define_name, mv_name
-
-
-class _State:
-    """The two state-layer reads the builder makes, with the live naming reproduced."""
-
-    def __init__(self) -> None:
-        self._libraries = [
-            _Row("lib-measure", "ExampleMeasure", f"1.0.0_{SUFFIX}"),
-            _Row("lib-dep", "ExampleDependency", f"1.0.0_{SUFFIX}"),
-            _Row("lib-unmaterialized", "ExampleUnmaterialized", f"1.0.0_{SUFFIX}"),
-            # Another ExampleMeasure variant, live in the same evaluation and declaring the same define
-            # names — the real `SPEC-ANCHOR` collision, not a contrived one.
-            _Row("lib-variant", "ExampleMeasureVariant", f"1.0.0_{SUFFIX}"),
-            # A DIFFERENT evaluation of the same measure — must not be picked up.
-            _Row("lib-other", "ExampleMeasure", "1.0.0_deadbeef"),
-        ]
-        self._defines = {
-            "lib-measure": [_Define("Initial_Population", "initial_population"),
-                           _Define("Numerator", "numerator"),
-                           _Define("Example_Results",
-                                   "example_results")],
-            # A dependency's defines are recorded LIBRARY-PREFIXED.
-            "lib-dep": [_Define("ExampleDependency_Example_Encounters",
-                                "exampledependency_example_encounters")],
-            # Compiled, but its MVs were never materialized (observed live).
-            "lib-unmaterialized": [_Define("ExampleUnmaterialized_Example_Unrun",
-                                    "exampleunmaterialized_example_unrun")],
-            "lib-variant": [_Define("Numerator", "numerator")],
-            "lib-other": [_Define("Numerator", "numerator")],
-        }
-
-    def list_libraries(self, data_source_id: str):
-        return list(self._libraries) if data_source_id == DATA_SOURCE else []
-
-    def list_defines(self, library_id: str):
-        return list(self._defines.get(library_id, []))
-
+CLOSURE = FixedClosure({
+    "ExampleMeasure": library("ExampleMeasure", "1.0.0", {
+        "Initial Population": INITIAL, "Numerator": NUMERATOR, "Example Results": EXAMPLE_RESULTS}),
+    "ExampleDependency": library("ExampleDependency", "1.0.0", {"Example Encounters": ENCOUNTERS}),
+    # Compiled, but its relations were never materialized (observed live): no entry for its define.
+    "ExampleUnmaterialized": library("ExampleUnmaterialized", "1.0.0", {}),
+    # Another ExampleMeasure variant, live in the same selection and declaring the same define names — the
+    # real `SPEC-ANCHOR` collision, not a contrived one.
+    "ExampleMeasureVariant": library("ExampleMeasureVariant", "1.0.0", {"Numerator": VARIANT_NUMERATOR}),
+})
 
 DEFINES: list[tuple[str, str, str | None]] = [
     ("ExampleMeasure", "Initial Population", "Boolean"),
@@ -89,22 +57,12 @@ DEFINES: list[tuple[str, str, str | None]] = [
     ("ExampleMeasure", "Never Reached", "Boolean"),
 ]
 
-#: Only the relations that EXIST. The unmaterialized MV is absent, mirroring the live schema.
-COLUMNS = {
-    (MEASURE_SCHEMA, "initial_population"): {"__subject_id": "STRING",
-                                            "Initial_Population": "BOOLEAN"},
-    (MEASURE_SCHEMA, "numerator"): {"__subject_id": "STRING", "Numerator": "BOOLEAN"},
-    (MEASURE_SCHEMA, "example_results"): {
-        "__subject_id": "STRING", "__ordinal": "STRING", "__val": "STRUCT"},
-    (DEPENDENCY_SCHEMA, "exampledependency_example_encounters"): {
-        "__subject_id": "STRING", "__ordinal": "STRING", "__val": "STRUCT"},
-}
-
+#: Only the relations that EXIST. The unmaterialized relation is absent, as in the live selection.
 COUNTS = {
-    (MEASURE_SCHEMA, "initial_population"): (0, None),
-    (MEASURE_SCHEMA, "numerator"): (2, None),
-    (MEASURE_SCHEMA, "example_results"): (33, None),
-    (DEPENDENCY_SCHEMA, "exampledependency_example_encounters"): (17, 41),
+    INITIAL: (0, None),
+    NUMERATOR: (2, None),
+    EXAMPLE_RESULTS: (33, None),
+    ENCOUNTERS: (17, 41),
 }
 
 
@@ -116,15 +74,14 @@ def _everyone(defines):
 def _build(_subject_rows=((("2713"),),), **overrides):
     kwargs = dict(
         library="ExampleMeasure", version="1.0.0",
-        data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
-        defines=DEFINES, closure=StateClosure(_State()),
-        patient_relation="acme.data.patient",
+        data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SELECTION_ID, draft="",
+        defines=DEFINES, closure=CLOSURE,
+        patient_relation=PATIENT_VIEW,
         results_catalog=CATALOG, execute=_execute(),
     )
     kwargs.update(overrides)
     kwargs.setdefault("cohorts", _everyone(kwargs["defines"]))
-    with patch("cql_databricks.result.insights.metrics.relation_columns", return_value=COLUMNS), \
-         patch("cql_databricks.result.insights.metrics.count_relations", return_value=COUNTS), \
+    with patch("cql_databricks.result.insights.metrics.count_relations", return_value=COUNTS), \
          patch(f"{__name__}._warehouse",
                return_value=[list(r) for r in _subject_rows]):
         return measure_metrics(**kwargs)
@@ -132,15 +89,14 @@ def _build(_subject_rows=((("2713"),),), **overrides):
 
 def _captured_sql() -> str:
     """The SQL the cohort read actually issued — the only warehouse call this module makes directly."""
-    with patch("cql_databricks.result.insights.metrics.relation_columns", return_value=COLUMNS), \
-         patch("cql_databricks.result.insights.metrics.count_relations", return_value=COUNTS), \
+    with patch("cql_databricks.result.insights.metrics.count_relations", return_value=COUNTS), \
          patch(f"{__name__}._warehouse",
                return_value=[["2713"]]) as execute:
         measure_metrics(
             library="ExampleMeasure", version="1.0.0",
-            data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
-            defines=DEFINES, cohorts=_everyone(DEFINES), closure=StateClosure(_State()),
-            patient_relation="acme.data.patient",
+            data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SELECTION_ID, draft="",
+            defines=DEFINES, cohorts=_everyone(DEFINES), closure=CLOSURE,
+            patient_relation=PATIENT_VIEW,
             results_catalog=CATALOG, execute=_execute())
     execute.assert_called_once()
     return execute.call_args.args[1]
@@ -177,28 +133,10 @@ def test_a_patient_binding_with_no_subjects_raises_rather_than_stating_a_zero_ba
         _build(_subject_rows=[["0"]])
 
 
-def test_a_root_measure_define_resolves_by_its_bare_name():
-    m = _build()
-    numerator = next(d for d in m.defines if d.define == "Numerator")
-    assert numerator.subjects == 2
-    assert numerator.library == "ExampleMeasure"
-
-
-def test_a_dependency_define_resolves_by_its_library_prefixed_name():
-    """The live naming this exists for: `pipeline_defines` records a dependency's define as
-    `ExampleDependency_Example_Encounters`, while the client asks about `Example Encounters`
-    in library `ExampleDependency`."""
-    m = _build()
-    check = next(d for d in m.defines if d.library == "ExampleDependency")
-    assert check.define == "Example Encounters"
-    assert check.subjects == 17
-    assert check.elements == 41
-
-
 def test_a_define_with_no_relation_is_ABSENT_not_zero():
-    """Two live causes, one correct behaviour: a define the measure never reaches is not compiled into
-    the pipeline, and a library whose MVs have not materialized has the define compiled but no table.
-    Emitting 0 would state "no subject met this" where the truth is "this was never evaluated here"."""
+    """Two causes, one correct behaviour: a define the measure never reaches is not compiled into the selection at
+    all, and a library compiled with no materialized relation holds no entry for its define. Emitting 0 would state
+    "no subject met this" where the truth is "this was never evaluated here"."""
     names = {d.define for d in _build().defines}
     assert "Never Reached" not in names
     assert "Example Unrun" not in names
@@ -224,33 +162,22 @@ def test_no_caveat_when_every_define_resolved():
 
 def test_one_define_name_in_two_libraries_resolves_to_two_relations():
     """SPEC-ANCHOR — one name in two libraries is two defines, and each has its OWN results schema. Both
-    ExampleMeasure variants are live in this evaluation and both declare `Numerator`; resolving them to one
+    ExampleMeasure variants are live in this selection and both declare `Numerator`; resolving them to one
     relation would print one measure's figure under the other's heading."""
-    variant_schema = f"{CATALOG}.examplemeasurevariant_1_0_0"
-    columns = {**COLUMNS,
-               (variant_schema, "numerator"): {"__subject_id": "STRING", "Numerator": "BOOLEAN"}}
-    counts = {**COUNTS, (variant_schema, "numerator"): (91, None)}
     defines = [("ExampleMeasure", "Numerator", "Boolean"),
                ("ExampleMeasureVariant", "Numerator", "Boolean")]
-    with patch("cql_databricks.result.insights.metrics.relation_columns", return_value=columns), \
-         patch("cql_databricks.result.insights.metrics.count_relations", return_value=counts), \
+    counts = {**COUNTS, VARIANT_NUMERATOR: (91, None)}
+    with patch("cql_databricks.result.insights.metrics.count_relations", return_value=counts), \
          patch(f"{__name__}._warehouse", return_value=[["2713"]]):
         m = measure_metrics(
             library="ExampleMeasure", version="1.0.0",
-            data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
-            defines=defines, cohorts=_everyone(defines), closure=StateClosure(_State()),
-            patient_relation="acme.data.patient",
+            data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SELECTION_ID, draft="",
+            defines=defines, cohorts=_everyone(defines), closure=CLOSURE,
+            patient_relation=PATIENT_VIEW,
             results_catalog=CATALOG, execute=_execute())
     by_library = {d.library: d.subjects for d in m.defines}
     assert by_library == {"ExampleMeasure": 2,
                           "ExampleMeasureVariant": 91}
-
-
-def test_another_evaluation_of_the_same_library_is_not_read():
-    """Every library compiled for one evaluation shares the version suffix; a row carrying a different
-    one belongs to a different data source or period and its counts would be a different measure's."""
-    m = _build()
-    assert len([d for d in m.defines if d.define == "Numerator"]) == 1
 
 
 def test_no_evaluation_raises_rather_than_returning_an_empty_set():
@@ -264,20 +191,6 @@ def test_no_patient_binding_raises_rather_than_reporting_zero_subjects():
     """SPEC-METRIC requires a share's base be STATED, and 0 evaluated subjects is not a base."""
     with pytest.raises(MetricsUnavailable, match="no Patient view"):
         _build(patient_relation=None)
-
-
-def test_counts_are_one_evaluation_sets():
-    """RUN-RESULTS-BY-EVAL — the counts are asked for this evaluation set's rows only."""
-    with patch("cql_databricks.result.insights.metrics.relation_columns", return_value=COLUMNS), \
-         patch("cql_databricks.result.insights.metrics.count_relations", return_value=COUNTS) as count, \
-         patch(f"{__name__}._warehouse", return_value=[["2713"]]):
-        measure_metrics(
-            library="ExampleMeasure", version="1.0.0",
-            data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
-            defines=DEFINES, cohorts=_everyone(DEFINES), closure=StateClosure(_State()),
-            patient_relation="acme.data.patient",
-            results_catalog=CATALOG, execute=_execute())
-    assert count.call_args.kwargs["eval_id"] == SUFFIX
 
 
 # SPEC-POPULATION-CASCADE — every define is counted inside the cohort the client names.
@@ -327,14 +240,13 @@ def _scored_build(cohorts, rows):
     def warehouse(_wh, sql):
         return [["2713"]] if "data.patient" in sql else rows
     defines = DEFINES[:2]
-    with patch("cql_databricks.result.insights.metrics.relation_columns", return_value=COLUMNS), \
-         patch("cql_databricks.result.insights.metrics.count_relations", return_value=COUNTS), \
+    with patch("cql_databricks.result.insights.metrics.count_relations", return_value=COUNTS), \
          patch(f"{__name__}._warehouse", side_effect=warehouse) as execute:
         m = measure_metrics(
             library="ExampleMeasure", version="1.0.0",
-            data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
-            defines=defines, cohorts=cohorts, closure=StateClosure(_State()),
-            patient_relation="acme.data.patient",
+            data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SELECTION_ID, draft="",
+            defines=defines, cohorts=cohorts, closure=CLOSURE,
+            patient_relation=PATIENT_VIEW,
             results_catalog=CATALOG, execute=_execute())
     return m, [c.args[1] for c in execute.call_args_list]
 
@@ -350,8 +262,9 @@ def test_a_scored_define_reports_met_counted_and_its_cohort():
     initial = next(d for d in m.defines if d.define == "Initial Population")
     assert (initial.counted, initial.cohort_subjects) == (initial.subjects, 2713)
     cascade = next(s for s in statements if "k_0" in s)
-    # One evaluation set's rows, through the typed membership predicate.
-    assert cascade.count(SUFFIX) == 2
+    # Each population is read from its own pinned table, once: the Numerator and the Initial Population.
+    assert cascade.count("(SELECT * FROM ") == 2
+    assert "(SELECT * FROM `acme_results`.`examplemeasure_1_0_0`.`numerator`)" in cascade
     assert 'CASE WHEN `Numerator` THEN __subject_id END' in cascade
 
 

@@ -38,7 +38,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 
 from ..relation import SUBJECT_ID, literal, met_expr, quote, value_column
-from ..results import Execute, RelationRef, count_relations, relation_columns, result_relation
+from ..results import Execute, PinnedRelation, count_relations, relation_columns, result_relation
 from .evaluation import ClosureSource, MetricsUnavailable, locate
 from .model import (
     BLOCK_SAMPLE, BLOCK_TEMPORAL, BLOCK_VALUE_SETS,
@@ -80,7 +80,7 @@ def define_profile(
     ``define_library`` is the library that DECLARES the define, which is not always the measure — two
     libraries may declare one name (`SPEC-ANCHOR`), so an unqualified lookup resolves the wrong one.
     """
-    # RUN-EVAL-ID-INPUTS: the evaluation set, named by the route (`evaluation_key.EvaluationKeys`).
+    # RUN-CLIENT-RESULT-SETS: the complete selection's identity, which the closure is checked against.
     suffix = eval_id
     libraries = closure.closure(data_source_id, suffix, root=library, draft=draft)
     if not libraries:
@@ -88,17 +88,13 @@ def define_profile(
             f"no compiled libraries for data source {data_source_id!r} at evaluation {suffix} — "
             f"the measure has not been run against this data source and measurement period")
 
-    ref = locate(libraries, define_library, define, results_catalog)
+    ref = locate(libraries, define_library, define)
     if ref is None:
         raise MetricsUnavailable(
             f"{define_library}.{define!r} has no result relation in this evaluation, so there is "
             f"nothing to profile — it was never materialized here (APP-DATA-PROFILE)")
 
-    columns = relation_columns(results_catalog, [ref], execute=execute)
-    if ref not in columns:
-        raise MetricsUnavailable(
-            f"the relation for {define_library}.{define!r} could not be described, so its profile "
-            f"cannot be read")
+    columns = relation_columns(results_catalog, [ref])
     relation_cols = columns[ref]
     subjects, elements = count_relations(execute, columns, eval_id=suffix)[ref]
 
@@ -169,7 +165,7 @@ def _generated() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def _null_rate(ref: RelationRef, columns: dict[str, str], *, eval_id: str, execute: Execute) -> float:
+def _null_rate(ref: PinnedRelation, columns: dict[str, str], *, eval_id: str, execute: Execute) -> float:
     """The share of the relation's subjects whose value is null or empty.
 
     Over SUBJECTS, not rows, for the same reason every other figure here is: the relation is not one row
@@ -190,7 +186,7 @@ def _null_rate(ref: RelationRef, columns: dict[str, str], *, eval_id: str, execu
     return nulls / subjects if subjects else 0.0
 
 
-def _top_values(ref: RelationRef, columns: dict[str, str], *, eval_id: str,
+def _top_values(ref: PinnedRelation, columns: dict[str, str], *, eval_id: str,
                 execute: Execute) -> list[ValueSample]:
     """The top-N returned values by how many SUBJECTS returned them.
 
@@ -217,7 +213,7 @@ def _top_values(ref: RelationRef, columns: dict[str, str], *, eval_id: str,
             for r in rows]
 
 
-def _subject_strata(ref: RelationRef, columns: dict[str, str], *, patient_relation: str | None,
+def _subject_strata(ref: PinnedRelation, columns: dict[str, str], *, patient_relation: str | None,
                     period_start: str | None,
                     eval_id: str, execute: Execute) -> list[Stratum]:
     """Sex and age band over the subjects this define is TRUE of.

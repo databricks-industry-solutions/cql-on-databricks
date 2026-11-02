@@ -94,7 +94,7 @@ _resolvers: Mapping[str, Any] = {}
 
 
 def session_resolvers() -> Mapping[str, Any]:
-    """CLIENT-SESSION-RESOLVERS — the session's resolvers by role (``data``, ``terminology``, ``knowledge``); a role
+    """CLIENT-SESSION-RESOLVERS — the session's resolvers by role (``data``, ``terminology``, ``knowledge``, ``results``); a role
     not in it is the environment's."""
     return _resolvers
 

@@ -9,12 +9,10 @@ library (itself plus each shared helper library it includes). So the builder res
 is what makes the figures comparable: `SPEC-ATTRITION` puts each figure beside its base, and a base read
 a minute later than the figure it scales can contradict it.
 
-**THE DEFINE→TABLE MAP COMES FROM THE STATE LAYER, NOT FROM GUESSING THE NAME.** ``pipeline_defines``
-records ``(define_name, mv_name)`` per compiled library, so the map is what the compiler actually emitted.
-Re-deriving a table name from a define name would be a second naming rule able to disagree with
-``PIPE-RESULT-NAMING`` — and it would be wrong today, because a dependency library's defines are recorded
-LIBRARY-PREFIXED (``CareVisits_Visits_During_Period``) while the client asks about
-``Visits During Period`` in library ``Encounters``.
+**THE DEFINE→RELATION MAP COMES FROM THE SELECTION, NOT FROM GUESSING THE NAME.** The selection's metadata
+names each define's library and its pinned table (``selection_reading.SelectionClosure``), so the map is what the
+compiler actually emitted. Re-deriving a table name from a define name would be a second naming rule that
+could disagree with the compiler's.
 
 **A DEFINE THE PIPELINE DID NOT MATERIALIZE IS ABSENT, NEVER ZERO.** Only the defines a measure actually
 reaches are compiled into its pipeline — a helper library may contribute 4 of its defines, not all
@@ -38,7 +36,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from ..relation import SUBJECT_ID, met_expr, value_column
-from ..results import Execute, RelationRef, count_relations, relation_columns, result_relation
+from ..results import Execute, PinnedRelation, count_relations, relation_columns, result_relation
 from .evaluation import ClosureSource, MetricsUnavailable, locate
 from .model import PROVENANCE_RUN, DefineMetric, MeasureMetrics
 
@@ -102,7 +100,7 @@ def measure_metrics(
         raise ValueError(f"every define needs a cohort to be counted in (SPEC-POPULATION-CASCADE); "
                          f"none given for {missing_cohort}")
 
-    # RUN-EVAL-ID-INPUTS: the evaluation set, named by the route (`evaluation_key.EvaluationKeys`).
+    # RUN-CLIENT-RESULT-SETS: the complete selection's identity, which the closure is checked against.
     suffix = eval_id
     libraries = closure.closure(data_source_id, suffix, root=library, draft=draft)
     if not libraries:
@@ -114,13 +112,13 @@ def measure_metrics(
     # populations are located with the defines: a population is normally one of them, but need not be.
     wanted = [(lib, name) for lib, name, _ in defines]
     wanted += [key for c in cohorts.values() for key in (*c.all_of, *c.none_of)]
-    located: dict[DefineKey, RelationRef] = {}
+    located: dict[DefineKey, PinnedRelation] = {}
     for define_library, name in dict.fromkeys(wanted):
-        ref = locate(libraries, define_library, name, results_catalog)
+        ref = locate(libraries, define_library, name)
         if ref is not None:
             located[(define_library, name)] = ref
 
-    columns = relation_columns(results_catalog, located.values(), execute=execute)
+    columns = relation_columns(results_catalog, located.values())
     counts = count_relations(execute, columns, eval_id=suffix)
     evaluated = _evaluated_subjects(patient_relation, execute=execute)
 
@@ -150,8 +148,8 @@ def measure_metrics(
 def _counted_within(
     present: list[DefineKey],
     cohorts: dict[DefineKey, Cohort],
-    located: dict[DefineKey, RelationRef],
-    columns: dict[RelationRef, dict[str, str]],
+    located: dict[DefineKey, PinnedRelation],
+    columns: dict[PinnedRelation, dict[str, str]],
     eval_id: str,
     *,
     execute: Execute,
@@ -168,7 +166,7 @@ def _counted_within(
         return {}
     distinct = list(dict.fromkeys(cohorts[key] for key in scoped))
     members = [m for c in distinct for m in (*c.all_of, *c.none_of)]
-    unread = sorted({m for m in members if m not in located or located[m] not in columns})
+    unread = sorted({m for m in members if m not in located})
     if unread:
         raise MetricsUnavailable(
             f"the population(s) {unread} have no result relation at this evaluation, so the defines "

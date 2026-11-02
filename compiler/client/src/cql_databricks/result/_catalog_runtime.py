@@ -209,8 +209,8 @@ def execute(plan: PreparedPlan, targets: Sequence[str], *, results: ResultResolv
     submitted: set[TableRef] = set()
 
     def done_meanwhile(compute: _Compute) -> KeptResult | None:
-        """RUN-CLIENT-RESULT-OWNERSHIP — the result ``compute`` writes, if another run finished it since the first
-        lookup and it may be reused."""
+        """RUN-CLIENT-RESULT-OWNERSHIP — the result ``compute`` failed to write, if another run finished it since the
+        first lookup and it may be reused."""
         if not compute.definition.reusable:
             return None
         return results.find([compute.key], computed_since=computed_since).get(compute.key.fingerprint)
@@ -271,8 +271,9 @@ def _compute(computes: Mapping[str, _Compute], *, run: SqlRunner, writes: Result
     reported, every statement still running is cancelled and reported, and the failure is raised; nothing more
     starts.
 
-    RUN-CLIENT-RESULT-OWNERSHIP — just before a definition's statement starts, and when it fails, ``done_meanwhile``
-    looks its result up again; one another run finished is ``reused`` instead of written, or instead of failing.
+    RUN-CLIENT-RESULT-OWNERSHIP — when a definition's statement fails, ``done_meanwhile`` looks its result up again; one
+    another run finished is ``reused`` instead of failing. Nothing is looked up before a write: two runs of one identity
+    computing one result both write it, the same rows to the same table.
     ``writes`` marks each table before its statement starts and each result complete after it finishes.
     """
     waiting = list(computes)
@@ -315,8 +316,6 @@ def _compute(computes: Mapping[str, _Compute], *, run: SqlRunner, writes: Result
             writes.check()
             for key in [k for k in waiting if computes[k].after <= finished][:parallelism - len(running)]:
                 waiting.remove(key)
-                if finished_elsewhere(key, "before this one wrote it"):
-                    continue
                 compute = computes[key]
                 writes.starting(compute.table)
                 if on_start is not None:

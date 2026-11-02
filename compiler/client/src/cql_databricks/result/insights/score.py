@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..relation import SUBJECT_ID, met_expr, value_column
-from ..results import Execute, RelationRef, relation_columns, result_relation
+from ..results import Execute, PinnedRelation, relation_columns, result_relation
 from .evaluation import ClosureSource, MetricsUnavailable, locate
 from .metrics import cohort_count_sql
 from .model import PROVENANCE_RUN
@@ -184,14 +184,13 @@ def selection_score(*, library: str, data_source_id: str, eval_id: str, draft: s
     The populations are the root library's."""
     declared = list(declared)
     libraries = closure.closure(data_source_id, eval_id, root=library, draft=draft)
-    located: dict[str, RelationRef] = {}
+    located: dict[str, PinnedRelation] = {}
     for name in POPULATIONS & set(declared):
-        ref = locate(libraries, library, name, results_catalog)
+        ref = locate(libraries, library, name)
         if ref is not None:
             located[name] = ref
-    columns = relation_columns(results_catalog, located.values(), execute=execute)
-    subjects = {name: subjects_sql(result_relation(ref, eval_id), columns[ref])
-                for name, ref in located.items() if ref in columns}
+    columns = relation_columns(results_catalog, located.values())
+    subjects = {name: subjects_sql(result_relation(ref, eval_id), columns[ref]) for name, ref in located.items()}
     return measure_score(scoring=scoring, declared=declared, subjects=subjects, execute=execute)
 
 

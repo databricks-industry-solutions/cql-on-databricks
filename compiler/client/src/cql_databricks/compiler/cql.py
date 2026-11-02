@@ -15,12 +15,18 @@ DataFrame whose native ``.explain()`` gives the Spark plan.
 """
 from __future__ import annotations
 
+import logging
+import uuid
+from dataclasses import replace
 from typing import Dict, Iterable, List, Optional
 
 from . import config
 from .binding import bound_request
+from .libraries import identity_of
 from .library import Library
 from .providers import CompileError, CompileRequest, LibraryGraph, PipelinePlan, SqlCompileResult
+
+log = logging.getLogger(__name__)
 
 
 def cql(source=None, *, resource: Optional[str] = None, cql: Optional[str] = None,
@@ -151,7 +157,11 @@ class CqlQuery:
         ``boundaries`` selects the compiler's RUNTIME cost-free mode; ``persist_as`` (single named target
         only, `BUILD-META`) also writes ``CREATE TABLE <persist_as> AS SELECT * FROM <target>``. The runtime
         must provide the ``retrieve_<Type>`` functions the plan references: the library's binder chooses
-        them (`CLIENT-EXEC-DISCOVERY`), else they are the bare convention names."""
+        them (`CLIENT-EXEC-DISCOVERY`), else they are the bare convention names.
+
+        CLIENT-QUERY-REUSE — with a result resolver (an environment's, from :func:`~.zeroconfig.connect`), CQL that
+        declares a library, a reusable data resolver and no ``recompute``, a target's frame reads its kept result
+        where one matches, and only the defines not found are compiled to views; ``boundaries`` is then refused."""
         single = len(targets) == 1                    # the CALL shape, not the resolved set's size
         session = getattr(self._lib, "fragment_defines", None) is not None
         if session and not targets:
@@ -169,6 +179,16 @@ class CqlQuery:
             raise ValueError("nothing to evaluate: the library has no defines")
         sp = self._spark or _active_spark()
         _ship_udf_catalog(sp, self._lib)
+        reusing = self._reusing()
+        if reusing is not None:
+            if boundaries is not None:
+                raise TypeError("boundaries choose the compiled script's barriers, and this query reads kept results "
+                                "through the durable plan (CLIENT-QUERY-REUSE): run it with recompute=True to "
+                                "compile it with boundaries")
+            if persist_as is not None and not single:
+                raise TypeError("persist_as is only valid when exec() names exactly one target")
+            frames = self._exec_reusing(sp, *reusing, tset, persist_as)
+            return frames[tset[0]] if single else frames
         if single and not session:
             result = self._compile(tset[0], boundaries)
             _run_statements(sp, result)
@@ -185,6 +205,44 @@ class CqlQuery:
         if single:
             return _select(sp, _object_for(tset[0], result), persist_as)
         return {t: _select(sp, _object_for(t, result), None) for t in tset}
+
+    def _reusing(self):
+        """CLIENT-QUERY-REUSE — ``(result resolver, library name)`` when this run reads kept results, else None: the
+        library declares a name (kept results are named by it, `RUN-CLIENT-TABLE-NAMES`), the run is not a recompute,
+        and the binder has a result resolver over a reusable data resolver (`CLIENT-RESOLVER-IDENTITY`)."""
+        lib = self._lib
+        if getattr(lib, "recompute", False):
+            return None
+        cql_text = getattr(lib, "cql", None)
+        name, _ = identity_of(cql_text) if cql_text else identity_of(getattr(lib, "elm", "") or "", elm=True)
+        binder = getattr(lib, "binder", None)
+        if not name or getattr(binder, "results", None) is None or not binder.reusable:
+            return None
+        return binder.results, name
+
+    def _exec_reusing(self, spark, results, library: str, targets: List[str], persist_as: Optional[str]) -> dict:
+        """CLIENT-QUERY-REUSE — the durable plan, every planned define's kept result found in one lookup through
+        ``results``, and a temporary view for each define not found, under a prefix of this run's own
+        (`EMIT-SQL-OBJECT-PREFIX`), so a frame from an earlier run keeps reading what it read. Each target's frame reads
+        its kept result's table or its view."""
+        from cql_databricks.resolvers.value_set_digest import complete_fingerprints
+        from cql_databricks.result._durable_plan import PreparedPlan
+        from cql_databricks.result.inline import reuse_plan
+
+        binder = self._lib.binder
+        # RUN-CLIENT-RESULT-IDENTITY: no object prefix, which would change the emitted SQL and so every fingerprint.
+        request = bound_request(self._lib, replace(_request(self._lib, durable=True), object_prefix=None),
+                                durable=True)
+        plan = PreparedPlan(complete_fingerprints(self._lib.provider.compile_pipeline(request),
+                                                  binder.last.terminology_tables, binder.run))
+        reuse = reuse_plan(plan, results, f"cql_{uuid.uuid4().hex[:12]}", library=library, targets=tuple(targets))
+        for _, sql in reuse.statements:
+            spark.sql(sql)
+        for define in targets:
+            if define in reuse.reused:
+                log.info("%s: read from the kept result %s", define, reuse.relations[define])
+        return {t: _select_relation(spark, reuse.relations[t] if t in reuse.reused else _quote(reuse.relations[t]),
+                                    persist_as) for t in targets}
 
     def _exec_on(self, engine: str, targets: List[str], *, boundaries, persist_as) -> dict:
         """EVALUATOR-CLIENT-EVALUATE — run on another engine (`engines.engine_for`). It compiles and keeps its
@@ -210,8 +268,9 @@ class CqlQuery:
         return {t: frames[t] for t in targets} if targets else frames
 
     def with_recompute(self, recompute: bool = True) -> "CqlQuery":
-        """RUN-RECOMPUTE-OVERRIDE — on an engine that keeps results, run every define this query names even
-        where its stored rows are current (returns a NEW handle). The local engine keeps nothing."""
+        """RUN-RECOMPUTE-OVERRIDE — run every define this query names even where a kept result matches (returns a
+        NEW handle): on an engine that keeps results, its stored rows; on the local engine, the kept results it would
+        read (`CLIENT-QUERY-REUSE`)."""
         from dataclasses import replace
         return CqlQuery(replace(self._lib, recompute=recompute), self._spark)
 
@@ -386,9 +445,17 @@ def _select(spark, target: str, persist_as: Optional[str] = None):
     """A lazy DataFrame over the (identifier-quoted) ``target`` object, so a define name with spaces reads
     correctly. ``persist_as`` (`BUILD-META`) additionally materializes it into a managed table
     ``CREATE TABLE <persist_as> AS SELECT * FROM <target>`` (dotted, each part quoted) and returns that."""
-    quoted = "`" + target.replace("`", "``") + "`"
+    return _select_relation(spark, _quote(target), persist_as)
+
+
+def _quote(identifier: str) -> str:
+    return "`" + identifier.replace("`", "``") + "`"
+
+
+def _select_relation(spark, relation: str, persist_as: Optional[str] = None):
+    """:func:`_select` over ``relation``, already quoted: a view's name or a table's three parts."""
     if persist_as is not None:
-        dest = ".".join("`" + p.replace("`", "``") + "`" for p in persist_as.split("."))
-        spark.sql(f"CREATE TABLE {dest} AS SELECT * FROM {quoted}")
+        dest = ".".join(_quote(p) for p in persist_as.split("."))
+        spark.sql(f"CREATE TABLE {dest} AS SELECT * FROM {relation}")
         return spark.table(persist_as)
-    return spark.sql(f"SELECT * FROM {quoted}")
+    return spark.sql(f"SELECT * FROM {relation}")

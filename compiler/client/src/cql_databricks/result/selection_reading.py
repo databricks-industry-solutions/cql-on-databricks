@@ -110,7 +110,6 @@ class SelectionClosure:
 
     Pass the selection ID as the derivation's eval_id and the calculation's environment name as data_source_id. The draft
     argument is an explicit presentation label, not a storage address or an authorization credential.
-    Existing derivation algorithms are shared with legacy callers during migration.
     """
 
     def __init__(self, results: MaterializedResults, *, root: str, draft: str = "") -> None:
@@ -158,6 +157,6 @@ def selection_counts(results: MaterializedResults, *, execute: Execute) -> dict[
     results.selection.validate(results._backend)
     refs = {name: PinnedRelation(outcome.result.artifact, results.selection.selection_id, results._backend.usable)
             for name, outcome in results.results.items()}
-    columns = relation_columns(results.selection.destination[0], refs.values(), execute=execute)
+    columns = relation_columns(results.selection.destination[0], refs.values())
     counts = count_relations(execute, columns, eval_id=results.selection.selection_id)
     return {name: counts[ref] for name, ref in refs.items()}

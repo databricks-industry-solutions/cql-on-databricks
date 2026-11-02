@@ -45,10 +45,6 @@ ORDINAL = "__ordinal"
 #: served result, but it is a key either way and must never be mistaken for a define's value.
 RESERVED = frozenset({SUBJECT_ID, ORDINAL, "__enzyme__row__id__", "__eval_id"})
 
-#: RUN-RESULTS-BY-EVAL — the results-store key of an evaluation set's rows (``address.EVAL_ID_COLUMN``).
-EVAL_ID = "__eval_id"
-
-
 def quote(identifier: str) -> str:
     """Backtick-quote a column or relation identifier for Spark SQL."""
     return "`" + identifier.replace("`", "``") + "`"
@@ -57,14 +53,6 @@ def quote(identifier: str) -> str:
 def literal(text: str) -> str:
     """Single-quote a string literal. Define names are author-given text and reach SQL as literals."""
     return "'" + text.replace("'", "''") + "'"
-
-
-def scoped_relation(schema: str, table: str, eval_id: str) -> str:
-    """One evaluation set's rows of a result table, as a FROM-able relation without the key
-    (`RUN-RESULTS-BY-EVAL`). Every reader of a stored result reads through this, so no read sums periods.
-    Built by the evaluator client's reference (`DEC-EVALUATOR-OPAQUE`), the one place the relation is shaped."""
-    from cql_databricks.result.reference import ResultReference
-    return ResultReference(f"{schema}.{table}", eval_id).relation()
 
 
 def value_column(columns: Iterable[str]) -> str | None:

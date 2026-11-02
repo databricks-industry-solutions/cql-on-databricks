@@ -10,11 +10,10 @@ from .calculation import PreparedCalculation, prepare_calculation
 from .inline import InlineRun, run_inline
 from .durable import (MaterializedResults, ResultsUnavailable, archive_session, materialize, open_result_set,
                       resolve_results)
-from .reference import ResultReference
 # CLIENT-RESULT-RESOLVER: kept results, found in your own schemas then the official ones, and written, in Delta.
 from .store import DeltaResultResolver, DeltaResultStore
 
-__all__ = ["ResultReference", "DeltaResultResolver", "DeltaResultStore",
+__all__ = ["DeltaResultResolver", "DeltaResultStore",
            "MaterializedResults", "ResultsUnavailable", "archive_session", "materialize", "open_result_set",
            "resolve_results",
            "PreparedCalculation", "prepare_calculation", "PlanObserver", "StepObserver", "StepRecord",

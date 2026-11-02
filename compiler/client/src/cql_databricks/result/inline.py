@@ -33,6 +33,7 @@ from cql_databricks.resolvers.interfaces import Resolvers
 from cql_databricks.resolvers.value_set_digest import complete_fingerprints
 
 from ._catalog_runtime import result_key
+from ._durable import _selected
 from ._durable_delta import table_sql
 from ._durable_plan import PreparedPlan
 from .calculation import bind_resolvers
@@ -172,17 +173,51 @@ def _compiled(inline: InlineRun, request: CompileRequest, *, compiler, resolvers
 def _reusing(inline: InlineRun, request: CompileRequest, prefix: str, *, compiler, resolvers: Resolvers,
              run) -> list[tuple[str, str]]:
     """CLIENT-RESULT-RESOLVER — the durable plan, every define's kept result found in one lookup, and one view per
-    define not found, in plan order, reading found tables and earlier views in place of the defines they read."""
+    define not found (:func:`reuse_plan`)."""
     # RUN-CLIENT-RESULT-IDENTITY: no object prefix, which would change the emitted SQL and so every fingerprint; this
     # run's views take the prefix as their names instead.
     request, bound = bind_resolvers(replace(request, durable=True, object_prefix=None), compiler=compiler,
                                     resolvers=resolvers, run=run, durable=True)
     plan = PreparedPlan(complete_fingerprints(compiler.compile_pipeline(request), bound.terminology_tables, run))
+    reuse = reuse_plan(plan, resolvers.results, prefix, library=inline.library)
+    inline.defines = reuse.defines
+    for define in reuse.defines:
+        inline._relations[define] = reuse.relations[define]
+        if define in reuse.reused:
+            inline.reused[define] = reuse.relations[define]
+    return list(reuse.statements)
+
+
+@dataclass(frozen=True)
+class Reuse:
+    """CLIENT-RESULT-RESOLVER — one run's reading of kept results. ``defines`` are the root library's planned defines,
+    in plan order; ``relations`` maps each to its relation: a kept result's quoted table for those in ``reused``,
+    else the bare name of the view ``statements`` create for it."""
+
+    defines: tuple[str, ...]
+    relations: Mapping[str, str]
+    reused: frozenset[str]
+    statements: tuple[tuple[str, str], ...]
+
+
+def reuse_plan(plan: PreparedPlan, results, prefix: str, *, library: str,
+               targets: tuple[str, ...] | None = None) -> Reuse:
+    """CLIENT-RESULT-RESOLVER — find every planned define's kept result through ``results`` in one lookup, and plan one
+    temporary view per define not found, in plan order, named ``<prefix>_<n>``, reading found tables and earlier views
+    in place of the defines it reads. ``targets`` are root defines of ``library``; given, only they and what they
+    read are planned. A target that is not in the plan raises, naming it."""
     keys = {d.key: result_key(d) for d in plan.definitions}
-    found = resolvers.results.find([keys[d.key] for d in plan.definitions if d.reusable])
+    planned = plan.definitions
+    if targets is not None:
+        root = {keys[d.key].define: d.key for d in plan.definitions if keys[d.key].library == library}
+        missing = [t for t in targets if t not in root]
+        if missing:
+            raise KeyError(f"{missing} are not defines of {library}")
+        planned = tuple(_selected(plan.definitions, [root[t] for t in targets]))
+    found = results.find([keys[d.key] for d in planned if d.reusable])
     statements: list[tuple[str, str]] = []
     relations: dict[str, _Relation] = {}
-    for i, definition in enumerate(plan.definitions):
+    for i, definition in enumerate(planned):
         kept = found.get(definition.fingerprint) if definition.reusable else None
         if kept is not None:
             relations[definition.key] = _Relation((kept.table.catalog, kept.table.schema, kept.table.table))
@@ -191,16 +226,12 @@ def _reusing(inline: InlineRun, request: CompileRequest, prefix: str, *, compile
         query = plan.query_for(definition.key, {k: relations[k] for k in definition.reads})
         statements.append((name, f"CREATE TEMPORARY VIEW {quote(name)} AS {query}"))
         relations[definition.key] = _Relation((name,))
-    root = [(d, keys[d.key]) for d in plan.definitions if keys[d.key].library == inline.library]
-    inline.defines = tuple(key.define for _, key in root)
-    for definition, key in root:
-        relation = relations[definition.key]
-        if len(relation.table) == 3:
-            inline.reused[key.define] = table_sql(relation.table)
-            inline._relations[key.define] = table_sql(relation.table)
-        else:
-            inline._relations[key.define] = relation.table[0]
-    return statements
+    root_defines = [(keys[d.key].define, relations[d.key]) for d in planned if keys[d.key].library == library]
+    return Reuse(defines=tuple(define for define, _ in root_defines),
+                 relations={define: table_sql(r.table) if len(r.table) == 3 else r.table[0]
+                            for define, r in root_defines},
+                 reused=frozenset(define for define, r in root_defines if len(r.table) == 3),
+                 statements=tuple(statements))
 
 
 @dataclass(frozen=True)

@@ -45,7 +45,7 @@ def selected():
 
 
 class Reader:
-    """SPEC-METRIC — no result discovery or legacy evaluation filtering is allowed by this transport."""
+    """SPEC-METRIC — no result discovery or evaluation-row filtering is allowed by this transport."""
 
     def __init__(self, results):
         self.results = results
@@ -103,9 +103,9 @@ def test_compiler_names_are_used_exactly_without_legacy_normalization(selected):
     """RUN-CLIENT-RESULT-SETS — definition names come from the selected compiler metadata."""
     closure = SelectionClosure(selected.results, root="Synthetic")
     libraries = closure.closure("synthetic-all", selected.results.selection.selection_id, root="Synthetic", draft="")
-    assert isinstance(locate(libraries, "Synthetic", "Output", DESTINATION[0]), PinnedRelation)
-    assert locate(libraries, "Synthetic", "output", DESTINATION[0]) is None
-    assert locate(libraries, "Other", "Output", DESTINATION[0]) is None
+    assert isinstance(locate(libraries, "Synthetic", "Output"), PinnedRelation)
+    assert locate(libraries, "Synthetic", "output") is None
+    assert locate(libraries, "Other", "Output") is None
 
 
 def test_selection_handles_do_not_obey_legacy_sdp_draft_naming(selected):
@@ -114,7 +114,7 @@ def test_selection_handles_do_not_obey_legacy_sdp_draft_naming(selected):
     libraries = closure.closure("synthetic-all", selected.results.selection.selection_id,
                                 root="Synthetic", draft="durable.opaque-selection")
     assert libraries["Synthetic"].scope.draft == "durable.opaque-selection"
-    assert isinstance(locate(libraries, "Synthetic", "Output", DESTINATION[0]), PinnedRelation)
+    assert isinstance(locate(libraries, "Synthetic", "Output"), PinnedRelation)
 
 
 @pytest.mark.parametrize("changes", [{"data_source_id": "other"}, {"eval_id": "other"},
@@ -174,16 +174,14 @@ def test_retrieve_descriptors_survive_selection_metadata_for_read_metrics(select
     assert origin["retrieve_read"]["resource_type"] == "Patient"
 
 
-def test_pins_reject_mixed_selection_legacy_and_missing_counts(selected):
+def test_pins_reject_mixed_selections_and_missing_counts(selected):
     """RUN-CLIENT-RESULT-SETS — a caller cannot silently mix selections or turn absent counts into zero."""
     artifact = selected.results.outcomes[0].result.artifact
     ref = PinnedRelation(artifact, selected.results.selection.selection_id, selected.backend.usable)
     other = replace(ref, selection_id="another-selection")
     reader = Reader(selected.results)
     with pytest.raises(ValueError, match="mix complete selections"):
-        relation_columns(DESTINATION[0], [ref, other], execute=reader)
-    with pytest.raises(ValueError, match="mix selected and legacy"):
-        relation_columns(DESTINATION[0], [ref, ("synthetic.results", "output")], execute=reader)
+        relation_columns(DESTINATION[0], [ref, other])
     with pytest.raises(ValueError, match="selection's identity"):
         result_relation(ref, "another-selection")
     with pytest.raises(ResultsUnavailable, match="every selected output"):

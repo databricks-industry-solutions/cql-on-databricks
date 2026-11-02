@@ -18,10 +18,10 @@ from cql_databricks.result.insights.extractors import (
 
 import pytest
 
-from cql_databricks.result.insights.evaluation import MetricsUnavailable, StateClosure
+from cql_databricks.result.insights.evaluation import MetricsUnavailable
 from cql_databricks.result.insights.model import PROVENANCE_MIXED, PROVENANCE_RUN
 from cql_databricks.result.insights.profile import define_profile
-from cql_databricks.result.address import evaluation_version
+from closure_fixture import CATALOG, DATA_SOURCE, SELECTION_ID, FixedClosure, library, pinned
 
 
 def _warehouse(warehouse_id, sql):
@@ -34,39 +34,9 @@ def _execute(warehouse_id="wh-1"):
     return lambda sql: _warehouse(warehouse_id, sql)
 
 
-CATALOG = "acme_results"
-DATA_SOURCE = "conformance"
+MEASURE_SCHEMA = "examplemeasure_1_0_0"
 PERIOD = ("2026-01-01", "2026-12-31")
-SUFFIX = evaluation_version(DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1])
 PATIENT_VIEW = "acme.data.patient"
-
-
-class _Row:
-    def __init__(self, id_: str, name: str, version: str) -> None:
-        self.id, self.library_name, self.library_version = id_, name, version
-
-
-class _Define:
-    def __init__(self, define_name: str, mv_name: str) -> None:
-        self.define_name, self.mv_name = define_name, mv_name
-
-
-#: The suffix of the same data source with no period stated — a different evaluation, and one the
-#: no-period test still has to find a compiled library for.
-NO_PERIOD_SUFFIX = evaluation_version(DATA_SOURCE, period_start=None, period_end=PERIOD[1])
-
-
-class _State:
-    def list_libraries(self, data_source_id: str):
-        if data_source_id != DATA_SOURCE:
-            return []
-        return [_Row("lib-measure", "ExampleMeasure", f"1.0.0_{SUFFIX}"),
-                _Row("lib-noperiod", "ExampleMeasure", f"1.0.0_{NO_PERIOD_SUFFIX}")]
-
-    def list_defines(self, library_id: str):
-        return [_Define("Initial_Population", "initial_population"),
-                _Define("Example_Results", "example_results")]
-
 
 #: The boolean population relation. Its value column is named after the DEFINE, which is why the
 #: value column is found by elimination rather than by looking for `__val`.
@@ -77,17 +47,18 @@ LIST_VALUED = {"__subject_id": "STRING", "__ordinal": "STRING", "__val": "STRUCT
 
 
 def _run(define="Initial Population", columns=BOOLEAN,
-         counts=(67, None), patient_relation=PATIENT_VIEW, rows=None, **overrides):
-    """Drive the builder with every warehouse read stubbed, capturing the SQL it issued."""
+         counts=(67, None), patient_relation=PATIENT_VIEW, rows=None, *, present=True, **overrides):
+    """Drive the builder with every warehouse read stubbed, capturing the SQL it issued.
+
+    The define's relation is pinned with ``columns``; ``present=False`` gives the selection no relation for it.
+    """
     issued: list[str] = []
+    relation_name = define.lower().replace(" ", "_")
+    relations = {define: pinned(MEASURE_SCHEMA, relation_name, columns)} if present else {}
+    closure = FixedClosure({"ExampleMeasure": library("ExampleMeasure", "1.0.0", relations)})
 
-    # Keyed off whatever relation the builder RESOLVES to rather than a hard-coded schema, so a test
-    # that changes the evaluation (the no-period case) still describes the relation it asks about.
-    def describe(_catalog, refs, **_kw):
-        return {r: columns for r in refs}
-
-    def count(_warehouse_id, cols, *, eval_id):
-        assert eval_id in (SUFFIX, NO_PERIOD_SUFFIX)  # RUN-RESULTS-BY-EVAL: one evaluation set per count
+    def count(_run_sql, cols, *, eval_id):
+        assert eval_id == SELECTION_ID  # RUN-CLIENT-RESULT-SETS: the complete selection's identity, per count
         return {r: counts for r in cols}
 
     def execute(_warehouse_id, sql):
@@ -103,13 +74,12 @@ def _run(define="Initial Population", columns=BOOLEAN,
     kwargs = dict(
         library="ExampleMeasure", version="1.0.0",
         define=define, define_library="ExampleMeasure",
-        data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
-        closure=StateClosure(_State()), patient_relation=patient_relation,
+        data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SELECTION_ID, draft="",
+        closure=closure, patient_relation=patient_relation,
         results_catalog=CATALOG, execute=_execute(),
     )
     kwargs.update(overrides)
-    with patch("cql_databricks.result.insights.profile.relation_columns", side_effect=describe), \
-         patch("cql_databricks.result.insights.profile.count_relations", side_effect=count), \
+    with patch("cql_databricks.result.insights.profile.count_relations", side_effect=count), \
          patch(f"{__name__}._warehouse", side_effect=execute):
         return define_profile(**kwargs), issued
 
@@ -242,4 +212,4 @@ def test_a_define_with_no_relation_here_raises_rather_than_returning_an_empty_pr
     """CORE-NO-SILENT-MISLOWER — "never materialized here" and "materialized and found nothing" are
     opposite claims, and an empty profile would render as the second."""
     with pytest.raises(MetricsUnavailable, match="no result relation"):
-        _run(define="Never Reached")
+        _run(define="Never Reached", present=False)

@@ -169,12 +169,12 @@ def test_overwrite_invalidates_before_compute_and_failed_refresh_is_not_reusable
     with pytest.raises(RuntimeError, match="compute failure"):
         run_on(prepared(), ("output",), destination=DESTINATION, run=run, mode="recompute")
     assert run.tables[table("base")]["cql_result_state"] == "pending"
-    # RUN-CLIENT-RESULT-OWNERSHIP: the lookup again just before the write comes first, then the invalidation.
+    # RUN-CLIENT-RESULT-OWNERSHIP: one lookup, then the invalidation, then the write.
     assert run.calls[0][0] == "SELECT current_user() AS principal"
-    assert run.calls[1][0].startswith("SELECT 'own' AS layer") and run.calls[2][0].startswith("SELECT 'own' AS layer")
-    assert run.calls[3][0].startswith("ALTER TABLE")
-    assert "'cql_result_state' = 'pending'" in run.calls[3][0]
-    assert run.calls[4][0].startswith("CREATE OR REPLACE")
+    assert run.calls[1][0].startswith("SELECT 'own' AS layer")
+    assert run.calls[2][0].startswith("ALTER TABLE")
+    assert "'cql_result_state' = 'pending'" in run.calls[2][0]
+    assert run.calls[3][0].startswith("CREATE OR REPLACE")
     with pytest.raises(ResultsUnavailable):
         run_on(prepared(), ("output",), destination=DESTINATION, run=run, read_only=True)
 
@@ -202,19 +202,19 @@ def _finished():
     return done.tables
 
 
-def test_a_result_another_run_finished_just_before_the_write_is_reused_not_written():
-    """RUN-CLIENT-RESULT-OWNERSHIP — the lookup again just before the write finds it, so nothing is written twice."""
+def test_a_run_looks_results_up_once_and_not_again_before_each_write():
+    """RUN-CLIENT-RESULT-OWNERSHIP — a result another run of this identity finished after the lookup is written again,
+    the same rows to the same table."""
     run = RacingRunner(_finished(), "base", at=2)
     outcomes = run_on(prepared(), ("output",), destination=DESTINATION, run=run)
-    assert [(o.definition, o.decision) for o in outcomes] == [("base", "reused"), ("output", "computed")]
-    assert "another run before this one wrote it" in outcomes[0].reason
-    assert [table("output") in sql for sql in run.writes] == [True]
+    assert [(o.definition, o.decision) for o in outcomes] == [("base", "computed"), ("output", "computed")]
+    assert run.lookups == 1
 
 
 def test_a_write_that_fails_because_another_run_finished_it_reuses_that_result():
     """RUN-CLIENT-RESULT-OWNERSHIP — after a failed write the result is looked up again; a collision costs duplicate
     work, never a failed run."""
-    run = RacingRunner(_finished(), "base", at=3)
+    run = RacingRunner(_finished(), "base", at=2)
     run.fail_write = table("base")
     outcomes = run_on(prepared(), ("output",), destination=DESTINATION, run=run)
     assert [(o.definition, o.decision) for o in outcomes] == [("base", "reused"), ("output", "computed")]
