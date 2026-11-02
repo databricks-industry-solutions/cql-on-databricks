@@ -19,8 +19,8 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping, Sequence
 
-from .reshape import table_name
-from .resolvers import CallSite, DataFrameRelation, DataResolver, Relation, TableRelation, VolumeRelation
+from cql_databricks.compiler.reshape import table_name
+from .interfaces import CallSite, DataFrameRelation, DataResolver, Relation, TableRelation, VolumeRelation
 
 
 class SchemaDataResolver(DataResolver):

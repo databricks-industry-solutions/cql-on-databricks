@@ -10,10 +10,15 @@ import sqlite3
 
 import pytest
 
-from cql_databricks.compiler.environment import Environment
+from dataclasses import replace
+from datetime import datetime, timezone
+
+from cql_databricks.resolvers.environment import Environment, EnvironmentResolver
 from cql_databricks.compiler.providers import LibraryGraph, DefineShape, SqlCompileResult, SqlStatement
+from cql_databricks.resolvers.interfaces import KeptResult, ResultResolver, TableRef
 from cql_databricks.data_bindings import Corpus, TaggedSchema
 from cql_databricks.result.inline import run_inline
+from test_durable_plan import plan
 
 CQL = "library Diabetes version '1'\ncontext Patient\ndefine \"Initial Population\": true"
 ROWS = {  # define -> (subject, value) rows; Numerator is true for non-diabetic p6 too
@@ -93,10 +98,11 @@ class Warehouse:
         return [r[0] for r in self.db.execute("SELECT name FROM sqlite_temp_master WHERE type = 'view'")]
 
 
-def inline(compiler=None, warehouse=None):
-    return run_inline(content=Content(), run=warehouse or Warehouse(), compiler=compiler or Compiler(),
-                      environment=ENVIRONMENT, cql=CQL, runtime_catalog="synthetic_runtime",
-                      period=("2026-01-01", "2026-12-31"))
+def inline(compiler=None, warehouse=None, results=None):
+    warehouse = warehouse or Warehouse()
+    resolvers = EnvironmentResolver(warehouse).resolvers(ENVIRONMENT, results)
+    return run_inline(content=Content(), run=warehouse, compiler=compiler or Compiler(), resolvers=resolvers,
+                      cql=CQL, runtime_catalog="synthetic_runtime", period=("2026-01-01", "2026-12-31"))
 
 
 def test_an_inline_run_binds_the_environment_and_period_under_its_own_prefix():
@@ -142,3 +148,74 @@ def test_a_cache_table_barrier_is_refused_before_anything_runs():
     with pytest.raises(ValueError, match="views only"):
         inline(Compiler(kind="cache_table"), warehouse)
     assert warehouse.views() == []
+
+
+KEPT = TableRef(catalog="synthetic", schema="results", table="synthetic_base_aaaaaaaaaaaaaaaa_0badcafe")
+
+
+class Durable(Compiler):
+    """The durable plan of a library ``Synthetic`` with ``Base`` and ``Output``, which reads ``Base``."""
+
+    def compile_pipeline(self, request):
+        self.requests.append(request)
+        return replace(plan(), datasets=[replace(d, library="Diabetes") for d in plan().datasets])
+
+
+class Kept(ResultResolver):
+    """A result resolver holding ``Base`` only, recording what it is asked."""
+
+    def __init__(self, held=None):
+        self.held, self.asked = held if held is not None else {"a" * 64: KEPT}, []
+
+    def find(self, keys, *, computed_since=None):
+        self.asked.append([k.fingerprint for k in keys])
+        return {k.fingerprint: KeptResult(table=self.held[k.fingerprint], fingerprint=k.fingerprint,
+                                          computed_at=datetime(2026, 10, 31, tzinfo=timezone.utc))
+                for k in keys if k.fingerprint in self.held}
+
+    @property
+    def destination(self):
+        return ("synthetic", "draft_results")
+
+    def holds(self, table):
+        return True
+
+
+class Recording:
+    def __init__(self):
+        self.statements = []
+
+    def __call__(self, statement, params=None):
+        self.statements.append(statement)
+        return []
+
+
+def test_an_inline_run_reads_a_kept_result_in_place_of_its_define():
+    """CLIENT-RESULT-RESOLVER — one lookup for every define; a found one is read from its table, the rest are views
+    that read it, and nothing is written or tagged."""
+    compiler, results, warehouse = Durable(), Kept(), Recording()
+    with inline(compiler, warehouse, results) as run:
+        assert compiler.requests[0].durable is True
+        assert results.asked == [["a" * 64, "b" * 64]]
+        assert run.defines == ("Base", "Output")
+        assert run.reused == {"Base": "`synthetic`.`results`.`synthetic_base_aaaaaaaaaaaaaaaa_0badcafe`"}
+        assert run.relation("Base") == run.reused["Base"]
+        (view,) = warehouse.statements
+        assert view.startswith("CREATE TEMPORARY VIEW `inline_") and run.relation("Output") in view
+        assert "WITH `base` AS (SELECT * FROM `synthetic`.`results`.`synthetic_base_aaaaaaaaaaaaaaaa_0badcafe`)" in view
+    assert warehouse.statements[-1].startswith("DROP VIEW IF EXISTS `inline_")
+    assert not any(s.startswith(("CREATE TABLE", "CREATE OR REPLACE TABLE", "ALTER", "INSERT", "DROP TABLE"))
+                   for s in warehouse.statements)
+
+
+def test_an_inline_run_with_nothing_kept_makes_a_view_per_define_in_plan_order():
+    compiler, warehouse = Durable(), Recording()
+    with inline(compiler, warehouse, Kept(held={})) as run:
+        assert run.reused == {}
+        assert len(warehouse.statements) == 2 and run.relation("Base") in warehouse.statements[1]
+
+
+def test_an_inline_run_without_a_result_resolver_compiles_the_whole_library():
+    compiler = Compiler()
+    with inline(compiler):
+        assert not compiler.requests[0].durable

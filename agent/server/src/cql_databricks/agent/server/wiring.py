@@ -12,7 +12,8 @@ from contextlib import contextmanager
 from fastmcp import FastMCP
 
 from cql_databricks.compiler.compile_shim import CqlDatabricksCompileProvider
-from cql_databricks.compiler.environment import Environment, EnvironmentResolver
+from cql_databricks.resolvers.environment import Environment, EnvironmentResolver
+from cql_databricks.resolvers.interfaces import Resolvers
 from cql_databricks.compiler.location import Location
 from cql_databricks.compiler.workspace_files import WorkspaceLibraryFiles
 from cql_databricks.compiler.resolve import resolve
@@ -64,6 +65,19 @@ def tool_environment(run) -> tuple[EnvironmentResolver, Environment]:
     return environments, environments.resolve(_environment.get())
 
 
+def _named(address: dict) -> str:
+    named = (address.get("calculation") or {}).get("environment")
+    if not named:
+        raise ValueError("the result-set address names no environment; reopen it from its calculation request")
+    return named
+
+
+def address_resolvers(environments: EnvironmentResolver, environment: Environment, address: dict) -> Resolvers:
+    """RUN-CLIENT-REQUEST-REOPEN — the resolvers a result-set address reopens through: its environment's data and
+    terminology, and the read-only result resolver addressed by the schema it was written to."""
+    return environments.resolvers(environment, environments.reader(environment, address["destination"]))
+
+
 def user_files() -> WorkspaceLibraryFiles:
     """RUN-ADDRESS-LOCATION — folder locations, read through the Workspace API as the signed-in user (`SEC-OBO`)."""
     return WorkspaceLibraryFiles(user_client)
@@ -89,11 +103,10 @@ def assistant_server(*, contributed: ToolRegistry | None = None) -> FastMCP:
     def selected(address: dict):
         """RUN-CLIENT-REQUEST-REOPEN — a selection reopens in the environment its calculation ran in."""
         run = runner()
-        named = (address.get("calculation") or {}).get("environment")
-        if not named:
-            raise ValueError("the result-set address names no environment; reopen it from its calculation request")
         environments = EnvironmentResolver(run)
-        return open_selection(address, run=run, content=environments.content(environments.get(named)),
+        environment = environments.get(_named(address))
+        return open_selection(address, run=run, resolvers=address_resolvers(environments, environment, address),
+                              content=environments.content(environment),
                               compiler=compile_provider(config.compiler_endpoint(), config.compiler_token()),
                               files=user_files())
 
@@ -144,8 +157,11 @@ def research(runner) -> Research:
         run = runner()
         catalog, schema = runtime()
         environments, environment = tool_environment(run)
+        # AGENT-INLINE-EXPERIMENTS, CLIENT-RESULT-RESOLVER: reuses the user's own and the official results, keeps
+        # nothing.
         return run_inline(content=environments.content(environment), run=run,
-                          compiler=CqlDatabricksCompileProvider(compiler()), environment=environment, cql=cql,
+                          compiler=CqlDatabricksCompileProvider(compiler()),
+                          resolvers=environments.resolvers(environment, environments.results(environment)), cql=cql,
                           runtime_catalog=catalog, runtime_schema=schema, period=period, location=location,
                           files=user_files() if location else None)
 
@@ -159,8 +175,11 @@ def research(runner) -> Research:
         run = runner()
         catalog, schema = runtime()
         environments, environment = tool_environment(run)
+        def readers(address: dict):
+            return address_resolvers(environments, environments.get(_named(address)), address)
         return SavedResultsEnv(run=run, content=environments.content(environment), compiler=compiler(),
-                               environment=environment, runtime_catalog=catalog, runtime_schema=schema,
+                               resolvers=environments.resolvers(environment, environments.results(environment)),
+                               readers=readers, runtime_catalog=catalog, runtime_schema=schema,
                                scoring_for=scoring_for, files=user_files())
 
     return Research(corpus=corpus, code_lookup=code_lookup, translate=translate, inline=inline,

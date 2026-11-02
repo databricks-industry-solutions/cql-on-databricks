@@ -141,7 +141,7 @@ def import_measures(spark, resources: Iterable[Mapping[str, Any]], *, catalog: s
     ``{valueset_id, system, code}``, with ``display`` and ``version`` optional. ``source`` names where this
     content came from, as provenance on every row. ``dry_run`` checks everything and writes nothing.
     """
-    from cql_databricks.compiler.environment import KNOWLEDGE_STORE, TERMINOLOGY_STORE
+    from cql_databricks.resolvers.environment import KNOWLEDGE_STORE, TERMINOLOGY_STORE
 
     from .load import _qualify, ensure_valueset_table, load
 

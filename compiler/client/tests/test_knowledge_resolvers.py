@@ -8,10 +8,10 @@ import tempfile
 import unittest
 
 from cql_databricks.compiler.knowledge_libraries import FolderThenKnowledge
-from cql_databricks.compiler.knowledge_resolvers import (CellsKnowledgeResolver, FolderKnowledgeResolver,
+from cql_databricks.resolvers.knowledge import (CellsKnowledgeResolver, FolderKnowledgeResolver,
                                                          TableKnowledgeResolver, library_provider)
 from cql_databricks.compiler.libraries import LibraryRef, LibraryResolutionError, LibrarySource
-from cql_databricks.compiler.resolvers import KnowledgeResolver, KnowledgeStore, Overlay
+from cql_databricks.resolvers.interfaces import KnowledgeResolver, KnowledgeStore, Overlay
 from cql_databricks.compiler.session_libraries import SessionLibraryProvider
 
 

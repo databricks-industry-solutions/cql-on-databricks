@@ -26,9 +26,10 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from .data_resolvers import SchemaDataResolver
-from .knowledge_resolvers import TableKnowledgeResolver
-from .terminology_resolvers import TableTerminologyResolver
+from .data import SchemaDataResolver
+from .knowledge import TableKnowledgeResolver
+from .interfaces import Resolvers
+from .terminology import TableTerminologyResolver
 
 #: CLIENT-ENVIRONMENT: the catalog tags that make a catalog an environment.
 NAME_TAG = "cql_databricks_environment"
@@ -162,6 +163,58 @@ class EnvironmentResolver:
         held = content if content is not None else self.content(env)
         return TableKnowledgeResolver(lambda: held, store=env.address(KNOWLEDGE_STORE),
                                       view=env.address(KNOWLEDGE), run=self._run)
+
+    def resolvers(self, env: Environment, results=None) -> Resolvers:
+        """CLIENT-RESOLVERS: a run's resolvers in ``env``: its data and terminology views, and ``results``, one of
+        :meth:`results`, :meth:`draft_store` or :meth:`official_store`, when the run keeps or reuses results."""
+        return Resolvers(data=self.data(env), terminology=self.terminology(env), results=results,
+                         environment=env.name)
+
+    def results(self, env: Environment):
+        """CLIENT-RESULT-RESOLVER: the caller's own results in ``env``'s ``draft_results``, then the official ones in its
+        ``results`` (`RUN-CLIENT-RESULT-OWNERSHIP`). Writes nothing."""
+        from cql_databricks.result.store import DeltaResultResolver
+
+        return DeltaResultResolver(self._run, own=[env.address(DRAFT_RESULTS)], official=[env.address(RESULTS)])
+
+    def reader(self, env: Environment, destination) -> object:
+        """RUN-CLIENT-REQUEST-REOPEN: the read-only result resolver a selection written to ``destination`` reopens
+        through: :meth:`results` for ``env``'s ``draft_results``, and ``env``'s official ``results`` alone for a
+        publisher's. Any other schema fails, naming it."""
+        from cql_databricks.result.store import DeltaResultResolver
+
+        destination = tuple(destination)
+        if destination == env.address(DRAFT_RESULTS):
+            return self.results(env)
+        if destination == env.address(RESULTS):
+            return DeltaResultResolver(self._run, official=[env.address(RESULTS)])
+        raise ValueError(f"{'.'.join(destination)} is not a result schema of environment {env.name!r} "
+                         f"({env.catalog}.{DRAFT_RESULTS} or {env.catalog}.{RESULTS})")
+
+    def draft_store(self, env: Environment, *, capacity: int | None = None):
+        """RUN-CLIENT-DRAFT-RESULTS: finds as :meth:`results` does and writes the caller's own results into ``env``'s
+        ``draft_results``: the Designer's and the agent's runs."""
+        from cql_databricks.result.store import DeltaResultStore
+
+        return DeltaResultStore(env.address(DRAFT_RESULTS), self._run, official=[env.address(RESULTS)],
+                                capacity=capacity)
+
+    def official_store(self, env: Environment):
+        """RUN-CLIENT-DRAFT-RESULTS: writes ``env``'s official ``results``, for its publishers, and takes only a
+        calculation of ``env``'s own content: its data and terminology views, and a library from its knowledge."""
+        from cql_databricks.result.store import DeltaResultStore
+
+        return DeltaResultStore(env.address(RESULTS), self._run, official=[env.address(RESULTS)],
+                                requires=official_identities(self, env))
+
+
+def official_identities(environments: EnvironmentResolver, env: Environment) -> dict[str, frozenset[str]]:
+    """RUN-CLIENT-DRAFT-RESULTS: the resolver identities a calculation of ``env``'s own content binds, by role: its data
+    and terminology views, and its knowledge, read by name or from its knowledge store."""
+    return {"data": frozenset({environments.data(env).identity()}),
+            "terminology": frozenset({environments.terminology(env).identity()}),
+            "knowledge": frozenset({f"{env.catalog}.{KNOWLEDGE}", f"store:{env.catalog}.{KNOWLEDGE_STORE}"})}
+
 
 
 def _supported(env: Environment) -> Environment:

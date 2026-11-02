@@ -65,7 +65,7 @@ def warehouse():
 @pytest.fixture(scope="module")
 def environment(warehouse):
     """CLIENT-ENVIRONMENT-RESOLVER: the environment the run is in, its resolver and its content, found as the caller."""
-    from cql_databricks.compiler import EnvironmentResolver
+    from cql_databricks.resolvers import EnvironmentResolver
 
     environments = EnvironmentResolver(warehouse)
     env = environments.resolve(ENVIRONMENT)
@@ -82,7 +82,7 @@ def spark():
 @pytest.fixture(scope="module")
 def scratch(warehouse, environment):
     """A schema holding copies of the environment's Patient and Condition views, and a volume, dropped after."""
-    from cql_databricks.compiler.environment import DATA
+    from cql_databricks.resolvers.environment import DATA
 
     _, env, _ = environment
     schema = f"cqlresolvers_{uuid.uuid4().hex[:10]}"
@@ -105,9 +105,9 @@ def test_an_inline_run_reads_the_environments_views(warehouse, environment):
     """CLIENT-INLINE-WAREHOUSE, BIND-PUBLISHED-VIEW: the agent's run_cql, as the caller."""
     from cql_databricks.result import run_inline
 
-    _, env, content = environment
-    with run_inline(content=content, run=warehouse, compiler=_compiler(), environment=env, cql=CQL,
-                    runtime_catalog=CATALOG, period=("2026-01-01", "2026-12-31")) as run:
+    environments, env, content = environment
+    with run_inline(content=content, run=warehouse, compiler=_compiler(), resolvers=environments.resolvers(env),
+                    cql=CQL, runtime_catalog=CATALOG, period=("2026-01-01", "2026-12-31")) as run:
         counts = run.counts()
     assert counts["Initial Population"] > 0
     assert 0 < counts["Numerator"] < counts["Initial Population"]
@@ -125,16 +125,24 @@ def test_a_draft_run_is_kept_then_reused_by_its_owner(warehouse, environment):
     """RUN-CLIENT-DRAFT-RESULTS, RUN-CLIENT-RESULT-OWNERSHIP: the Designer's run, then the same run reused."""
     from cql_databricks.result import materialize, prepare_calculation
 
-    _, env, content = environment
+    environments, env, content = environment
+    resolvers = environments.resolvers(env, environments.draft_store(env))
 
     def run():
-        prepared = prepare_calculation(content=content, run=warehouse, compiler=_compiler(), environment=env,
+        prepared = prepare_calculation(content=content, run=warehouse, compiler=_compiler(), resolvers=resolvers,
                                        cql=CQL, runtime_catalog=CATALOG, period=("2026-01-01", "2026-12-31"))
-        return materialize(prepared, *prepared.targets, run=warehouse, environment=env, purpose="private")
+        return materialize(prepared, *prepared.targets, results=resolvers.results, run=warehouse)
 
     run()
     again = run()
     assert {o.decision for o in again.outcomes} == {"reused"}
+    # CLIENT-RESULT-RESOLVER: an inline run reads the kept results in place of computing them.
+    from cql_databricks.result import run_inline
+
+    with run_inline(content=content, run=warehouse, compiler=_compiler(),
+                    resolvers=environments.resolvers(env, environments.results(env)), cql=CQL,
+                    runtime_catalog=CATALOG, period=("2026-01-01", "2026-12-31")) as inline:
+        assert set(inline.reused) == set(inline.defines)
 
 
 # ------------------------------------------------------------------ Spark: each shipped data resolver
@@ -143,7 +151,7 @@ def test_a_draft_run_is_kept_then_reused_by_its_owner(warehouse, environment):
 def _exec(spark, environment, data, terminology):
     """CLIENT-RESOLVERS: ``CQL`` run with ``data`` and ``terminology``, its libraries from the environment's knowledge."""
     from cql_databricks.compiler import CqlClient
-    from cql_databricks.compiler.knowledge_resolvers import library_provider
+    from cql_databricks.resolvers.knowledge import library_provider
     from cql_databricks.compiler.resolver_binder import ResolverBinder
     from cql_databricks.data_bindings import spark_runner
 
@@ -167,7 +175,7 @@ def expected(spark, environment):
 
 
 def test_tables_answer_as_the_environment(spark, environment, scratch, expected):
-    from cql_databricks.compiler import TableDataResolver
+    from cql_databricks.resolvers import TableDataResolver
 
     environments, env, _ = environment
     tables = TableDataResolver({t: f"{scratch['schema']}.{t.lower()}" for t in TYPES})
@@ -175,7 +183,7 @@ def test_tables_answer_as_the_environment(spark, environment, scratch, expected)
 
 
 def test_dataframes_answer_as_the_environment_and_are_never_kept(spark, environment, scratch, expected):
-    from cql_databricks.compiler import DataFrameDataResolver
+    from cql_databricks.resolvers import DataFrameDataResolver
 
     environments, env, _ = environment
     frames = DataFrameDataResolver({t: spark.table(f"{scratch['schema']}.{t.lower()}") for t in TYPES})
@@ -187,8 +195,8 @@ def test_a_volume_folder_and_value_set_json_answer_as_the_environment(spark, env
     """BIND-RELATION, CLIENT-TERMINOLOGY-RESOLVER: FHIR NDJSON and a ValueSet in a volume, read with read_files."""
     from databricks.sdk import WorkspaceClient
 
-    from cql_databricks.compiler import FolderTerminologyResolver, VolumeDataResolver
-    from cql_databricks.compiler.environment import TERMINOLOGY
+    from cql_databricks.resolvers import FolderTerminologyResolver, VolumeDataResolver
+    from cql_databricks.resolvers.environment import TERMINOLOGY
 
     _, env, _ = environment
     files = WorkspaceClient().files

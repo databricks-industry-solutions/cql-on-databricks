@@ -5,7 +5,7 @@
 #   designer   designer/server/build/app  — cql_databricks_designer/ + the agent + common (COMMON-LIBRARY)
 #              + the built SPA (dist/)
 #   agent      agent/server/build/app     — cql_databricks.agent + common
-# The client (`cql_databricks.compiler`, `.data_bindings`, `.result`) arrives in the client wheel each App
+# The client (`cql_databricks.compiler`, `.data_bindings`, `.resolvers`, `.result`) arrives in the client wheel each App
 # pip-installs (BINDINGS-INTO-CLIENT, RESULT-INTO-CLIENT), so it is not staged as source.
 # The agent and common are staged INTO the payload, not installed by the App from wheels: the agent's server
 # declares cql-databricks-common, which is not on PyPI, so pip in the App cannot resolve it (found on the first

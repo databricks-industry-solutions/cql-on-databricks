@@ -90,7 +90,7 @@ print("found   :", sorted(d for d in ("data", "measures")))
 # MAGIC it is read from.
 
 # COMMAND ----------
-from cql_databricks.compiler import EnvironmentResolver
+from cql_databricks.resolvers import EnvironmentResolver
 from cql_databricks.data_bindings import spark_runner
 
 environment = EnvironmentResolver(spark_runner(spark)).default()

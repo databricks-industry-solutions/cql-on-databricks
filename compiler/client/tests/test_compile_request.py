@@ -7,7 +7,7 @@ import unittest
 
 from cql_databricks.compiler.libraries import LibrarySource
 from cql_databricks.compiler.providers import CompileRequest, RemoteProvider
-from cql_databricks.compiler.resolvers import CallSite
+from cql_databricks.resolvers.interfaces import CallSite
 
 
 class RoleRequestTest(unittest.TestCase):

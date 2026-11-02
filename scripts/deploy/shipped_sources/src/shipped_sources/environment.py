@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Iterable
 
-from cql_databricks.compiler.environment import (DATA, DATA_STORE, DEFAULT_TAG, DRAFT_RESULTS, KNOWLEDGE,
+from cql_databricks.resolvers.environment import (DATA, DATA_STORE, DEFAULT_TAG, DRAFT_RESULTS, KNOWLEDGE,
                                                   KNOWLEDGE_STORE, LAYOUT_VERSION, NAME_TAG, RESULTS, TERMINOLOGY,
                                                   TERMINOLOGY_STORE, VERSION_TAG, EnvironmentResolver)
 

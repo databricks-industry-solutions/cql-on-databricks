@@ -94,8 +94,7 @@ class ClosureSource(Protocol):
     ``eval_id`` of ``root`` (its ``draft``, or the published version when ``draft`` is ``""``) on ``data_source_id``.
 
     ``selection_reading.SelectionClosure`` supplies exact pinned references from one complete selection
-    (RUN-CLIENT-RESULT-SETS). Legacy :class:`StateClosure` and ``reading.CatalogClosure`` remain for unmigrated
-    callers. Every derivation uses the same algorithms over the explicitly selected source."""
+    (RUN-CLIENT-RESULT-SETS). Legacy :class:`StateClosure` remains as the insights tests' closure. Every derivation uses the same algorithms over the explicitly selected source."""
 
     def closure(self, data_source_id: str, eval_id: str, *, root: str, draft: str) -> dict[str, ClosureLibrary]: ...
 

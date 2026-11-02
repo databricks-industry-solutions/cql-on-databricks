@@ -232,6 +232,21 @@ and `results`, and `USE SCHEMA` and `CREATE TABLE` on `draft_results` (`DEPLOY-D
 | Each other environment's catalog | The same grants the deploy makes in the default one | Its data, value sets, libraries and results |
 | `assistant_endpoint` | `CAN QUERY` | The assistant drawer |
 
+## Official results
+
+An environment's `results` is official: every run reuses what is there, whoever wrote it, after the user's own
+results (`RUN-CLIENT-RESULT-OWNERSHIP`). So decide who may write it, and grant `CREATE TABLE` and `MODIFY` on it to
+those principals only, typically one service principal that runs your publishing Jobs through
+`EnvironmentResolver.official_store` (`RUN-CLIENT-PUBLISHED`). Two rules the client doesn't check:
+
+- A writer of `results` must read the data unfiltered. A result computed through a row filter or column mask is a
+  partial result that every reader reuses.
+- Put on the result tables the row filters and column masks of the data they derive from, so each reader sees only
+  their own rows of a shared result.
+
+The deploy makes the environment tags governed where the account allows it (`DEPLOY-ENVIRONMENT-TAG-POLICIES`), so
+only the principals it names can make a catalog an environment.
+
 Each user consents once to an App's user API scopes. Adding a scope later doesn't prompt again. Until the
 user consents again, calls that need the new scope fail. Restarting the App doesn't help.
 

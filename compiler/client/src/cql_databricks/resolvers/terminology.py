@@ -19,8 +19,8 @@ import os
 from collections.abc import Iterator, Sequence
 from typing import Any
 
-from .reshape import quote_name, table_name
-from .resolvers import (Code, CodeMatch, DataFrameRelation, PublishReport, Relation, TableRelation, TerminologyStore,
+from cql_databricks.compiler.reshape import quote_name, table_name
+from .interfaces import (Code, CodeMatch, DataFrameRelation, PublishReport, Relation, TableRelation, TerminologyStore,
                         TerminologyResolver, ValueSet, ValueSetRef, VolumeRelation)
 
 log = logging.getLogger(__name__)
@@ -129,7 +129,7 @@ class FolderTerminologyResolver(TerminologyResolver):
 
 class DataFrameTerminologyResolver(TerminologyResolver):
     """CLIENT-TERMINOLOGY-RESOLVER: value-set expansions in a DataFrame, one row per ``(valueset_id, version, system,
-    code)``, for development on Spark, as :class:`~.data_resolvers.DataFrameDataResolver` is for data. ``version`` may
+    code)``, for development on Spark, as :class:`~.data.DataFrameDataResolver` is for data. ``version`` may
     be missing, then null. ``name`` tells two in one session apart."""
 
     def __init__(self, frame, *, name: str = "dev") -> None:

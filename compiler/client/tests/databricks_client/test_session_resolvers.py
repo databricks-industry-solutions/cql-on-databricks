@@ -4,9 +4,9 @@ import unittest
 from unittest import mock
 
 import cql_databricks.compiler.zeroconfig as client_mod
-from cql_databricks.compiler import (DataFrameTerminologyResolver, FolderKnowledgeResolver, TableDataResolver,
-                                     use_resolvers)
-from cql_databricks.compiler.resolvers import DataFrameRelation
+from cql_databricks.compiler import use_resolvers
+from cql_databricks.resolvers import DataFrameTerminologyResolver, FolderKnowledgeResolver, TableDataResolver
+from cql_databricks.resolvers.interfaces import DataFrameRelation
 from cql_databricks.compiler.session_state import reset, session_resolvers
 
 from .test_client import UDF_SCHEMA, _ws

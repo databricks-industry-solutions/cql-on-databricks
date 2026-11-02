@@ -143,7 +143,7 @@ print(json.dumps(encounters["expression"], indent=2)[:600], "...")
 # COMMAND ----------
 from pyspark.sql.types import StringType, StructField, StructType
 
-from cql_databricks.compiler import DataFrameDataResolver
+from cql_databricks.resolvers import DataFrameDataResolver
 
 
 def stub(fhir_type):

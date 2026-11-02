@@ -56,11 +56,11 @@ def setup(monkeypatch):
                                     reusable=True, parameters={}))], "synthetic-compiler")
         request = {key: kwargs[key] for key in ("cql", "library", "version", "runtime_catalog",
                    "runtime_schema", "period") if key in kwargs}
-        request["environment"] = kwargs["environment"].name
+        request["environment"] = kwargs["resolvers"].environment
         request["period"] = list(request["period"])
         request["targets"] = ["Synthetic.Output"]
-        return PreparedCalculation("Synthetic", "1", kwargs["environment"].name, ("Synthetic.Output",), compiled,
-                                   request)
+        return PreparedCalculation("Synthetic", "1", kwargs["resolvers"].environment, ("Synthetic.Output",),
+                                   compiled, request)
 
     def run(sql, params=None):
         with lock:
@@ -70,17 +70,25 @@ def setup(monkeypatch):
                 return ENVIRONMENT_TAGS
             if sql == "SELECT current_user() AS principal":
                 return [{"principal": owner}]
-            if sql.startswith("SELECT g.catalog_name"):
-                # RUN-CLIENT-RESULT-OWNERSHIP: the caller's own completed results in the environment's results.
-                assert params["owner"] == owner
-                return []
             if sql.startswith("SHOW TABLES"):
                 return [dict(tableName=t[2], isTemporary=False) for t in state.tables if t[:2] == tuple(parts)]
-            if sql.startswith("SELECT t.table_catalog"):
-                return [dict(table_catalog=t[0], table_schema=t[1], table_name=t[2], table_owner=owner,
-                             tag_name=k, tag_value=v)
-                        for t, tags in state.tables.items() if t[0] == parts[0] and t[1] == params["schema"]
-                        and t[2] in json.loads(params["tables"]) for k, v in (tags.items() or [(None, None)])]
+            if sql.startswith("SELECT 'own' AS layer"):
+                # CLIENT-RESULT-RESOLVER: the caller's own tables in draft_results, then any in results.
+                rows = []
+                for branch in sql.split(" UNION ALL "):
+                    layer, index = re.search(r":(own|official)_(\d+)", branch).groups()
+                    schemas = json.loads(params[f"{layer}_{index}"])
+                    for t, tags in state.tables.items():
+                        if t[1] not in schemas:
+                            continue
+                        if layer == "own" and t[2] not in json.loads(params["names"]):
+                            continue
+                        if layer == "official" and t[2][-25:-9] not in json.loads(params["prefixes"]):
+                            continue
+                        rows += [dict(layer=layer, catalog_name=t[0], schema_name=t[1], table_name=t[2],
+                                      table_owner=owner, tag_name=k, tag_value=v)
+                                 for k, v in (tags.items() or [(None, None)])]
+                return rows
             if sql.startswith("SELECT table_name, column_name"):
                 return [dict(table_name=t[2], column_name=k, full_data_type=v)
                         for t in state.tables if t[0] == parts[0] and t[1] == params["schema"]

@@ -16,7 +16,7 @@ from typing import Any
 
 from .providers import CompileError, CompileRequest, LibraryGraph
 from .relations import BoundResolvers, ResolverError, bind, binds_by_rule
-from .resolvers import DataResolver, TerminologyResolver
+from cql_databricks.resolvers.interfaces import DataResolver, TerminologyResolver
 
 
 class ResolverBinder:

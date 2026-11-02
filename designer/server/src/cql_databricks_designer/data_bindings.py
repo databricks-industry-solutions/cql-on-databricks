@@ -11,7 +11,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 
-from cql_databricks.compiler.environment import Environment, EnvironmentResolver
+from cql_databricks.resolvers.environment import Environment, EnvironmentResolver
 from cql_databricks.compiler.libraries import LibraryFiles
 from cql_databricks.data_bindings import ContentResolver, SqlRunner
 

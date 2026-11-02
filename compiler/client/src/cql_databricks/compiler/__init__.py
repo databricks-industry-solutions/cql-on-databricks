@@ -69,15 +69,6 @@ from .reshape import FhirJson
 from .library_publish import PublishFailed, PublishRefused, PublishSummary, publish_folder_library
 # BIND-PUBLISH: an environment's published data views over tables.
 from .publish import PublishPlan, publish_data_source
-# CLIENT-RESOLVERS, CLIENT-RESOLVER-OVERLAY, BIND-RETRIEVE-REQUEST, BIND-CALL-SITE, BIND-RELATION: the four roles a run
-# reads and writes through, and the environment that holds them all (CLIENT-ENVIRONMENT).
-from .resolvers import (CallSite, Code, DataFrameRelation, DataResolver, IncludeSite, KnowledgeResolver,
-                        KnowledgeStore, Overlay, PublishReport, ResultResolver, RetrieveRequest, TableRef, TableRelation,
-                        TerminologyResolver, TerminologyStore, ValueSet, ValueSetRef, VolumeRelation)
-from .data_resolvers import DataFrameDataResolver, SchemaDataResolver, TableDataResolver, VolumeDataResolver
-from .terminology_resolvers import DataFrameTerminologyResolver, FolderTerminologyResolver, TableTerminologyResolver
-from .knowledge_resolvers import CellsKnowledgeResolver, FolderKnowledgeResolver, TableKnowledgeResolver
-from .environment import Environment, EnvironmentLookupError, EnvironmentResolver
 from .providers import (
     RELATION,
     RESOURCE,
@@ -122,15 +113,7 @@ __all__ = [
     # BIND-PUBLISH: write an environment's published data views over tables, for review or to run.
     "publish_data_source", "PublishPlan",
     "publish_folder_library", "PublishSummary", "PublishRefused", "PublishFailed",
-    # CLIENT-RESOLVERS: implement these to bring your own data, value sets or knowledge; the shipped ones; the
-    # environment resolver that is the default (CLIENT-ENVIRONMENT-RESOLVER).
-    "DataResolver", "TerminologyResolver", "TerminologyStore", "KnowledgeResolver", "KnowledgeStore",
-    "ResultResolver", "Overlay", "RetrieveRequest", "CallSite", "IncludeSite", "Code", "TableRelation",
-    "VolumeRelation", "DataFrameRelation", "ValueSetRef", "ValueSet", "PublishReport", "TableRef",
-    "SchemaDataResolver", "TableDataResolver", "VolumeDataResolver", "DataFrameDataResolver",
-    "TableTerminologyResolver", "FolderTerminologyResolver", "DataFrameTerminologyResolver",
-    "CellsKnowledgeResolver", "FolderKnowledgeResolver", "TableKnowledgeResolver",
-    "Environment", "EnvironmentResolver", "EnvironmentLookupError",
+    # CLIENT-RESOLVERS, CLIENT-PACKAGE-SPLIT: the resolvers and the environments are `cql_databricks.resolvers`.
     "CompileProvider", "RemoteProvider", "CompileRequest", "CompileError",
     "SqlCompileResult", "SqlStatement",
     # CLIENT-RESOURCE-SCHEMA: the model's `__resource` struct per FHIR type (`CqlClient.resource_schema`).

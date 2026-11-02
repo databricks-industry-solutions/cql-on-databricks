@@ -16,7 +16,7 @@ import json
 import sys
 from collections.abc import Sequence
 
-from cql_databricks.compiler.environment import DEFAULT_TAG, NAME_TAG, SUPPORTED_LAYOUTS, VERSION_TAG
+from cql_databricks.resolvers.environment import DEFAULT_TAG, NAME_TAG, SUPPORTED_LAYOUTS, VERSION_TAG
 
 #: DEPLOY-ENVIRONMENT-TAG-POLICIES — each governed key and its allowed values; none allows any value.
 POLICIES: dict[str, tuple[str, ...]] = {

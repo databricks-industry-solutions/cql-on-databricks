@@ -27,6 +27,11 @@ class ContentResolver:
         self._corpus: Corpus | None = None
         self._generation = 0
 
+    def identity(self) -> str:
+        """``<catalog>.knowledge``: what a library read by name from this content comes from
+        (`CLIENT-RESOLVER-IDENTITY`)."""
+        return f"{self.catalog}.knowledge"
+
     @property
     def generation(self) -> int:
         """Moves on every load and every ``reload()``; a cache key that never forces a load itself."""

@@ -359,8 +359,8 @@ reset(spark)
 # MAGIC **Expected output:** `types: ['Condition', 'Encounter', 'Observation', 'Patient']`.
 
 # COMMAND ----------
-from cql_databricks.compiler import (DataFrameDataResolver, DataFrameTerminologyResolver, FhirJson,
-                                     use_resolvers)
+from cql_databricks.compiler import FhirJson, use_resolvers
+from cql_databricks.resolvers import DataFrameDataResolver, DataFrameTerminologyResolver
 
 RESOURCES = [
     '{"resourceType":"Patient","id":"p1","birthDate":"1990-05-01"}',

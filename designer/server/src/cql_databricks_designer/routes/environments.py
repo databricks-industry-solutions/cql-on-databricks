@@ -13,7 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from cql_databricks.compiler.environment import Environment, EnvironmentResolver
+from cql_databricks.resolvers.environment import Environment, EnvironmentResolver
 from cql_databricks_common import config
 from cql_databricks_common.warehouse import user_session
 from cql_databricks_common.workspace import forwarded_identity

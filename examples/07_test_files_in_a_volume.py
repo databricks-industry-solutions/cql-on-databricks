@@ -100,7 +100,8 @@ print("value sets:", len(list(valueset_dir.glob("*.json"))))
 # MAGIC **Expected output:** the six types the folder holds.
 
 # COMMAND ----------
-from cql_databricks.compiler import FolderTerminologyResolver, VolumeDataResolver, use_resolvers
+from cql_databricks.compiler import use_resolvers
+from cql_databricks.resolvers import FolderTerminologyResolver, VolumeDataResolver
 
 data = VolumeDataResolver(str(fhir_dir))
 use_resolvers(data=data, terminology=FolderTerminologyResolver(str(valueset_dir)))

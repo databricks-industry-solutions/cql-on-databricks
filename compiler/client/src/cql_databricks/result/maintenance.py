@@ -20,7 +20,7 @@ from ._catalog_completion import Completion, FORMAT, NAME_RLIKE, TAGS, _literal
 from ._durable import _utc
 from ._durable_delta import table_sql
 from ._durable import _text
-from .durable import caller
+from .store import current_principal
 
 #: RUN-CLIENT-DRAFT-RESULTS — the one schema maintenance expires in.
 DRAFT_SCHEMA = "draft_results"
@@ -46,7 +46,7 @@ def _scope(run: SqlRunner, catalog: str) -> None:
     """RUN-CLIENT-MAINTENANCE — only the environment's ``draft_results``, where the maintenance principal must hold
     ``MANAGE`` (or own the schema) to drop every user's tables; never the catalog's other schemas."""
     _text(catalog, "environment catalog")
-    principal = caller(run)
+    principal = current_principal(run)
     rows = run(f"SELECT schema_owner FROM {table_sql((catalog, 'information_schema', 'schemata'))} "
                "WHERE schema_name = :schema", {"schema": DRAFT_SCHEMA})
     if len(rows) != 1:

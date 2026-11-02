@@ -12,7 +12,7 @@ import sqlite3
 import pytest
 
 from cql_databricks.agent.service import definitions, experiments
-from cql_databricks.compiler.environment import Environment
+from cql_databricks.resolvers.environment import Environment, EnvironmentResolver
 from cql_databricks.compiler.providers import DefineShape, SqlCompileResult, SqlStatement
 from cql_databricks.data_bindings import Corpus, Library, TaggedSchema
 from cql_databricks.result import run_inline
@@ -114,7 +114,8 @@ def warehouse():
 
 def inline_on(warehouse):
     def inline(cql, period, location=None):
-        return run_inline(content=Content(), run=warehouse, compiler=Compiler(), environment=ENVIRONMENT,
+        resolvers = EnvironmentResolver(warehouse).resolvers(ENVIRONMENT)
+        return run_inline(content=Content(), run=warehouse, compiler=Compiler(), resolvers=resolvers,
                           cql=cql, runtime_catalog="synthetic_runtime", period=period)
     return inline
 

@@ -98,8 +98,9 @@ reads no data.
 Each role can be replaced for a client (`CLIENT-RESOLVERS`). Pass a resolver to `connect()`:
 
 ```python
-from cql_databricks.compiler import (DataFrameDataResolver, EnvironmentResolver, FolderTerminologyResolver, Overlay,
-                                     TableDataResolver, connect)
+from cql_databricks.compiler import connect
+from cql_databricks.resolvers import (DataFrameDataResolver, EnvironmentResolver, FolderTerminologyResolver, Overlay,
+                                      TableDataResolver)
 from cql_databricks.data_bindings import spark_runner
 
 client = connect(spark, data=TableDataResolver({"Patient": "acme.silver.patient"}))
@@ -127,7 +128,8 @@ client = connect(spark, data=Overlay(DataFrameDataResolver({"Observation": obser
 `use_resolvers()` (`CLIENT-SESSION-RESOLVERS`):
 
 ```python
-from cql_databricks.compiler import FolderTerminologyResolver, VolumeDataResolver, use_resolvers
+from cql_databricks.compiler import use_resolvers
+from cql_databricks.resolvers import FolderTerminologyResolver, VolumeDataResolver
 
 use_resolvers(data=VolumeDataResolver("/Volumes/acme/dev/tests/fhir"),
               terminology=FolderTerminologyResolver("/Volumes/acme/dev/tests/valuesets"))
@@ -175,40 +177,46 @@ client.resource_schema()                       # every modeled type, keyed by ty
 
 ## Durable results
 
-`exec()` computes every time and keeps nothing. `materialize()` writes each define to a Delta table you
-own in the environment, and reuses a table when the define computes the same thing: the same SQL, parameter
-values, upstream defines, bound relations and value-set codes (`RUN-CLIENT-DURABLE`, `RUN-CLIENT-RESULT-IDENTITY`,
-`CLIENT-RESOLVER-IDENTITY`).
+`exec()` computes every time and keeps nothing. `materialize()` writes each define to a Delta table you own, and
+reuses a table when the define computes the same thing: the same SQL, parameter values, upstream defines, bound
+relations and value-set codes (`RUN-CLIENT-DURABLE`, `RUN-CLIENT-RESULT-IDENTITY`, `CLIENT-RESOLVER-IDENTITY`).
+Results are found and written through a result store you pass (`CLIENT-RESULT-RESOLVER`).
 
 ```python
-from cql_databricks.compiler import EnvironmentResolver
+from cql_databricks.resolvers import EnvironmentResolver
 from cql_databricks.data_bindings import spark_runner
-from cql_databricks.result import materialize
+from cql_databricks.result import DeltaResultStore, materialize
 
+environments = EnvironmentResolver(spark_runner(spark))
+env = environments.default()
 query = client.cql(library="HypertensionBPControl") \
               .with_measurement_period("2026-01-01", "2026-12-31")
-results = materialize(query, "Initial Population", "Numerator", spark=spark,
-                      environment=EnvironmentResolver(spark_runner(spark)).default())
+# Your own schema; official results in the environment's `results` are found first if you don't have one.
+store = DeltaResultStore(("my_catalog", "my_results"), spark=spark, official=[env.address("results")])
+results = materialize(query, "Initial Population", "Numerator", spark=spark, results=store)
 results.read("Initial Population").display()
 ```
 
-- `purpose="private"`, the default, writes the environment's `draft_results`. `purpose="published"` writes its
-  `results`, and only for a library from the environment's own knowledge bound by its own rules: CQL text, a
-  folder library, a volume, a DataFrame or a custom resolver is refused before it computes
-  (`RUN-CLIENT-DRAFT-RESULTS`).
-- A result belongs to whoever computed it. Table names carry the writer's digest, and a run reuses only tables
-  its own identity owns, in the schema it writes and in the environment's other result schema
-  (`RUN-CLIENT-RESULT-OWNERSHIP`). To share results, compute them as one service principal and grant read access.
-- Two runs of yours computing one result write the same table. Each looks the result up again just before it
-  writes, and again if its write fails, and reuses it if the other run finished it.
-- Pass `mode="recompute"` to rebuild instead of reuse.
+- A store finds each result in two places, in one lookup: your own results first, in its schemas, then the
+  environment's official ones in its `results`, whoever wrote them (`RUN-CLIENT-RESULT-OWNERSHIP`). What isn't
+  found is computed and written to the store's own schema, as you. Another user's results are never reused.
+- `results` is official by construction: whoever the implementer grants write access decides what is there. Its
+  publishers write it with `environments.official_store(env)`, which takes only a library from the environment's
+  own knowledge over its own data and terminology. CQL text, a folder library, a volume, a DataFrame or a custom
+  resolver is refused before it computes (`RUN-CLIENT-DRAFT-RESULTS`).
+- `environments.draft_store(env)` writes the environment's shared `draft_results`, as the Designer and the agent do.
+  It needs `CREATE TABLE` on that schema.
+- Table names carry the writer's digest, so two identities computing one result write two tables. Two runs of
+  yours computing one result write the same table. Each looks the result up again just before it writes, and again
+  if its write fails, and reuses it if another run finished it.
+- Pass `mode="recompute"` to rebuild instead of reuse, or `computed_since=` to pass over older results.
 - Pass `run=` with a SQL warehouse runner instead of `spark=` to run on a warehouse.
-- The client doesn't track data changes. Refresh when your data or runtime change. A value set's codes are part
-  of the identity, so an edited value set recomputes.
+- The client doesn't track data changes. A kept result is as fresh as when it was computed. A value set's codes are
+  part of the identity, so an edited value set recomputes.
 
-Tables are tagged in Unity Catalog, so a later session can find and read them (`resolve_results()`,
-`search_results()`). [calculation-architecture.md](docs/calculation-architecture.md) covers how results are stored
-and reused.
+A later session reads results back with `resolve_results(query, ..., results=resolver)`, which never computes, and
+lists a store's results with `store.search()`. [calculation-architecture.md](docs/calculation-architecture.md)
+covers how results are stored and reused.
 
 ## Inline runs on a SQL warehouse
 
@@ -218,15 +226,20 @@ It is the warehouse form of `exec()`: temporary views only, dropped when you clo
 ```python
 from cql_databricks.result import run_inline
 
-with run_inline(content=content, run=session, compiler=compiler, environment=environment,
+resolvers = environments.resolvers(env, environments.results(env))
+with run_inline(content=content, run=session, compiler=compiler, resolvers=resolvers,
                 cql=library_text, runtime_catalog="acme", period=("2026-01-01", "2026-12-31")) as run:
     run.counts()               # distinct subjects per define, as written
     run.score("proportion")    # the measure's score
+    run.reused                 # the defines read from kept results, and their tables
 ```
 
+- With a result resolver, a define already computed (yours, then the official one) is read from its table in place
+  of computing it, and only the rest become views. Without one, or over a resolver that is not reusable, nothing is
+  reused.
 - `compiler` must render barriers as views: use `CqlDatabricksCompileProvider`. A `CACHE TABLE` is refused.
 - Each run has its own view prefix, so two runs on one session never replace each other's views.
-- Includes resolve from the environment's knowledge. Its data is read as it is now; nothing is reused or tagged.
+- Includes resolve from `content`. A view reads the data as it is now; nothing is written or tagged.
 
 ## Scoring a measure
 

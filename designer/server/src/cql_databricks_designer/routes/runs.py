@@ -3,8 +3,8 @@
 The ``draft`` wire field is a presentation/cache label. The resultSet JSON body carries calculation
 request context for recompilation and tag discovery. DOC-ENVIRONMENT-PICKER, RUN-CLIENT-DRAFT-RESULTS: every run is
 in the environment the Designer has picked (None is the default), reads its data and terminology with the open
-folder's libraries over its knowledge, and writes its ``draft_results`` as the user. It reuses only the caller's own
-results (`RUN-CLIENT-RESULT-OWNERSHIP`).
+folder's libraries over its knowledge, and writes its ``draft_results`` as the user. It reuses the caller's own results
+there, then the environment's official ones in its ``results``, never another user's (`RUN-CLIENT-RESULT-OWNERSHIP`).
 APP-COMPUTE-TARGET: every request may name the SQL warehouse it runs on; none means the deployment's.
 APP-RUN-LOG: every Refresh and Automatic run, completed or failed, is handed to the background run log
 before its last frame is sent.
@@ -28,7 +28,8 @@ from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from cql_databricks.compiler.environment import DATA, Environment, EnvironmentLookupError, EnvironmentResolver
+from cql_databricks.resolvers.environment import DATA, Environment, EnvironmentLookupError, EnvironmentResolver
+from cql_databricks.resolvers.interfaces import Resolvers
 from cql_databricks.compiler.libraries import LibraryFiles
 from cql_databricks.compiler.resolve import ResolutionError
 from cql_databricks.data_bindings import ContentResolver, StatementObserver, WarehouseSession
@@ -202,6 +203,13 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
         environment: Environment
         content: ContentResolver
         files: LibraryFiles
+        environments: EnvironmentResolver
+
+        def resolvers(self, *, capacity: int | None = None) -> Resolvers:
+            """CLIENT-RESOLVERS, RUN-CLIENT-DRAFT-RESULTS — the environment's data and terminology, and a store that
+            finds the user's own results, then the official ones, and writes into its ``draft_results``."""
+            return self.environments.resolvers(self.environment,
+                                               self.environments.draft_store(self.environment, capacity=capacity))
 
         @property
         def patient(self) -> str:
@@ -217,7 +225,7 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
         run = env.user_session(warehouse).observed(observer)
         environments = EnvironmentResolver(run)
         picked = environments.resolve(environment)
-        return Acting(env.settings(), run.rows, run, picked, environments.content(picked), env.files())
+        return Acting(env.settings(), run.rows, run, picked, environments.content(picked), env.files(), environments)
 
     def counts(results, root, handle, execute):
         counted = selection_counts(results, execute=execute)
@@ -243,17 +251,18 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
         period = (overrides.get("periodStart"), overrides.get("periodEnd"))
         yield {"stage": "compiling", "message": "Resolving and compiling the CQL"}
         compile_started = datetime.now(timezone.utc)
+        resolvers = a.resolvers(capacity=a.settings.capacity)
         prepared = prepare_calculation(content=a.content, run=a.run, compiler=compiler,
-            environment=a.environment, period=period, cql=req.cql,
+            resolvers=resolvers, period=period, cql=req.cql,
             runtime_catalog=a.settings.runtime_catalog, runtime_schema=a.settings.runtime_schema,
             targets=tuple(req.defines) if req.defines is not None else None,
             location=req.location, files=a.files)
         recorder.compiled(prepared.library, prepared.version, compile_started, a.environment.name)
         session = _session(instance, prepared.library, prepared.version, prepared.population, period, req.location)
         yield {"stage": "executing", "status": "running", "message": "Computing or reusing completed results"}
-        # RUN-CLIENT-DRAFT-RESULTS: a Designer run writes the environment's draft_results, as the user.
-        results = materialize(prepared, *prepared.targets, run=a.run, environment=a.environment, purpose="private",
-                              session_id=session, capacity=a.settings.capacity,
+        # RUN-CLIENT-DRAFT-RESULTS: a Designer run reuses the user's own and the official results, and writes the
+        # rest to the environment's draft_results, as the user.
+        results = materialize(prepared, *prepared.targets, results=resolvers.results, run=a.run, session_id=session,
                               mode="recompute" if req.recompute else "skip_if_computed",
                               computed_since=req.computed_since, on_plan=progress.planned, on_start=progress.started,
                               on_step=lambda step: (recorder.step(step), progress.step(step)))
@@ -346,7 +355,8 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
                 "results": last["results"], "outcomes": last["outcomes"], "resultSet": last["resultSet"]}
 
     def evaluation(a, name, version, handle, period, address):
-        results = open_selection(address, run=a.run, content=a.content, compiler=compiler, files=a.files)
+        results = open_selection(address, run=a.run, resolvers=a.resolvers(), content=a.content, compiler=compiler,
+                                 files=a.files)
         request = results.request
         if not request or list(period) != request["period"]:
             raise ResultsUnavailable("complete selection does not match the requested measurement period")
@@ -383,22 +393,23 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
     def reopen(req: ReopenRequest, x_designer_instance: str | None = Header(default=None)):
         """RUN-CLIENT-REQUEST-REOPEN — the caller's own results for exactly this calculation, read-only.
 
-        Never computes and never reads another identity's results (`RUN-CLIENT-RESULT-OWNERSHIP`): it reads the
-        caller's own, in the environment's ``draft_results`` and then its ``results``. A miss is an answer
+        Never computes. It reads the caller's own results in the environment's ``draft_results``, then the official
+        ones in its ``results`` (`RUN-CLIENT-RESULT-OWNERSHIP`); never another user's. A miss is an answer
         (``found: false``), not an error.
         """
         try:
             a = acting(req.warehouse_id, req.environment)
             period = (req.period_start, req.period_end)
+            resolvers = a.resolvers()
             prepared = prepare_calculation(content=a.content, run=a.run, compiler=compiler,
-                environment=a.environment, period=period, cql=req.cql,
+                resolvers=resolvers, period=period, cql=req.cql,
                 runtime_catalog=a.settings.runtime_catalog, runtime_schema=a.settings.runtime_schema,
                 location=req.location, files=a.files)
             instance = x_designer_instance or ""
             session = _session(instance, prepared.library, prepared.version, prepared.population, period,
                                req.location)
-            results = open_result_set(prepared, *prepared.targets, run=a.run, environment=a.environment,
-                                      session_id=session, purpose="private")
+            results = open_result_set(prepared, *prepared.targets, results=resolvers.results, run=a.run,
+                                      session_id=session)
             return {"found": True, **completed(results, prepared, instance, a)}
         except ResultsUnavailable as error:
             return {"found": False, "reason": str(error)}

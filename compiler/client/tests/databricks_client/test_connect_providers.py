@@ -5,7 +5,7 @@ import unittest
 from unittest import mock
 
 import cql_databricks.compiler.zeroconfig as client_mod
-from cql_databricks.compiler.data_resolvers import TableDataResolver
+from cql_databricks.resolvers.data import TableDataResolver
 from cql_databricks.compiler.resolver_binder import ResolverBinder
 
 from .test_runtime import _jvm_backed_spark
@@ -26,7 +26,7 @@ class ConnectResolversTest(unittest.TestCase):
 
     def test_the_environment_is_found_on_first_compile_never_at_connect(self):
         """CLIENT-ENVIRONMENT: building a client touches no workspace; the default, unless one is named."""
-        with mock.patch("cql_databricks.compiler.environment.EnvironmentResolver") as resolver:
+        with mock.patch("cql_databricks.resolvers.environment.EnvironmentResolver") as resolver:
             client = self._connect()
             self.assertIsInstance(client._binder, ResolverBinder)
             resolver.assert_not_called()

@@ -18,8 +18,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import reshape
-from .resolvers import (CallSite, DataFrameRelation, DataResolver, Relation, TableRelation, TerminologyResolver,
-                        VolumeRelation, layers)
+from cql_databricks.resolvers.interfaces import (CallSite, DataFrameRelation, DataResolver, Relation, TableRelation,
+                                                 TerminologyResolver, VolumeRelation, layers)
 
 log = logging.getLogger(__name__)
 

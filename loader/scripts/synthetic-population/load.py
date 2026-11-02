@@ -112,7 +112,7 @@ def load(*, profile: str | None, catalog: str, ndjson_dir: str, cohort: str, use
     cohort, then its views, tags and grants. Returns per-type row counts (of the whole population)."""
     from pathlib import Path
 
-    from cql_databricks.compiler.environment import DATA_STORE
+    from cql_databricks.resolvers.environment import DATA_STORE
     from cql_databricks.data_bindings.runner import spark_runner
     from cql_databricks_common.workspace import service_principal_client
     from shipped_sources.environment import build, quote

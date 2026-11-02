@@ -48,7 +48,7 @@ def resource_ddl(fhir_type: str) -> str:
 def store_table(catalog: str, fhir_type: str) -> str:
     """DATA-ENVIRONMENT-LAYOUT — ``fhir_type``'s store table, named for the type in lower case."""
     from .environment import quote
-    from cql_databricks.compiler.environment import DATA_STORE
+    from cql_databricks.resolvers.environment import DATA_STORE
     return quote(catalog, DATA_STORE, fhir_type.lower())
 
 

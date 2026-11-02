@@ -28,6 +28,8 @@ from ._durable_delta import table_sql
 log = logging.getLogger(__name__)
 #: RUN-CLIENT-RESULT-IDENTITY — v2 tables carry the retired hashes and are never reused.
 FORMAT = "cql-catalog-result-v3"
+#: The ``cql.durable.format`` table property of every result table.
+TABLE_FORMAT = "cql-catalog-delta-v1"
 #: RUN-CLIENT-TABLE-NAMES — fingerprint digits in a table name. The full fingerprint is in the
 #: ``cql_fingerprint`` tag and must start with these digits, so a name collision fails loudly.
 NAME_DIGITS = 16
@@ -120,119 +122,6 @@ class Completion:
             raise ValueError(f"incomplete successful result tags: {sorted(missing)}")
         return cls(table=table, fingerprint=tags[TAG_FINGERPRINT],
                    computed_at=datetime.fromisoformat(tags[TAG_COMPUTED_AT]))
-
-
-@dataclass(frozen=True)
-class CatalogTable:
-    """RUN-CLIENT-CATALOG-CHECKPOINTS — existence is separate from successful completion."""
-
-    table: tuple[str, str, str]
-    completion: Completion | None
-
-
-def discover(run: SqlRunner, destination: tuple[str, str],
-             tables: Mapping[str, str], *, owner: str) -> dict[str, CatalogTable]:
-    """RUN-CLIENT-CATALOG-CHECKPOINTS — one bounded UC query for existing, pending and complete tables.
-
-    ``tables`` maps each fingerprint to its table name (``result_table_name``). A table found under one of those names
-    that ``owner`` does not own fails: its name carries ``owner``'s digest, so another identity made it, and it is
-    neither reused nor written over (`RUN-CLIENT-RESULT-OWNERSHIP`).
-    """
-    if (not isinstance(destination, tuple) or len(destination) != 2
-            or any(not isinstance(part, str) or not part.strip() for part in destination)):
-        raise ValueError("destination must be an explicit (catalog, schema) tuple")
-    for fingerprint, name in tables.items():
-        _digest(fingerprint, "fingerprint")
-        if not NAME_PATTERN.fullmatch(name) or name[-(NAME_DIGITS + WRITER_DIGITS + 2):-(WRITER_DIGITS + 1)] \
-                != "_" + fingerprint[:NAME_DIGITS]:
-            raise ValueError("result table name does not match its fingerprint")
-    if not tables:
-        return {}
-    by_name = {name: fingerprint for fingerprint, name in tables.items()}
-    if len(by_name) != len(tables):
-        raise ValueError("two calculations map to one result table name")
-    names = set(by_name)
-    payload = json.dumps(sorted(names))
-    if len(payload.encode("utf-8")) > 900_000:
-        raise ValueError("catalog lookup exceeds the statement parameter budget")
-    tables = table_sql((destination[0], "information_schema", "tables"))
-    tags = table_sql((destination[0], "information_schema", "table_tags"))
-    rows = run(
-        "SELECT t.table_catalog, t.table_schema, t.table_name, t.table_owner, g.tag_name, g.tag_value "
-        f"FROM {tables} t LEFT JOIN {tags} g ON g.catalog_name = t.table_catalog "
-        "AND g.schema_name = t.table_schema AND g.table_name = t.table_name "
-        f"AND g.tag_name IN ({', '.join(_literal(tag) for tag in TAGS)}) "
-        "WHERE t.table_schema = :schema "
-        "AND t.table_name IN (SELECT explode(from_json(:tables, 'ARRAY<STRING>')))",
-        {"schema": destination[1], "tables": payload})
-    found: dict[tuple[str, str, str], dict[str, str]] = {}
-    for row in rows:
-        table = (row["table_catalog"], row["table_schema"], row["table_name"])
-        if table[:2] != destination or table[2] not in names:
-            raise ValueError("catalog lookup returned an unrequested result table")
-        if row["table_owner"] != owner:
-            raise PermissionError(f"{'.'.join(table)} is named for your results but owned by {row['table_owner']}; "
-                                  "it is not reused or replaced (RUN-CLIENT-RESULT-OWNERSHIP)")
-        values = found.setdefault(table, {})
-        tag = row["tag_name"]
-        if tag is not None:
-            if tag not in TAGS or tag in values:
-                raise ValueError("catalog lookup returned an unexpected or duplicate result tag")
-            values[tag] = row["tag_value"]
-    return {by_name[table[2]]: CatalogTable(table, Completion.from_tags(table, values))
-            for table, values in found.items()}
-
-
-def discover_in_sources(run: SqlRunner, sources: Sequence[tuple[str, str]],
-                        names: Sequence[str], *, owner: str) -> dict[str, list[Completion]]:
-    """RUN-CLIENT-RESULT-OWNERSHIP, RUN-CLIENT-RESULT-IDENTITY — completed results named ``names`` that ``owner``
-    owns in the ``(catalog, schema)`` ``sources``, in one statement, earliest source first.
-
-    A table's name is its calculation's identity and its writer (``result_table_name``), so the caller's result in
-    the environment's other result schema is found by the same name as in the destination. Only tables tagged
-    complete and owned by ``owner`` are returned: no identity reuses another's result (`DEC-RESULT-SCOPE`). Each
-    catalog has its own ``information_schema``, so the statement is one branch per catalog under ``UNION ALL``.
-    """
-    sources = list(dict.fromkeys(sources))
-    for source in sources:
-        if (not isinstance(source, tuple) or len(source) != 2
-                or any(not isinstance(part, str) or not part.strip() for part in source)):
-            raise ValueError("result sources must be explicit (catalog, schema) tuples")
-    for name in names:
-        if not isinstance(name, str) or not NAME_PATTERN.fullmatch(name):
-            raise ValueError("result table name does not end in calculation fingerprint and writer digits")
-    if not sources or not names:
-        return {}
-    params = {"tables": json.dumps(sorted(set(names))), "owner": owner}
-    branches = []
-    for i, catalog in enumerate(dict.fromkeys(catalog for catalog, _ in sources)):
-        params[f"schemas_{i}"] = json.dumps(sorted(schema for c, schema in sources if c == catalog))
-        tags = table_sql((catalog, "information_schema", "table_tags"))
-        owned = table_sql((catalog, "information_schema", "tables"))
-        branches.append(
-            "SELECT g.catalog_name, g.schema_name, g.table_name, g.tag_name, g.tag_value "
-            f"FROM {tags} g JOIN {owned} t ON t.table_catalog = g.catalog_name AND t.table_schema = g.schema_name "
-            "AND t.table_name = g.table_name AND t.table_owner = :owner "
-            f"WHERE g.schema_name IN (SELECT explode(from_json(:schemas_{i}, 'ARRAY<STRING>'))) "
-            "AND g.table_name IN (SELECT explode(from_json(:tables, 'ARRAY<STRING>'))) "
-            f"AND g.tag_name IN ({', '.join(_literal(tag) for tag in TAGS)})")
-    found: dict[tuple[str, str, str], dict[str, str]] = {}
-    for row in run(" UNION ALL ".join(branches), params):
-        table = (row["catalog_name"], row["schema_name"], row["table_name"])
-        if table[:2] not in sources or table[2] not in names:
-            raise ValueError("result source lookup returned a table outside the requested scopes")
-        values = found.setdefault(table, {})
-        if row["tag_name"] not in TAGS or row["tag_name"] in values:
-            raise ValueError("result source lookup returned an unexpected or duplicate result tag")
-        values[row["tag_name"]] = row["tag_value"]
-    out: dict[str, list[Completion]] = {}
-    for table, values in found.items():
-        completion = Completion.from_tags(table, values)
-        if completion is not None:
-            out.setdefault(table[2], []).append(completion)
-    for candidates in out.values():
-        candidates.sort(key=lambda c: sources.index(c.table[:2]))
-    return out
 
 
 def _set_tags(run: SqlRunner, table: tuple[str, str, str], tags: Mapping[str, str]) -> None:

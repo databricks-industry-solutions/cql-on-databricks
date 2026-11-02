@@ -23,7 +23,7 @@ from typing import Dict, List, Mapping, Optional
 
 from cql_databricks.data_bindings.runner import SqlRunner, spark_runner
 
-from .environment import DATA
+from cql_databricks.resolvers.environment import DATA
 from .reshape import SchemaIssue, model_client, quote_name, require_ok, structured_sql, table_name
 
 _CATALOG_NAME = re.compile(r"^[^./`\s]+$")

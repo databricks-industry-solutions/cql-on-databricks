@@ -30,42 +30,52 @@ The compiler computes each definition's fingerprint, a SHA-256 over (`RUN-CLIENT
 - the define's emitted SQL;
 - the values of the parameters it uses;
 - the fingerprints of the defines it reads;
-- the address (`catalog.schema`) of the bound data source.
+- the identities of the data and terminology resolvers bound.
 
-Nothing else is part of it: not the destination, your identity, the compiler version, the library and define
-names or a population label (`DEC-RESULT-IDENTITY`). So one calculation has one fingerprint, and one table
-name, in every schema and for every user. A durable compile that retrieves data must bind a tagged data
-source; an explicit per-type binding or the session mount fails.
+The client then folds in a digest of the codes of each value set the define uses, read in one query
+(`CLIENT-RESOLVER-IDENTITY`). Nothing else is part of it: not the destination, your identity, the compiler version,
+the library and define names or a population label (`DEC-RESULT-IDENTITY`). A durable compile that retrieves data
+must bind a reusable data resolver.
 
-In `skip_if_computed` mode, the default, a completed table with the define's name is reused when its
-`cql_fingerprint` tag matches the whole fingerprint. A table with that name and another fingerprint fails
-loud. The results it read are not checked: freshness is the data source's. A non-deterministic define, and
-every define that reads one, is never reused. `recompute` mode always computes. `computed_since` sets a
-cutoff: a result completed before it is recomputed.
+In `skip_if_computed` mode, the default, a completed result whose `cql_fingerprint` tag matches the whole
+fingerprint is reused. A table with the name and another fingerprint fails loud. The results it read are not
+checked: freshness is the data source's. A non-deterministic define, and every define that reads one, is never
+reused. `recompute` mode always computes. `computed_since` sets a cutoff: a result completed before it is passed
+over.
 
 The client doesn't watch your source data. Refresh when your data, value sets or runtime functions change
 (`RUN-CLIENT-REFRESH`).
 
+## Where results are found and written
+
+Every result is found, and written, through the result resolver or store you pass (`CLIENT-RESULT-RESOLVER`). The
+shipped one, `DeltaResultStore`, finds each result in one lookup, in two layers (`RUN-CLIENT-RESULT-OWNERSHIP`):
+
+1. **Your own**, in the store's destination and any other own schemas: tables named with your digest that you own.
+2. **The official ones**, in the environment's `results`: anyone's. That schema is trusted by construction; the
+   implementer decides who may write it (`DEC-RESULT-SCOPE`).
+
+What isn't found is computed and written to the destination, as you. A `DeltaResultResolver` finds the same way and
+writes nothing; `resolve_results()` and inline runs read through one and never compute on a miss.
+
+| Store | Destination | Who uses it |
+|---|---|---|
+| `EnvironmentResolver.draft_store(env)` | the environment's `draft_results`, shared, each user's tables their own | the Designer and the agent |
+| `EnvironmentResolver.official_store(env)` | the environment's `results`, only for the environment's own content | the implementer's publishing Jobs |
+| `DeltaResultStore((catalog, schema), ...)` | a schema of your own | notebooks and Jobs |
+
 ## Tables and tags
 
-A result table is named `<library>_<define>_<16 hex digits of the fingerprint>`
-(`RUN-CLIENT-TABLE-NAMES`). The schema says whose results they are.
+A result table is named `<library>_<define>_<16 hex digits of the fingerprint>_<8 hex digits of the writer's
+digest>` (`RUN-CLIENT-TABLE-NAMES`), so two identities computing one calculation write two tables.
 
 Each table carries four Unity Catalog tags, never CQL, parameters or patient values: `cql_result_format`,
 `cql_result_state`, `cql_computed_at` and `cql_fingerprint`. A table is marked complete only after its write
-succeeds. Later sessions, and other users with grants, find a result by its table name and these tags,
-in the destination and then in each `catalog.schema` result scope (`RUN-CLIENT-CATALOG-CHECKPOINTS`,
-`CLIENT-DISCOVERY-SCOPE`).
+succeeds, and marked pending before it is replaced (`RUN-CLIENT-CATALOG-CHECKPOINTS`).
 
-## Private and shared results
-
-- Private: a schema owned by one user. `ensure_private_destination()` creates it in the catalog an admin
-  provides (`RUN-CLIENT-PRIVATE-PROVISIONING`).
-- Published: a Job writes to a shared schema under its run-as identity. Readers call `resolve_results()`,
-  which reads with their own grants and never computes on a miss (`RUN-CLIENT-PUBLISHED`).
-
-The caller serializes overwrites of a result table. There is no distributed lock.
+Two runs of yours computing one result write the same table. Each looks the result up again just before it writes,
+and again if its write fails, and reuses it if the other run finished it. There is no distributed lock.
 
 ## Cleanup
 
-Results stay until removed. `RUN-CLIENT-MAINTENANCE` describes the maintenance Job for private results.
+Results stay until removed. `RUN-CLIENT-MAINTENANCE` describes the maintenance Job that expires `draft_results`.

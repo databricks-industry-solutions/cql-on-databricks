@@ -8,13 +8,13 @@ import os
 import tempfile
 import unittest
 
-from cql_databricks.compiler.data_resolvers import (DataFrameDataResolver, SchemaDataResolver, TableDataResolver,
+from cql_databricks.resolvers.data import (DataFrameDataResolver, SchemaDataResolver, TableDataResolver,
                                                     VolumeDataResolver)
-from cql_databricks.compiler.environment import (DEFAULT_TAG, NAME_TAG, VERSION_TAG, Environment,
+from cql_databricks.resolvers.environment import (DEFAULT_TAG, NAME_TAG, VERSION_TAG, Environment,
                                                  EnvironmentLookupError, EnvironmentResolver)
-from cql_databricks.compiler.resolvers import (CallSite, Code, CodeMatch, DataFrameRelation, RetrieveRequest,
+from cql_databricks.resolvers.interfaces import (CallSite, Code, CodeMatch, DataFrameRelation, RetrieveRequest,
                                                TableRelation, ValueSet, VolumeRelation)
-from cql_databricks.compiler.terminology_resolvers import (FolderTerminologyResolver, TableTerminologyResolver,
+from cql_databricks.resolvers.terminology import (FolderTerminologyResolver, TableTerminologyResolver,
                                                            parse_value_set)
 
 

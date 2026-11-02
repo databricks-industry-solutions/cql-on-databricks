@@ -9,7 +9,7 @@ import sys
 import unittest
 
 from cql_databricks.compiler.libraries import LibraryRef, LibrarySource
-from cql_databricks.compiler.resolvers import (CallSite, Code, DataFrameRelation, DataResolver, KnowledgeResolver,
+from cql_databricks.resolvers.interfaces import (CallSite, Code, DataFrameRelation, DataResolver, KnowledgeResolver,
                                                Layered, Overlay, RetrieveRequest, TableRelation, TerminologyResolver,
                                                TerminologyStore, ValueSetRef, VolumeRelation, layers)
 
@@ -183,7 +183,7 @@ class OverlayTest(unittest.TestCase):
 class CoreNeutralityTest(unittest.TestCase):
     def test_resolvers_import_no_platform_sdk_or_spark(self):
         """CLIENT-RESOLVERS: the interfaces live in the client core, which imports no platform SDK."""
-        code = ("import sys; import cql_databricks.compiler.resolvers, cql_databricks.compiler.environment; "
+        code = ("import sys; import cql_databricks.resolvers.interfaces, cql_databricks.resolvers.environment; "
                 "bad = [m for m in sys.modules if m.split('.')[0] in ('databricks', 'pyspark')]; "
                 "print(','.join(bad)); sys.exit(1 if bad else 0)")
         done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)

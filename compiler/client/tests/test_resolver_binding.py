@@ -9,13 +9,13 @@ from types import SimpleNamespace
 from pyspark.sql.types import StringType, StructField, StructType
 
 from cql_databricks.compiler.binding import bound_request
-from cql_databricks.compiler.data_resolvers import DataFrameDataResolver, SchemaDataResolver, TableDataResolver
+from cql_databricks.resolvers.data import DataFrameDataResolver, SchemaDataResolver, TableDataResolver
 from cql_databricks.compiler.providers import CompileRequest, LibraryGraph, ResourceSchema
 from cql_databricks.compiler.relations import VIEW_PREFIX, ResolverError, bind
 from cql_databricks.compiler.resolver_binder import ResolverBinder
-from cql_databricks.compiler.resolvers import (CallSite, DataFrameRelation, DataResolver, Overlay, RetrieveRequest,
+from cql_databricks.resolvers.interfaces import (CallSite, DataFrameRelation, DataResolver, Overlay, RetrieveRequest,
                                                TableRelation, TerminologyResolver, ValueSetRef, VolumeRelation)
-from cql_databricks.compiler.terminology_resolvers import FolderTerminologyResolver, TableTerminologyResolver
+from cql_databricks.resolvers.terminology import FolderTerminologyResolver, TableTerminologyResolver
 
 PATIENT = ResourceSchema(fhir_type="Patient",
                          struct=StructType([StructField(n, StringType()) for n in

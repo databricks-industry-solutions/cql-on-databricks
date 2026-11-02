@@ -31,7 +31,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from cql_databricks.compiler.environment import KNOWLEDGE, KNOWLEDGE_STORE, EnvironmentLookupError, EnvironmentResolver
+from cql_databricks.resolvers.environment import KNOWLEDGE, KNOWLEDGE_STORE, EnvironmentLookupError, EnvironmentResolver
 from cql_databricks.compiler.folder_content import folder_library_resource, folder_measure
 from cql_databricks.compiler.libraries import with_identity
 from cql_databricks.compiler.library_publish import PublishFailed, PublishRefused, publish_folder_library

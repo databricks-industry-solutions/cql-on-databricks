@@ -16,8 +16,8 @@ import json
 from collections.abc import Sequence
 from dataclasses import replace
 
-from .providers import PipelinePlan
-from .reshape import quote_name
+from cql_databricks.compiler.providers import PipelinePlan
+from cql_databricks.compiler.reshape import quote_name
 
 
 def value_set_digests(run, tables: Sequence[str], ids: Sequence[str]) -> dict[str, str]:

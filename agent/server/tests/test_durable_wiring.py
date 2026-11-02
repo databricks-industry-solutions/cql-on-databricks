@@ -55,8 +55,11 @@ def test_result_tools_open_explicit_selection_and_query_as_the_same_reader(monke
         assert warehouse == "synthetic-warehouse"
         return runner
 
-    def open_selected(given, *, run, content, compiler, files):
+    def open_selected(given, *, run, resolvers, content, compiler, files):
         assert run is runner and given == address
+        # RUN-CLIENT-REQUEST-REOPEN — read-only, addressed by the schema the selection was written to.
+        assert resolvers.environment == "synthetic" and resolvers.results.destination == ("synthetic", "results")
+        assert not hasattr(resolvers.results, "writes")
         # CLIENT-ENVIRONMENT — the environment's own content, by its standard schemas; no catalog scopes.
         assert content.catalog == "synthetic"
         assert compiler is not None
@@ -94,10 +97,14 @@ def test_the_tools_run_in_the_default_environment_or_the_one_the_drawer_passes(m
     Designer's drawer binds its own around the call (`DOC-ENVIRONMENT-PICKER`)."""
     monkeypatch.setattr(wiring.config, "runtime_catalog", lambda: "synthetic")
     research = wiring.research(lambda: Runner())
-    assert research.saved().environment.name == "synthetic"
+    assert research.saved().resolvers.environment == "synthetic"
     with wiring.in_environment("other"):
-        assert research.saved().environment.catalog == "other_cat"
-    assert research.saved().environment.name == "synthetic"
+        saved = research.saved()
+        assert saved.resolvers.data.identity() == "other_cat.data"
+        # RUN-CLIENT-RESULT-OWNERSHIP — the user's own draft results, then the official ones; never written.
+        assert (saved.resolvers.results.own, saved.resolvers.results.official) == (
+            (("other_cat", "draft_results"),), (("other_cat", "results"),))
+    assert research.saved().resolvers.environment == "synthetic"
 
 
 def test_the_drawer_environment_reaches_a_tool_dispatched_in_process(monkeypatch):

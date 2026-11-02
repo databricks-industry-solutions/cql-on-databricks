@@ -19,8 +19,15 @@ from cql_databricks.result.insights.reads import read_metrics
 from cql_databricks.result.results import PinnedRelation, count_relations, relation_columns, result_relation
 from cql_databricks.result.selection_reading import (SelectedOutput, SelectionClosure, open_selection,
                                                         selection_address, selection_counts)
-from test_catalog_runtime import DESTINATION, DRAFT, ENVIRONMENT, CatalogRunner
+from cql_databricks.resolvers.interfaces import Resolvers
+from cql_databricks.result.store import DeltaResultResolver, DeltaResultStore
+from test_catalog_runtime import DESTINATION, DRAFT, CatalogRunner
 from test_durable_plan import plan
+
+
+def readers(selected):
+    """CLIENT-RESOLVERS — the reader's resolvers; only the result resolver is read when the query is given."""
+    return Resolvers(data=None, terminology=None, results=selected.settings["results"])
 
 
 @pytest.fixture
@@ -31,7 +38,7 @@ def selected():
     runner.columns = [("__subject_id", "string"), ("__val", "boolean")]
     compiled = plan()
     query = SimpleNamespace(compile_pipeline=lambda **kwargs: compiled, request={"environment": "synthetic-all"})
-    settings = dict(run=runner, environment=ENVIRONMENT, session_id="session")
+    settings = dict(run=runner, results=DeltaResultStore(DRAFT, runner, official=[DESTINATION]), session_id="session")
     results = durable.materialize(query, "Base", "Output", **settings)
     return SimpleNamespace(results=results, backend=results._backend, compiled=compiled, runner=runner,
                            query=query, settings=settings)
@@ -189,7 +196,7 @@ def test_portable_locator_opens_only_its_complete_selection_as_the_reader(select
     address = selection_address(selected.results)
     assert "publisher" not in address and "population" not in address
     selected.runner.calls.clear()
-    reopened = open_selection(address, query=selected.query, run=selected.runner)
+    reopened = open_selection(address, query=selected.query, run=selected.runner, resolvers=readers(selected))
     assert reopened.selection.selection_id == selected.results.selection.selection_id
     output = SelectedOutput(reopened, "Output")
     assert "VERSION AS OF" not in output.relation()
@@ -204,19 +211,27 @@ def test_locator_refuses_replaced_selection_and_corrupt_artifact(selected):
     address = selection_address(selected.results)
     durable.materialize(selected.query, "Base", "Output", mode="recompute", **selected.settings)
     with pytest.raises(ResultsUnavailable, match="replaced"):
-        open_selection(address, query=selected.query, run=selected.runner)
+        open_selection(address, query=selected.query, run=selected.runner, resolvers=readers(selected))
     latest = durable.open_result_set(selected.query, "Base", "Output", **selected.settings)
     del selected.runner.tables[latest.outcomes[0].result.artifact.table[2]]
     with pytest.raises(ResultsUnavailable):
-        open_selection(selection_address(latest), query=selected.query, run=selected.runner)
+        open_selection(selection_address(latest), query=selected.query, run=selected.runner,
+                       resolvers=readers(selected))
 
 
-def test_explicit_purpose_does_not_adopt_private_results_as_job_published(selected):
-    """RUN-CLIENT-PUBLISHED — the recorded lifecycle is validated on a read, never changed."""
+def test_an_address_opens_only_through_a_resolver_addressed_by_its_destination(selected):
+    """RUN-CLIENT-RESULT-SETS — the address names where its results were written; another resolver's destination is
+    refused before any SQL."""
     address = selection_address(selected.results)
-    assert open_selection(address, query=selected.query, run=selected.runner, purpose="private").selection.selection_id == selected.results.selection.selection_id
-    with pytest.raises(PermissionError, match="separate"):
-        open_selection(address, query=selected.query, run=selected.runner, purpose="published")
+    assert "purpose" not in address
+    official = Resolvers(data=None, terminology=None, results=DeltaResultResolver(selected.runner,
+                                                                                  official=[DESTINATION]))
+    with pytest.raises(ValueError, match="this result resolver's are in synthetic_catalog.results"):
+        open_selection(address, query=selected.query, run=selected.runner, resolvers=official)
+    reader = Resolvers(data=None, terminology=None, results=DeltaResultResolver(selected.runner, own=[DRAFT],
+                                                                                official=[DESTINATION]))
+    reopened = open_selection(address, query=selected.query, run=selected.runner, resolvers=reader)
+    assert reopened.selection.selection_id == selected.results.selection.selection_id
 
 
 @pytest.mark.parametrize("address", [None, {}, {"destination": ["synthetic", "results"]},
@@ -225,7 +240,7 @@ def test_explicit_purpose_does_not_adopt_private_results_as_job_published(select
 def test_invalid_locators_fail_before_sql(address):
     """RUN-CLIENT-RESULT-SETS — explicit complete addresses are mandatory."""
     with pytest.raises(ValueError, match="address"):
-        open_selection(address, run=lambda *args: pytest.fail("invalid locator issued SQL"))
+        open_selection(address, run=lambda *args: pytest.fail("invalid locator issued SQL"), resolvers=None)
 
 
 def test_locator_does_not_turn_permission_failure_into_a_miss(selected):
@@ -233,4 +248,6 @@ def test_locator_does_not_turn_permission_failure_into_a_miss(selected):
     def denied(*args, **kwargs):
         raise PermissionError("synthetic denied read")
     with pytest.raises(PermissionError, match="synthetic denied read"):
-        open_selection(selection_address(selected.results), query=selected.query, run=denied)
+        open_selection(selection_address(selected.results), query=selected.query, run=denied,
+                       resolvers=Resolvers(data=None, terminology=None,
+                                           results=DeltaResultResolver(denied, own=[DRAFT], official=[DESTINATION])))

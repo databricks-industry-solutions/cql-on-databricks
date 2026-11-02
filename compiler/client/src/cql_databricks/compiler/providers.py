@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from . import config
 from .libraries import LibrarySource
-from .resolvers import CallSite, ValueSetRef
+from cql_databricks.resolvers.interfaces import CallSite, ValueSetRef
 
 log = logging.getLogger(__name__)
 

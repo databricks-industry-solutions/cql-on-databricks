@@ -6,9 +6,9 @@ from dataclasses import replace
 
 import pytest
 
-from cql_databricks.compiler.environment import Environment
+from cql_databricks.resolvers.environment import Environment, EnvironmentResolver
 from cql_databricks.compiler.providers import PipelinePlan
-from cql_databricks.compiler.resolvers import ValueSetRef
+from cql_databricks.resolvers.interfaces import ValueSetRef
 from cql_databricks.data_bindings import Corpus, Library, TaggedSchema
 from cql_databricks.result.calculation import prepare_calculation
 from test_durable_plan import plan
@@ -29,6 +29,9 @@ class Content:
 
     scopes = ()
     generation = 1
+
+    def identity(self):
+        return "synthetic.knowledge"
 
     def data_source_schemas(self):
         return [TaggedSchema("synthetic", "population", "synthetic", "source")]
@@ -71,8 +74,10 @@ def run(statement, params=None):
 
 
 def prepare(compiler, **changes):
-    return prepare_calculation(**(dict(content=Content(), run=run, compiler=compiler, cql=ROOT,
-        environment=ENVIRONMENT, runtime_catalog="synthetic_runtime", period=("2026-01-01", "2026-12-31")) | changes))
+    runner = changes.get("run", run)
+    resolvers = EnvironmentResolver(runner).resolvers(ENVIRONMENT)
+    return prepare_calculation(**(dict(content=Content(), run=run, compiler=compiler, cql=ROOT, resolvers=resolvers,
+        runtime_catalog="synthetic_runtime", period=("2026-01-01", "2026-12-31")) | changes))
 
 
 def test_preparation_binds_actual_addresses_typed_period_and_include_closure_once():
@@ -96,7 +101,9 @@ def test_preparation_binds_actual_addresses_typed_period_and_include_closure_onc
     assert prepared.compile_pipeline(durable=True) is compiler.plan
     # SVC-COMPILE-BATCH: one compile and no describe; no value set, so no digest query.
     assert len(compiler.requests) == 1 and compiler.described == []
-    assert prepared.published is False  # CQL text is never a published calculation (RUN-CLIENT-DRAFT-RESULTS)
+    # RUN-CLIENT-DRAFT-RESULTS: CQL text is never the environment's own content.
+    assert prepared.identities == {"data": "synthetic.data", "terminology": "synthetic.terminology",
+                                   "knowledge": "cql"}
     assert prepared.request["environment"] == "synthetic-population" and "data_source" not in prepared.request
 
 
@@ -150,10 +157,18 @@ def test_a_value_set_used_completes_the_fingerprint_in_one_query():
     assert untouched == compiler.plan.datasets[1].durable.fingerprint
 
 
-def test_a_library_by_name_is_a_published_calculation():
-    """RUN-CLIENT-DRAFT-RESULTS — only a library from the environment's knowledge may be written to results."""
-    assert prepare(Compiler(), cql=None, library="Synthetic", version="1").published
-    assert not prepare(Compiler(), location="folder:/Workspace/m", files=_FolderFiles()).published
+def test_a_library_by_name_records_the_knowledge_it_came_from():
+    """RUN-CLIENT-DRAFT-RESULTS — an official store takes a library by name from the environment's knowledge, and
+    nothing from a folder."""
+    official = EnvironmentResolver(run).official_store(ENVIRONMENT)
+    by_name = prepare(Compiler(), cql=None, library="Synthetic", version="1")
+    assert by_name.identities["knowledge"] == "synthetic.knowledge"
+    official.admit(by_name)
+    # CQL text read with a folder's includes, as the Designer runs a folder library.
+    folder = prepare(Compiler(), location="folder:/Workspace/m", files=_FolderFiles())
+    assert folder.identities["knowledge"] == "cql"
+    with pytest.raises(PermissionError, match="knowledge is cql"):
+        official.admit(folder)
 
 
 class _FolderFiles:

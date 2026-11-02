@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from cql_databricks.resolvers.interfaces import ResultResolver, TableRef
 from cql_databricks.data_bindings.runner import SqlRunner
 
 from ._catalog_runtime import CurrentArtifact
@@ -10,17 +11,17 @@ from ._catalog_runtime import CurrentArtifact
 
 @dataclass
 class CatalogReader:
-    """RUN-CLIENT-OPTIMISTIC — the caller owns the SQL transport and its UC identity."""
+    """RUN-CLIENT-OPTIMISTIC — the caller owns the SQL transport and its UC identity. ``results`` is the resolver the
+    results were found through (`CLIENT-RESULT-RESOLVER`)."""
 
-    destination: tuple[str, str]
+    results: ResultResolver
     run: SqlRunner
     spark: object = None
-    #: CLIENT-DISCOVERY-SCOPE — the other result scopes a closure may reuse results from.
-    sources: tuple[tuple[str, str], ...] = ()
 
     def usable(self, artifact: CurrentArtifact) -> bool:
         """RUN-CLIENT-OPTIMISTIC — trust completed metadata; do not probe availability or count rows."""
         if (not isinstance(artifact, CurrentArtifact) or not artifact.schema_ddl
-                or artifact.table[:2] not in (self.destination, *self.sources)):
-            raise ValueError("artifact descriptors are missing or outside the result destination and scopes")
+                or not self.results.holds(TableRef(catalog=artifact.table[0], schema=artifact.table[1],
+                                                   table=artifact.table[2]))):
+            raise ValueError("artifact descriptors are missing or outside the schemas its results are found in")
         return True

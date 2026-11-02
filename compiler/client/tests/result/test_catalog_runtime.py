@@ -10,6 +10,7 @@ import pytest
 
 from cql_databricks.result._catalog_completion import writer_digest
 from cql_databricks.result._catalog_runtime import CatalogSelection, execute, table_name
+from cql_databricks.result.store import DeltaResultStore
 from cql_databricks.result._durable import ResultsUnavailable
 from cql_databricks.result._durable_plan import PreparedPlan
 from test_durable_plan import identity, plan
@@ -20,7 +21,7 @@ DESTINATION = ("synthetic_catalog", "results")
 OWNER = "synthetic-user"
 WRITER = writer_digest(OWNER)
 #: RUN-CLIENT-DRAFT-RESULTS — the synthetic environment the public calls run in, and where a private run writes.
-from cql_databricks.compiler.environment import Environment  # noqa: E402
+from cql_databricks.resolvers.environment import Environment  # noqa: E402
 
 ENVIRONMENT = Environment(name="synthetic", catalog="synthetic_catalog", version="1")
 DRAFT = ("synthetic_catalog", "draft_results")
@@ -49,24 +50,8 @@ class CatalogRunner:
                 return [dict(principal=OWNER)]
             if sql.startswith("SHOW TABLES IN"):
                 return [dict(tableName=name, isTemporary=False) for name in self.tables]
-            if sql.startswith("SELECT g.catalog_name"):
-                # RUN-CLIENT-RESULT-OWNERSHIP: only the caller's own tables are read from the other schemas.
-                assert "t.table_owner = :owner" in sql and params["owner"] == OWNER
-                names = set(json.loads(params["tables"]))
-                return [dict(catalog_name=source[0], schema_name=source[1], table_name=name,
-                             tag_name=tag, tag_value=value)
-                        for i, branch in enumerate(sql.split(" UNION ALL "))
-                        for source, held in self.sources.items()
-                        if f"`{source[0]}`.`information_schema`" in branch
-                        and source[1] in json.loads(params[f"schemas_{i}"])
-                        for name, tags in held.items() if name in names
-                        for tag, value in tags.items()]
-            if sql.startswith("SELECT t.table_catalog"):
-                # The schema asked about: a runner serves one destination, whichever schema a run writes.
-                return [dict(table_catalog=self.destination[0], table_schema=params["schema"],
-                             table_name=name, table_owner=self.owners.get(name, OWNER), tag_name=tag, tag_value=value)
-                        for name in json.loads(params["tables"]) if name in self.tables
-                        for tag, value in (self.tables[name].items() or [(None, None)])]
+            if sql.startswith("SELECT 'own' AS layer") or sql.startswith("SELECT 'official' AS layer"):
+                return self._lookup(sql, params)
             if sql.startswith("SELECT table_name, column_name"):
                 held = next((t for (_, schema), t in self.sources.items() if schema == params["schema"]), self.tables)
                 return [dict(table_name=name, column_name=column, full_data_type=kind)
@@ -87,9 +72,44 @@ class CatalogRunner:
                 return []
             pytest.fail(sql)
 
+    def _lookup(self, sql, params):
+        """CLIENT-RESULT-RESOLVER: the store's one lookup. The own layer is served from ``tables`` for the first own
+        schema in the destination's catalog, with each table's owner; the official layer from ``sources``, any
+        writer's, by fingerprint digits."""
+        rows = []
+        served_own = False
+        for branch in sql.split(" UNION ALL "):
+            catalog = re.search(r"FROM `([^`]+)`\.`information_schema`", branch)[1]
+            layer, index = re.search(r":(own|official)_(\d+)", branch).groups()
+            schemas = json.loads(params[f"{layer}_{index}"])
+            if layer == "own":
+                if served_own or catalog != self.destination[0]:
+                    continue
+                served_own = True
+                for name in json.loads(params["names"]):
+                    if name in self.tables:
+                        rows += [dict(layer="own", catalog_name=catalog, schema_name=schemas[0], table_name=name,
+                                      table_owner=self.owners.get(name, OWNER), tag_name=tag, tag_value=value)
+                                 for tag, value in (self.tables[name].items() or [(None, None)])]
+                continue
+            prefixes = set(json.loads(params["prefixes"]))
+            for schema in schemas:
+                for name, tags in self.sources.get((catalog, schema), {}).items():
+                    if name[-25:-9] in prefixes:
+                        rows += [dict(layer="official", catalog_name=catalog, schema_name=schema, table_name=name,
+                                      table_owner=None, tag_name=tag, tag_value=value) for tag, value in tags.items()]
+        return rows
+
     @property
     def writes(self):
         return [sql for sql, _ in self.calls if sql.startswith("CREATE OR REPLACE")]
+
+
+def run_on(plan, targets, *, run, destination=DESTINATION, official=(), read_only=False, **options):
+    """CLIENT-RESULT-RESOLVER — ``execute`` through a Delta store over ``destination``, finding official results in
+    ``official``."""
+    return execute(plan, targets, results=DeltaResultStore(destination, run, official=official), run=run,
+                   read_only=read_only, **options)
 
 
 def prepared(compiled=None):
@@ -110,17 +130,18 @@ def changed(key, fingerprint, *, reusable=True):
 def test_compute_then_reuse_has_no_metadata_tables_describes_counts_or_versions():
     """RUN-CLIENT-OPTIMISTIC — two writes for two calculations; repeat only queries catalog metadata."""
     run = CatalogRunner()
-    first = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER)
+    first = run_on(prepared(), ("output",), destination=DESTINATION, run=run)
     assert [o.decision for o in first] == ["computed", "computed"]
     assert len(run.writes) == 2
     assert all("VERSION AS OF" not in sql and "DESCRIBE" not in sql and "COUNT(" not in sql
                and "cql_completed_results" not in sql and "cql_result_sets" not in sql for sql, _ in run.calls)
     assert plan().datasets[1].query in run.writes[1]
     run.calls.clear()
-    second = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER)
+    second = run_on(prepared(), ("output",), destination=DESTINATION, run=run)
     assert [o.decision for o in second] == ["reused", "reused"]
     assert [o.result for o in second] == [o.result for o in first]
-    assert len(run.calls) == 2  # One tag lookup, one bulk descriptor lookup.
+    # The caller's principal, one result lookup, one bulk descriptor lookup.
+    assert len(run.calls) == 3
     assert {tag for tags in run.tables.values() for tag in tags} == {
         "cql_result_format", "cql_result_state", "cql_computed_at", "cql_fingerprint"}
 
@@ -131,10 +152,10 @@ def test_failed_downstream_retains_upstream_checkpoint_and_retries_same_cutoff()
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=1)
     run.fail_write = table("output")
     with pytest.raises(RuntimeError, match="compute failure"):
-        execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER, mode="recompute", computed_since=cutoff)
+        run_on(prepared(), ("output",), destination=DESTINATION, run=run, mode="recompute", computed_since=cutoff)
     assert run.tables[table("base")]["cql_result_state"] == "complete"
     run.fail_write = ""
-    resumed = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER,
+    resumed = run_on(prepared(), ("output",), destination=DESTINATION, run=run,
                       mode="recompute", computed_since=cutoff)
     assert [o.decision for o in resumed] == ["reused", "computed"]
 
@@ -142,19 +163,20 @@ def test_failed_downstream_retains_upstream_checkpoint_and_retries_same_cutoff()
 def test_overwrite_invalidates_before_compute_and_failed_refresh_is_not_reusable():
     """RUN-CLIENT-CATALOG-CHECKPOINTS — retained old tags cannot certify a failed replacement."""
     run = CatalogRunner()
-    execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER)
+    run_on(prepared(), ("output",), destination=DESTINATION, run=run)
     run.calls.clear()
     run.fail_write = table("base")
     with pytest.raises(RuntimeError, match="compute failure"):
-        execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER, mode="recompute")
+        run_on(prepared(), ("output",), destination=DESTINATION, run=run, mode="recompute")
     assert run.tables[table("base")]["cql_result_state"] == "pending"
     # RUN-CLIENT-RESULT-OWNERSHIP: the lookup again just before the write comes first, then the invalidation.
-    assert run.calls[1][0].startswith("SELECT t.table_catalog")
-    assert run.calls[2][0].startswith("ALTER TABLE")
-    assert "'cql_result_state' = 'pending'" in run.calls[2][0]
-    assert run.calls[3][0].startswith("CREATE OR REPLACE")
+    assert run.calls[0][0] == "SELECT current_user() AS principal"
+    assert run.calls[1][0].startswith("SELECT 'own' AS layer") and run.calls[2][0].startswith("SELECT 'own' AS layer")
+    assert run.calls[3][0].startswith("ALTER TABLE")
+    assert "'cql_result_state' = 'pending'" in run.calls[3][0]
+    assert run.calls[4][0].startswith("CREATE OR REPLACE")
     with pytest.raises(ResultsUnavailable):
-        execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER, read_only=True)
+        run_on(prepared(), ("output",), destination=DESTINATION, run=run, read_only=True)
 
 
 class RacingRunner(CatalogRunner):
@@ -166,7 +188,7 @@ class RacingRunner(CatalogRunner):
         self.finished, self.key, self.at, self.lookups = finished, key, at, 0
 
     def __call__(self, sql, params=None):
-        if sql.startswith("SELECT t.table_catalog"):
+        if sql.startswith("SELECT 'own' AS layer"):
             self.lookups += 1
             if self.lookups == self.at:
                 self.tables[table(self.key)] = dict(self.finished[table(self.key)])
@@ -176,16 +198,16 @@ class RacingRunner(CatalogRunner):
 def _finished():
     """The tags a completed run leaves on every table of the synthetic plan."""
     done = CatalogRunner()
-    execute(prepared(), ("output",), destination=DESTINATION, run=done, owner=OWNER)
+    run_on(prepared(), ("output",), destination=DESTINATION, run=done)
     return done.tables
 
 
 def test_a_result_another_run_finished_just_before_the_write_is_reused_not_written():
     """RUN-CLIENT-RESULT-OWNERSHIP — the lookup again just before the write finds it, so nothing is written twice."""
     run = RacingRunner(_finished(), "base", at=2)
-    outcomes = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER)
+    outcomes = run_on(prepared(), ("output",), destination=DESTINATION, run=run)
     assert [(o.definition, o.decision) for o in outcomes] == [("base", "reused"), ("output", "computed")]
-    assert "another run of yours before this one wrote it" in outcomes[0].reason
+    assert "another run before this one wrote it" in outcomes[0].reason
     assert [table("output") in sql for sql in run.writes] == [True]
 
 
@@ -194,7 +216,7 @@ def test_a_write_that_fails_because_another_run_finished_it_reuses_that_result()
     work, never a failed run."""
     run = RacingRunner(_finished(), "base", at=3)
     run.fail_write = table("base")
-    outcomes = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER)
+    outcomes = run_on(prepared(), ("output",), destination=DESTINATION, run=run)
     assert [(o.definition, o.decision) for o in outcomes] == [("base", "reused"), ("output", "computed")]
     assert "while this one wrote it" in outcomes[0].reason
 
@@ -203,16 +225,16 @@ def test_a_failed_write_nobody_else_finished_still_fails():
     run = RacingRunner(_finished(), "output", at=99)
     run.fail_write = table("base")
     with pytest.raises(RuntimeError, match="compute failure"):
-        execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER)
+        run_on(prepared(), ("output",), destination=DESTINATION, run=run)
 
 
 def test_recomputing_upstream_keeps_the_dependent_and_both_table_names():
     """RUN-CLIENT-RESULT-IDENTITY — a refreshed upstream is the same calculation, so the dependent is reused.
     Freshness is the data source's (DEC-RESULT-IDENTITY); no upstream generation is checked."""
     run = CatalogRunner()
-    first = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER)
-    execute(prepared(), ("base",), destination=DESTINATION, run=run, owner=OWNER, mode="recompute")
-    refreshed = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER)
+    first = run_on(prepared(), ("output",), destination=DESTINATION, run=run)
+    run_on(prepared(), ("base",), destination=DESTINATION, run=run, mode="recompute")
+    refreshed = run_on(prepared(), ("output",), destination=DESTINATION, run=run)
     assert [o.decision for o in refreshed] == ["reused", "reused"]
     assert [o.result.artifact.table for o in first] == [o.result.artifact.table for o in refreshed]
     assert len(run.tables) == 2
@@ -222,11 +244,11 @@ def test_a_changed_upstream_fingerprint_is_a_new_table_for_it_and_its_dependent(
     """RUN-CLIENT-RESULT-IDENTITY — another SQL, source or upstream is another calculation under another name.
     The compiler folds the upstream fingerprint into the dependent's (DurablePlanSpec)."""
     run = CatalogRunner()
-    execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER)
+    run_on(prepared(), ("output",), destination=DESTINATION, run=run)
     compiled = changed("output", "d" * 64)
     compiled = replace(compiled, datasets=[replace(d, durable=identity("c" * 64)) if d.name == "base" else d
                                            for d in compiled.datasets])
-    second = execute(prepared(compiled), ("output",), destination=DESTINATION, run=run, owner=OWNER)
+    second = run_on(prepared(compiled), ("output",), destination=DESTINATION, run=run)
     assert [o.decision for o in second] == ["computed", "computed"]
     assert len(run.tables) == 4
     assert {o.result.artifact.table[2] for o in second} == {table("base", compiled), table("output", compiled)}
@@ -237,22 +259,22 @@ def test_a_non_reusable_define_is_never_reused():
     destination or a result scope holds a complete table under the same name."""
     run = CatalogRunner()
     compiled = changed("output", "b" * 64, reusable=False)
-    execute(prepared(compiled), ("output",), destination=DESTINATION, run=run, owner=OWNER)
+    run_on(prepared(compiled), ("output",), destination=DESTINATION, run=run)
     publish(run, compiled=compiled)
-    again = execute(prepared(compiled), ("output",), destination=DESTINATION, run=run, owner=OWNER, sources=[SHARED])
+    again = run_on(prepared(compiled), ("output",), destination=DESTINATION, run=run, official=[SHARED])
     assert [(o.decision, o.reason) for o in again] == [
         ("reused", "matching completed result"), ("computed", "definition is not reusable")]
     with pytest.raises(ResultsUnavailable, match="not reusable"):
-        execute(prepared(compiled), ("output",), destination=DESTINATION, run=run, owner=OWNER, read_only=True)
+        run_on(prepared(compiled), ("output",), destination=DESTINATION, run=run, read_only=True)
 
 
 def test_a_table_holding_another_calculation_under_the_same_name_fails_loud():
     """RUN-CLIENT-TABLE-NAMES — a name has 16 fingerprint digits; the full tag must match."""
     run = CatalogRunner()
-    execute(prepared(), ("base",), destination=DESTINATION, run=run, owner=OWNER)
+    run_on(prepared(), ("base",), destination=DESTINATION, run=run)
     run.tables[table("base")]["cql_fingerprint"] = "a" * 16 + "e" * 48
     with pytest.raises(ValueError, match="another calculation"):
-        execute(prepared(), ("base",), destination=DESTINATION, run=run, owner=OWNER)
+        run_on(prepared(), ("base",), destination=DESTINATION, run=run)
 
 
 def test_background_tag_failure_propagates_and_never_certifies_dependent():
@@ -260,20 +282,20 @@ def test_background_tag_failure_propagates_and_never_certifies_dependent():
     run = CatalogRunner()
     run.fail_tag = table("base")
     with pytest.raises(RuntimeError, match="tag failure"):
-        execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER)
+        run_on(prepared(), ("output",), destination=DESTINATION, run=run)
     assert all(tags.get("cql_result_state") != "complete" for tags in run.tables.values())
 
 
 def test_each_step_reports_its_decision_statement_and_wall_clock():
     """APP-RUN-LOG — a computed step names the exact statement it sent; a reused one sends none."""
     run, steps = CatalogRunner(), []
-    execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER, on_step=steps.append)
+    run_on(prepared(), ("output",), destination=DESTINATION, run=run, on_step=steps.append)
     assert [(s.definition, s.decision, s.error) for s in steps] == [("base", "computed", None),
                                                                      ("output", "computed", None)]
     assert [s.statement for s in steps] == run.writes
     assert all(s.started_at <= s.ended_at and s.table[2] == table(s.definition) for s in steps)
     steps.clear()
-    execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER, on_step=steps.append)
+    run_on(prepared(), ("output",), destination=DESTINATION, run=run, on_step=steps.append)
     assert [(s.decision, s.reason, s.statement, s.started_at) for s in steps] == [
         ("reused", "matching completed result", None, None)] * 2
 
@@ -281,7 +303,7 @@ def test_each_step_reports_its_decision_statement_and_wall_clock():
 def test_the_plan_is_reported_once_before_any_step_in_step_order():
     """RUN-PROGRESS-TASKS — the plan names every definition the steps will report, before the first runs."""
     run, events = CatalogRunner(), []
-    execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER,
+    run_on(prepared(), ("output",), destination=DESTINATION, run=run,
             on_plan=lambda keys: events.append(("plan", keys, len(run.writes))),
             on_step=lambda step: events.append(("step", step.definition)))
     assert events == [("plan", ("base", "output"), 0), ("step", "base"), ("step", "output")]
@@ -292,7 +314,7 @@ def test_a_failed_step_is_reported_before_the_error_is_raised():
     run, steps = CatalogRunner(), []
     run.fail_write = table("base")
     with pytest.raises(RuntimeError, match="compute failure"):
-        execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER, on_step=steps.append)
+        run_on(prepared(), ("output",), destination=DESTINATION, run=run, on_step=steps.append)
     [failed] = steps
     assert (failed.definition, failed.decision) == ("base", "computed")
     assert failed.error == "RuntimeError: synthetic compute failure"
@@ -303,11 +325,11 @@ def test_published_resolution_never_writes_on_miss_or_on_hit():
     """RUN-CLIENT-PUBLISHED — read-only resolution cannot provision or compute missing work."""
     run = CatalogRunner()
     with pytest.raises(ResultsUnavailable):
-        execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER, read_only=True)
+        run_on(prepared(), ("output",), destination=DESTINATION, run=run, read_only=True)
     assert not run.tables
-    execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER)
+    run_on(prepared(), ("output",), destination=DESTINATION, run=run)
     run.calls.clear()
-    resolved = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER, read_only=True)
+    resolved = run_on(prepared(), ("output",), destination=DESTINATION, run=run, read_only=True)
     assert all(o.decision == "reused" for o in resolved)
     assert all(sql.startswith("SELECT") for sql, _ in run.calls)
 
@@ -316,7 +338,7 @@ def test_portable_handle_round_trip_has_full_descriptors_without_compiler_or_ind
     """RUN-CLIENT-PORTABLE-HANDLE — compiler origins, shapes and cutoff travel with the handle."""
     run = CatalogRunner()
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=1)
-    outcomes = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER, computed_since=cutoff)
+    outcomes = run_on(prepared(), ("output",), destination=DESTINATION, run=run, computed_since=cutoff)
     selected = CatalogSelection.completed("synthetic-session", DESTINATION, {"Output": "output"},
                                           prepared().definitions, outcomes, computed_since=cutoff)
     payload = selected.to_json()
@@ -330,7 +352,7 @@ def test_portable_handle_round_trip_has_full_descriptors_without_compiler_or_ind
 def test_corrupt_portable_handle_is_rejected_locally(damage):
     """RUN-CLIENT-PORTABLE-HANDLE — never reconstruct damaged descriptors through another path."""
     run = CatalogRunner()
-    outcomes = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER)
+    outcomes = run_on(prepared(), ("output",), destination=DESTINATION, run=run)
     selected = CatalogSelection.completed("synthetic", DESTINATION, {"Output": "output"},
                                           prepared().definitions, outcomes)
     raw = selected.to_dict()
@@ -354,7 +376,7 @@ SHARED = ("shared_catalog", "published")
 def publish(run, targets=("output",), *, source=SHARED, compiled=None):
     """Compute ``targets`` into ``source``, then hold those tables in ``run`` as a result scope."""
     other = CatalogRunner(destination=source)
-    execute(prepared(compiled), targets, destination=source, run=other, owner=OWNER)
+    run_on(prepared(compiled), targets, destination=source, run=other)
     run.sources.setdefault(source, {}).update(other.tables)
     return other
 
@@ -363,11 +385,12 @@ def test_one_calculation_has_one_table_name_in_every_destination_and_for_every_u
     """RUN-CLIENT-RESULT-IDENTITY — the destination and the caller are not part of the identity. No statement
     asks who the caller is, and two destinations hold the calculation under the same names."""
     first, second = CatalogRunner(), CatalogRunner(destination=SHARED)
-    execute(prepared(), ("output",), destination=DESTINATION, run=first, owner=OWNER)
-    execute(prepared(), ("output",), destination=SHARED, run=second, owner=OWNER)
+    run_on(prepared(), ("output",), destination=DESTINATION, run=first)
+    run_on(prepared(), ("output",), destination=SHARED, run=second)
     assert set(first.tables) == set(second.tables) == {table("base"), table("output")}
     assert first.tables[table("output")]["cql_fingerprint"] == second.tables[table("output")]["cql_fingerprint"]
-    assert not any("current_user" in sql for sql, _ in first.calls + second.calls)
+    # RUN-CLIENT-RESULT-OWNERSHIP: the writer's principal is read once per store, for its digest.
+    assert sum("current_user" in sql for sql, _ in first.calls + second.calls) == 2
 
 
 def test_a_define_the_destination_lacks_is_reused_from_a_later_result_scope_by_name():
@@ -375,7 +398,7 @@ def test_a_define_the_destination_lacks_is_reused_from_a_later_result_scope_by_n
     names this calculation gives them."""
     run = CatalogRunner()
     publish(run)
-    outcomes = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER, sources=[SHARED])
+    outcomes = run_on(prepared(), ("output",), destination=DESTINATION, run=run, official=[SHARED])
     assert [o.decision for o in outcomes] == ["reused", "reused"]
     assert [o.result.artifact.table for o in outcomes] == [(*SHARED, table("base")), (*SHARED, table("output"))]
     assert all(o.reason == "matching completed result in shared_catalog.published" for o in outcomes)
@@ -388,9 +411,9 @@ def test_a_define_the_destination_lacks_is_reused_from_a_later_result_scope_by_n
 
 def test_the_destination_wins_over_a_later_result_scope():
     run = CatalogRunner()
-    execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER)
+    run_on(prepared(), ("output",), destination=DESTINATION, run=run)
     publish(run)
-    outcomes = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER, sources=[SHARED])
+    outcomes = run_on(prepared(), ("output",), destination=DESTINATION, run=run, official=[SHARED])
     assert {o.result.artifact.table[:2] for o in outcomes} == {DESTINATION}
 
 
@@ -398,11 +421,11 @@ def test_a_downstream_define_is_computed_into_the_destination_over_the_shared_up
     """Writes go only to the destination; the next run reuses both, each from where it is."""
     run = CatalogRunner()
     publish(run, ("base",))
-    first = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER, sources=[SHARED])
+    first = run_on(prepared(), ("output",), destination=DESTINATION, run=run, official=[SHARED])
     assert [(o.definition, o.decision, o.result.artifact.table[:2]) for o in first] == [
         ("base", "reused", SHARED), ("output", "computed", DESTINATION)]
     assert "`shared_catalog`.`published`" in run.writes[0]
-    second = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER, sources=[SHARED])
+    second = run_on(prepared(), ("output",), destination=DESTINATION, run=run, official=[SHARED])
     assert [o.decision for o in second] == ["reused", "reused"] and len(run.writes) == 1
 
 
@@ -411,7 +434,7 @@ def test_any_result_in_a_listed_scope_is_trusted_without_an_owner_check():
     reads the table owner (the fake asserts it), and no tag names a publisher."""
     run = CatalogRunner()
     publish(run, ("base",))
-    first = execute(prepared(), ("base",), destination=DESTINATION, run=run, owner=OWNER, sources=[SHARED])
+    first = run_on(prepared(), ("base",), destination=DESTINATION, run=run, official=[SHARED])
     assert first[0].decision == "reused"
     assert not any("publisher" in tag for tags in run.sources[SHARED].values() for tag in tags)
 
@@ -420,14 +443,14 @@ def test_another_calculation_in_a_scope_is_not_reused():
     """RUN-CLIENT-RESULT-IDENTITY — another source, SQL or upstream is another fingerprint, so another name."""
     run = CatalogRunner()
     publish(run, compiled=changed("base", "c" * 64))
-    outcomes = execute(prepared(), ("base",), destination=DESTINATION, run=run, owner=OWNER, sources=[SHARED])
+    outcomes = run_on(prepared(), ("base",), destination=DESTINATION, run=run, official=[SHARED])
     assert [o.decision for o in outcomes] == ["computed"]
 
 
 def test_recompute_and_the_cutoff_skip_results_in_other_scopes():
     run = CatalogRunner()
     publish(run)
-    outcomes = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER, sources=[SHARED], mode="recompute")
+    outcomes = run_on(prepared(), ("output",), destination=DESTINATION, run=run, official=[SHARED], mode="recompute")
     assert [o.decision for o in outcomes] == ["computed", "computed"]
 
 
@@ -435,7 +458,7 @@ def test_read_only_resolution_reads_other_scopes_and_never_writes():
     """RUN-CLIENT-PUBLISHED — a reader resolves the publisher's results through its scopes."""
     run = CatalogRunner()
     publish(run)
-    outcomes = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER, sources=[SHARED], read_only=True)
+    outcomes = run_on(prepared(), ("output",), destination=DESTINATION, run=run, official=[SHARED], read_only=True)
     assert [o.decision for o in outcomes] == ["reused", "reused"]
     assert all(sql.startswith("SELECT") for sql, _ in run.calls)
 
@@ -445,9 +468,9 @@ def test_the_earlier_result_scope_wins():
     later = ("shared_catalog", "later")
     publish(run, source=later)
     publish(run)
-    outcomes = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER, sources=[SHARED, later])
+    outcomes = run_on(prepared(), ("output",), destination=DESTINATION, run=run, official=[SHARED, later])
     assert {o.result.artifact.table[:2] for o in outcomes} == {SHARED}
-    outcomes = execute(prepared(), ("output",), destination=DESTINATION, run=run, owner=OWNER, sources=[later, SHARED])
+    outcomes = run_on(prepared(), ("output",), destination=DESTINATION, run=run, official=[later, SHARED])
     assert {o.result.artifact.table[:2] for o in outcomes} == {later}
 
 
@@ -457,7 +480,7 @@ def test_a_shared_result_whose_fingerprint_disagrees_with_its_table_name_fails()
     publish(run, ("base",))
     run.sources[SHARED][table("base")]["cql_fingerprint"] = "a" * 16 + "e" * 48
     with pytest.raises(ValueError, match="another calculation"):
-        execute(prepared(), ("base",), destination=DESTINATION, run=run, owner=OWNER, sources=[SHARED])
+        run_on(prepared(), ("base",), destination=DESTINATION, run=run, official=[SHARED])
 
 
 def recipe(name, reads, n):
@@ -522,7 +545,7 @@ def test_defines_that_read_only_the_shared_upstream_run_together_after_it(world)
     """RUN-CLIENT-PARALLEL-DEFINES — base alone, then every define that reads only base at once, then out."""
     world.polls = {"a": 3, "b": 2, "c": 4}
     steps = []
-    execute(fan("a", "b", "c"), ("out",), destination=DESTINATION, run=CatalogRunner(), owner=OWNER,
+    run_on(fan("a", "b", "c"), ("out",), destination=DESTINATION, run=CatalogRunner(),
             on_step=steps.append)
     assert starts(world) == [("base", {"base"}), ("a", {"a"}), ("b", {"a", "b"}), ("c", {"a", "b", "c"}),
                              ("out", {"out"})]
@@ -537,7 +560,7 @@ def test_a_long_define_delays_only_the_defines_that_read_it(world):
         recipe("base", [], 1), recipe("long", ["base"], 2), recipe("short", ["base"], 3),
         recipe("after_short", ["short"], 4), recipe("out", ["long", "after_short"], 5)])
     world.polls = {"long": 10}
-    execute(PreparedPlan(compiled), ("out",), destination=DESTINATION, run=CatalogRunner(), owner=OWNER)
+    run_on(PreparedPlan(compiled), ("out",), destination=DESTINATION, run=CatalogRunner())
     assert ("after_short", {"long", "after_short"}) in starts(world)
     assert world.events.index(("done", "after_short")) < world.events.index(("done", "long"))
 
@@ -545,7 +568,7 @@ def test_a_long_define_delays_only_the_defines_that_read_it(world):
 def test_no_more_than_parallelism_statements_run_at_once(world):
     """RUN-CLIENT-PARALLEL-DEFINES — the cap holds; the next define starts as one finishes."""
     world.polls = {"a": 2, "b": 2, "c": 2}
-    execute(fan("a", "b", "c"), ("out",), destination=DESTINATION, run=CatalogRunner(), owner=OWNER,
+    run_on(fan("a", "b", "c"), ("out",), destination=DESTINATION, run=CatalogRunner(),
             parallelism=2)
     assert max(len(active) for _, active in starts(world)) == 2
 
@@ -555,7 +578,7 @@ def test_the_first_failure_cancels_every_running_statement_and_starts_nothing_mo
     world.polls, world.fail = {"a": 3, "b": 5, "c": 5}, "a"
     run, steps = CatalogRunner(), []
     with pytest.raises(RuntimeError, match="synthetic failure of a"):
-        execute(fan("a", "b", "c"), ("out",), destination=DESTINATION, run=run, owner=OWNER,
+        run_on(fan("a", "b", "c"), ("out",), destination=DESTINATION, run=run,
                 on_step=steps.append)
     assert {("cancel", "b"), ("cancel", "c")} <= set(world.events)
     assert "out" not in {key for key, _ in starts(world)}
@@ -570,7 +593,7 @@ def test_each_start_is_reported_as_it_happens(world):
     """RUN-PROGRESS-TASKS — ``on_start`` names each define when its statement starts."""
     events = []
     world.polls = {"a": 3}
-    execute(fan("a", "b"), ("out",), destination=DESTINATION, run=CatalogRunner(), owner=OWNER,
+    run_on(fan("a", "b"), ("out",), destination=DESTINATION, run=CatalogRunner(),
             on_start=lambda key: events.append(("start", key)), on_step=lambda s: events.append(("step", s.definition)))
     assert events[:2] == [("start", "base"), ("step", "base")]
     assert events.index(("start", "b")) < events.index(("step", "a"))
@@ -578,4 +601,4 @@ def test_each_start_is_reported_as_it_happens(world):
 
 def test_parallelism_must_be_a_positive_count():
     with pytest.raises(ValueError, match="parallelism"):
-        execute(prepared(), ("output",), destination=DESTINATION, run=CatalogRunner(), owner=OWNER, parallelism=0)
+        run_on(prepared(), ("output",), destination=DESTINATION, run=CatalogRunner(), parallelism=0)

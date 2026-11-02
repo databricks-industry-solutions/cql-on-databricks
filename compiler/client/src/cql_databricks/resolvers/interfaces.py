@@ -18,9 +18,10 @@ from __future__ import annotations
 import abc
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Union
 
-from .libraries import LibraryRef, LibrarySource
+from cql_databricks.compiler.libraries import LibraryRef, LibrarySource
 
 # --------------------------------------------------------------------------------------------------
 # Requests, call sites and relations
@@ -320,17 +321,114 @@ class TableRef:
         return f"{self.catalog}.{self.schema}.{self.table}"
 
 
+@dataclass(frozen=True, kw_only=True)
+class ResultKey:
+    """One result a run needs: its fingerprint (`RUN-CLIENT-RESULT-IDENTITY`), and the library and define it computes,
+    which name its table but are not part of its identity."""
+    library: str
+    define: str
+    fingerprint: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class KeptResult:
+    """A completed result: its table, its full fingerprint, and when its computation started."""
+    table: TableRef
+    fingerprint: str
+    computed_at: datetime
+
+
 class ResultResolver(abc.ABC):
-    """CLIENT-RESULT-RESOLVER: where kept results are found and written. Delta only. ``find`` returns only a table
-    its caller owns (`RUN-CLIENT-RESULT-OWNERSHIP`)."""
+    """CLIENT-RESULT-RESOLVER: where kept results are found. A resolver owns its whole lookup: the caller's own results
+    first, then the environment's official results, then none, so the run computes (`RUN-CLIENT-RESULT-OWNERSHIP`).
+    A run never composes result layers itself."""
 
     @abc.abstractmethod
-    def find(self, fingerprint: str) -> TableRef | None:
-        """The caller's table holding the result with ``fingerprint``, or None."""
+    def find(self, keys: Sequence[ResultKey], *,
+             computed_since: datetime | None = None) -> Mapping[str, KeptResult]:
+        """The completed result of each key that may be reused, by fingerprint, in one lookup. A result computed before
+        ``computed_since`` is not returned. A key with no result is left out."""
+
+    @property
+    @abc.abstractmethod
+    def destination(self) -> tuple[str, str]:
+        """The ``(catalog, schema)`` a run over this resolver is addressed by (`RUN-CLIENT-RESULT-SETS`): where a store
+        writes, or the first schema a resolver reads."""
 
     @abc.abstractmethod
-    def write(self, recipe: Any, relation: Any) -> TableRef:
-        """Write ``recipe``'s result from ``relation`` and return its table."""
+    def holds(self, table: TableRef) -> bool:
+        """Whether a result read from ``table`` could have come from this resolver."""
+
+
+class ResultWrites(abc.ABC):
+    """The writes of one run into a :class:`ResultStore`, opened by :meth:`ResultStore.writes`. The store names each
+    table, gives the statement that writes it and marks it complete; the run decides when each statement runs
+    (`RUN-CLIENT-PARALLEL-DEFINES`). Leaving it waits for every completion mark, also after a failure."""
+
+    @abc.abstractmethod
+    def table(self, key: ResultKey) -> TableRef:
+        """Where ``key``'s result is written."""
+
+    @abc.abstractmethod
+    def statement(self, table: TableRef, query: str) -> str:
+        """The one SQL statement that writes the rows of ``query`` to ``table``."""
+
+    @abc.abstractmethod
+    def starting(self, table: TableRef) -> None:
+        """Called just before ``table``'s statement runs. An existing table stops being found as complete."""
+
+    @abc.abstractmethod
+    def completed(self, result: KeptResult, *, after: Sequence[TableRef] = ()) -> None:
+        """Mark ``result`` complete once its statement succeeded, after the results in ``after`` this run wrote."""
+
+    @abc.abstractmethod
+    def check(self) -> None:
+        """Raise the first completion mark that failed."""
+
+    @abc.abstractmethod
+    def close(self) -> None:
+        """Wait for every completion mark and raise the first that failed."""
+
+    def __enter__(self) -> "ResultWrites":
+        return self
+
+    def __exit__(self, kind, error, traceback) -> bool:
+        try:
+            self.close()
+        except BaseException:
+            if error is None:
+                raise
+        return False
+
+
+class ResultStore(ResultResolver):
+    """A result resolver that can be written (`CLIENT-RESOLVER-READ-WRITE`): it finds as its resolver does, and writes
+    only into its own destination."""
+
+    @abc.abstractmethod
+    def admit(self, calculation: Any) -> None:
+        """Raise ``PermissionError``, naming why, when this store does not take ``calculation``'s results."""
+
+    @abc.abstractmethod
+    def writes(self, keys: Sequence[ResultKey]) -> ResultWrites:
+        """Open the writes of one run, which may write any of ``keys``."""
+
+
+# --------------------------------------------------------------------------------------------------
+# One run's resolvers
+# --------------------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, kw_only=True)
+class Resolvers:
+    """CLIENT-RESOLVERS: what one run reads its data and value sets through, and where it finds kept results. A run
+    takes these and nothing else; an environment builds them (`CLIENT-ENVIRONMENT-RESOLVER`), and so may a notebook.
+    ``environment`` is the name of the environment they came from, a label a run records, never read back as an
+    address."""
+    data: DataResolver
+    terminology: TerminologyResolver
+    results: ResultResolver | None = None
+    environment: str | None = None
 
 
 # --------------------------------------------------------------------------------------------------

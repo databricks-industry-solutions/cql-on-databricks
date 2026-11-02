@@ -28,7 +28,7 @@ from typing import Iterable, Optional, Sequence
 from cql_databricks.compiler import CqlClient, CqlQuery
 from cql_databricks.compiler.libraries import resolve_library_provider
 
-from .knowledge_resolvers import library_provider
+from cql_databricks.resolvers.knowledge import library_provider
 from .resolver_binder import ResolverBinder
 from ._udfs import register_runtime_udfs
 from .compile_shim import CqlDatabricksCompileProvider, discover_udf_schema
@@ -116,7 +116,7 @@ class _SessionEnvironment:
 
     def resolver(self):
         if self._resolver is None:
-            from .environment import EnvironmentResolver
+            from cql_databricks.resolvers.environment import EnvironmentResolver
 
             self._resolver = EnvironmentResolver(_spark_runner(_session(self._spark)))
         return self._resolver
@@ -209,7 +209,8 @@ _default_resolvers = None
 def use_resolvers(*, data=None, terminology=None, knowledge=None) -> None:
     """CLIENT-SESSION-RESOLVERS — set the resolvers this notebook's ``cql()`` calls and ``%%cql`` cells run through::
 
-        from cql_databricks.compiler import FolderTerminologyResolver, VolumeDataResolver, use_resolvers
+        from cql_databricks.compiler import use_resolvers
+        from cql_databricks.resolvers import FolderTerminologyResolver, VolumeDataResolver
         use_resolvers(data=VolumeDataResolver("/Volumes/main/cql/tests/fhir"),
                       terminology=FolderTerminologyResolver("/Volumes/main/cql/tests/valuesets"))
 
@@ -217,7 +218,7 @@ def use_resolvers(*, data=None, terminology=None, knowledge=None) -> None:
     (`CLIENT-RESOLVERS`). A call sets every role, so ``use_resolvers()`` returns to the environment. Nothing is read
     here: the next ``cql()`` or cell builds its client with them. ``reset(spark)`` drops them
     (`CLIENT-SESSION-RESET`). A client from :func:`connect` is not changed by them."""
-    from .resolvers import DataResolver, KnowledgeResolver, TerminologyResolver
+    from cql_databricks.resolvers.interfaces import DataResolver, KnowledgeResolver, TerminologyResolver
 
     roles = {"data": (data, DataResolver), "terminology": (terminology, TerminologyResolver),
              "knowledge": (knowledge, KnowledgeResolver)}
@@ -297,7 +298,7 @@ def publish_library(name: str, version: str, *, folder: str, base: str, spark=No
     for a library whose folder holds no ``Library`` JSON with a URL. Returns the
     :class:`~cql_databricks.compiler.library_publish.PublishSummary`; raises ``PublishRefused`` when nothing was
     written and ``PublishFailed`` when a write failed after others."""
-    from .environment import KNOWLEDGE, KNOWLEDGE_STORE
+    from cql_databricks.resolvers.environment import KNOWLEDGE, KNOWLEDGE_STORE
     from .libraries import LocalLibraryFiles
     from .library_publish import publish_folder_library
 

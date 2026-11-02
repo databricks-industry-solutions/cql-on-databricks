@@ -53,8 +53,8 @@ see are found. Two visible defaults fail, naming both; no visible default fails,
 | `terminology_store` | Its store table | Publishing |
 | `knowledge` | The published views `library` and `measure` | As `data` |
 | `knowledge_store` | Their store tables | Publishing, the Designer's Publish |
-| `results` | Published results: runs that bind only the environment's own resolvers | Jobs, notebooks |
-| `draft_results` | Each user's own results, in one shared schema | The Designer, the agent's tools, as the user |
+| `results` | Official results, reused by every identity: runs that bind only the environment's own resolvers | Whoever the implementer grants: publishing Jobs |
+| `draft_results` | Each user's own results, in one shared schema | The Designer, as the user; the agent's tools read it |
 
 A store schema is optional. A customer may define every view over tables of their own and have no store. A run
 never checks a store. A run binds the published views by name and reads no `information_schema`; a view that is
@@ -65,30 +65,39 @@ If the view does not show them, the publish fails, saying the view does not sele
 
 ### Results
 
-A result's identity is what it computes (`RUN-CLIENT-RESULT-IDENTITY`), and it belongs to the identity that
-computed it (`RUN-CLIENT-RESULT-OWNERSHIP`), in both schemas:
+A result's identity is what it computes (`RUN-CLIENT-RESULT-IDENTITY`). A run finds results through its result
+resolver, in two layers, in one lookup (`RUN-CLIENT-RESULT-OWNERSHIP`, `CLIENT-RESULT-RESOLVER`):
 
-- The writer, a user or a service principal, owns each table it creates, and the name carries its digest:
-  `<library>_<define>_<16 fingerprint hex>_<8 writer hex>`. A run reuses only tables its own identity owns. Unity
-  Catalog shows a caller only what it holds a privilege on, and a view can return different rows to different
-  callers, so a fingerprint match across identities proves nothing about the rows.
-- Others read results under their grants: business users and Genie read `results` through its schema grant. To
-  share computed results, run the calculations as one service principal and grant read access. That is also the
-  row filter and column mask scenario: a reading concern, not a calculation one.
+- **Its own.** The writer, a user or a service principal, owns each table it creates, and the name carries its
+  digest: `<library>_<define>_<16 fingerprint hex>_<8 writer hex>`. In its own schemas a run reuses only tables its
+  own identity owns. Unity Catalog shows a caller only what it holds a privilege on, and a view can return different
+  rows to different callers, so a fingerprint match across identities proves nothing about the rows.
+- **The official ones**, in `results`, whoever wrote them. `results` is the authority, trusted by construction like
+  the published views: the implementer decides who may write it, through grants, as an existing batch process may
+  already do. Whatever is there is official and read first after the caller's own. Its tables carry the row filters
+  and column masks of the data they derive from, a deployment concern, so each reader sees its own rows. A writer
+  of `results` must read the data unfiltered. Only results this client wrote, with its fingerprint, are reused;
+  another engine's are read under grants. Making the environment tags governed (`DEPLOY-ENVIRONMENT-TAG-POLICIES`)
+  keeps anyone else from making a catalog an environment.
+- None found: the run computes, and a store writes the result to its own destination.
+
+The resolver owns the chain; a run never composes layers. `EnvironmentResolver` builds them: `results(env)` reads
+both layers and writes nothing, for the agent's tools and inline runs; `draft_store(env)` also writes the caller's
+own into `draft_results`, for the Designer; `official_store(env)` writes `results`, for publishers. A notebook may
+pass a store over a schema of its own. The client manages no other sandbox.
+
 - Users get `USE SCHEMA` and `CREATE TABLE` on `draft_results`, and no `SELECT` or `MODIFY` on the schema. The
   maintenance Job (`RUN-CLIENT-MAINTENANCE`) holds `MANAGE` on it and expires its tables.
 - `draft_results` is one schema. Retention keeps it under the 10,000-table limit per schema; a create refused
   because the schema is full fails, saying to shorten retention or run the cleanup.
-- `results` holds only published results, written by its publishers. A run is written there only when it binds
-  nothing but the environment's own resolvers: every library from its knowledge, every value set from its
-  terminology, every retrieve from its data. A notebook testing `%%cql` cells, a folder library, value sets from a
-  volume, a DataFrame or a custom resolver is refused for `results` before it computes, naming what it bound, and
-  may write `draft_results`. `materialize(purpose="published")` writes `results`; `purpose="private"`, the default,
-  writes `draft_results`. `%%cql` and `cql()` keep nothing.
+- `official_store` writes a run only when it binds nothing but the environment's own resolvers: every library from
+  its knowledge, every value set from its terminology, every retrieve from its data. CQL text, `%%cql` cells, a
+  folder library, value sets from a volume, a DataFrame or a custom resolver is refused before it computes, naming
+  what it bound. `%%cql` and `cql()` keep nothing.
 - A value set enters a kept result's identity as a digest of its codes, read in one query per kept run, so a value
   set edited in a volume or republished in place recomputes and an unchanged one is reused
   (`CLIENT-RESOLVER-IDENTITY`). The compile response lists each recipe's value sets and the client completes the
-  fingerprint. Data enters by name.
+  fingerprint from the relations the binding created. Data enters by name.
 - Concurrent writers of one result write the same rows to the same table, so a collision costs duplicate work or
   one failed writer, never a wrong result. The writer looks the result up again right before writing and after a
   conflict, and reuses it if it is done.

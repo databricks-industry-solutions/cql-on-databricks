@@ -21,9 +21,9 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from .libraries import (FileLibraryProvider, LibraryFiles, LibraryProvider, LibraryRef, LibraryResolutionError,
-                        LibrarySource, LocalLibraryFiles, includes_of)
-from .resolvers import IncludeSite, KnowledgeResolver, KnowledgeStore, Overlay
+from cql_databricks.compiler.libraries import (FileLibraryProvider, LibraryFiles, LibraryProvider, LibraryRef,
+                                               LibraryResolutionError, LibrarySource, LocalLibraryFiles, includes_of)
+from .interfaces import IncludeSite, KnowledgeResolver, KnowledgeStore, Overlay
 
 
 class CellsKnowledgeResolver(KnowledgeResolver):
@@ -32,14 +32,14 @@ class CellsKnowledgeResolver(KnowledgeResolver):
     plain mapping, for a caller with no Spark session."""
 
     def __init__(self, spark=None, *, cells: dict | None = None) -> None:
-        from .session_libraries import CellStore, SessionRecord, SessionLibraryProvider
+        from cql_databricks.compiler.session_libraries import CellStore, SessionRecord, SessionLibraryProvider
 
         self._store = cells if cells is not None else CellStore(SessionRecord(spark))
         self.provider = SessionLibraryProvider(None, cells=self._store)
 
     def with_fallthrough(self, fallthrough: LibraryProvider | None) -> LibraryProvider:
         """These cells ahead of ``fallthrough``, sharing one registry."""
-        from .session_libraries import SessionLibraryProvider
+        from cql_databricks.compiler.session_libraries import SessionLibraryProvider
 
         return SessionLibraryProvider(fallthrough, cells=self._store)
 
@@ -76,7 +76,7 @@ class FolderKnowledgeResolver(KnowledgeResolver):
             return None
 
     def measure(self, url: str, version: str | None) -> Mapping[str, Any] | None:
-        from .folder_content import folder_libraries
+        from cql_databricks.compiler.folder_content import folder_libraries
 
         for held in folder_libraries(self.files, self.path):
             if not held.measure_path:
@@ -128,7 +128,7 @@ class TableKnowledgeResolver(KnowledgeStore):
 
     @property
     def provider(self) -> LibraryProvider:
-        from .knowledge_libraries import KnowledgeLibraryProvider
+        from cql_databricks.compiler.knowledge_libraries import KnowledgeLibraryProvider
 
         return KnowledgeLibraryProvider(lambda: self.content)
 
@@ -136,7 +136,7 @@ class TableKnowledgeResolver(KnowledgeStore):
         return f"knowledge:{self.content.catalog}"
 
     def library(self, name: str, version: str | None, site: IncludeSite | None = None) -> LibrarySource | None:
-        from .knowledge_libraries import _source
+        from cql_databricks.compiler.knowledge_libraries import _source
 
         found = self.content.corpus().library(name, version)
         return _source(found) if found is not None else None
@@ -158,7 +158,7 @@ class TableKnowledgeResolver(KnowledgeStore):
 
     def publish(self, closure: FolderClosure):
         """CLIENT-PUBLISH: write ``closure``'s library, and the folder includes that changed, into this store."""
-        from .library_publish import publish_folder_library
+        from cql_databricks.compiler.library_publish import publish_folder_library
 
         if self.store is None:
             raise ValueError("publish needs a store: TableKnowledgeResolver(content, store=..., view=..., run=...)")
@@ -171,7 +171,7 @@ def library_provider(source: KnowledgeResolver) -> LibraryProvider:
     """CLIENT-KNOWLEDGE-RESOLVER: ``source`` as the client core's library provider, which walks the include
     closure. The shipped order (cells, folder, the environment's knowledge) keeps its rules; any other resolver's
     includes resolve from it and the layers after it."""
-    from .knowledge_libraries import FolderThenKnowledge
+    from cql_databricks.compiler.knowledge_libraries import FolderThenKnowledge
 
     layers = _layers(source)
     shipped = (len(layers) in (2, 3) and isinstance(layers[-1], TableKnowledgeResolver)

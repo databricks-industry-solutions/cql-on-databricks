@@ -61,21 +61,24 @@ An arrow means "depends on".
 `compiler/client`, the `cql-databricks` wheel. Part of the compiler feature; it runs as the caller.
 
 - **Owns:**
-  - `cql_databricks.compiler`: `cql()`, compiling through the compiler service, and data sources as a caller
-    sees them (`cql_databricks.compiler.data_source.list_data_sources`). Publishing a data source over your
-    tables (`BIND-PUBLISH`): its schema, `retrieve_<Type>` functions and tag, never its data.
+  - `cql_databricks.compiler`: `cql()`, compiling through the stateless compiler service, and binding a run.
+    Publishing a data source over your tables (`BIND-PUBLISH`): its published views, never its data.
+  - `cql_databricks.resolvers` (`CLIENT-PACKAGE-SPLIT`): everything a run reads and writes through. The resolver
+    interfaces and the shipped data, terminology and knowledge resolvers (`CLIENT-RESOLVERS`), the environments
+    (`CLIENT-ENVIRONMENT-RESOLVER`) and the value-set digest.
   - `cql_databricks.data_bindings`: the resolver, which finds schemas by UC tag, checks their tables and
     columns, and reads a library closure (`CONTENT-RESOLVER`); the knowledge and terminology layouts; the
     runtime knowledge views (`DATA-BINDINGS`); the data-source declaration.
   - `cql_databricks.result` (`RESULT-INTO-CLIENT`): durable bulk calculations (`materialize`). They run in your
-    SQL session and write result tables you own (`RUN-CLIENT-DURABLE`). Reading results: the membership
+    SQL session, reuse your own and the official results, and write result tables you own (`RUN-CLIENT-DURABLE`,
+    `CLIENT-RESULT-RESOLVER`). Reading results: the membership
     predicate and the explain, flow, strata and metrics derivations (`cql_databricks.result.insights`). The
     expiry of private results that the maintenance Job runs (`RUN-CLIENT-MAINTENANCE`).
 - **Doesn't own:** writing FHIR data, content or value sets (loader), value-set expansion (done upstream),
   rendering (designer), the Jobs and principals the deploy creates (`DEPLOY-OWNS-PRINCIPALS`), publishing
   shared results (the implementer's, `RUN-CLIENT-PUBLISHED`). It has no Lakebase state.
-- **Interface:** the `cql_databricks.compiler`, `cql_databricks.data_bindings` and `cql_databricks.result`
-  packages. A result's UC tags are the contract another client discovers and reuses it by.
+- **Interface:** the `cql_databricks.compiler`, `cql_databricks.resolvers`, `cql_databricks.data_bindings` and
+  `cql_databricks.result` packages. A result's UC tags are the contract another client discovers and reuses it by.
 
 ## agent
 

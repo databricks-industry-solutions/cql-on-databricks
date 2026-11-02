@@ -5,12 +5,11 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 
-from cql_databricks.compiler.environment import LAYOUT_VERSION, Environment
+from cql_databricks.resolvers.interfaces import Resolvers
 
 from .calculation import prepare_calculation
-from .durable import MaterializedResults, ResultsUnavailable, destination_of, open_result_set
+from .durable import MaterializedResults, ResultsUnavailable, open_result_set
 from .insights.evaluation import ClosureLibrary, SelectedLibrary
-from .reading import TableDefine
 from .results import Execute, PinnedRelation, count_relations, relation_columns
 
 
@@ -19,22 +18,23 @@ def selection_address(results: MaterializedResults) -> dict:
     selection = results.selection
     return {"destination": list(selection.destination),
             "session_id": selection.session_id, "selection_id": selection.selection_id,
-            "request_hash": selection.request_hash, "purpose": selection.purpose,
+            "request_hash": selection.request_hash,
             "targets": list(selection.targets),
             "computed_since": selection.computed_since.isoformat() if selection.computed_since else None,
             **({"calculation": results.request} if results.request is not None else {})}
 
 
-def open_selection(address: dict, *, run, query=None, content=None, compiler=None,
-                   purpose: str | None = None, files=None) -> MaterializedResults:
+def open_selection(address: dict, *, run, resolvers: Resolvers, query=None, content=None, compiler=None,
+                   files=None) -> MaterializedResults:
     """RUN-CLIENT-REQUEST-REOPEN — recompile the request, then discover tags as the reader.
 
-    Supply a query/prepared calculation, or content/compiler transports and a calculation request
-    in the address. The address carries no compiled plan, secrets or server-side session key. A request
-    from a folder location (RUN-ADDRESS-LOCATION) is replayed through ``files``.
+    ``resolvers`` are the reader's (`CLIENT-RESOLVERS`): their data and terminology recompile the request, and their
+    result resolver, whose destination the address must name, finds the results. Supply a query/prepared
+    calculation, or content/compiler transports and a calculation request in the address. The address carries no
+    compiled plan, secrets or server-side session key. A request from a folder location (RUN-ADDRESS-LOCATION) is
+    replayed through ``files``.
     """
-    required = {"destination", "session_id", "selection_id", "request_hash", "purpose", "targets",
-                "computed_since"}
+    required = {"destination", "session_id", "selection_id", "request_hash", "targets", "computed_since"}
     if (not isinstance(address, dict) or not required <= address.keys()
             or address.keys() - required - {"calculation"}):
         raise ValueError("a complete result-set address is required")
@@ -43,20 +43,17 @@ def open_selection(address: dict, *, run, query=None, content=None, compiler=Non
             or any(not isinstance(part, str) or not part.strip() for part in destination)
             or any(not isinstance(address[key], str) or not address[key].strip()
                    for key in ("session_id", "selection_id", "request_hash"))
-            or address["purpose"] not in ("private", "published")
             or not isinstance(address["targets"], list) or not address["targets"]
             or any(not isinstance(t, str) or not t.strip() for t in address["targets"])
             or len(set(address["targets"])) != len(address["targets"])):
         raise ValueError("invalid complete result-set address")
-    if purpose is not None and purpose != address["purpose"]:
-        raise PermissionError("private and published result requests have separate lifecycles")
+    if resolvers.results is None:
+        raise ValueError("reopening results needs a result resolver (CLIENT-RESULT-RESOLVER)")
+    if tuple(destination) != tuple(resolvers.results.destination):
+        raise ValueError(f"the address names results in {'.'.join(destination)}, and this result resolver's are in "
+                         f"{'.'.join(resolvers.results.destination)}")
     cutoff = datetime.fromisoformat(address["computed_since"]) if address["computed_since"] is not None else None
     request = address.get("calculation")
-    # RUN-CLIENT-DRAFT-RESULTS: the address's destination is its environment's schema for its purpose.
-    environment = Environment(name=(request or {}).get("environment") or destination[0], catalog=destination[0],
-                              version=LAYOUT_VERSION)
-    if tuple(destination) != destination_of(environment, address["purpose"]):
-        raise ValueError("a result-set address names its environment's results or draft_results")
     if query is None:
         if not isinstance(request, dict) or content is None or compiler is None:
             raise ValueError("reopening requires the calculation request and compiler/content transports")
@@ -65,15 +62,22 @@ def open_selection(address: dict, *, run, query=None, content=None, compiler=Non
         if request.keys() - allowed:
             raise ValueError("unsupported calculation request fields")
         fields = {k: v for k, v in request.items() if k != "environment"}
-        query = prepare_calculation(content=content, compiler=compiler, run=run, files=files,
-                                    environment=environment, **fields)
-    results = open_result_set(query, *address["targets"], environment=environment, run=run,
-                              session_id=address["session_id"], purpose=address["purpose"], computed_since=cutoff)
+        query = prepare_calculation(content=content, compiler=compiler, run=run, files=files, resolvers=resolvers,
+                                    **fields)
+    results = open_result_set(query, *address["targets"], results=resolvers.results, run=run,
+                              session_id=address["session_id"], computed_since=cutoff)
     if results.selection.request_hash != address["request_hash"]:
         raise ResultsUnavailable("the calculation request changed; recompute before reopening results")
     if results.selection.selection_id != address["selection_id"]:
         raise ResultsUnavailable("the complete selection was replaced; select its new address explicitly")
     return results
+
+
+@dataclass(frozen=True)
+class TableDefine:
+    """One define a selected library has a table for. ``read`` is a materialized retrieve's descriptor."""
+    mv_name: str
+    read: dict | None = None
 
 
 @dataclass(frozen=True)

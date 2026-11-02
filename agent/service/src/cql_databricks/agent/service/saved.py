@@ -4,8 +4,8 @@
 
 **NOTICE, THEN ASK.** A population question usually has an answer already: a Designer run in the environment's
 ``draft_results``, or a Job's published results in its ``results`` (`RUN-CLIENT-DRAFT-RESULTS`). ``find_results``
-says whether one of the caller's own exists for exactly this measure, environment and period, and when it was
-computed (`RUN-CLIENT-RESULT-OWNERSHIP`). It never computes; the model tells the user and asks whether to reuse it.
+says whether the caller's own, or an official one, exists for exactly this measure, environment and period, and when
+it was computed (`RUN-CLIENT-RESULT-OWNERSHIP`). It never computes; the model tells the user and asks whether to reuse it.
 
 **THE SAME FIGURES THE DESIGNER SHOWS.** ``get_population_summary`` counts each population as written and
 scores the measure with the client's scorer (`RUN-CLIENT-MEASURE-SCORE`), over one complete selection.
@@ -16,7 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from cql_databricks.compiler.environment import Environment
+from cql_databricks.resolvers.interfaces import Resolvers
 from cql_databricks.result import ResultsUnavailable, prepare_calculation, resolve_results
 from cql_databricks.result.insights.score import POPULATIONS, selection_score
 from cql_databricks.result.selection_reading import (SelectionClosure, open_selection, selection_address,
@@ -25,13 +25,15 @@ from cql_databricks.result.selection_reading import (SelectionClosure, open_sele
 
 @dataclass(frozen=True)
 class SavedResultsEnv:
-    """The caller's transports and the environment the tools run in, resolved per call (`SEC-OBO`,
-    `AGENT-DEFAULT-ENVIRONMENT`)."""
+    """The caller's transports and the resolvers of the environment the tools run in, resolved per call (`SEC-OBO`,
+    `AGENT-DEFAULT-ENVIRONMENT`). ``resolvers.results`` finds the caller's own results, then the official ones;
+    ``readers`` gives the resolvers a result-set address reopens through, in the environment it names."""
 
     run: Any
     content: Any
     compiler: Any
-    environment: Environment
+    resolvers: Resolvers
+    readers: Callable[[dict], Resolvers]
     runtime_catalog: str
     runtime_schema: str
     scoring_for: Callable[[str, str, str | None], str | None]
@@ -41,30 +43,29 @@ class SavedResultsEnv:
 
 def find_results(library: str, version: str, period: tuple[str | None, str | None], *,
                  env: SavedResultsEnv, location: str | None = None) -> dict[str, Any]:
-    """AGENT-SAVED-RESULTS, RUN-CLIENT-REQUEST-REOPEN — the caller's own saved calculation of exactly this request in
-    the environment, from its ``draft_results`` and then its ``results`` (`RUN-CLIENT-RESULT-OWNERSHIP`), or a
-    miss. Reads only: a miss is ``found: false``, never a computation."""
+    """AGENT-SAVED-RESULTS, RUN-CLIENT-REQUEST-REOPEN — a saved calculation of exactly this request in the
+    environment: the caller's own in its ``draft_results``, else the official one in its ``results``
+    (`RUN-CLIENT-RESULT-OWNERSHIP`), or a miss. Reads only: a miss is ``found: false``, never a computation."""
     prepared = prepare_calculation(content=env.content, run=env.run, compiler=env.compiler,
-                                   environment=env.environment, library=library, version=version, period=period,
+                                   resolvers=env.resolvers, library=library, version=version, period=period,
                                    runtime_catalog=env.runtime_catalog, runtime_schema=env.runtime_schema,
                                    location=location, files=env.files)
-    # RUN-CLIENT-RESULT-OWNERSHIP: a draft lookup reads the caller's own tables in draft_results, then in results.
     try:
-        results = resolve_results(prepared, *prepared.targets, run=env.run, environment=env.environment,
-                                  purpose="private")
+        results = resolve_results(prepared, *prepared.targets, results=env.resolvers.results, run=env.run)
     except ResultsUnavailable as error:
         return {"found": False, "reason": str(error)}
     completed = [o.result.completed_at for o in results.outcomes if o.result is not None]
     schemas = sorted({".".join(o.result.artifact.table[:2]) for o in results.outcomes if o.result is not None})
     return {"found": True, "library": prepared.library, "version": prepared.version,
-            "environment": env.environment.name, "period": prepared.request["period"],
+            "environment": env.resolvers.environment, "period": prepared.request["period"],
             "computedAt": max(completed).isoformat() if completed else None,
             "schemas": schemas, "resultSet": selection_address(results)}
 
 
 def get_population_summary(result_set: dict, *, env: SavedResultsEnv, scoring: str | None = None) -> dict[str, Any]:
     """RUN-CLIENT-MEASURE-SCORE — each population counted as written, and the measure's score."""
-    results = open_selection(result_set, run=env.run, content=env.content, compiler=env.compiler, files=env.files)
+    results = open_selection(result_set, run=env.run, resolvers=env.readers(result_set), content=env.content,
+                             compiler=env.compiler, files=env.files)
     request = results.request or {}
     origins = _origins(results)
     root = request.get("library") or next((o["library"] for o in origins.values()), "")

@@ -8,7 +8,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from cql_databricks.compiler.environment import Environment
+from cql_databricks.resolvers.environment import Environment
 from cql_databricks_designer.data_bindings import EnvironmentContents
 from cql_databricks_designer.routes import environments as routes
 
