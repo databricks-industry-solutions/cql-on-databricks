@@ -134,13 +134,12 @@ CQL tag, then FHIR resource, field by field. The losing text is dropped, not kep
 ## Narrative devices (`SPEC-NARRATIVE-DEVICES`)
 
 The forms a narrated answer takes. They come from how published measure specifications are commonly
-written, such as AHRQ Quality Indicators. A checkable device turns a claim into something a test can compare with the
-ELM.
+written. A checkable device turns a claim into something a test can compare with the ELM.
 
 | Device | What it is | Checkable |
 |---|---|---|
 | Fixed frame | Every criterion answers the same questions in the same order. | yes |
-| Include / Exclude blocks | Two lists, never one mixed paragraph. The AHRQ form. Polarity is `SPEC-POLARITY`. | yes |
+| Include / Exclude blocks | Two lists, never one mixed paragraph. Published measure specifications use this form. Polarity is `SPEC-POLARITY`. | yes |
 | Named set reference | Name the value set, don't list its codes inline. Codes live in the Appendix. | yes |
 | Code table | code, display, system, one row each. | yes, against the ELM literal |
 | Anchored timing | Every date says what it is anchored to. | partly |

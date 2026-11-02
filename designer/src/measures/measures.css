@@ -709,105 +709,6 @@
 .mw-node .k.rd { color: var(--tink-3); background: none; border-color: var(--tline); }
 .mw-node.leaf { cursor: default; }
 
-/* ── The spine (`.mw-flow-spine`) ─────────────────────────────────────────────────
-   The populations, in the measure's own order, as the route the rest of the tree hangs from.
-
-   It is the TOP LEVEL, so it declares no `--nav-step` and takes no indent: the tree below it is one `.mw-nav-nested` step in, exactly where the Composition tab's first level sits, and giving the spine a step of its own would push every row under it one column right of where the Composition tab puts the same define (APP-NAV-DEPTH — asserted in `navDepth.test.tsx`).
-
-   The connector is the guide-rail idiom already in this file, not a drawn diagram: the same 1px `--tline` line `.mw-nav-nested` descends through the rows it owns. What makes it read as a spine rather than a list is that it runs THROUGH the rows rather than beside a heading — so it is inset to the same 5px column their selection bars clear, and stops short at each end so it reads as a segment with a start and a finish. */
-.mw-flow-spine { position: relative; margin-bottom: 4px; }
-.mw-flow-spine::before {
-  content: ""; position: absolute; left: 11px; top: 12px; bottom: 12px;
-  width: 1px; background: var(--tline); }
-/* The spine's rows sit above the rail, so a rooted row's accent bar is not crossed by it. */
-.mw-flow-spine > .mw-node { position: relative; z-index: 1; }
-
-/* ── The drawn spine (`.mw-spine`) ─────────────────────────────────────────────────
-   Cards down a column, an arrow between each pair, and what LEFT on a dashed line off to the right.
-   Width buys room, not a different drawing.
-
-   CARDS, NOT BARS. A stage filled at full width with a saturated ramp step reads as a stack of solid blocks: a heatmap column, not a route. A flow reads as a flow when the marks are OUTLINED and the space between them carries the connective tissue — an arrow says "and then", a dashed line leaving right says "and these left". So the border carries the tone, the fill is a wash of it, and the gaps do the work.
-
-   THE RAMP IS ORDINAL AND VALIDATED. `--fun-2` → `--fun-4`, the design system's own chart ramp and the one `Funnel.tsx` walks, so two drawings of one measure cannot come out different colours. It starts at step 2 on purpose: `--fun-1` measures 1.58:1 against the panel and fails the 2:1 light-end floor an ordinal ramp is held to. `--fun-2..4` pass every check in light and dark (single hue, monotone lightness, >= .06 step gaps, light end clear of the surface). The terminal pair is the reserved status colours, and each carries a LABEL as well as a hue. */
-.mw-spine { display: flex; flex-direction: column; padding: 2px 2px 10px; }
-.mw-spine-row { display: flex; flex-direction: column; }
-
-/* The card. Two lines: a micro eyebrow naming what the stage IS, then the name and its figure. */
-.mw-spine-card {
-  display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left;
-  padding: 9px 11px; border-radius: 9px;
-  background: var(--panel); border: 1px solid var(--tline); color: var(--tink); }
-.mw-spine-card .ey {
-  font-family: var(--f-mono); font-size: 9px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .1em; color: var(--tink-3); }
-.mw-spine-card .bd { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-.mw-spine-card .nm { font-size: 13px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mw-spine-card .n { font-family: var(--f-mono); font-size: 13.5px; font-weight: 600; flex: none; }
-/* Ordered categories take the ordinal ramp: the BORDER is the step, the fill a wash of it. A 4th
-   stage repeats the darkest rather than inventing a hue. */
-.mw-spine-card[data-step="0"] { border-color: color-mix(in oklch, var(--fun-2) 55%, var(--panel)); background: color-mix(in oklch, var(--fun-2) 12%, var(--panel)); }
-.mw-spine-card[data-step="1"] { border-color: color-mix(in oklch, var(--fun-3) 55%, var(--panel)); background: color-mix(in oklch, var(--fun-3) 13%, var(--panel)); }
-.mw-spine-card[data-step="2"], .mw-spine-card[data-step="3"] {
-  border-color: color-mix(in oklch, var(--fun-4) 55%, var(--panel)); background: color-mix(in oklch, var(--fun-4) 14%, var(--panel)); }
-/* The evaluated cohort is the ground the rest is measured against, so it reads as ground: solid ink,
-   inverted type. It is not a criterion and is not clickable. */
-.mw-spine-card.start { background: var(--tink); border-color: var(--tink); color: var(--canvas); }
-.mw-spine-card.start .ey { color: var(--tink-3); }
-button.mw-spine-card { cursor: pointer; transition: box-shadow .12s, border-color .12s; }
-button.mw-spine-card:hover { box-shadow: var(--tshadow); }
-/* Rooting and selection are the pane's own marks, identical to the row form so a reader who resizes
-   does not re-learn what "you are here" looks like. */
-.mw-spine-card.rooted { border-color: var(--tacc); box-shadow: 0 0 0 1px var(--tacc); }
-.mw-spine-card.active { outline: 2px solid var(--tacc); outline-offset: 2px; }
-
-/* The connector: a line with a head, and what left beside it. */
-.mw-spine-arrow { position: relative; display: flex; align-items: center; height: 30px; padding-left: 22px; }
-.mw-spine-arrow .ln { position: absolute; left: 22px; top: 0; bottom: 0; width: 2px; background: var(--fun-3); }
-/* The head, drawn as a triangle on the line's foot so the direction is stated rather than implied. */
-.mw-spine-arrow .ln::after {
-  content: ""; position: absolute; left: -3px; bottom: -1px;
-  border-left: 4px solid transparent; border-right: 4px solid transparent;
-  border-top: 5px solid var(--fun-3); }
-.mw-spine-arrow .lost { margin-left: 14px; font-family: var(--f-mono); font-size: 11px; color: var(--tfail); }
-
-/* A removal LEAVES, on a dashed line to the pane's edge. Not a card in the column: it is not a step
-   the cohort passes through, and inline it reads as though the excluded were the ones who continued.
-   The line ends at the edge because the REASONS are the right pane's — clicking goes there. */
-.mw-spine-exit {
-  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
-  padding: 5px 8px 5px 22px; margin: 2px 0; border-radius: 7px; border: 1px solid transparent; }
-.mw-spine-exit .dash { width: 26px; height: 0; flex: none; border-top: 1px dashed var(--tfail); opacity: .7; }
-.mw-spine-exit .nm { font-size: 11.5px; color: var(--tink-2); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mw-spine-exit .n { font-family: var(--f-mono); font-size: 11.5px; color: var(--tfail); flex: none; }
-.mw-spine-exit:hover { background: var(--tfail-w); }
-.mw-spine-exit.active { border-color: var(--tacc); background: var(--tacc-w); }
-
-/* The split: ONE bracket into two outcomes, so the pair reads as a division of what came above rather
-   than as two more steps in the sequence. */
-.mw-spine-fork { position: relative; height: 26px; }
-.mw-spine-fork .stem { position: absolute; left: 22px; top: 0; height: 12px; width: 2px; background: var(--fun-3); }
-.mw-spine-fork .bar { position: absolute; left: 22px; right: 25%; top: 12px; height: 2px; background: var(--fun-3); }
-.mw-spine-fork .leg { position: absolute; top: 12px; height: 14px; width: 2px; background: var(--fun-3); }
-.mw-spine-fork .leg.l { left: 22px; }
-.mw-spine-fork .leg.r { right: 25%; }
-.mw-spine-fork .leg::after {
-  content: ""; position: absolute; left: -3px; bottom: -1px;
-  border-left: 4px solid transparent; border-right: 4px solid transparent;
-  border-top: 5px solid var(--fun-3); }
-
-.mw-spine-split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.mw-spine-card.met { background: var(--tgood-w); border-color: color-mix(in oklch, var(--tgood) 40%, var(--panel)); }
-.mw-spine-card.met .n { color: var(--tgood); }
-.mw-spine-card.gap { background: var(--tfail-w); border-color: color-mix(in oklch, var(--tfail) 40%, var(--panel)); }
-.mw-spine-card.gap .n { color: var(--tfail); }
-.mw-spine-foot { font-size: 11px; color: var(--tink-3); padding: 8px 2px 0; }
-
-/* Width buys ROOM, not a different drawing. */
-.mw-spine-wrap.wide .mw-spine-card { padding: 11px 14px; }
-.mw-spine-wrap.wide .mw-spine-card .nm { font-size: 14px; }
-.mw-spine-wrap.wide .mw-spine-card .n { font-size: 15px; }
-.mw-spine-wrap.wide .mw-spine-arrow { height: 38px; }
-
 /* ── SPEC-NAV-COMPOSITION — the Composition tab's rows ────────────────────────────────────────────
    Nesting is `.mw-nav-nested` all the way down, so depth costs one indent step and gains one guide
    rail per level exactly as every other nav section does (APP-NAV-DEPTH) — a tree here is not a new
@@ -1838,12 +1739,6 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-mag-row b { font-family: var(--f-mono); font-size: 18px; color: var(--tink); letter-spacing: -.01em; }
 .mw-mag-row .u { font-size: 11.5px; color: var(--tink-2); }
 
-/* The Scheduling screen hosting the Operational tiles. */
-.mw-sched-app { height: 100vh; display: flex; flex-direction: column; }
-.mw-sched { flex: 1; min-height: 0; overflow: auto; padding: 26px 0 40px; }
-.mw-sched-intro { margin-bottom: 18px; }
-.mw-sched-intro .mw-spec-title { margin: 4px 0 8px; }
-
 /* ── The consumption surface ────────────────────────────────────── */
 .mw-analyze { display: flex; flex-direction: column; gap: 14px; }
 
@@ -2683,6 +2578,8 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-dreq-span { font-family: var(--f-mono); font-size: 10px; color: var(--tink-3); }
 
 
+/* SPEC-DATA-REQUIREMENTS — the section's notice when its read failed: said in the section's own place, in warning ink. */
+.mw-dreq-unavailable { font-size: 12px; color: var(--twarn); margin: 0 0 10px; }
 /* SPEC-DATA-REQUIREMENTS — the per-resource count beside its heading. Same treatment the library
    headings use, so a count reads as a count wherever it appears. */
 .mw-spec .mw-dreq-n { font-family: var(--f-mono); font-size: 11px; font-weight: 400;
@@ -2809,9 +2706,9 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    which is also what makes the numbers reachable to a screen reader.
 
    `--fun-2`, NOT `--fun-1`, and that is the ramp's own validated floor rather than a preference: step 1
-   measures 1.58:1 against the panel and fails the 2:1 light-end floor an ordinal ramp is held to (see
-   `.mw-spine`, which starts at step 2 for the same reason). A single-series chart has no adjacent pair
-   to separate, so the CVD checks are moot here — the surface check is not. */
+   measures 1.58:1 against the panel and fails the 2:1 light-end floor an ordinal ramp is held to. A
+   single-series chart has no adjacent pair to separate, so the CVD checks are moot here — the surface
+   check is not. */
 .mw-ask-chart { margin: 4px 0 14px; padding: 0; }
 .mw-ask-chart .ttl { font-family: var(--f-ui); font-size: 11.5px; font-weight: 600; color: var(--tink-2);
   margin-bottom: 7px; }

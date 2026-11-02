@@ -16,8 +16,10 @@ from cql_databricks.compiler import CqlClient, CqlQuery, config, cql as run_cql
 from cql_databricks.compiler.config import ConfigResolutionError
 from cql_databricks.compiler.library import Library, load_library, _cql_literal
 from cql_databricks.compiler.providers import (
+    SCALAR,
     CompileProvider,
     CompileRequest,
+    DefineShape,
     LibraryGraph,
     SqlCompileResult,
     SqlStatement,
@@ -62,7 +64,8 @@ class _FakeProvider(CompileProvider):
         stmts = [SqlStatement("__frame_base", "view", "CREATE OR REPLACE TEMP VIEW __frame_base AS SELECT 1")]
         stmts += [SqlStatement(d, "view", f"CREATE OR REPLACE TEMP VIEW `{d}` AS SELECT 1")
                   for d in self._defines]
-        return SqlCompileResult(statements=stmts, target="__frame_base", defines=list(self._defines))
+        shapes = [DefineShape(define=d, obj=d, kind=SCALAR) for d in self._defines]
+        return SqlCompileResult(statements=stmts, target="__frame_base", defines=list(self._defines), shapes=shapes)
 
     def describe(self, request: CompileRequest) -> LibraryGraph:
         self.described = request
@@ -335,11 +338,12 @@ class StringFormTests(unittest.TestCase):
         #
         # The exception CLASS is deliberately not pinned. This package resolves the zero-config
         # Databricks tier before the config tier (decision 10), so with no endpoint the first thing to
-        # fail is App-registry discovery (ValueError naming the conf keys) rather than config resolution
+        # fail is App-registry discovery (AppLookupError naming the App) rather than config resolution
         # (ConfigResolutionError). Both are loud and both name the fix; asserting one class would be
         # asserting which tier ran, which is not the behavior a caller depends on.
+        from cql_databricks.compiler._workspace import AppLookupError
         with mock.patch.dict(os.environ, {}, clear=True):
-            with self.assertRaises((ConfigResolutionError, ValueError)) as caught:
+            with self.assertRaises((ConfigResolutionError, AppLookupError, ValueError)) as caught:
                 run_cql('define "x": 1')                           # no client, no endpoint → loud FAIL
         self.assertRegex(str(caught.exception), r"endpoint|appName|provider\.",
                          "the failure must name the setting that would fix it")

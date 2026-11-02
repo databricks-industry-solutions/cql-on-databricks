@@ -5,7 +5,7 @@
 // is in flight LOOKS like a tab with nothing in it, and a strip of three disabled words over "nothing is
 // selected" looks like chrome that has stopped working.
 
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { Definition } from "../catalog.ts";
 import { Workbench } from "./Workbench.tsx";
@@ -18,9 +18,13 @@ import type { Selection } from "./model.ts";
 // about, and a promise that never resolves holds the pane in it for the whole of a synchronous test.
 // Without the stub jsdom also has no base URL, so the real call throws ERR_INVALID_URL into an effect
 // and the failure surfaces as an unhandled error rather than as a test result.
+// A test that needs a profile to land sets `profileReply`; every other test leaves it null and the fetch never settles.
+const profileReply = vi.hoisted(() => ({ value: null as unknown }));
 vi.mock("../library-client.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../library-client.ts")>()),
-  fetchDefineProfile: () => new Promise(() => {}),
+  fetchDefineProfile: () => (profileReply.value === null
+    ? new Promise(() => {})
+    : Promise.resolve(profileReply.value)),
 }));
 
 const DEFINITION: Definition = {
@@ -79,6 +83,23 @@ describe("the workbench tab strip (APP-INSPECTOR)", () => {
     renderPane({ kind: "define", name: "Initial Population" });
     for (const tab of within(strip()!).getAllByRole("tab")) {
       expect(tab.hasAttribute("disabled"), `${tab.textContent} is disabled mid-fetch`).toBe(false);
+    }
+  });
+});
+
+describe("the Terminology tab (SPEC-TERMINOLOGY-EXTRACT)", () => {
+  it("says why the codes could not be read, in their place, and does not call them absent", async () => {
+    profileReply.value = {
+      library: "ExampleReadingControl", define: "Initial Population", provenance: "run",
+      generated: "2026-11-02T00:00:00Z", terminologyError: "SQL warehouse stopped",
+    };
+    try {
+      renderPane({ kind: "define", name: "Initial Population" });
+      fireEvent.click(screen.getByRole("tab", { name: "Terminology" }));
+      expect(await screen.findByText("Couldn't read codes: SQL warehouse stopped")).toBeTruthy();
+      expect(screen.queryByText(/Nothing coded to read here/)).toBeNull();
+    } finally {
+      profileReply.value = null;
     }
   });
 });

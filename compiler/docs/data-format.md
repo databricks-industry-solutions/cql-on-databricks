@@ -10,8 +10,8 @@ Clinical data and terminology enter through two seams. [data-binding.md](data-bi
 contract (`BIND-*`).
 
 - `DATA-RETRIEVER`: each retrieve reads a relation shaped `(__subject_id, __resource)`: the context key
-  and the resource struct. In emitted SQL this is a call to a `retrieve_<Type>` table function. The
-  binding absorbs differences between sources. The resource stays a struct. CQL collapses cardinality
+  and the resource struct. In emitted SQL this is a read of the relation the request binds to the retrieve's
+  call site. The binding absorbs differences between sources. The resource stays a struct. CQL collapses cardinality
   where it says to (`where`, `singleton from`).
 - `DATA-TERMINOLOGY-ADAPTER`: expanded value sets are a table of `(valueset_id, system, code)`. Expansion
   happens outside the compiler. The compiler reads expansions; it never expands.

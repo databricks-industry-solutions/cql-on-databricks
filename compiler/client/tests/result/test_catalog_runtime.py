@@ -9,7 +9,7 @@ from threading import Lock
 import pytest
 
 from cql_databricks.result._catalog_completion import writer_digest
-from cql_databricks.result._catalog_runtime import CatalogSelection, execute, table_name
+from cql_databricks.result._catalog_runtime import execute, table_name
 from cql_databricks.result.store import DeltaResultStore
 from cql_databricks.result._durable import ResultsUnavailable
 from cql_databricks.result._durable_plan import PreparedPlan
@@ -334,40 +334,6 @@ def test_published_resolution_never_writes_on_miss_or_on_hit():
     assert all(sql.startswith("SELECT") for sql, _ in run.calls)
 
 
-def test_portable_handle_round_trip_has_full_descriptors_without_compiler_or_index():
-    """Compiler origins, shapes and cutoff travel with the handle."""
-    run = CatalogRunner()
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=1)
-    outcomes = run_on(prepared(), ("output",), destination=DESTINATION, run=run, computed_since=cutoff)
-    selected = CatalogSelection.completed("synthetic-session", DESTINATION, {"Output": "output"},
-                                          prepared().definitions, outcomes, computed_since=cutoff)
-    payload = selected.to_json()
-    assert CatalogSelection.from_json(payload) == selected
-    assert all(o.result.artifact.schema_ddl == '[["__val","INT"]]' for o in selected.outcomes)
-    assert "delta_version" not in payload and "table_id" not in payload
-    assert selected.computed_since == cutoff
-
-
-@pytest.mark.parametrize("damage", ["fingerprint", "schema", "table", "missing"])
-def test_corrupt_portable_handle_is_rejected_locally(damage):
-    """Never reconstruct damaged descriptors through another path."""
-    run = CatalogRunner()
-    outcomes = run_on(prepared(), ("output",), destination=DESTINATION, run=run)
-    selected = CatalogSelection.completed("synthetic", DESTINATION, {"Output": "output"},
-                                          prepared().definitions, outcomes)
-    raw = selected.to_dict()
-    if damage == "missing":
-        raw["outcomes"].pop()
-    elif damage == "fingerprint":
-        raw["outcomes"][0]["result"]["fingerprint"] = "0" * 64
-    else:
-        artifact = raw["outcomes"][0]["result"]["artifact"]
-        artifact[{"schema": "schema_ddl", "table": "table"}[damage]] = {
-            "schema": "[]", "table": ("another", "schema", "table")}[damage]
-    with pytest.raises(ValueError):
-        CatalogSelection.from_json(json.dumps(raw))
-
-
 # --- results read from other result scopes ------------------------------------------
 
 SHARED = ("shared_catalog", "published")
@@ -403,10 +369,6 @@ def test_a_define_the_destination_lacks_is_reused_from_a_later_result_scope_by_n
     assert [o.result.artifact.table for o in outcomes] == [(*SHARED, table("base")), (*SHARED, table("output"))]
     assert all(o.reason == "matching completed result in shared_catalog.published" for o in outcomes)
     assert not run.writes and not run.tables
-    selected = CatalogSelection.completed("synthetic", DESTINATION, {"Output": "output"}, prepared().definitions,
-                                          outcomes)
-    assert CatalogSelection.from_json(selected.to_json()) == selected
-    assert "sha256:" not in selected.to_json()
 
 
 def test_the_destination_wins_over_a_later_result_scope():

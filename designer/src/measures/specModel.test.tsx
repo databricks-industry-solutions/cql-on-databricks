@@ -140,11 +140,10 @@ describe("buildSpecModel (APP-SPEC-MODEL)", () => {
   });
 
   it("orders populations in eCQM order, not declaration order", () => {
-    // The spine leans on this and cannot check it for itself: the spine renders
-    // `SpecModel.populations` as-is, and its whole licence to draw them as a vertical sequence is that
-    // the order is the MEASURE's — its scoring semantics, via `POPULATIONS` — rather than anything we
-    // derived from the graph. In declaration order the spine would quietly assert a sequence the
-    // measure does not have, which is the failure that rules out the Logic lens.
+    // The Composition rank and the nav lean on this and cannot check it for themselves: they take
+    // `SpecModel.populations` as-is, and their licence to present them in sequence is that the order is
+    // the MEASURE's — its scoring semantics, via `POPULATIONS` — rather than anything we derived from the
+    // graph. In declaration order they would quietly assert a sequence the measure does not have.
     const names = build().populations.map((p) => p.name);
     expect(names).toEqual(["Initial Population", "Denominator", "Numerator"]);
     expect(names).toEqual(POPULATIONS.filter((n) => names.includes(n)));

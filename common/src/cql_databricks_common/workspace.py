@@ -189,20 +189,3 @@ def reset_client() -> None:
     global _client
     with _lock:
         _client = None
-
-
-def is_not_found(e: Exception) -> bool:
-    """True when a Databricks API call failed because the resource does not exist.
-
-    Typed on the SDK's own 404 class, and it lives here because every caller that needs it is
-    reacting to an SDK error and there must be exactly one answer to "was that a 404?".
-
-    **String sniffing does not work for this, and both call sites had it wrong.** The API raises
-    `ResourceDoesNotExist` — a `NotFound` subclass — whose `str()` is the bare API message. So
-    `"404" in str(e)` is false (no status code in the text), `"NotFound" in type(e).__name__` is
-    false (the type is `ResourceDoesNotExist`), and `"ResourceDoesNotExist" in str(e)` is false
-    (that is the type name, not the message). Each variant of the check silently never fired, and
-    the recovery behind it never ran.
-    """
-    from databricks.sdk.errors import NotFound
-    return isinstance(e, NotFound)

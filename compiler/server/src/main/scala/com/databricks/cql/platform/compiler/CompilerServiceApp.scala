@@ -1,6 +1,7 @@
 package com.databricks.cql.platform.compiler
 
 import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
+import com.databricks.cql.error.ConfigError
 import com.databricks.cql.meta.LibraryGraph
 import com.databricks.cql.passes.BuildInfo
 import com.databricks.cql.retrieve.{ResourceStruct, TerminologyProvider}
@@ -20,7 +21,7 @@ import java.util.concurrent.Executors
   *   - authoring:  POST /translate       {cql, includes?}                 -> {elm, diagnostics, ok}
   *   - runtime:    POST /compile-sql      {elm|cql, target?, boundaries?}  -> {statements:[{name,kind,sql}], target, defines, shapes}
   *   - pipeline:   POST /compile-pipeline {elm|cql, boundaries?, ...}      -> {datasets:[{name,target,reads,query,statements}]}
-  *   - SDP graph:  POST /describe         {elm|cql, context?, ...}         -> LibraryGraph JSON
+  *   - graph:      POST /describe         {elm|cql, context?, ...}         -> LibraryGraph JSON
   *   - mount ddl:  POST /resource-schema  {types:[...]}                    -> {schemas:{Type:{modeled,patientContext,ddl}}}
   *   - modeled set:POST /resource-schema  {} (empty/absent types)          -> {resourceTypes:[...sorted...]}
   *   - liveness:   GET  /health                                           -> {status:"ok"}
@@ -34,9 +35,9 @@ import java.util.concurrent.Executors
   *
   * SPARK-FREE (`EXEC-SQL-BACKEND`, `TYPE-OFFLINE-COMPILE`, `SVC-STATELESS`): every op — translate,
   * compileSql, compilePipeline, describe — is pure IR → text / metadata. The service holds NO
-  * `SparkSession`, needs NO Spark Connect URL, and touches NO data. Value-set membership lowers to
-  * `valueset_<id>` views and FHIR retrieves to `retrieve_<Type>` views that the RUNTIME (the `cql()`
-  * client / the deployed SDP) mounts and binds under the caller's identity (`SVC-BINDING-RUNTIME`) —
+  * `SparkSession`, needs NO Spark Connect URL, and touches NO data. Value-set membership and FHIR retrieves
+  * read relations the request binds (`BIND-CALL-SITE`), which the RUNTIME (the `cql()` client) mounts and
+  * binds under the caller's identity (`SVC-BINDING-RUNTIME`) —
   * governance stays entirely at the executor (`SEC-GOVERNANCE`). This retires the reference-only
   * `DataProvider`/`TerminologyProvider` injection of the plan-proto model (`SVC-REF-PROVIDERS`); the
   * only signal the compiler needs is whether terminology is mounted (`terminology.isDefined`). */
@@ -158,24 +159,33 @@ final case class HostConfig(bindHost: String, port: Int, token: Option[String], 
                             terminologyMounted: Boolean)
 
 object HostConfig {
-  def fromEnv(): HostConfig = {
+  def fromEnv(): HostConfig = fromSettings(sys.props.get, sys.env.get)
+
+  /** A host setting read as an integer. A value that is not one fails, naming the setting (CORE-NO-SILENT-MISLOWER);
+    * the default is never taken in its place. */
+  private def integer(key: String, value: String): Int =
+    scala.util.Try(value.trim.toInt).getOrElse(throw ConfigError(key, value, "an integer"))
+
+  /** [[fromEnv]] over explicit lookups, so the settings can be given without touching the process environment. */
+  def fromSettings(prop: String => Option[String], env: String => Option[String]): HostConfig = {
     // A Databricks App container binds the port it is given; default 8080 for local dev. Bind 0.0.0.0
     // (NOT loopback like the engine's OssCompileHost) — the App is reached over the network; the
     // deployment fronts it with TLS + the platform's network policy.
-    val port = sys.props.get("cqldatabricks.hostPort").orElse(sys.env.get("PORT"))
-      .flatMap(s => scala.util.Try(s.trim.toInt).toOption).getOrElse(8080)
-    val bindHost = sys.env.getOrElse("CQL_COMPILER_BIND", "0.0.0.0")
+    val port = prop("cqldatabricks.hostPort").map(v => integer("cqldatabricks.hostPort", v))
+      .orElse(env("PORT").map(v => integer("PORT", v)))
+      .getOrElse(8080)
+    val bindHost = env("CQL_COMPILER_BIND").getOrElse("0.0.0.0")
     // RFC 6750 bearer. When set, every non-/health request must carry `Authorization: Bearer <token>`.
     // TODO(SVC-COMPILE-ENDPOINT): the Databricks deployment swaps this static check for RFC 8693 OAuth
     // token-exchange validation (serverless->App); the wire header is unchanged (auth is the host's
     // concern, not the contract — see OssCompileHost).
-    val token = sys.env.get("CQL_COMPILER_TOKEN").map(_.trim).filter(_.nonEmpty)
-    val threads = sys.env.get("CQL_COMPILER_THREADS").flatMap(s => scala.util.Try(s.toInt).toOption)
+    val token = env("CQL_COMPILER_TOKEN").map(_.trim).filter(_.nonEmpty)
+    val threads = env("CQL_COMPILER_THREADS").map(v => integer("CQL_COMPILER_THREADS", v))
       .getOrElse(Runtime.getRuntime.availableProcessors().max(2))
     // Whether the compiler signals that the runtime mounts value-set expansion views (`valueset_<id>`,
     // `hasTerminology`). Default ON: measures generally reference value sets and the runtime binds the
     // conformed store (`SVC-BINDING-RUNTIME`). Set CQL_TERMINOLOGY=off for a strictly data-free host.
-    val terminologyMounted = !sys.env.get("CQL_TERMINOLOGY").map(_.trim.toLowerCase).contains("off")
+    val terminologyMounted = !env("CQL_TERMINOLOGY").map(_.trim.toLowerCase).contains("off")
     HostConfig(bindHost, port, token, threads, terminologyMounted)
   }
 }
@@ -297,8 +307,8 @@ final class CompilerRouter(service: CompileService, token: Option[String],
     } catch { case t: Throwable => HttpResult.error(400, t) }
 
   /** The compile-once PIPELINE PLAN (`PIPE-SQL-DAG-REUSE`): one dataset recipe per materialized define,
-    * `{name, target, reads, query, statements}`. The deployed SDP turns each recipe into one
-    * `@dp.materialized_view` (no per-node `cql()`). Session-free; failure is a loud 400. */
+    * `{name, target, reads, query, statements}`. A caller materializes each recipe as one dataset
+    * (no per-node `cql()`). Session-free; failure is a loud 400. */
   private def compilePipeline(body: String): HttpResult =
     try {
       val plan = service.compilePipeline(CompileRequest.fromJson(body))
@@ -328,15 +338,15 @@ final class CompilerRouter(service: CompileService, token: Option[String],
         })))
     } catch { case t: Throwable => HttpResult.error(400, t) }
 
-  /** The neutral pipeline graph — the parameterized metadata-driven SDP reads this to build its dataset
-    * DAG dynamically. Session-free; failure is a loud 400. */
+  /** The neutral pipeline graph — an external pipeline reads this to build its own dataset DAG.
+    * Session-free; failure is a loud 400. */
   private def describe(body: String): HttpResult =
     try {
       HttpResult.json(200, CompilerRouter.graphJson(service.describe(CompileRequest.fromJson(body)), compilerVersion))
     } catch { case t: Throwable => HttpResult.error(400, t) }
 
   /** The canonical `__resource` mount DDL per FHIR type (`SVC-RESOURCE-SCHEMA`) — the schema a data
-    * seeder needs to stand up a contract-correct `retrieve_<Type>` on the `(__subject_id, __resource)`
+    * seeder needs to stand up a contract-correct relation for a type on the `(__subject_id, __resource)`
     * mount contract (`DATA-CONTRACT` / `BIND-CONTRACT`) WITHOUT re-deriving the engine's FHIR model.
     * Pure model derivation from the STATIC schema (`ResourceStruct.structType`), so it stays Spark-free
     * (`EXEC-SQL-BACKEND`) — no `SparkSession`, only the catalyst `StructType` on the runtime classpath.

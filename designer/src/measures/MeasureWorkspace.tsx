@@ -554,7 +554,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
 
   // APP-CQL-AUTHORITATIVE — the authoritative define catalog from the compiler's ELM output.
   // This replaces regex-based CQL parsing as the source of truth for what defines exist; consumers
-  // (MeasureNarrative, DefineNav) use this when available, falling back to CQL scan only offline.
+  // (MeasureNarrative, DefineNav) read it, and show "Waiting for source" until it exists.
   const elmInfo = useMemo(() => (trans?.ok && trans.elm ? parseElmDefines(trans.elm) : null), [trans]);
 
   // APP-LOGIC-VIEW — selecting in the NAV scrolls the Define view to the criterion and keeps it
@@ -645,18 +645,29 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // column is empty. Some ingested copies genuinely lack it (one version of a helper library may ship
   // the resource while another does not), so this must degrade rather than fail.
   const [dataReqs, setDataReqs] = useState<Map<string, DataRequirement[]>>(new Map());
+  // KNOWLEDGE-FAIL-LOUD — a library whose read failed is named by its reason, never shown as reading nothing.
+  const [dataReqsError, setDataReqsError] = useState<string | null>(null);
   useEffect(() => {
     const libraries = elmInfo ? [elmInfo.name, ...compiledIncludes.ok.map((i) => i.info.name)] : [];
-    if (libraries.length === 0) { setDataReqs(new Map()); return; }
+    if (libraries.length === 0) { setDataReqs(new Map()); setDataReqsError(null); return; }
     let live = true;
     const versionOf = (name: string) =>
       name === elmInfo?.name ? elmInfo.version
         : compiledIncludes.ok.find((i) => i.info.name === name)?.info.version ?? "";
+    // Each library settles on its own: one failed read must not discard the others' rows.
     void Promise.all(libraries.map(async (name) => {
       const version = versionOf(name);
-      if (!version) return [name, [] as DataRequirement[]] as const;
-      return [name, await fetchDataRequirements(name, version, libLocation).catch(() => [])] as const;
-    })).then((pairs) => { if (live) setDataReqs(new Map(pairs)); });
+      if (!version) return { name, requirements: [] as DataRequirement[], error: null };
+      try {
+        return { name, requirements: await fetchDataRequirements(name, version, libLocation), error: null };
+      } catch (e) {
+        return { name, requirements: [] as DataRequirement[], error: e instanceof Error ? e.message : String(e) };
+      }
+    })).then((settled) => {
+      if (!live) return;
+      setDataReqs(new Map(settled.map((r) => [r.name, r.requirements] as const)));
+      setDataReqsError(settled.map((r) => r.error).find((e) => e !== null) ?? null);
+    });
     return () => { live = false; };
   }, [elmInfo, compiledIncludes, libLocation]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1298,7 +1309,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
                       results={computed ? (run?.results ?? null) : null}
                       spec={visibleSpec} elmInfo={elmInfo}
                       overlay={overlay} doc={specDoc}
-                      retrieves={retrieves} namedTerminology={namedTerminology}
+                      retrieves={retrieves} dataRequirementsError={dataReqsError} namedTerminology={namedTerminology}
                       parameters={citableParams(execParams)}
                       /* SPEC-REF-LENS — the same scope the inspector pane resolves, so a define popped from
                          a sentence and the same define pinned in the pane profile one evaluation. */

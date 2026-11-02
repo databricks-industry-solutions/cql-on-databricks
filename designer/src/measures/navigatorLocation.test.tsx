@@ -10,7 +10,7 @@ const OPEN: Definition = {
   cat: "measure", src: "v1.0.0", status: "pub", stat: "", statk: "", mine: false, meta: "", desc: "",
 };
 
-const FOLDER = "/Workspace/Users/a@example.org/CMS1";
+const FOLDER = "/Workspace/Users/a@example.org/ExamplePackage";
 
 function serve(routes: Record<string, unknown>) {
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
@@ -26,7 +26,7 @@ describe("the Open menu's location (DOC-OPEN-SAVE)", () => {
   it("names a location by its store or its folder's last segment", () => {
     expect(locationLabel(null)).toBe("All tagged stores");
     expect(locationLabel("store:k.measures")).toBe("k.measures");
-    expect(locationLabel(`folder:${FOLDER}`)).toBe("CMS1");
+    expect(locationLabel(`folder:${FOLDER}`)).toBe("ExamplePackage");
   });
 
   it("lists a store, and opens a library from a folder at that folder", async () => {
@@ -35,7 +35,7 @@ describe("the Open menu's location (DOC-OPEN-SAVE)", () => {
                           folders: [{ location: "folder:/Workspace/Users/a@example.org", label: "My folder" }] },
       "/api/folders?path=%2FWorkspace%2FUsers%2Fa%40example.org": {
         path: "/Workspace/Users/a@example.org", location: "folder:/Workspace/Users/a@example.org",
-        folders: [{ name: "CMS1", path: FOLDER }], libraries: [] },
+        folders: [{ name: "ExamplePackage", path: FOLDER }], libraries: [] },
       [`/api/folders?path=${encodeURIComponent(FOLDER)}`]: {
         path: FOLDER, location: `folder:${FOLDER}`, folders: [],
         libraries: [{ id: { name: "Measure", version: "1.0.0" }, location: `folder:${FOLDER}`, kind: "measure",
@@ -53,7 +53,7 @@ describe("the Open menu's location (DOC-OPEN-SAVE)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Location/ }));
     fireEvent.click(await screen.findByRole("button", { name: /My folder/ }));
-    fireEvent.click(await screen.findByRole("button", { name: /CMS1/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /ExamplePackage/ }));
     fireEvent.click(await screen.findByRole("button", { name: /Folder measure/ }));
     await waitFor(() => expect(onOpenAt).toHaveBeenLastCalledWith(`folder:${FOLDER}`, "Measure@1.0.0"));
   });

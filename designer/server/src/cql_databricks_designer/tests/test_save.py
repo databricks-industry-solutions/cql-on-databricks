@@ -18,7 +18,7 @@ from cql_databricks_designer.save import (SaveConflict, SaveRefused, SaveRequest
 OLD = "library Measure version '1.0.0'\ndefine X: 1\n"
 NEW = "library Measure version '1.0.0'\ndefine X: 2\n"
 ELM = '{"library": {"identifier": {"id": "Measure"}}}'
-F = "/Workspace/Users/a@example.org/CMS1"
+F = "/Workspace/Users/a@example.org/ExamplePackage"
 
 
 def _b64(text):
@@ -69,10 +69,10 @@ def _package():
         f"{F}/resources/library-Measure-1.0.0.xml": "<Library/>",
         f"{F}/resources/measure-Measure-1.0.0.json": json.dumps(MEASURE),
         f"{F}/resources/measure-Measure-1.0.0.xml": "<Measure/>",
-        f"{F}/CMS1-FHIR.json": json.dumps({"resourceType": "Bundle", "entry": [
+        f"{F}/ExamplePackage-FHIR.json": json.dumps({"resourceType": "Bundle", "entry": [
             {"resource": _library(OLD)}, {"resource": MEASURE}]}),
-        f"{F}/CMS1-FHIR.xml": "<Bundle/>",
-        f"{F}/CMS1-FHIR.html": "<html/>",
+        f"{F}/ExamplePackage-FHIR.xml": "<Bundle/>",
+        f"{F}/ExamplePackage-FHIR.html": "<html/>",
     })
 
 
@@ -85,19 +85,19 @@ def test_the_first_save_in_a_package_names_the_copies_it_cannot_regenerate():
     folder = _package()
     with pytest.raises(StaleCopies) as refused:
         save_to_folder(_request(), F, files=folder, writer=folder, elm=ELM)
-    assert refused.value.paths == [f"{F}/CMS1-FHIR.html", f"{F}/CMS1-FHIR.xml", f"{F}/resources/library-Measure-1.0.0.xml"]
+    assert refused.value.paths == [f"{F}/ExamplePackage-FHIR.html", f"{F}/ExamplePackage-FHIR.xml", f"{F}/resources/library-Measure-1.0.0.xml"]
     assert folder.files[f"{F}/cql/Measure-1.0.0.cql"] == OLD   # nothing written
 
 
 def test_a_confirmed_save_rewrites_every_json_copy_and_deletes_only_what_was_agreed():
     folder = _package()
-    stale = [f"{F}/CMS1-FHIR.html", f"{F}/CMS1-FHIR.xml", f"{F}/resources/library-Measure-1.0.0.xml"]
+    stale = [f"{F}/ExamplePackage-FHIR.html", f"{F}/ExamplePackage-FHIR.xml", f"{F}/resources/library-Measure-1.0.0.xml"]
     out = save_to_folder(_request(delete_stale=stale), F, files=folder, writer=folder, elm=ELM)
     assert folder.files[f"{F}/cql/Measure-1.0.0.cql"] == NEW
     library = json.loads(folder.files[f"{F}/resources/library-Measure-1.0.0.json"])
     assert base64.b64decode(library["content"][0]["data"]).decode() == NEW
     assert base64.b64decode(library["content"][1]["data"]).decode() == ELM
-    bundle = json.loads(folder.files[f"{F}/CMS1-FHIR.json"])
+    bundle = json.loads(folder.files[f"{F}/ExamplePackage-FHIR.json"])
     assert base64.b64decode(bundle["entry"][0]["resource"]["content"][0]["data"]).decode() == NEW
     assert out["deleted"] == stale and folder.deleted == stale
     # The Measure was not edited, so neither it nor its XML copy is touched.
@@ -108,11 +108,11 @@ def test_a_confirmed_save_rewrites_every_json_copy_and_deletes_only_what_was_agr
 def test_an_edited_measure_is_written_to_its_resource_and_the_bundle():
     folder = _package()
     edited = {**MEASURE, "description": "Adults with a reading."}
-    stale = [f"{F}/CMS1-FHIR.html", f"{F}/CMS1-FHIR.xml", f"{F}/resources/library-Measure-1.0.0.xml",
+    stale = [f"{F}/ExamplePackage-FHIR.html", f"{F}/ExamplePackage-FHIR.xml", f"{F}/resources/library-Measure-1.0.0.xml",
              f"{F}/resources/measure-Measure-1.0.0.xml"]
     save_to_folder(_request(measure=edited, delete_stale=stale), F, files=folder, writer=folder, elm=ELM)
     assert json.loads(folder.files[f"{F}/resources/measure-Measure-1.0.0.json"])["description"] == "Adults with a reading."
-    assert json.loads(folder.files[f"{F}/CMS1-FHIR.json"])["entry"][1]["resource"]["description"] == "Adults with a reading."
+    assert json.loads(folder.files[f"{F}/ExamplePackage-FHIR.json"])["entry"][1]["resource"]["description"] == "Adults with a reading."
 
 
 def test_a_library_changed_since_it_was_opened_is_not_saved():
@@ -132,11 +132,11 @@ def test_a_new_library_goes_where_a_package_keeps_its_cql():
 
 def test_a_folder_save_of_cql_that_does_not_compile_drops_the_elm_from_every_json_copy():
     folder = _package()
-    save_to_folder(_request(delete_stale=[f"{F}/CMS1-FHIR.xml", f"{F}/CMS1-FHIR.html",
+    save_to_folder(_request(delete_stale=[f"{F}/ExamplePackage-FHIR.xml", f"{F}/ExamplePackage-FHIR.html",
                                           f"{F}/resources/library-Measure-1.0.0.xml"]),
                    F, files=folder, writer=folder, elm=None)
     library = json.loads(folder.files[f"{F}/resources/library-Measure-1.0.0.json"])
-    bundled = json.loads(folder.files[f"{F}/CMS1-FHIR.json"])["entry"][0]["resource"]
+    bundled = json.loads(folder.files[f"{F}/ExamplePackage-FHIR.json"])["entry"][0]["resource"]
     assert folder.files[f"{F}/cql/Measure-1.0.0.cql"] == NEW
     assert library["content"] == bundled["content"] == [{"contentType": "text/cql", "data": _b64(NEW)}]
 
@@ -282,14 +282,14 @@ def test_a_new_library_is_never_written_over_one_that_is_there():
 
 def test_a_copy_is_a_draft_under_the_deployment_base_linked_to_its_original():
     from cql_databricks_designer.save import measure_copy
-    original = {**MEASURE, "url": "https://publisher.example.org/Measure/CMS1", "name": "CMS1",
-                "identifier": [{"value": "CMS1"}], "text": {"div": "<div/>"}, "status": "active"}
+    original = {**MEASURE, "url": "https://publisher.example.org/Measure/ExamplePackage", "name": "ExamplePackage",
+                "identifier": [{"value": "ExamplePackage"}], "text": {"div": "<div/>"}, "status": "active"}
     copied = measure_copy(original, "MyScreening", "0.1.0", base=BASE)
     assert (copied["url"], copied["name"], copied["version"], copied["status"]) == (
         f"{BASE}/Measure/MyScreening", "MyScreening", "0.1.0", "draft")
     assert copied["library"] == [f"{BASE}/Library/MyScreening|0.1.0"] and copied["title"] == "M"
     assert copied["relatedArtifact"] == [{"type": "derived-from",
-                                          "resource": "https://publisher.example.org/Measure/CMS1|1.0.0"}]
+                                          "resource": "https://publisher.example.org/Measure/ExamplePackage|1.0.0"}]
     assert "identifier" not in copied and "text" not in copied and original["status"] == "active"
 
 

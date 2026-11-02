@@ -87,8 +87,15 @@ def _ensure_schema(spark: SparkSession, catalog: str | None, schema: str) -> Non
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS {ns}")
 
 
+class DeltaFeaturesError(RuntimeError):
+    """Raised when a knowledge or value-set table cannot take the Delta features its incremental merge reads."""
+
+
 def _enable_delta_features(spark: SparkSession, fqtn: str) -> None:
-    """Enable Change Data Feed and Row Tracking on a newly created table."""
+    """Enable Row Tracking, Change Data Feed and Deletion Vectors on a newly created table.
+
+    A table that refuses them (not Delta, or not writable) raises, naming the table
+    (CORE-NO-SILENT-MISLOWER): the merge that follows depends on them."""
     try:
         spark.sql(
             f"ALTER TABLE {fqtn} SET TBLPROPERTIES ("
@@ -98,7 +105,7 @@ def _enable_delta_features(spark: SparkSession, fqtn: str) -> None:
             f")"
         )
     except Exception as e:
-        log.debug("could not enable delta features on %s (non-Delta?): %s", fqtn, e)
+        raise DeltaFeaturesError(f"could not enable Delta features on {fqtn}: {e}") from e
 
 
 class StaleKnowledgeTableError(RuntimeError):

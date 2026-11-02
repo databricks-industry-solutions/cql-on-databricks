@@ -50,8 +50,8 @@ def app_credentials(app_name: str, *, conf_hint: str):
     url = _workspace.app_url(app_name)
     if not url:
         raise ValueError(
-            f"cannot resolve App '{app_name}' in the workspace App registry — set '{conf_hint}' to the "
-            f"deployed app name, or set its endpoint explicitly to bypass discovery.")
+            f"App '{app_name}' has no serving URL in the workspace App registry (it may not be deployed yet). "
+            f"Set '{conf_hint}' to the deployed app name, or set its endpoint explicitly to bypass discovery.")
 
     host = _workspace.workspace_host()
     audience = _workspace.app_oauth_client_id(app_name)

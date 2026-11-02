@@ -4,7 +4,6 @@ package com.databricks.cql.service
 private[service] object BatchInputs {
   def prepare(req: CompileRequest): CompileRequest = {
     val period = req.measurementPeriod.map { bounds =>
-      require(req.libraries.isEmpty, "measurementPeriod requires a single root and its dependencies")
       require(!req.parameters.contains("Measurement Period") && !req.sessionParameters.contains("Measurement Period"),
         "give measurementPeriod or a Measurement Period parameter, not both")
       periodParameters(req.elmJson, bounds)

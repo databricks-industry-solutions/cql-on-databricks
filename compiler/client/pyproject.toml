@@ -54,7 +54,7 @@ test = ["pytest>=7"]
 # wheel missing declared package data once.
 #
 # BUILD-CLIENT-NAMESPACE (`DEC-CLIENT-PER-FEATURE`): this distribution owns `cql_databricks.compiler`,
-# `cql_databricks.data_bindings` (`DEC-BINDINGS-IN-CLIENT`: the UC-tag lookup, layout checks, corpus and SQL
+# `cql_databricks.data_bindings` (`DEC-BINDINGS-IN-CLIENT`: the environment's knowledge corpus and SQL
 # runner), `cql_databricks.result` (`RESULT-INTO-CLIENT`: durable bulk calculations, result reading and the
 # result views) and `cql_databricks.resolvers` (`CLIENT-PACKAGE-SPLIT`: the resolvers, the environments and the
 # value-set digest, apart from `cql_databricks.compiler`, the client of the stateless compiler).

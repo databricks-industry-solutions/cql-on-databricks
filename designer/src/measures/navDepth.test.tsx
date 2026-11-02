@@ -84,15 +84,6 @@ describe("nav depth (APP-NAV-DEPTH)", () => {
     // …and the slot alone separates twisty from label, so the row's own gap may not add to it.
     expect(g("parent").gap).toBe("0px");
   });
-
-  it("the Flow spine is the TOP level and declares no step of its own", () => {
-    // The `.mw-flow-spine` rule sets no `--nav-step`, so the tree under the spine lands in the same column
-    // the same define gets in the Outline. A step on the spine would push every row beneath it one indent
-    // right of its twin in the Outline, and the two would disagree about depth for one model.
-    expect(CSS).toMatch(/\.mw-flow-spine\s*\{/);
-    const spine = /\.mw-flow-spine\s*\{([^}]*)\}/.exec(CSS);
-    expect(spine![1]).not.toContain("--nav-step");
-  });
 });
 
 describe("pane size (APP-PANE-STATE)", () => {

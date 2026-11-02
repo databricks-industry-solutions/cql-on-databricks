@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from cql_databricks.resolvers.environment import Environment, EnvironmentResolver
 from cql_databricks.compiler.providers import LibraryGraph, DefineShape, SqlCompileResult, SqlStatement
 from cql_databricks.resolvers.interfaces import KeptResult, ResultResolver, TableRef
-from cql_databricks.data_bindings import Corpus, TaggedSchema
+from cql_databricks.data_bindings import Corpus
 from cql_databricks.result.inline import run_inline
 from test_durable_plan import plan
 
@@ -33,14 +33,7 @@ class Content:
     def corpus(self):
         return Corpus(lambda *args: [], [], [])
 
-    scopes = ()
     generation = 1
-
-    def data_source_schemas(self):
-        return [TaggedSchema("population", "population", "synthetic", "source")]
-
-    def terminology_sources(self):
-        return [TaggedSchema("cql_databricks_terminology", "terms", "synthetic", "terminology")]
 
 
 ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="1")

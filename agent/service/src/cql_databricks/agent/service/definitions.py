@@ -10,7 +10,7 @@ a keyword filter here would be a second, worse matcher in front of the one that 
 **THE CQL IS THE DEFINITION.** ``get_definition`` returns the source as written, so an explanation is of
 the logic that runs (`APP-CQL-AUTHORITATIVE`) and the user can check it (`AGENT-CQL-REVIEW`).
 
-Collaborators are injected, as in ``data.py``: the corpus of tagged knowledge, and a terminology reader.
+Collaborators are injected, as in ``data.py``: the environment's knowledge corpus, and a terminology reader.
 """
 from __future__ import annotations
 

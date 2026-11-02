@@ -55,7 +55,7 @@ import {
 
 type SectionKey = "overview" | "libraries" | "datareq" | "terminology" | "terms" | `inc-${string}`;
 
-export function MeasureNarrative({ definition, metrics, readCounts, funnel, live, selected, onSelect, onNavigate, onRunCell, results, spec, elmInfo, overlay, doc, retrieves = [], namedTerminology, parameters = {}, profileScope = null }: {
+export function MeasureNarrative({ definition, metrics, readCounts, funnel, live, selected, onSelect, onNavigate, onRunCell, results, spec, elmInfo, overlay, doc, retrieves = [], dataRequirementsError = null, namedTerminology, parameters = {}, profileScope = null }: {
   definition: Definition;
   /** SPEC-REF-LENS / APP-DATA-PROFILE — which evaluation a reference lens profiles when a reader opens
    *  one. The lens renders the inspector's own tabs, and a profile is a fact about ONE evaluation, so the
@@ -108,6 +108,9 @@ export function MeasureNarrative({ definition, metrics, readCounts, funnel, live
    *  CQL. Derived from the ELM so elimination governs it, enriched with `mustSupport` from the
    *  published resource (`specRetrieves.ts`). */
   retrieves?: SpecRetrieve[];
+  /** SPEC-DATA-REQUIREMENTS — why the published resource could not be read, so `mustSupport` is absent (`KNOWLEDGE-FAIL-LOUD`).
+   *  The reads themselves come from the ELM and still render; the section says what is missing and why. */
+  dataRequirementsError?: string | null;
   /** SPEC-DERIVED-APPENDIX — the terminology the VISIBLE logic names, `library::name`. Elimination
    *  governs terminology exactly as it governs defines and reads: a value set only an unreachable
    *  define mentions is one this measure does not use, and listing it invites a reader to expand
@@ -480,7 +483,7 @@ export function MeasureNarrative({ definition, metrics, readCounts, funnel, live
              counts as a hit" is one question and answering it in two places made the reader join them.
              What is left over — terminology the logic compares against but never reads with — keeps a
              section below, because folding it in here would delete it (see `comparedAgainst`). ── */}
-      {(retrieves.length > 0 || doc.appendix.parameters.length > 0) && (
+      {(retrieves.length > 0 || doc.appendix.parameters.length > 0 || dataRequirementsError) && (
         <SpecSection id="datareq" title="Data requirements" cards collapsed={collapsed.has("datareq")} onToggle={toggle}>
         {/* NO SECTION BLURB (`SPEC-NO-UI-PROSE`). A `.mw-desc` paragraph here would explain what
             the section holds. It would be written in a component, in the reading column, in the
@@ -493,6 +496,9 @@ export function MeasureNarrative({ definition, metrics, readCounts, funnel, live
 
               The value set that filters a read is stated in that read's own row, not in a table of its own.
               The heading names both halves of what a reader will find under it. */}
+          {dataRequirementsError && (
+            <p className="mw-dreq-unavailable" role="status">Data requirements unavailable: {dataRequirementsError}</p>
+          )}
           {retrieves.length > 0 && (
             <SpecCard title="Retrieves" id="mw-dr-reads">
               {/* APP-STYLE-GUIDE — "Retrieves" is a CARD: one of the two kinds of requirement this section
@@ -1698,8 +1704,8 @@ function useCitations() {
 /** SPEC-NARRATIVE-DEVICES — the device blocks under a prose field.
  *
  *  Include and Exclude are two lists, never one paragraph alternating between them, because two
- *  blocks show a reader there are two decisions (the AHRQ convention, designer/docs/narrative-tags.md
- *  section 6). A table is the most checkable device there is: six rows can be diffed against the ELM
+ *  blocks show a reader there are two decisions (the include and exclude convention of published measure
+ *  specifications, designer/docs/narrative-tags.md section 6). A table is the most checkable device there is: six rows can be diffed against the ELM
  *  literal and fail loudly when a seventh is added, where the same claim as a sentence can be checked
  *  against nothing. `checkAgainst` states what the rows must match so that diff can be written. */
 function Devices({ blocks, cite, metrics = null, reads }: {

@@ -106,7 +106,7 @@ class CompilerClient:
     def resource_schema(self, types: list[str]) -> dict[str, dict]:
         """POST /resource-schema — the canonical `__resource` mount DDL per FHIR type (SVC-RESOURCE-SCHEMA).
 
-        The conformance loader uses this to build contract-correct `retrieve_<Type>` tables on the
+        The conformance loader uses this to build contract-correct per-type tables on the
         `(__subject_id, __resource)` mount contract without re-deriving the engine's FHIR model — the DDL
         comes from the engine's static schema, served over HTTP so the loader never depends on the JVM
         (APP-DECOUPLE). Returns `{Type: {modeled, patientContext?, ddl?}}`; an
@@ -127,12 +127,6 @@ class CompilerClient:
         if deps:
             body["deps"] = deps
         return self._post("/describe", body)
-
-    def describe_multi(self, libraries: list[dict]) -> dict:
-        """POST /describe with the ``libraries`` field — multi-library merged graph description
-        (DESIGNER-SDP-NAV). Each entry is ``{elm, deps}``. Returns a merged LibraryGraph with
-        cross-library edges, library-qualified defines, and deduplication."""
-        return self._post("/describe", {"libraries": libraries})
 
 
 def compile_provider(endpoint: str, token: str | None = None, *, timeout: float = 600.0):

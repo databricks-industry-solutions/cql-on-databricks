@@ -1,6 +1,6 @@
 // KNOWLEDGE-LAKE-DIRECT (PROC-TDD) — the SPA library client: record→Definition mapping + fetch.
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { toDefinition, fetchDefinitions, fetchDefineProfile, fetchLibrarySource, fetchMeasureMetrics, publishLibrary, peekDefineProfile } from "./library-client.ts";
+import { toDefinition, fetchDefinitions, fetchDataRequirements, fetchDefineProfile, fetchLibrarySource, fetchMeasureMetrics, publishLibrary, peekDefineProfile } from "./library-client.ts";
 import { fetchResults } from "./run-client.ts";
 import type { ResultSetAddress } from "./wire.ts";
 import { setCurrentEnvironment } from "./environment.ts";
@@ -15,6 +15,23 @@ const measure = {
   metadata: { description: "Patients with an example condition whose reading is below threshold.", tags: ["measure"], author: "you" },
   updated: "2026-06-15T00:00:00.000Z",
 };
+
+describe("data requirements read (SPEC-DATA-REQUIREMENTS)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("answers the rows the server returns", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      dataRequirements: [{ type: "Condition" }] }))));
+    expect(await fetchDataRequirements("Measure", "1.0.0")).toEqual([{ type: "Condition" }]);
+  });
+
+  it("rejects with the server's reason, never as an empty list (KNOWLEDGE-FAIL-LOUD)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ error: "Measure@1.0.0: workspace folder not readable" }), { status: 500 })));
+    await expect(fetchDataRequirements("Measure", "1.0.0"))
+      .rejects.toThrow("Measure@1.0.0: workspace folder not readable");
+  });
+});
 
 describe("result request transport (RUN-CLIENT-REQUEST-REOPEN)", () => {
   afterEach(() => vi.unstubAllGlobals());

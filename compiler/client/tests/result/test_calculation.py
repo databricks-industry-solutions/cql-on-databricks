@@ -27,17 +27,10 @@ class Content:
                      for name, source in (("Synthetic", ROOT), ("Helper", INCLUDE))]
         return Corpus(lambda *args: [], [schema], libraries)
 
-    scopes = ()
     generation = 1
 
     def identity(self):
         return "synthetic.knowledge"
-
-    def data_source_schemas(self):
-        return [TaggedSchema("synthetic", "population", "synthetic", "source")]
-
-    def terminology_sources(self):
-        return [TaggedSchema("cql_databricks_terminology", "terms", "synthetic", "terminology")]
 
 
 ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="1")

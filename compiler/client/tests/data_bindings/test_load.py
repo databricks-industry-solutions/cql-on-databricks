@@ -6,9 +6,22 @@ import pytest
 from cql_databricks.data_bindings.measure_import.knowledge_merge import SINGLE_ROW, knowledge_merge_sql
 from cql_databricks.data_bindings.measure_import.load import (
     _KNOWLEDGE_TABLE_DDL,
+    DeltaFeaturesError,
     StaleKnowledgeTableError,
     _assert_variant_schema,
+    _enable_delta_features,
 )
+
+
+class _SqlSpark:
+    """Records the SQL a table is sent. ``fail`` makes the table refuse it, as a table that is not Delta does."""
+    def __init__(self, fail=None):
+        self.statements, self._fail = [], fail
+
+    def sql(self, text):
+        self.statements.append(text)
+        if self._fail:
+            raise RuntimeError(self._fail)
 
 
 class _FakeField:
@@ -101,3 +114,26 @@ def test_a_version_already_there_is_replaced():
     """DEC-PUBLISH-IMMUTABLE — the import and publishing both replace a published (url, version)."""
     row = knowledge_merge_sql("k.m.library", SINGLE_ROW)
     assert "WHEN MATCHED THEN UPDATE" in row and "WHEN NOT MATCHED THEN INSERT" in row
+
+
+# ── Delta features on a new table ────────────────────────────────────────────
+
+def test_a_new_table_gets_the_delta_features_its_merge_reads():
+    """CONTENT-INCREMENTAL — the incremental merge reads row tracking and the change feed."""
+    spark = _SqlSpark()
+    _enable_delta_features(spark, "acme.quality_measures.valueset")
+    [sql] = spark.statements
+    assert sql.startswith("ALTER TABLE acme.quality_measures.valueset SET TBLPROPERTIES (")
+    for prop in ("'delta.enableRowTracking' = 'true'", "'delta.enableChangeDataFeed' = 'true'",
+                 "'delta.enableDeletionVectors' = 'true'"):
+        assert prop in sql
+
+
+def test_a_table_that_refuses_the_delta_features_fails_loudly():
+    """CORE-NO-SILENT-MISLOWER — a table without the features is an error that names it, not a debug line."""
+    spark = _SqlSpark(fail="[DELTA_NOT_A_DELTA_TABLE] not a Delta table")
+    with pytest.raises(DeltaFeaturesError) as excinfo:
+        _enable_delta_features(spark, "acme.quality_measures.valueset")
+    message = str(excinfo.value)
+    assert "acme.quality_measures.valueset" in message
+    assert "DELTA_NOT_A_DELTA_TABLE" in message

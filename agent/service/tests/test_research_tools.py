@@ -57,14 +57,7 @@ class Content:
     def corpus(self):
         return CORPUS
 
-    scopes = ()
     generation = 1
-
-    def data_source_schemas(self):
-        return [TaggedSchema("population", "population", "synthetic", "source")]
-
-    def terminology_sources(self):
-        return [TaggedSchema("cql_databricks_terminology", "terms", "synthetic", "terminology")]
 
 
 #: AGENT-DEFAULT-ENVIRONMENT: the environment the experiments run in.

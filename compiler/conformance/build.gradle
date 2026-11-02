@@ -138,16 +138,6 @@ tasks.named('test') {
     // per-row expression re-explosion (a measure's exclusion-arm wall was 102 s). Default 10000; raise only
     // for a deliberately heavier fixture.
     systemProperty 'cqldatabricks.maxRuntimeMs', System.getProperty('cqldatabricks.maxRuntimeMs', '10000')
-    // The emit default barrier is a real `CREATE OR REPLACE TABLE`, but the local
-    // OSS Spark Connect session catalog does not support REPLACE-TABLE-AS-SELECT, so the CONFORMANCE runs
-    // default to the OSS-friendly `CACHE TABLE` barrier here (overridable — e.g. `-Dcqldatabricks.emit.barrier=table`
-    // when regenerating a deploy artifact for a Databricks endpoint). Product/default emit stays `table`.
-    systemProperty 'cqldatabricks.emit.barrier', System.getProperty('cqldatabricks.emit.barrier', 'cache')
-    // CONF-PERF-BUDGET (DORMANT — disabled by removing the `golden/<fixture>/cost.txt` baselines, which
-    // churned on every schema/lowering change; re-enable by re-blessing with `-Dcqldatabricks.blessPlans`).
-    // Default tolerance band (PERCENT) the structural cost budget seeds into a fresh bless; a committed
-    // line's own `band%`/`floor` then overrides it. Kept so the gate re-enables with zero code change.
-    systemProperty 'cqldatabricks.costBandPct', System.getProperty('cqldatabricks.costBandPct', '25')
     // Hand-authored FHIR sample data (NDJSON) for the Phase 2 retrieve differential. Absolute
     // path so the (local or remote) Spark Connect server resolves it server-side.
     // Default to the committed fixture data; `-Dcqldatabricks.dataDir=<dir>` overrides it (e.g. a scaled
@@ -207,7 +197,7 @@ tasks.named('test') {
     // `cqldatabricks.frontier=true` opts the not-yet-graduated measures (Corpus.frontierMeasures) into the
     // executable corpus for a focused iteration, without wedging the default green
     // suite; `cqldatabricks.measureReport`/`measureReportDetail` toggle the pseudo-MeasureReport dump.
-    ['cqldatabricks.blessPlans', 'cqldatabricks.skipMeasures', 'cqldatabricks.cseDebug', 'cqldatabricks.grainFirst', 'cqldatabricks.noGrainFirst', 'cqldatabricks.conditionalUnion', 'cqldatabricks.cteDefs', 'cqldatabricks.retrieveViews', 'cqldatabricks.protoDump', 'cqldatabricks.dumpRawProto', 'cqldatabricks.dumpPreOptimizeIr', 'cqldatabricks.updateGolden', 'cqldatabricks.dumpExplain',
+    ['cqldatabricks.blessPlans', 'cqldatabricks.skipMeasures', 'cqldatabricks.cseDebug', 'cqldatabricks.grainFirst', 'cqldatabricks.noGrainFirst', 'cqldatabricks.conditionalUnion', 'cqldatabricks.cteDefs', 'cqldatabricks.protoDump', 'cqldatabricks.dumpRawProto', 'cqldatabricks.dumpPreOptimizeIr', 'cqldatabricks.updateGolden', 'cqldatabricks.dumpExplain',
      'cqldatabricks.frontier', 'cqldatabricks.measureReport', 'cqldatabricks.measureReportDetail',
      'cqldatabricks.test', 'cqldatabricks.materialize.mode', 'cqldatabricks.materialize.cost_threshold', 'cqldatabricks.barrierTrace', 'cqldatabricks.testHeap',
      // DATA-RETRIEVE-BARRIER-OPT: re-run the corpus with filtered retrieve reads promoted to their own

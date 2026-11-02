@@ -7,7 +7,7 @@ import org.scalatestplus.junit.JUnitRunner
 
 /** EXEC-SELFDIFF (compiler/docs/execution-model.md) / EVAL-OPS-CORE (compiler/docs/execution-model.md section
   * 11.3) — the PURE, Spark-FREE per-operator gate on the shared semantic core ([[CqlOps]], the temporal
-  * family, EMIT-SQL-TEMPORAL-UDF). These ports must reproduce `SqlColumnLowering`'s ISO-string precision
+  * family, EMIT-SQL-TEMPORAL-UDF-OPAQUE). These ports must reproduce `SqlColumnLowering`'s ISO-string precision
   * semantics EXACTLY; this spec pins the three-valued edges (precision-uncertain -> null, open-bound
   * infinity, calendar stepping) by hand so a regression fails WITHOUT needing a Connect server. Because
   * `CqlRuntimeUdfs` now DELEGATES into these same functions, this is the operator gate for both the SQL

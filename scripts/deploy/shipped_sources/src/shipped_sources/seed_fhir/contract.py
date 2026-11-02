@@ -23,12 +23,6 @@ KNOWN_SYSTEMS: dict[str, tuple[str, ...]] = {
 }
 
 
-def retrieve_table_name(fhir_type: str) -> str:
-    """The mount table name the engine's compiled SQL references by fixed, unqualified name
-    (`SqlEvalEnv.retrieveMountName`): `retrieve_<Type>`. The seeded table MUST match exactly."""
-    return f"retrieve_{fhir_type}"
-
-
 def valueset_id_from_filename(stem: str) -> str:
     """The `valueset_id` a value-set expansion file contributes to the tall `valuesets` table. The engine
     keys membership by the value set URL's LAST SEGMENT (`valueSetId.split('/').last`) and names the

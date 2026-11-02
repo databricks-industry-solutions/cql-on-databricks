@@ -54,7 +54,7 @@ class CqlClient:
     @property
     def library_provider(self) -> Optional[LibraryProvider]:
         """The session's :class:`~.libraries.LibraryProvider`, or ``None`` when no source is configured.
-        Exposed so a host can inspect or delegate to it (``client.library_provider.search("CMS*")``)."""
+        Exposed so a host can inspect or delegate to it (``client.library_provider.search("Measure*")``)."""
         return self._library_provider
 
     def libraries(self, pattern: Optional[str] = None) -> list:
@@ -67,7 +67,7 @@ class CqlClient:
 
     def resource_schema(self, fhir_type: Optional[str] = None):
         """The compiler's model of FHIR data (`CLIENT-RESOURCE-SCHEMA`): the ``__resource`` struct a
-        ``retrieve_<fhir_type>`` must return, as a :class:`~.providers.ResourceSchema`. With no type, every
+        retrieve of that type must return, as a :class:`~.providers.ResourceSchema`. With no type, every
         modeled type's, keyed by type. Read from the compiler once per client, never derived here. An
         unmodeled type raises, naming it."""
         if self._resource_schemas is None:

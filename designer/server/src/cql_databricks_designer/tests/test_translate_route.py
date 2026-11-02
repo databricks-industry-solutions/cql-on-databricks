@@ -88,3 +88,29 @@ def test_explicit_includes_skip_resolution() -> None:
     body = _client(compiler, []).post("/api/translate", json={"cql": ROOT, "includes": [MID, BASE]}).json()
     assert body["ok"] is True
     assert compiler.calls == [("Root", ["Mid", "Base"])]
+
+
+class _ModeledTypes:
+    """The one compiler call the modeled-types route makes. ``types=None`` is a compiler that cannot answer."""
+
+    def __init__(self, types: list[str] | None) -> None:
+        self.types = types
+
+    def list_modeled_types(self) -> list[str]:
+        if self.types is None:
+            raise CompilerError("compiler unreachable listing modeled types")
+        return self.types
+
+
+def test_modeled_types_are_the_engines_resource_types() -> None:
+    """SVC-RESOURCE-SCHEMA — the editor offers the types the engine models, and nothing else rides along."""
+    body = _client(_ModeledTypes(["Encounter", "Patient"]), []).get("/api/modeled-types").json()
+    assert body == {"types": ["Encounter", "Patient"]}
+
+
+def test_modeled_types_fail_loud_with_the_compilers_message_rather_than_an_empty_list() -> None:
+    """SVC-RESOURCE-SCHEMA — an empty list would read as "the engine models nothing", so the failure is an
+    error status carrying the compiler's own message."""
+    response = _client(_ModeledTypes(None), []).get("/api/modeled-types")
+    assert response.status_code == 502
+    assert response.json() == {"error": "compiler unreachable listing modeled types"}

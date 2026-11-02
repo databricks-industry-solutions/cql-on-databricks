@@ -79,7 +79,6 @@ final class HetChoiceScaleSpec extends AnyFunSuite {
   private def exprsOfStmt(s: SqlStmt): Seq[SqlExpr] = s match {
     case SqlStmt.CreateView(_, r)  => exprsOfRel(r)
     case SqlStmt.CacheTable(_, r)  => exprsOfRel(r)
-    case _: SqlStmt.CreateFunction => Nil
   }
 
   /** Every `Field` (GetStructField) subexpression, as its rendered text — DISTINCT count == the set

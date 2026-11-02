@@ -3,7 +3,7 @@
 #
 # Databricks Apps store source as Workspace files (10 MB/file). Our jars are all < 10 MB, so they ship
 # as app source; only a JRE + 3 PUBLIC jars (icu4j, spark-connect-client-jvm, scala-compiler) exceed the
-# limit, and bootstrap.py fetches THOSE from the runtime UC Volume at startup (public-URL fallback).
+# limit, and bootstrap.py fetches THOSE from the runtime UC Volume at startup.
 #
 # This assembles build/app/ = bootstrap.py + requirements.txt + app.yaml + lib/ (installDist jars MINUS
 # the 3 oversized ones). deploy.sh exports CQL_DATABRICKS_ARTIFACT_VOLUME so the staged app.yaml points at the
@@ -28,13 +28,13 @@ cp "$svc/deploy/app.yaml"         "$app/app.yaml"
 
 # Substitute the runtime-artifact volume path into the STAGED app.yaml only (never the source). deploy.sh
 # exports the deploy-resolved path as CQL_DATABRICKS_ARTIFACT_VOLUME; run standalone the placeholder stays and
-# bootstrap.py falls back to the public URLs. python (not sed) so the path's slashes need no escaping.
+# bootstrap.py reads the public URLs only if no volume is configured. python (not sed) so the path's slashes need no escaping.
 vol="${CQL_DATABRICKS_ARTIFACT_VOLUME:-}"
 if [ -n "$vol" ] && [ "$vol" != "__CQL_DATABRICKS_ARTIFACT_VOLUME__" ]; then
   CQL_DATABRICKS_ARTIFACT_VOLUME="$vol" python3 -c 'import os,sys;p=sys.argv[1];s=open(p).read();open(p,"w").write(s.replace("__CQL_DATABRICKS_ARTIFACT_VOLUME__",os.environ["CQL_DATABRICKS_ARTIFACT_VOLUME"]))' "$app/app.yaml"
   echo "==> app.yaml CQL_DATABRICKS_ARTIFACT_VOLUME=$vol"
 else
-  echo "==> app.yaml CQL_DATABRICKS_ARTIFACT_VOLUME left as placeholder (bootstrap will use public URLs)"
+  echo "==> app.yaml CQL_DATABRICKS_ARTIFACT_VOLUME left as placeholder (bootstrap will use public URLs, no volume)"
 fi
 
 # SVC-COMPILER-IDENTITY / PIPE-BARRIER-HASH: stamp the compiler identity CQL on Databricks keys its materialization

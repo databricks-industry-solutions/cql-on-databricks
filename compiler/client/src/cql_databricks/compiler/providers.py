@@ -549,7 +549,7 @@ class CompileProvider(abc.ABC):
 
 
 class _JsonProvider(CompileProvider):
-    """SVC-COMPILER-UC — one protocol decoder for HTTP and UC transports; no compiler logic."""
+    """One protocol decoder for the HTTP transport; no compiler logic."""
 
     def _post(self, path: str, request: "CompileRequest | dict") -> dict:
         raise NotImplementedError
@@ -682,7 +682,7 @@ class RemoteProvider(_JsonProvider):
 @dataclass(frozen=True, kw_only=True)
 class ResourceSchema:
     """One FHIR type's ``__resource`` struct in the compiler's model (`CLIENT-RESOURCE-SCHEMA`): the struct a
-    ``retrieve_<Type>`` returns (`BIND-CONTRACT`), as a PySpark ``StructType`` and as DDL text.
+    retrieve of that type returns (`BIND-CONTRACT`), as a PySpark ``StructType`` and as DDL text.
     ``patient_context`` is whether the type is in the Patient compartment, which decides its ``__subject_id``
     (`DATA-SUBJECT-KEY`)."""
     fhir_type: str

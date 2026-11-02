@@ -1,57 +1,52 @@
-// APP-LOGIC-VIEW, APP-DEP-COUNTS (PROC-TDD) — dependency-graph derivation.
+// APP-LOGIC-VIEW, APP-DEP-COUNTS (PROC-TDD) — the walks the views share: what a node uses, what uses it,
+// and layers. The graph is built from ELM (elmGraph.ts); here it is written out so each walk is tested alone.
 import { describe, it, expect } from "vitest";
-import { buildLogicGraph, closureOf } from "./logicGraph.ts";
+import { closureOf, computeLayers, dependentsOf, type LogicGraph, type LogicNode, type LogicNodeType } from "./logicGraph.ts";
 
-const SRC = `library M version '1.0.0'
-using FHIR version '4.0.1'
-valueset "Pap Test": 'http://x/pap'
-context Patient
-define function "ToInterval"(p FHIR.Period): p
-define "Has Pap": exists ([Observation: "Pap Test"])
-define "Age OK": AgeInYears() >= 21
-define "Initial Population": "Age OK"
-define "Numerator": "Initial Population" and "Has Pap"`;
+const TYPE_OF: Record<string, LogicNodeType> = { def: "define", fn: "function", vs: "valueset", rt: "retrieve" };
 
-describe("buildLogicGraph", () => {
-  const g = buildLogicGraph(SRC);
-  const byLabel = (l: string) => g.nodes.find((n) => n.label === l)!;
+/** A graph from "what each node uses". Dependents are the inverse, and layers come from the real computation. */
+function graphOf(uses: Record<string, string[]>): LogicGraph {
+  const byId: Record<string, LogicNode> = {};
+  for (const id of Object.keys(uses)) {
+    const type = TYPE_OF[id.split(":")[0]!]!;
+    byId[id] = { id, label: id.slice(id.indexOf(":") + 1), type, deps: uses[id]!, dependents: [], cql: null, hint: "", layer: 0 };
+  }
+  for (const n of Object.values(byId)) for (const d of n.deps) byId[d]!.dependents.push(n.id);
+  computeLayers(new Map(Object.entries(byId)));
+  return { nodes: Object.values(byId), byId };
+}
 
-  it("creates nodes for defines, functions, value sets and retrieves", () => {
-    expect(g.nodes.find((n) => n.id === "def:Numerator")?.type).toBe("population");
-    expect(g.nodes.find((n) => n.id === "def:Has Pap")?.type).toBe("define");
-    expect(g.nodes.find((n) => n.id === "fn:ToInterval")?.type).toBe("function");
-    expect(g.nodes.find((n) => n.id === "vs:Pap Test")?.type).toBe("valueset");
-    expect(g.nodes.find((n) => n.id === "rt:Observation")?.type).toBe("retrieve");
-  });
+const g = graphOf({
+  "vs:Pap Test": [],
+  "rt:Observation": [],
+  "def:Age OK": [],
+  "def:Has Pap": ["rt:Observation", "vs:Pap Test"],
+  "def:Initial Population": ["def:Age OK"],
+  "def:Numerator": ["def:Has Pap", "def:Initial Population"],
+});
 
-  it("tags eCQM populations by name", () => {
-    expect(byLabel("Initial Population").type).toBe("population");
-    expect(byLabel("Numerator").type).toBe("population");
-    expect(byLabel("Has Pap").type).toBe("define");
-  });
-
-  it("resolves downstream deps (uses): a quoted ref to a value set vs a sibling define, plus retrieves", () => {
-    expect(byLabel("Has Pap").deps.sort()).toEqual(["rt:Observation", "vs:Pap Test"]);
-    expect(byLabel("Numerator").deps.sort()).toEqual(["def:Has Pap", "def:Initial Population"]);
-    expect(byLabel("Age OK").deps).toEqual([]); // AgeInYears() is not a declared function → not a dep
-  });
-
-  it("computes dependents (used by — the upstream direction, APP-DEP-COUNTS)", () => {
-    expect(byLabel("Numerator").dependents).toEqual([]);
-    expect(byLabel("Has Pap").dependents).toEqual(["def:Numerator"]);
-    expect(byLabel("Initial Population").dependents).toEqual(["def:Numerator"]);
-    expect(byLabel("Pap Test").dependents).toEqual(["def:Has Pap"]);
-  });
-
+describe("closureOf (APP-LOGIC-VIEW)", () => {
   it("computes the transitive closure of what a node uses", () => {
     const cl = closureOf(g, "def:Numerator");
     expect([...cl].sort()).toEqual(
       ["def:Age OK", "def:Has Pap", "def:Initial Population", "rt:Observation", "vs:Pap Test"]);
   });
+});
 
+describe("dependentsOf (APP-DEP-COUNTS)", () => {
+  it("computes the transitive set of what uses a node", () => {
+    expect([...dependentsOf(g, "vs:Pap Test")].sort()).toEqual(["def:Has Pap", "def:Numerator"]);
+    expect([...dependentsOf(g, "def:Age OK")].sort()).toEqual(["def:Initial Population", "def:Numerator"]);
+    expect(dependentsOf(g, "def:Numerator").size).toBe(0);
+  });
+});
+
+describe("computeLayers (APP-LOGIC-VIEW)", () => {
   it("layers topologically (leaves 0, populations highest)", () => {
-    expect(byLabel("Pap Test").layer).toBe(0);
-    expect(byLabel("Has Pap").layer).toBe(1);
-    expect(byLabel("Numerator").layer).toBe(2);
+    const layer = (id: string) => g.byId[id]!.layer;
+    expect(layer("vs:Pap Test")).toBe(0);
+    expect(layer("def:Has Pap")).toBe(1);
+    expect(layer("def:Numerator")).toBe(2);
   });
 });

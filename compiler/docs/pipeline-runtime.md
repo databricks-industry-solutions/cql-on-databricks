@@ -47,7 +47,7 @@ same measure with different parameters publishes different datasets.
 `materialize.retrieves` (default `none`) can publish filtered retrieves as their own recipes: `costly`
 publishes reads used at `materialize.retrieve_min_reuse` (default 2) or more call sites, `all` publishes
 every filtered read. Bare retrieves are never published. A read recipe has `kind = "resource"`, payload
-`__resource`, no `reads`, and a content-addressed name `read_<type>[_<filter>]_<hash>`
+`__resource`, no `reads`, and a content-addressed name `read_<type>[_<filter>]_<hash8>`
 (`passes/RetrieveReads.scala`). It is ordered before the define recipes.
 
 ## 3. Libraries
@@ -56,16 +56,6 @@ every filtered read. Bare retrieves are never published. A read recipe has `kind
 `LibraryLinker.link` flattens root and dependencies into one library and `prune` drops what no root
 needs. The service does no library lookup: the caller resolves the include closure and sends it. A
 missing dependency fails the compile (`CORE-NO-SILENT-MISLOWER`).
-
-`libraries` compiles several measures into one merged plan.
-When it is present, `elm`, `cql` and `deps` are ignored:
-
-```json
-{"libraries": [{"elm": "...", "deps": ["..."]}], "context": "Patient", "parameters": {}}
-```
-
-`LibraryLinker.linkMulti` links each root on its own, prefixes each root's defines with `{libId}__`, and
-merges shared dependency defines by name.
 
 ## 4. Durable identity — `PIPE-DURABLE-IDENTITY`, `RUN-CLIENT-RESULT-IDENTITY`
 
@@ -76,8 +66,9 @@ With `durable: true`, each recipe carries a `durable` object: `format` (`cql-res
   in the define's dependency closure, the `[read, fingerprint]` pairs of its upstream recipes and the bound
   data source's `catalog.schema`.
 - The destination, the caller and the compiler version are not part of it (`DEC-RESULT-IDENTITY`).
-- A durable compile that retrieves data needs `dataSource`. Explicit `sources` bindings or bare
-  `retrieve_<Type>` names fail, because the result would have no source address.
+- A durable compile that retrieves data needs a `data` binding for each retrieve call site, and each bound
+  relation needs an identity (`BIND-CALL-SITE`, `CLIENT-RESOLVER-IDENTITY`). A retrieve the request does not
+  bind fails, naming its site, because the result would have no source address.
 - `reusable` is false for a define that uses `Now`, `Today`, `TimeOfDay` or `Random`, and for every define
   that reads one.
 
@@ -89,8 +80,6 @@ about whether the source data changed: the data source serves as-of data.
 
 - `SqlDagReuseSpec` (`PIPE-SQL-DAG-REUSE`): one recipe per materialized define, sibling reads declared,
   and per-subject results identical to the fully inlined script.
-- `MultiLibPipelineSpec`: qualified recipe names, the single-library path unchanged,
-  shared dependencies merged.
 
 ## 6. The interactive client — `BUILD-CLIENT-SESSION`, `BUILD-CLIENT-QUERY`, `BUILD-CLIENT-POPULATIONS`
 

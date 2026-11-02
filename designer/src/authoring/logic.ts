@@ -18,30 +18,12 @@ export interface DefineEntry {
   cql: string;
 }
 
-export interface LibraryHeader {
-  name: string;
-  version: string;
-  /** The `using <Model> version 'x'` model line, e.g. "FHIR 4.0.1"; "" if absent. */
-  model: string;
-}
-
 // A top-level `define` with (in CQL order) an optional `public`/`private` access modifier, an optional
 // `fluent` modifier, then an optional `function`, capturing the quoted or bare name. Anchored to line
 // start (multiline) so it does not match the word "define" inside an expression or comment.
 // `fluent` MUST be consumed here: without it `define fluent function "ToString"(…)` parses as a define
 // NAMED "fluent", which then collapses every fluent function in a library into one bogus entry.
 const DEFINE_RE = /^\s*define\s+(?:(public|private)\s+)?(?:fluent\s+)?(function\s+)?(?:"([^"]+)"|([A-Za-z_]\w*))/gm;
-
-/** Parse the library header (`library X version 'v'` + `using`), for the tab title + logic-view chrome. */
-export function libraryHeader(cql: string): LibraryHeader {
-  const lib = /\blibrary\s+([A-Za-z_]\w*)\s+version\s+'([^']*)'/.exec(cql);
-  const using = /\busing\s+([A-Za-z_.]+)\s+version\s+'([^']*)'/.exec(cql);
-  return {
-    name: lib?.[1] ?? "",
-    version: lib?.[2] ?? "",
-    model: using ? `${using[1]} ${using[2]}` : "",
-  };
-}
 
 /** Every top-level definition in source order (APP-LOGIC-VIEW: a single ordered list), each with the
  *  CQL slice from its `define` to the next top-level define (or end of source). */

@@ -42,9 +42,8 @@ The CQL to ELM front end (`translate`, on cqframework `cql-to-elm`, in-process, 
 
 ## `compiler/server`
 
-The Compiler Service App (`CompilerServiceApp`, `SVC-API-HOST`), with auth and a response cache, and
-`UcCompiler`, the same protocol in a UC Scala UDF. Deploy files are in `compiler/server/deploy/`. See
-[compiler-service.md](compiler-service.md).
+The Compiler Service App (`CompilerServiceApp`, `SVC-API-HOST`), with auth and a response cache. Deploy files
+are in `compiler/server/deploy/`. See [compiler-service.md](compiler-service.md).
 
 ## `compiler/runtime/udf`
 

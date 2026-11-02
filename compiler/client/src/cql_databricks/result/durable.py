@@ -111,12 +111,6 @@ def open_result_set(query: CqlQuery | PreparedCalculation, *targets: str, **opti
     return resolve_results(query, *targets, **options)
 
 
-def archive_session(session_id: str, *, destination: tuple[str, str],
-                    spark=None, run: SqlRunner | None = None) -> None:
-    """A portable reference is released by discarding it in its owner."""
-    raise ValueError("portable handles have no server-side session to archive; discard the client reference")
-
-
 def _run(query, targets, *, spark, run, results, mode, session_id, computed_since, read_only=False, on_step=None,
          on_plan=None, on_start=None, parallelism=PARALLEL_DEFINES):
     if (spark is None) == (run is None):

@@ -33,16 +33,14 @@ def router(*, compiler: CompilerClient, contents: EnvironmentContents) -> APIRou
     router = APIRouter()
 
     @router.get("/api/modeled-types")
-    def modeled_types() -> dict[str, Any]:
-        # The FHIR resource types the engine actually models (SVC-RESOURCE-SCHEMA), so
-        # the Data Sources editor offers only bindable entities (APP-NO-UI-MOCK). Best-effort — if the
-        # compiler is unreachable the editor falls back to its static list, so a degraded compiler yields
-        # an empty set + a flag rather than a hard error.
+    def modeled_types() -> Any:
+        # SVC-RESOURCE-SCHEMA — the FHIR resource types the engine actually models, so the Data Sources editor
+        # offers only bindable entities (APP-NO-UI-MOCK). A compiler that cannot answer is an error with the
+        # compiler's message, never an empty list: an empty list reads as "the engine models nothing".
         try:
-            return {"types": compiler.list_modeled_types(), "fallback": False}
+            return {"types": compiler.list_modeled_types()}
         except CompilerError as e:
-            log.warning("modeled-types unavailable, editor will use its static fallback: %s", e)
-            return {"types": [], "fallback": True}
+            return JSONResponse(status_code=502, content={"error": str(e)})
 
     @router.post("/api/translate")
     def translate(req: TranslateRequest) -> dict[str, Any]:

@@ -181,15 +181,8 @@ object OperatorTests {
     * BUGS, not capability gaps — excluded from the execution diff so the gate is green, but recorded
     * here LOUDLY (not silently) so they are not forgotten. Each is a real correctness defect the
     * operator gate caught; fixing the engine then removes the entry and the case starts gating.
-    *
-    * EXEC-SQL-DECIMAL-STEP: the SQL lowering of `Predecessor`/`Successor`/`HighBoundary`
-    * over `Decimal` once dropped CQL's decimal precision step (10^-8) / boundary padding — e.g.
-    * `predecessor of 1.0` yielded `1` where CQL requires `0.99999999`. Root cause: decimal literals
-    * lower to DECIMAL(38,8), and Spark's addition of two (38,8) operands overflows precision 38 and
-    * (allowPrecisionLoss) rounds the sum to scale 7, erasing the 8th-decimal step. Fixed in
-    * `SqlColumnLowering` by narrowing the step/boundary operands to DECIMAL(28,8) so the sum stays
-    * (29,8); these cases now gate on the SQL back end. */
-  val KnownDivergences: Map[(String, String, String), String] = Map.empty // EXEC-SQL-DECIMAL-STEP fixed
+    * Empty: no engine value divergence is open. */
+  val KnownDivergences: Map[(String, String, String), String] = Map.empty
 
   /** Cases the engine lowers to a STRUCTURALLY INVALID Spark plan — they pass normalize and the
     * Column-building lower, but Spark rejects the plan at analysis time (`AnalysisException`). These

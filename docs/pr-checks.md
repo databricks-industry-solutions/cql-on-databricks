@@ -117,6 +117,7 @@ Release note: <the text customers will read>
 | `CHECK-SQL-SAFE` | SQL built from input quotes identifiers and passes values as parameters or quoted literals. Scala SQL text goes through `SqlRender` | `BLOCK` |
 | `CHECK-LOGS-CLEAN` | Logs and errors carry no token, credential or patient row | `BLOCK` |
 | `CHECK-NO-INTERNAL` | Nothing exposes Databricks internals: no internal ticket or incident IDs, no links to Slack, Jira, Confluence or `go/`, no unreleased features or limits, no internal workarounds, no people's names. State the constraint itself, not where it came from | `BLOCK` |
+| `CHECK-NO-SOURCE-NAMES` | Nothing names or alludes to a specific measure steward, publisher, program, vendor or content source: not in code, docs, comments, tests, fixtures, object names or IDs, and not as a measure's catalogue number. Say what the thing is ("a measure package", "a value-set service"). Not sources: the standards and their bodies (HL7, FHIR, CQL, QI-Core), the generic terms eCQM and dQM, the canonical URIs of standard code systems, dependency coordinates, and license attributions. The root `README.md` may name the published measures we computed and the performance we measured on them | `BLOCK` |
 
 ## Dependencies
 

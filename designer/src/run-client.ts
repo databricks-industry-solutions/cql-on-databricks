@@ -31,13 +31,6 @@ export function designerInstanceId(): string {
   return DESIGNER_INSTANCE_ID;
 }
 
-/** The CQL context a measure declares (`context Patient` / `context Unfiltered`), so the run evaluates in
- *  the same context it was authored in. Defaults to Patient (the common eCQM case) when undeclared. */
-export function contextFromSource(cql: string): string {
-  const m = /\bcontext\s+([A-Za-z_]\w*)/.exec(cql);
-  return m?.[1] ?? "Patient";
-}
-
 export interface RunOptions {
   /** RUN-CLIENT-REFRESH-RESUME — retry callers must pass the same explicit computedSince. */
   recompute?: boolean;
@@ -108,18 +101,13 @@ export async function fetchEnvironments(): Promise<EnvironmentRecord[]> {
 }
 
 /** SVC-RESOURCE-SCHEMA — the FHIR resource types the engine actually models, so the Data Sources editor offers
- *  only bindable entities (APP-NO-UI-MOCK). Degrades to [] on any failure OR a compiler
- *  fallback, so the editor uses its static list rather than an empty picker. */
+ *  only bindable entities (APP-NO-UI-MOCK). A failure rejects with the server's message: the caller shows it,
+ *  and an empty picker is never presented as the engine's answer. */
 export async function fetchModeledTypes(): Promise<string[]> {
-  try {
-    return await cachedGet("/api/modeled-types", async (res) => {
-      if (!res.ok) return [];
-      const body = (await res.json()) as { types?: string[]; fallback?: boolean };
-      return body.fallback ? [] : (body.types ?? []);
-    });
-  } catch {
-    return [];
-  }
+  return await cachedGet("/api/modeled-types", async (res) => {
+    if (!res.ok) throw new Error(await errorText(res, "list modeled types"));
+    return ((await res.json()) as { types: string[] }).types;
+  });
 }
 
 // ---------------------------------------------------------------------------

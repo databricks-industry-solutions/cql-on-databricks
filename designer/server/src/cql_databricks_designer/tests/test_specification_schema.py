@@ -171,7 +171,7 @@ def test_population_carries_a_stable_id(schema):
 
 
 def test_episode_and_stratifier_populations_are_expressible(schema):
-    """F8/F9 — CMS eCQMs are the demo corpus and several use stratifiers and SDEs; a model that
+    """F8/F9 — published eCQMs are the demo corpus and several use stratifiers and SDEs; a model that
     cannot express them cannot describe the content we ship."""
     doc = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Specification xmlns="{NS}" schemaVersion="1.0">

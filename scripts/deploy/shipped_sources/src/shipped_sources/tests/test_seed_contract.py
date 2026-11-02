@@ -4,12 +4,6 @@ from __future__ import annotations
 from shipped_sources.seed_fhir import contract
 
 
-def test_retrieve_table_name_matches_engine_mount():
-    # Must equal SqlEvalEnv.retrieveMountName — the name the compiled SQL references.
-    assert contract.retrieve_table_name("Patient") == "retrieve_Patient"
-    assert contract.retrieve_table_name("Condition") == "retrieve_Condition"
-
-
 def test_valueset_id_from_filename_strips_engine_prefix():
     # The engine filters `WHERE valueset_id = '<last-url-segment>'`; file is valueset-<segment>.ndjson.
     assert contract.valueset_id_from_filename("valueset-diabetes") == "diabetes"

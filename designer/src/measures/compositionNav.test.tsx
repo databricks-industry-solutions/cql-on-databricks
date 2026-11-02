@@ -1,8 +1,8 @@
 // SPEC-NAV-COMPOSITION — the left pane's Composition tab.
 //
-// THE FAILURE THESE EXIST FOR is the one that retired Flow: a navigator that can only show you ONE
-// population's decomposition at a time cannot answer "where else is this define used?", which is the
-// question the tree exists for. Composition draws EVERY population, so the answer is on screen.
+// THE FAILURE THESE EXIST FOR: a navigator that can only show ONE population's decomposition at a time
+// cannot answer "where else is this define used?", which is the question the tree exists for. Composition
+// draws EVERY population, so the answer is on screen.
 //
 // They also pin the invariant the two arrangements share and that `navRows.tsx` exists to protect: the
 // rows ARE the Outline's rows, so a define looks and selects the same in both. That held for free while
@@ -25,19 +25,29 @@ describe("the Composition tab (SPEC-NAV-COMPOSITION)", () => {
   });
 
   it("draws EVERY population's tree at once, not one rooted branch", () => {
-    // The whole reason the tab came back. Under Flow exactly one population's subtree was in the DOM
-    // and the rest were behind a spine click; a reader asking which populations reach a define had to
-    // visit each one and remember what they saw.
+    // Every population's subtree is in the DOM together, so a reader asking which populations reach a
+    // define sees them side by side rather than visiting each one.
     const { container } = renderNavPane({ tab: "composition" });
     const rendered = labels(container);
     const populations = ["Initial Population", "Denominator", "Numerator"];
     for (const p of populations) expect(rendered).toContain(p);
   });
 
-  it("renders no spine — the tree is the navigator", () => {
-    // Geometry in a 256px gutter, competing with the tree it was supposed to steer.
+  it("draws the tree by nesting alone: a population folds, and a define below it is read down", () => {
+    // The tree is the navigator, so its only controls are the population rows: `CompositionNav` gives one
+    // collapsible level and nothing else. A twisty on a define would turn the tree into a set of controls.
     const { container } = renderNavPane({ tab: "composition" });
-    expect(container.querySelector(".mw-spine-wrap")).toBeNull();
+    const populations = ["Initial Population", "Denominator", "Numerator"];
+    const twisties = [...container.querySelectorAll(".mw-twisty")];
+    expect(twisties.length).toBeGreaterThan(0);
+    for (const twisty of twisties) {
+      expect(populations).toContain(twisty.closest(".mw-node-open")?.querySelector(".lab")?.textContent);
+    }
+    const nested = [...container.querySelectorAll(".mw-nav-nested")];
+    expect(nested.some((branch) => branch.querySelector(".mw-node"))).toBe(true);
+    for (const branch of nested) {
+      expect(branch.querySelector(".mw-twisty"), "a define under a population has no twisty").toBeNull();
+    }
   });
 
   it("selects a define by NAME, the same token the Outline selects", () => {

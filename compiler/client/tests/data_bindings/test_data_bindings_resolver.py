@@ -122,7 +122,7 @@ def _knowledge_runner(measure_resource=None):
     ])
 
 
-SOURCE = TaggedSchema(KNOWLEDGE_TAG, "cms", "main", "quality_measures")
+SOURCE = TaggedSchema(KNOWLEDGE_TAG, "measures", "main", "quality_measures")
 
 
 def test_corpus_joins_measure_roots_and_keeps_library_values():
@@ -179,7 +179,7 @@ def test_a_source_that_breaks_its_layout_fails_the_load():
 def test_the_first_copy_of_a_library_wins_across_sources():
     other = TaggedSchema(KNOWLEDGE_TAG, "copy", "main", "copy")
     corpus = load_corpus(_knowledge_runner(), [SOURCE, other])
-    assert [lib.knowledge.name for lib in corpus.libraries if lib.name == "Helpers"] == ["cms"]
+    assert [lib.knowledge.name for lib in corpus.libraries if lib.name == "Helpers"] == ["measures"]
 
 
 def test_corpus_sql_is_portable():
@@ -209,14 +209,6 @@ def test_resolver_builds_its_runner_lazily_and_caches_until_reload():
     assert [s.fqn for s in first.sources] == ["`main`.`knowledge`"]
     content.reload()
     assert content.corpus() is not first
-
-
-def test_terminology_is_the_environments_view_and_unchecked():
-    """BIND-PUBLISHED-VIEW — nothing checks the layout at run time; a missing view fails the read that needs it."""
-    runner = FakeRunner([])
-    [terminology] = ContentResolver(lambda: runner, "main", "example").terminology_sources()
-    assert (terminology.tag, terminology.name, terminology.fqn) == (TERMINOLOGY_TAG, "example", "`main`.`terminology`")
-    assert runner.calls == []
 
 
 # --- warehouse_session ----------------------------------------------------------------------------

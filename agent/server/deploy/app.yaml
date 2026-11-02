@@ -10,9 +10,8 @@
 #
 # The env below is substituted by the same staging pass as the other Apps' (scripts/deploy/stage-app.sh) — the
 # tools read the results catalog and the warehouse. No Lakebase: environments are tagged catalogs
-# (CLIENT-ENVIRONMENT). It compiles nothing, but it does call the compiler: the data-source layout check
-# maps each schema's retrieve functions back to FHIR types through the compiler's modeled types,
-# so it names the compiler App and holds CAN_USE on it.
+# (CLIENT-ENVIRONMENT). It calls the compiler to translate and compile the CQL its tools run, so it names the
+# compiler App and holds CAN_USE on it.
 
 command:
   - "python"
@@ -23,7 +22,7 @@ env:
   # No PORT here: the App injects DATABRICKS_APP_PORT. `mcp_app.main()` binds PORT on 0.0.0.0.
 
   # The compiler App, by NAME (APP-PER-FEATURE): `valueFrom` an `app` resource resolves to its name, and
-  # config.py reads its URL from the Apps API. Read for the modeled FHIR types only.
+  # config.py reads its URL from the Apps API.
   - name: "CQL_COMPILER_APP"
     valueFrom: "compiler"
 

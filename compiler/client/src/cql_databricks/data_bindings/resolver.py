@@ -1,5 +1,5 @@
 """CLIENT-ENVIRONMENT, BIND-PUBLISHED-VIEW — what a long-running caller (an App) holds for one environment: its
-knowledge and terminology schemas, by their standard names, and the knowledge corpus, cached.
+knowledge schema, by its standard name, and the knowledge corpus, cached.
 
 Loading the corpus takes seconds, so it happens once and is reused until ``reload()``. The runner is a factory, so
 constructing this touches no workspace; the first read does. Nothing is searched for by tag and no layout is checked:
@@ -12,7 +12,7 @@ from typing import Callable
 
 from .corpus import Corpus, load_corpus
 from .runner import SqlRunner
-from .tags import KNOWLEDGE_TAG, TERMINOLOGY_TAG, TaggedSchema
+from .tags import KNOWLEDGE_TAG, TaggedSchema
 
 
 class ContentResolver:
@@ -21,7 +21,6 @@ class ContentResolver:
         self._runner = runner
         self.catalog, self.name = catalog, name
         self._knowledge = TaggedSchema(tag=KNOWLEDGE_TAG, name=name, catalog=catalog, schema="knowledge")
-        self._terminology = TaggedSchema(tag=TERMINOLOGY_TAG, name=name, catalog=catalog, schema="terminology")
         self._lock = threading.Lock()
         self._run: SqlRunner | None = None
         self._corpus: Corpus | None = None
@@ -52,10 +51,6 @@ class ContentResolver:
 
     def knowledge_sources(self) -> list[TaggedSchema]:
         return self.corpus().sources
-
-    def terminology_sources(self) -> list[TaggedSchema]:
-        """The environment's terminology schema."""
-        return [self._terminology]
 
     def reload(self) -> None:
         """Forget the corpus; the next read loads it again."""

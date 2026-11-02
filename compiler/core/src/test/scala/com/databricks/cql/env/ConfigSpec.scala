@@ -1,5 +1,6 @@
 package com.databricks.cql.env
 
+import com.databricks.cql.error.{ConfigError, RetiredConfigKey}
 import org.junit.runner.RunWith
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.junit.JUnitRunner
@@ -23,18 +24,20 @@ class ConfigSpec extends AnyFunSuite {
     assert(Config.resolve(Map("materialize.retrieves" -> "none")).materializeRetrieves == Config.RetrieveMode.None)
     assert(Config.resolve(Map("materialize.retrieves" -> "costly")).materializeRetrieves == Config.RetrieveMode.Costly)
     assert(Config.resolve(Map("materialize.retrieves" -> "all")).materializeRetrieves == Config.RetrieveMode.All)
-    // Unlike `materialize.mode`, `selective` is NOT an alias here — this policy never had that spelling.
-    assert(Config.resolve(Map("materialize.retrieves" -> "selective")).materializeRetrieves == Config.RetrieveMode.None)
+    // Unlike `materialize.mode`, `selective` is NOT an alias here — this policy never had that spelling, so it is refused.
+    val err = intercept[ConfigError](Config.resolve(Map("materialize.retrieves" -> "selective")))
+    assert(err.key == "materialize.retrieves" && err.value == "selective", err.getMessage)
     // The two policies are independent: setting one leaves the other at its own default.
     val c = Config.resolve(Map("materialize.retrieves" -> "all"))
     assert(c.materializeMode == Config.MaterializeMode.Costly)
   }
 
-  test("materialize.retrieve_min_reuse parses, and rejects a nonsensical threshold") {
+  test("materialize.retrieve_min_reuse parses, and refuses a value that is not an integer of at least 1 (CORE-NO-SILENT-MISLOWER)") {
     assert(Config.resolve(Map("materialize.retrieve_min_reuse" -> "6")).materializeRetrieveMinReuse == 6)
-    assert(Config.resolve(Map("materialize.retrieve_min_reuse" -> "nope")).materializeRetrieveMinReuse == 2)
-    // A threshold below 1 cannot mean anything (every scan has ≥1 call site) — fall back to the default.
-    assert(Config.resolve(Map("materialize.retrieve_min_reuse" -> "0")).materializeRetrieveMinReuse == 2)
+    for (bad <- Seq("nope", "0")) {
+      val err = intercept[ConfigError](Config.resolve(Map("materialize.retrieve_min_reuse" -> bad)))
+      assert(err.getMessage.contains("materialize.retrieve_min_reuse") && err.getMessage.contains(s"'$bad'"), err.getMessage)
+    }
   }
 
   test("caller overrides take precedence over defaults") {
@@ -58,10 +61,26 @@ class ConfigSpec extends AnyFunSuite {
     assert(Config.resolve(Map("materialize.mode" -> "selective")).materializeMode == Config.MaterializeMode.Costly)
   }
 
-  test("an unparseable known value falls back to the default for that key") {
-    val c = Config.resolve(Map("materialize.mode" -> "nonsense", "materialize.cost_threshold" -> "notanumber"))
-    assert(c.materializeMode == Config.MaterializeMode.Costly)
-    assert(c.materializeCostThreshold == Config.DefaultMaterializeCostThreshold)
+  test("an unparseable known value fails, naming the key and the value, and never takes the default (CORE-NO-SILENT-MISLOWER)") {
+    val mode = intercept[ConfigError](Config.resolve(Map("materialize.mode" -> "nonsense")))
+    assert(mode.getMessage.contains("'materialize.mode'") && mode.getMessage.contains("'nonsense'"), mode.getMessage)
+    val cost = intercept[ConfigError](Config.resolve(Map("materialize.cost_threshold" -> "notanumber")))
+    assert(cost.getMessage.contains("'materialize.cost_threshold'") && cost.getMessage.contains("'notanumber'"), cost.getMessage)
+    val flag = intercept[ConfigError](Config.resolve(Map("optimize.retrieve_pushdown" -> "yes")))
+    assert(flag.getMessage.contains("'optimize.retrieve_pushdown'") && flag.getMessage.contains("'yes'"), flag.getMessage)
+    val depth = intercept[ConfigError](Config.resolve(Map("optimize.conditional_union_max_depth" -> "deep")))
+    assert(depth.getMessage.contains("'deep'"), depth.getMessage)
+  }
+
+  test("an unknown key is ignored (SVC-PROTOCOL)") {
+    assert(Config.resolve(Map("not.a.setting" -> "anything")) == Config.defaults)
+  }
+
+  test("a retired key is refused, naming it (SVC-PROTOCOL)") {
+    for (key <- Seq("lower.project_fuse", "lower.retrieve_views")) {
+      val err = intercept[RetiredConfigKey](Config.resolve(Map(key -> "true")))
+      assert(err.key == key && err.getMessage.contains(s"'$key'"), err.getMessage)
+    }
   }
 
   test("recordedView is deterministic and complete") {
@@ -73,8 +92,6 @@ class ConfigSpec extends AnyFunSuite {
       "debug.dump_dir", "lower.grain_first",
       "optimize.conditional_union", "optimize.conditional_union_max_depth",
       "lower.cte_defs",
-      "lower.project_fuse",
-      "lower.retrieve_views",
       "bind.gap_lenient"))
   }
 

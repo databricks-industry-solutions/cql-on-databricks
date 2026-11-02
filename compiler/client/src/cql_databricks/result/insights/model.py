@@ -282,6 +282,8 @@ class DefineProfile:
     #: which needs a filter this layer may not reconstruct; this one
     #: reports what is ON the records, which needs no filter at all.
     terminology: list[dict] = field(default_factory=list)
+    #: SPEC-TERMINOLOGY-EXTRACT — why ``terminology`` is absent, when its read failed. Stated, never an empty list.
+    terminology_error: str | None = None
     temporal: list[TemporalBin] = field(default_factory=list)
     strata: list[Stratum] = field(default_factory=list)
     #: APP-NO-UI-MOCK — the blocks on THIS payload that are fabricated (`BLOCK_*`).
@@ -306,6 +308,7 @@ class DefineProfile:
             "values": self.values.to_dict() if self.values else None,
             "valueSets": [v.to_dict() for v in self.value_sets] or None,
             "terminology": self.terminology or None,
+            "terminologyError": self.terminology_error,
             "temporal": [t.to_dict() for t in self.temporal] or None,
             "strata": [s.to_dict() for s in self.strata] or None,
         })

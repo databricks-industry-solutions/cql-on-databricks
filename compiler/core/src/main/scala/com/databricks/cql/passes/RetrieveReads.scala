@@ -10,8 +10,8 @@ import com.databricks.cql.sema.FhirModel
   * WHY THIS EXISTS. A retrieve has no name. It is inlined at each use site
   * (`SqlQueryLowering.filteredRetrieve`), so "the retrieve returned 100K rows over 20K patients" is not an
   * observable quantity anywhere in a compiled measure — there is no relation to count. Nor can a consumer
-  * probe for it: the mount's eight arguments are ADVISORY (`BIND-CAPABILITY`), so a conformant UDTF may
-  * ignore them and hand back a superset, and the predicates that make the answer correct are re-applied
+  * probe for it: the request a retrieve makes is ADVISORY (`BIND-CAPABILITY`), so a binding may
+  * ignore it and hand back a superset, and the predicates that make the answer correct are re-applied
   * ABOVE the call, inside whichever define consumed it. The quantity is the CQL retrieve EXPRESSION's
   * value — mount rows intersected with the value set — and only the compiler can see it.
   *
@@ -135,8 +135,8 @@ object RetrieveReads {
     * (`Helpers.Inpatient Encounter` and `Inpatient Encounter` both slug to `inpatient_encounter`), and
     * [[candidates]] picks the group's slug deterministically rather than by first occurrence.
     *
-    * The `read_` prefix keeps this namespace disjoint from the `retrieve_<Type>` MOUNT the runtime
-    * registers — the object is built FROM the mount and must never collide with it. */
+    * The `read_` prefix keeps this namespace disjoint from the bound relations the runtime mounts (the
+    * object is built FROM a relation and must never collide with one). */
   def objName(r: Retrieve, codeFilterOf: Expr => RetrieveCatalog.CodeFilter): String = {
     val digest = java.security.MessageDigest.getInstance("SHA-256")
       .digest(descriptor(r, codeFilterOf).getBytes("UTF-8"))

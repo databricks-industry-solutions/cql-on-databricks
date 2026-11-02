@@ -72,8 +72,8 @@ object CqlRuntimeUdfs {
     finally in.close()
   }
 
-  // ------------------------------------------ the temporal-operator catalog (EMIT-SQL-TEMPORAL-UDF opaque)
-  // Each collapses a repeated CQL TEMPORAL OPERATOR (the ~530 CASE/named_struct towers per CMS statement)
+  // ------------------------------------------ the temporal-operator catalog (EMIT-SQL-TEMPORAL-UDF-OPAQUE opaque)
+  // Each collapses a repeated CQL TEMPORAL OPERATOR (the ~530 CASE/named_struct towers per measure statement)
   // to ONE opaque JVM call whose body is the matching `CqlOps` function. Scalar params
   // (inf/precLen/rank/minus/high/op/unit) are always compile-time literals; the count `n` of cql_date_add
   // may be a runtime column (boxed Integer, null -> null).

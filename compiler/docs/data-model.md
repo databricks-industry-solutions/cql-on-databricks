@@ -118,7 +118,7 @@ mechanisms narrow it. Both use the static model, never a runtime schema read.
   library navigates, expands `value[x]` bases to their slots, and keeps the identity fields and the
   scan-filter properties. The retrieve's `__resource` is projected to that set. A type falls back to the
   full struct when a whole resource escapes the analysis, or when it takes part in a heterogeneous choice.
-  `lower.retrieve_views` controls whether retrieves are emitted as their own views.
+  Every retrieve reads the relation its call site binds (`BIND-CALL-SITE`).
 - Heterogeneous choices (`ARCH-RESOURCE-HANDLE`, `EMIT-SQL-FLAT-CHOICE`): `[A] union [B]` carries a
   handle, not every arm's full body. The handle is the identity columns (`__choice`, `__resource_type`,
   `__resource_id`, `__subject_id`, `__ordinal`) plus the fields consumers navigate (`passes.ChoiceDemand`),

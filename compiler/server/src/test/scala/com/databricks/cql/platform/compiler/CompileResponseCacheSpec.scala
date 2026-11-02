@@ -16,7 +16,7 @@ final class CompileResponseCacheSpec extends AnyFunSuite {
     assert(!run("""{"cql":"one","deps":[{"cql":"helper"}],"parameters":{"P":"1"}}""")._2)
     assert(run("""{"parameters":{"P":"1"},"deps":[{"cql":"helper"}],"cql":"one"}""")._2)
     for (field <- Seq("cql", "deps", "parameters", "measurementPeriod", "data", "terminology",
-      "overrides", "durable", "context", "target", "boundaries", "grainFirst", "sessionParameters", "libraries")) {
+      "overrides", "durable", "context", "target", "boundaries", "grainFirst", "sessionParameters")) {
       val a = ujson.Obj(field -> "one")
       val b = ujson.Obj(field -> "two")
       assert(!run(ujson.write(a))._2)
@@ -25,7 +25,7 @@ final class CompileResponseCacheSpec extends AnyFunSuite {
     assert(!run("{}", version = "build-a")._2)
     assert(!run("{}", version = "build-b")._2)
     assert(!run("{}", op = "/compile-sql")._2)
-    assert(calls == 32)
+    assert(calls == 30)
   }
 
   test("SVC-COMPILE-CACHE: LRU, byte bound, oversize bypass and errors remain correct") {

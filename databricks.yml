@@ -379,8 +379,8 @@ resources:
           group_name: ${var.app_users_group}
       resources:
         # DEPLOY-APP-GRANTS: this App has its own service principal, created BY this deploy. It needs NO
-        # Lakebase (environments are tagged catalogs, `CLIENT-ENVIRONMENT`). It compiles nothing, but the
-        # data-source layout check reads the compiler's modeled FHIR types.
+        # Lakebase (environments are tagged catalogs, `CLIENT-ENVIRONMENT`). It calls the compiler to translate and
+        # compile the CQL its tools run, so it holds CAN_USE on the compiler App below.
         # SEC-APP-TO-APP — CAN_USE on the compiler App for this App's service principal, or every call to it
         # is answered by the platform OAuth gate with a redirect to the sign-in page. Declared as an `app`
         # resource (DEPLOY-APP-GRANTS): the service principal is created BY this deploy, so nothing that ran

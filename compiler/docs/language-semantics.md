@@ -143,7 +143,7 @@ The CQL spec says: "When no context is specified, the default is Unfiltered." Pr
 4. `Unfiltered`.
 
 A context-free define (`define "One": 1 + 1`) compiles to a one-subject frame with no data, never a
-`retrieve_Patient` read.
+`[Patient]` retrieve.
 
 ## 8. Runtime conditions — `LANG-RUNTIME-COND`
 

@@ -2,7 +2,7 @@
 
 Every path that turns FHIR data into the retrieve contract (`BIND-CONTRACT`) uses this module: the session
 mount, the data-source publish step and the loader. It generates SQL over a named relation, so the same text
-is the body of a published ``retrieve_<Type>`` and the query behind a session DataFrame.
+is the body of a published per-type view (`BIND-PUBLISH`) and the query behind a session DataFrame.
 
 Two physical encodings:
 

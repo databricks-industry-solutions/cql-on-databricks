@@ -34,6 +34,14 @@ def _execute(warehouse_id="wh-1"):
     return lambda sql: _warehouse(warehouse_id, sql)
 
 
+def _default_rows(sql):
+    if "IS NULL THEN" in sql:          # the null-rate probe
+        return [["0", "67"]]
+    if "GROUP BY 1 ORDER BY n DESC, v" in sql:   # top values
+        return [["true", "67"], ["false", "1"]]
+    return [["female", "65"], ["male", "2"]]     # a stratum cut
+
+
 MEASURE_SCHEMA = "examplemeasure_1_0_0"
 PERIOD = ("2026-01-01", "2026-12-31")
 PATIENT_VIEW = "acme.data.patient"
@@ -63,13 +71,7 @@ def _run(define="Initial Population", columns=BOOLEAN,
 
     def execute(_warehouse_id, sql):
         issued.append(sql)
-        if rows is not None:
-            return rows(sql)
-        if "IS NULL THEN" in sql:          # the null-rate probe
-            return [["0", "67"]]
-        if "GROUP BY 1 ORDER BY n DESC, v" in sql:   # top values
-            return [["true", "67"], ["false", "1"]]
-        return [["female", "65"], ["male", "2"]]     # a stratum cut
+        return rows(sql) if rows is not None else _default_rows(sql)
 
     kwargs = dict(
         library="ExampleMeasure", version="1.0.0",
@@ -155,6 +157,22 @@ def test_no_patient_binding_drops_the_cuts_and_keeps_the_rest():
 
 
 # ── what is NOT derived, and says so ──────────────────────────────────────────────────────────────
+
+def test_a_failed_codes_read_is_stated_and_the_rest_of_the_profile_stands():
+    """SPEC-TERMINOLOGY-EXTRACT — a warehouse failure on the coded values is not "no codes". The payload
+    carries the reason where the codes would be, and the value profile still reads."""
+    def rows(sql):
+        if "resourceType AS resource_type" in sql:
+            raise RuntimeError("SQL warehouse stopped")
+        return _default_rows(sql)
+
+    profile, _ = _run(define="Example Results", columns=LIST_VALUED, counts=(33, 80), rows=rows)
+    assert profile.terminology == []
+    assert profile.terminology_error == "SQL warehouse stopped"
+    assert profile.values.subjects == 33
+    wire = profile.to_dict()
+    assert "terminology" not in wire and wire["terminologyError"] == "SQL warehouse stopped"
+
 
 def test_cardinality_is_omitted_rather_than_sampled():
     """It sits inside `values`, a block this builder marks as REAL, and an invented histogram inside a

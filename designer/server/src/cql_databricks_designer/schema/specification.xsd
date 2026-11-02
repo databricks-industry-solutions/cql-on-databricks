@@ -1004,7 +1004,7 @@
     <xs:annotation>
       <xs:documentation>
         SPEC-NARRATIVE-DEVICES — a rule set, as a list. `kind` carries the device: `include` and
-        `exclude` are the AHRQ Include/Exclude blocks, kept as two lists rather than one paragraph
+        `exclude` are a measure's Include/Exclude blocks, kept as two lists rather than one paragraph
         alternating between them, because two blocks show a reader there are two decisions.
 
         Each `Item` may cite its own lines. That is what makes the list countable: a list of three
@@ -1283,7 +1283,7 @@
     <xs:annotation>
       <xs:documentation>
         Includes measure-observation, stratifier and supplemental-data-element: ratio and
-        continuous-variable measures need the first, and CMS eCQMs — the stated demo corpus — use the
+        continuous-variable measures need the first, and published eCQMs — the stated demo corpus — use the
         other two. A model without them cannot express the content we ship.
       </xs:documentation>
     </xs:annotation>

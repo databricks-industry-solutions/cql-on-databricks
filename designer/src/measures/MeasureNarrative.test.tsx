@@ -1206,7 +1206,9 @@ function renderTermRef(opts: { library?: string; name?: string;
   /** SPEC-DATA-REQUIREMENTS — a declared execution parameter, which the inline fixture's ELM has none
    *  of. Pushed onto the derived appendix rather than hand-writing an ELM `parameters` node: the shape
    *  under test is where the SECTION puts them, and the derivation itself is `specDocument`'s claim. */
-  parameters?: { name: string; type: string | null; library: string }[] } = {}) {
+  parameters?: { name: string; type: string | null; library: string }[];
+  /** SPEC-DATA-REQUIREMENTS — the reason the published resource could not be read. */
+  dataRequirementsError?: string } = {}) {
   const f = fixtures.demo;
   const info = parseElmDefines(f.elm)!;
   const input: SpecLibraryInput = { info, elm: JSON.parse(f.elm), source: f.source };
@@ -1241,6 +1243,7 @@ function renderTermRef(opts: { library?: string; name?: string;
       spec={model} elmInfo={info} overlay={overlay}
       doc={doc}
       retrieves={retrieves}
+      dataRequirementsError={opts.dataRequirementsError ?? null}
       // The Terminology section renders only what VISIBLE logic names, and a phrase resolves against
       // that same filtered set — so naming it here is what makes there be something to follow to.
       namedTerminology={{ valueSets: new Set(vs ? [`${vs.library}::${vs.name}`] : []),
@@ -1250,6 +1253,25 @@ function renderTermRef(opts: { library?: string; name?: string;
 }
 
 const PARAM = { name: "Measurement Period", type: "Interval<DateTime>", library: "Doc" };
+
+describe("MeasureNarrative — a failed data requirements read says why (SPEC-DATA-REQUIREMENTS)", () => {
+  it("states the reason in the Data requirements section, and the rest of the document still renders", () => {
+    // KNOWLEDGE-FAIL-LOUD: the section names what is missing and why. The reads still come from the ELM, so
+    // they render, and so does every define beside them.
+    const { container } = renderTermRef({ dataRequirementsError: "Measure@1.0.0: workspace folder not readable" });
+    const notice = screen.getByRole("status");
+    expect(notice.textContent)
+      .toBe("Data requirements unavailable: Measure@1.0.0: workspace folder not readable");
+    expect(container.querySelector("#mw-sec-datareq")!.contains(notice)).toBe(true);
+    expect(container.querySelector("#mw-dr-reads")).not.toBeNull();
+    expect(container.querySelector("[data-crit-name]")).not.toBeNull();
+  });
+
+  it("shows no notice when the read succeeded", () => {
+    renderTermRef();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+});
 
 describe("MeasureNarrative — Parameters are a data requirement (SPEC-DATA-REQUIREMENTS)", () => {
   it("files Parameters UNDER Data requirements, so the one homeless heading has a section", () => {

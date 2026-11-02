@@ -155,9 +155,9 @@ class CqlQuery:
         Each frame is independently ``.explain()``-able — the way to view a materialized BARRIER's plan.
 
         ``boundaries`` selects the compiler's RUNTIME cost-free mode; ``persist_as`` (single named target
-        only, `BUILD-META`) also writes ``CREATE TABLE <persist_as> AS SELECT * FROM <target>``. The runtime
-        must provide the ``retrieve_<Type>`` functions the plan references: the library's binder chooses
-        them, else they are the bare convention names.
+        only, `BUILD-META`) also writes ``CREATE TABLE <persist_as> AS SELECT * FROM <target>``. The plan reads
+        each retrieve through the data resolver the run binds (`BIND-CALL-SITE`): an environment's published view,
+        or a relation the caller supplies. The runtime must provide those relations.
 
         CLIENT-QUERY-REUSE — with a result resolver (an environment's, from :func:`~.zeroconfig.connect`), CQL that
         declares a library, a reusable data resolver and no ``recompute``, a target's frame reads its kept result
@@ -328,18 +328,19 @@ def _object_for(define: str, result: SqlCompileResult) -> str:
 
     Read from the compiler's PUBLISHED per-define shape (`EMIT-SQL-VALUE-COLUMN`: ``DefineShape.obj``),
     which exists precisely so a consumer never re-derives ``SqlNames.sanitize``. That mapping is
-    deliberately one-way and NOT injective, and it is now prefix-namespaced (`EMIT-SQL-OBJECT-PREFIX`), so
+    deliberately one-way and NOT injective, and it is prefix-namespaced (`EMIT-SQL-OBJECT-PREFIX`), so
     re-deriving it in Python would silently miss both the prefix and any collision the compiler resolved.
 
-    The sanitize fallback applies ONLY when talking to an older compile service that publishes no shapes
-    (`BUILD-CLIENT-COMPAT`); it cannot know about a prefix, so it is used only when the statement names
-    confirm the bare form."""
+    A result without that shape comes from a compiler App older than this client. It is refused, not
+    re-derived (`BUILD-CLIENT-COMPAT`): the App and the client are upgraded together."""
+    if not result.shapes:
+        raise CompileError(
+            "the compile result has no per-define shapes, so it names no object for any define: the compiler "
+            "App is older than this client. Upgrade the compiler App and the cql-databricks client together.")
     shape = result.shape(define)
-    if shape is not None and shape.obj:
-        return shape.obj
-    import re  # pre-shapes service only
-    sanitized = re.sub(r"[^A-Za-z0-9]", "_", define)
-    return sanitized if sanitized in {s.name for s in result.statements} else define
+    if shape is None or not shape.obj:
+        raise CompileError(f"the compile result names no object for define '{define}'")
+    return shape.obj
 
 
 def describe(library: Library, boundaries: Optional[Iterable[str]] = None,

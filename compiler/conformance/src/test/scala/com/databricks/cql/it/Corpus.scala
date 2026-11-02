@@ -201,6 +201,7 @@ object Corpus {
     scalar("SingletonSource", "SingletonSource: a single-valued query source binds the scalar (no posexplode/collect_list); a failing where -> null (LANG-QUERY)"),
     scalar("Intervals", "Intervals: interval construction + Allen-relation algebra diff clean (LANG-INTERVAL)"),
     scalar("IntervalUnbounded", "IntervalUnbounded: null interval bound reads as a +/-inf sentinel in the Allen algebra (LANG-INTERVAL)"),
+    scalar("DecimalStep", "DecimalStep: Predecessor, Successor and HighBoundary over Decimal apply the 10^-8 step in the 8th decimal place (EXEC-SQL-DECIMAL-STEP)"),
     scalar("IntervalOpenClosed", "IntervalOpenClosed: open bounds normalize to closed via discrete successor/predecessor (LANG-INTERVAL)"),
     scalar("SetUnion", "SetUnion: list union has set semantics (dedup by identity), not UNION ALL (LANG-LIST)"),
     scalar("AggregateFold", "AggregateFold: query aggregate is a left fold -> Spark aggregate HOF (LANG-QUERY-AGGREGATE)"),

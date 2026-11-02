@@ -1,5 +1,7 @@
 package com.databricks.cql.env
 
+import com.databricks.cql.error.{ConfigError, RetiredConfigKey}
+
 /** Immutable engine configuration (TECH-CONFIG, `technical-implementation.md` section 8).
   *
   * Resolved once, up front, and frozen into the `Env` (ARCH-ENV) — never read from
@@ -102,24 +104,6 @@ final case class Config(
       * ([[materializeMode]]) only decides which CTE-defs are additionally `localCheckpoint`-materialized
       * (kept temp/session-scoped, never persisted). Set `-Dcqldatabricks.cteDefs=false` to force inlining. */
     cteDefs: Boolean = true,
-    /** ARCH-PROJECT-FUSE (`engine-design.md`). VESTIGIAL under the `__resource` struct contract
-      * (`BIND-CONTRACT`): the retrieve mount carries `__subject_id` built ONCE in the shared view
-      * and the resource as the `__resource` struct, so a narrow consumer references the key directly and
-      * navigates the resource through `__resource` — there is no flat raw-read + key-expr fusion to do.
-      * The flag is kept for config compatibility and changes no lowering (the mount supersedes
-      * it); it may be removed once no caller sets it. */
-    projectFuse: Boolean = true,
-    /** When `true` (default), a Retrieve is lowered as a single
-      * SHARED, named CTE-def view (`retrieve_<Type>`) — the `DataProvider`'s mounted resource frame
-      * registered ONCE via the [[Materializer]] seam and referenced by every consumer (read-once /
-      * reference-many), instead of inlining the source scan at each use site. The retrieve's predicates
-      * still appear at their natural position in the plan (a `WHERE`/semi-join on the view), so results are
-      * identical whether or not a downstream adapter prunes the scan — the view is the schema contract,
-      * pushdown is an advisory optimization the adapter MAY honor. Like `cteDefs`, it activates ONLY where a
-      * [[Materializer]] is injected; a materializer-less/server-free host falls back to inlining (plans
-      * byte-unchanged). Validated diff-clean vs the Java reference (CONF-GATE-MEASURE). Set
-      * `-Dcqldatabricks.retrieveViews=false` to force per-use inlining. */
-    retrieveViews: Boolean = true,
     /** BIND-CAPABILITY-OVERLAP: OFF by default. When true, a `DEMAND − AVAILABLE` binding-coverage gap is
       * treated as a `null` field instead of a loud bind-time error — re-enabling SILENT gaps, so it is
       * opt-in and labeled as such (CORE-NO-SILENT-MISLOWER is the default). */
@@ -147,8 +131,6 @@ final case class Config(
     "optimize.conditional_union"            -> optimizeConditionalUnion.toString,
     "optimize.conditional_union_max_depth"  -> conditionalUnionMaxDepth.toString,
     "lower.cte_defs"                        -> cteDefs.toString,
-    "lower.project_fuse"                    -> projectFuse.toString,
-    "lower.retrieve_views"                  -> retrieveViews.toString,
     "bind.gap_lenient"                      -> bindingGapLenient.toString
   )
 }
@@ -205,31 +187,40 @@ object Config {
   /** The built-in defaults (the documented defaults in TECH-CONFIG). */
   val defaults: Config = Config()
 
-  /** Resolve config from a caller-supplied namespaced key/value map over the defaults.
-    * Unknown keys are ignored here (a stricter mode can reject them); known keys with
-    * an unparseable value fall back to the default for that key. Precedence: caller
-    * overrides defaults (TECH-CONFIG). */
+  /** Keys no lowering reads any more. A request that sends one is refused (SVC-PROTOCOL). */
+  private val RetiredKeys = Seq("lower.project_fuse", "lower.retrieve_views")
+
+  /** Resolve config from a caller-supplied namespaced key/value map over the defaults. Precedence: caller
+    * overrides defaults (TECH-CONFIG). A known key whose value does not parse fails with [[ConfigError]],
+    * naming the key and the value; the default is never taken in its place (CORE-NO-SILENT-MISLOWER). A
+    * retired key fails with [[RetiredConfigKey]]. An unknown key is ignored (SVC-PROTOCOL). */
   def resolve(overrides: Map[String, String]): Config = {
+    RetiredKeys.find(overrides.contains).foreach(key => throw RetiredConfigKey(key))
+
     def bool(key: String, current: Boolean): Boolean =
-      overrides.get(key).flatMap(v => v.toLowerCase match {
+      parsed(key, "true or false")(v => v.toLowerCase match {
         case "true"  => Some(true)
         case "false" => Some(false)
         case _       => None
       }).getOrElse(current)
 
+    /** The value of `key` read by `read`, or the failure that names it. Absent keys are `None`. */
+    def parsed[A](key: String, expected: String)(read: String => Option[A]): Option[A] =
+      overrides.get(key).map(v => read(v).getOrElse(throw ConfigError(key, v, expected)))
+
     val base = defaults
     base.copy(
       optimizeRetrievePushdown = bool("optimize.retrieve_pushdown", base.optimizeRetrievePushdown),
-      materializeMode = overrides.get("materialize.mode")
-        .flatMap(MaterializeMode.fromKey).getOrElse(base.materializeMode),
-      materializeCostThreshold = overrides.get("materialize.cost_threshold")
-        .flatMap(v => scala.util.Try(v.toLong).toOption).getOrElse(base.materializeCostThreshold),
+      materializeMode = parsed("materialize.mode", "none, costly or all")(MaterializeMode.fromKey)
+        .getOrElse(base.materializeMode),
+      materializeCostThreshold = parsed("materialize.cost_threshold", "an integer")(v => scala.util.Try(v.toLong).toOption)
+        .getOrElse(base.materializeCostThreshold),
       materializeSkipUnfilteredRetrieves =
         bool("materialize.skip_unfiltered_retrieves", base.materializeSkipUnfilteredRetrieves),
-      materializeRetrieves = overrides.get("materialize.retrieves")
-        .flatMap(RetrieveMode.fromKey).getOrElse(base.materializeRetrieves),
-      materializeRetrieveMinReuse = overrides.get("materialize.retrieve_min_reuse")
-        .flatMap(v => scala.util.Try(v.toInt).toOption).filter(_ >= 1)
+      materializeRetrieves = parsed("materialize.retrieves", "none, costly or all")(RetrieveMode.fromKey)
+        .getOrElse(base.materializeRetrieves),
+      materializeRetrieveMinReuse = parsed("materialize.retrieve_min_reuse", "an integer of at least 1")(v =>
+          scala.util.Try(v.toInt).toOption.filter(_ >= 1))
         .getOrElse(base.materializeRetrieveMinReuse),
       terminologyAdapter = overrides.get("terminology.adapter").filter(_.nonEmpty)
         .orElse(base.terminologyAdapter),
@@ -241,11 +232,9 @@ object Config {
         .orElse(base.debugDumpDir),
       grainFirst = bool("lower.grain_first", base.grainFirst),
       optimizeConditionalUnion = bool("optimize.conditional_union", base.optimizeConditionalUnion),
-      conditionalUnionMaxDepth = overrides.get("optimize.conditional_union_max_depth")
-        .flatMap(v => scala.util.Try(v.toInt).toOption).getOrElse(base.conditionalUnionMaxDepth),
+      conditionalUnionMaxDepth = parsed("optimize.conditional_union_max_depth", "an integer")(v =>
+          scala.util.Try(v.toInt).toOption).getOrElse(base.conditionalUnionMaxDepth),
       cteDefs = bool("lower.cte_defs", base.cteDefs),
-      projectFuse = bool("lower.project_fuse", base.projectFuse),
-      retrieveViews = bool("lower.retrieve_views", base.retrieveViews),
       bindingGapLenient = bool("bind.gap_lenient", base.bindingGapLenient)
     )
   }

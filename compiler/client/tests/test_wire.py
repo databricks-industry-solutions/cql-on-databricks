@@ -7,8 +7,8 @@ These are the assertions that make the compatibility policy enforceable rather t
 import unittest
 
 from cql_databricks.compiler.libraries import LibrarySource
-from cql_databricks.compiler.providers import (RESOURCE, SCALAR, VALUE_COLUMN, CompileRequest, DefineShape,
-                                        LibraryGraph, SqlCompileResult, SqlStatement)
+from cql_databricks.compiler.providers import (RESOURCE, SCALAR, VALUE_COLUMN, CompileError, CompileRequest,
+                                        DefineShape, LibraryGraph, SqlCompileResult, SqlStatement)
 
 
 class RequestShapeTests(unittest.TestCase):
@@ -144,12 +144,28 @@ class ResponseToleranceTests(unittest.TestCase):
                                 kind=SCALAR)])
         self.assertEqual(_object_for("Denominator Exclusions", res), "m__Denominator_Exclusions")
 
-    def test_object_resolution_falls_back_to_sanitize_for_a_pre_shapes_service(self):
+    def test_a_result_without_shapes_is_refused_from_an_older_app(self):
+        """BUILD-CLIENT-COMPAT — a compiler App that publishes no per-define shapes is older than this client.
+        The client refuses the result and names the upgrade; it never re-derives the object name."""
+        from cql_databricks.compiler.cql import _object_for
         res = SqlCompileResult(
             statements=[SqlStatement("Denominator_Exclusions", "view", "…")],
             target="t", defines=["Denominator Exclusions"])
+        with self.assertRaises(CompileError) as caught:
+            _object_for("Denominator Exclusions", res)
+        self.assertIn("older than this client", str(caught.exception))
+        self.assertIn("Upgrade the compiler App and the cql-databricks client together", str(caught.exception))
+
+    def test_a_define_missing_from_the_shapes_is_refused_by_name(self):
+        """BUILD-CLIENT-COMPAT — a result that publishes shapes but none for the asked define names that define."""
         from cql_databricks.compiler.cql import _object_for
-        self.assertEqual(_object_for("Denominator Exclusions", res), "Denominator_Exclusions")
+        res = SqlCompileResult(
+            statements=[SqlStatement("m__Other", "view", "…")],
+            target="t", defines=["Other"],
+            shapes=[DefineShape(define="Other", obj="m__Other", kind=SCALAR)])
+        with self.assertRaises(CompileError) as caught:
+            _object_for("Denominator Exclusions", res)
+        self.assertIn("'Denominator Exclusions'", str(caught.exception))
 
 
 if __name__ == "__main__":

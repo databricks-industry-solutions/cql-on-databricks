@@ -1,11 +1,10 @@
-// DESIGNER-SDP-NAV / APP-CQL-AUTHORITATIVE — extract the authoritative define catalog from ELM JSON.
+// APP-CQL-AUTHORITATIVE — extract the authoritative define catalog from ELM JSON.
 //
 // The CQL-to-ELM translator (the compiler's /translate endpoint) produces a standard HL7 ELM JSON
 // structure containing every define, function, and their metadata (name, context, access level,
 // expression type). This is the COMPILER'S truth about what exists in the library — no regex parsing,
-// no ambiguity. Both the DefineNav (left nav) and MeasureNarrative (Specification) should derive their
-// define lists from this, falling back to the CQL source scan only when ELM is unavailable (offline,
-// pre-translate).
+// no ambiguity. Both the DefineNav (left nav) and MeasureNarrative (Specification) derive their define
+// lists from this.
 //
 // The HL7 ELM JSON shape (relevant subset):
 //   { library: { identifier: { id, version },

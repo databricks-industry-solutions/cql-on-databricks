@@ -5,7 +5,7 @@ Every caller that compiles or evaluates a library from an environment's knowledg
 - **the closure** (:func:`resolve`) — the root from the environment's knowledge (``library``, ``version``) or as CQL text, and
   its includes from the knowledge corpus (``Corpus.resolve_closure``): compile order, includes matched only by name,
   and includes not found. A ``location`` (RUN-ADDRESS-LOCATION) narrows where the root is read and where includes
-  resolve first: one tagged store, or a folder read through a ``LibraryFiles``. A caller that cannot continue with gaps calls :meth:`Resolution.require_complete`; one that
+  resolve first: one knowledge store, or a folder read through a ``LibraryFiles``. A caller that cannot continue with gaps calls :meth:`Resolution.require_complete`; one that
   shows them (the Designer's editor) reads :meth:`Resolution.unresolved_messages`.
 - **the ELM** (:func:`translate_root`, :func:`translate_includes`) — the root against every include, and each include
   against its own transitive includes only (PERF-CLOSURE-TRANSLATE). Every library is returned with its diagnostics;

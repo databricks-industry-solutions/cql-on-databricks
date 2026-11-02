@@ -406,15 +406,19 @@ export interface DataRequirement {
 }
 
 /** Fetch what a library reads. `[]` is a real answer — a library of pure type conversions reads
- *  nothing — so it is not distinguished from a library whose resource carries none. */
+ *  nothing — so it is not distinguished from a library whose resource carries none. A failed read REJECTS
+ *  with the server's reason (`KNOWLEDGE-FAIL-LOUD`): an empty list there would claim the library reads nothing. */
 export async function fetchDataRequirements(name: string, version: string,
                                             location?: string | null): Promise<DataRequirement[]> {
   return readAt(
     `/api/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/data-requirements`, location,
     async (res) => {
-      if (!res.ok) return [];
-      const body = (await res.json()) as { dataRequirements?: DataRequirement[] };
-      return body.dataRequirements ?? [];
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? `data requirements failed: ${res.status}`);
+      }
+      const body = (await res.json()) as { dataRequirements: DataRequirement[] };
+      return body.dataRequirements;
     });
 }
 

@@ -8,7 +8,7 @@ Terms the compiler docs use. Not normative.
 - ELM: Expression Logical Model, the machine-readable form of CQL (JSON here). The compiler's input.
 - FHIR: Fast Healthcare Interoperability Resources (HL7). The data model the compiler supports, R4.
 - dQM: Digital Quality Measure, a FHIR `Measure` plus CQL.
-- eCQM: Electronic Clinical Quality Measure (CMS).
+- eCQM: Electronic Clinical Quality Measure.
 - UCUM: Unified Code for Units of Measure, the unit system for CQL quantities.
 - MeasureReport: the FHIR resource for measure results.
 
@@ -18,7 +18,8 @@ Terms the compiler docs use. Not normative.
   grouping key, not a per-patient loop.
 - define (`ExpressionDef`): a named CQL expression, and a node in the define graph. Each lowers to one SQL
   statement.
-- Retrieve: data access (`[Encounter]`, `[Condition: "Diabetes"]`). Lowers to a `retrieve_<Type>` call.
+- Retrieve: data access (`[Encounter]`, `[Condition: "Diabetes"]`). Lowers to a read of the relation the
+  request binds to its call site.
 - 3VL: three-valued logic. A boolean is `true`, `false` or `null`.
 - `cqlTrue`: true only when the value is exactly `true`. `not cqlTrue(x)` covers `false` and `null`.
 - Equality and equivalence: `=` and `~`, which differ around nulls and precision. List `in` and

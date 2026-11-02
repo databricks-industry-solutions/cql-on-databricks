@@ -4,11 +4,11 @@ One verb, ``cql()``, and an engine setting resolved like every other session set
 ``cql(engine=…)`` > ``connect(engine=…)`` / ``builder.engine(…)`` > ``spark.cqldatabricks.engine`` >
 ``CQL_DATABRICKS_ENGINE`` > ``local``. ``local`` is this package's own path: compiled here, run on the
 caller's session, nothing kept. Any other name is an engine another feature installs under the entry-point
-group :data:`ENTRY_POINT_GROUP` (`DEC-ENGINE-PLUGIN`): the evaluator's client installs ``evaluator``, which
-runs the query on the evaluator's compute and returns DataFrames over its stored results.
+group :data:`ENTRY_POINT_GROUP` (`DEC-ENGINE-PLUGIN`). The installed package runs the query on its own compute
+and returns DataFrames.
 
-The seam runs this way round because the compiler sits below the evaluator (`DEC-FEATURE-ORDER`): this
-package names no evaluator code, and the evaluator's client implements :class:`Engine`.
+The seam runs this way round because the compiler sits below the packages that run queries
+(`DEC-FEATURE-ORDER`): this package names no such engine, and each engine implements :class:`Engine`.
 
 **No fallback.** An engine that is not installed, or that fails, raises. A query is never handed from one
 engine to the other, so a stored answer and a live one are never confused.

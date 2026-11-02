@@ -1,9 +1,8 @@
 // APP-SPEC-MODEL / APP-DEP-COUNTS — the dependency graph, derived from the COMPILER'S ELM.
 //
-// This replaces the source scan (`logicGraph.ts`) for the Define lens, and closes the goal that module
-// records: the DAG comes from the compiler, not from a regex over CQL text. The ELM is a typed tree, so
-// every edge here is exact — including CROSS-LIBRARY edges, which a per-library text scan structurally
-// cannot see (`Exclusions."Has Excluded Care"` resolves to a define the scanning library never declares).
+// The Define lens's graph is built here from the compiler, not from a regex over CQL text. The ELM is a
+// typed tree, so every edge here is exact — including CROSS-LIBRARY edges, which a per-library text scan
+// structurally cannot see (`Exclusions."Has Excluded Care"` resolves to a define the scanning library never declares).
 //
 // What the tree gives us, by node `type`:
 //   ExpressionRef / FunctionRef   → an edge to another define, with `libraryName` set when it crosses

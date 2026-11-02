@@ -19,8 +19,7 @@
 // wants two charts, which the model can write as two blocks. The single hue is the app's own chart
 // ramp at step 2 (`--fun-2`), because a magnitude chart here already looks like the funnel and
 // inventing a second chart palette beside it is what the style guide exists to prevent — step 2 and not
-// step 1 because `--fun-1` fails the ramp's 2:1 light-end floor against the panel, which `.mw-spine`
-// already found and recorded.
+// step 1 because `--fun-1` fails the ramp's 2:1 light-end floor against the panel.
 //
 // BARS ARE HTML, LINES ARE SVG, and that is not an inconsistency: a horizontal bar row IS the funnel's
 // construction (a label, a proportional fill, a figure), so it reuses it; a line has no HTML form.

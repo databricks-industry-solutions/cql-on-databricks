@@ -46,7 +46,7 @@ from .model import (
 )
 from .sample import sample_profile
 from .extractors import DEFAULT_MODEL, KIND_SCALAR, UNKNOWN_BIN, elements_for
-from .terminology import extract_terminology
+from .terminology import TerminologyUnavailable, extract_terminology
 
 log = logging.getLogger("cql_databricks.result.insights.profile")
 
@@ -114,6 +114,15 @@ def define_profile(
     # reads without checking a mark: `SPEC-TERMINOLOGY-EXTRACT` reads real codes off the define's own
     # results, not an invented list, and strata are derived only when the data structure supports them.
 
+    # SPEC-TERMINOLOGY-EXTRACT — a failed codes read leaves the rest of the profile standing, and says so
+    # in its own block: the reason rides on the payload where the codes would have been.
+    try:
+        terminology = extract_terminology(ref, relation_cols, eval_id=suffix, execute=execute)
+        terminology_error = None
+    except TerminologyUnavailable as e:
+        log.warning("Coded values unreadable for %s/%s: %s", define_library, define, e)
+        terminology, terminology_error = [], e.reason
+
     return DefineProfile(
         library=define_library, define=define,
         # `mixed` only when something on the payload actually is. A Boolean define has no code hits and
@@ -127,7 +136,8 @@ def define_profile(
         # SPEC-TERMINOLOGY-EXTRACT — derived, and independent of everything above: a `GROUP BY` over the
         # curated coded paths of this define's own results. Never fabricated, so it is absent rather
         # than sampled when the define returns no resources.
-        terminology=extract_terminology(ref, relation_cols, eval_id=suffix, execute=execute),
+        terminology=terminology,
+        terminology_error=terminology_error,
         strata=strata,
         sampled=[],
     )

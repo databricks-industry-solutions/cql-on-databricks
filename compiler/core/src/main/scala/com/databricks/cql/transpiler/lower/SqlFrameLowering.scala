@@ -6,7 +6,7 @@ import com.databricks.cql.passes.{ChoiceDemand, Materialize, RetrieveDemand, Ret
 import com.databricks.cql.sema.FhirModel
 import com.databricks.cql.spark.SystemColumns
 import com.databricks.cql.transpiler.emit.SqlExpr._
-import com.databricks.cql.transpiler.emit.{SqlExpr, SqlNames, SqlRel, SqlRender, SqlScript, SqlStmt, SqlTemporalFold}
+import com.databricks.cql.transpiler.emit.{SqlExpr, SqlNames, SqlRel, SqlRender, SqlScript, SqlStmt}
 
 import scala.collection.mutable
 
@@ -23,9 +23,9 @@ import scala.collection.mutable
   * carried grain-first as a `Relation` view. Sharing is native SQL, so the boxing/hoisting the proto
   * path needed is not a port target.
   *
-  * THE RETRIEVE MOUNTS are an EXTERNAL contract (like the `DataProvider`): the runtime mounts
-  * `retrieve_<Type>` (and the terminology `valueset_<id>`) views BEFORE running this script; the
-  * transpiler references them by name ([[SqlEvalEnv.retrieveMount]]) and never emits their bodies.
+  * THE RETRIEVE MOUNTS are an EXTERNAL contract (like the `DataProvider`): the runtime makes the relation each
+  * retrieve call site binds, and each terminology relation, available BEFORE running this script (`BIND-CALL-SITE`);
+  * the transpiler references them by name ([[SqlEvalEnv.retrieveMount]]) and never emits their bodies.
   *
   * SCOPE (Phase 3b): subject-grouped contexts (Patient/Practitioner — the FHIR measures); bare-retrieve
   * and grain-first relation-query list defines (plain `return all` + single-key sort); scalar defines
@@ -298,14 +298,7 @@ object SqlFrameLowering {
     val tgt = target.orElse(defines.lastOption.map(_.name))
       .map(n => if (relDefs.contains(n)) relName(n, env.config.objectPrefix) else defName(n, env.config.objectPrefix))
       .getOrElse(baseView(env.config.objectPrefix))
-    // EMIT-SQL-TEMPORAL-UDF: a pure EMIT-only readability refactor of the assembled script — fold the
-    // inlined partial-precision date towers into calls to small SQL-body UDFs (+ a `CREATE FUNCTION`
-    // prelude). The lowering above is untouched; the fold inlines back to the identical plan, so results
-    // are unchanged (default OFF → script byte-identical).
-    // The SQL-emit readability fold (`temporalUdfs`, `SqlTemporalFold`) is not wired to a config knob;
-    // the opaque temporal-operator UDFs already collapse the towers at operator granularity,
-    // so the script keeps any inline remnants as-is.
-val script  = SqlScript(stmts.toSeq, tgt)
+    val script  = SqlScript(stmts.toSeq, tgt)
     SqlLoweredLibrary(script, defines.map(_.name), relDefs.toSet, listMeta.toMap,
       nullDefines = nullDefs.toSet, decisions = decisions.toSeq, materializedDefines = matDefs.toSet,
       materializedReads = reads, objectPrefix = env.config.objectPrefix)

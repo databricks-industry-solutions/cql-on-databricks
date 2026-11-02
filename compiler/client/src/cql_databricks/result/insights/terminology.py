@@ -48,6 +48,18 @@ log = logging.getLogger("cql_databricks.result.insights.terminology")
 RESOURCE_VALUE_COLUMN = "__val"
 
 
+class TerminologyUnavailable(RuntimeError):
+    """SPEC-TERMINOLOGY-EXTRACT — the warehouse would not return the coded values of one define's results.
+
+    Raised rather than answered with no sections: an empty list says "nothing coded here", a claim about
+    the data, and the read that would have said otherwise failed. ``reason`` is the warehouse's own message.
+    """
+
+    def __init__(self, relation: str, reason: str) -> None:
+        super().__init__(f"could not read the coded values of {relation}: {reason}")
+        self.reason = reason
+
+
 @dataclass(frozen=True)
 class TerminologyCode:
     """One coded value found at one path, with how much of the population carries it."""
@@ -135,6 +147,9 @@ def extract_terminology(ref, columns: dict[str, str], *, eval_id: str, execute: 
     ABSENT, NEVER EMPTY-AS-ZERO. A define whose value column is not the resource struct (a boolean or
     scalar define names its value column after itself) has no coded record to read, so it returns no
     sections at all — the pane then says nothing rather than drawing a section with nothing in it.
+
+    FAILED, NEVER EMPTY. A warehouse read that fails raises ``TerminologyUnavailable``, so a failure is
+    not read as "no codes".
     """
 
     if RESOURCE_VALUE_COLUMN not in columns:
@@ -143,9 +158,8 @@ def extract_terminology(ref, columns: dict[str, str], *, eval_id: str, execute: 
 
     try:
         type_rows = execute(resource_types_sql(relation)) or []
-    except Exception as e:  # noqa: BLE001 — a profile is never worth failing a page for
-        log.info("terminology: could not read resource types for %s: %s", relation, e)
-        return []
+    except Exception as e:  # noqa: BLE001 — every warehouse failure is the same answer: the codes are unread
+        raise TerminologyUnavailable(relation, str(e)) from e
 
     sections: list[dict] = []
     for row in type_rows:
@@ -158,9 +172,8 @@ def extract_terminology(ref, columns: dict[str, str], *, eval_id: str, execute: 
         sql = extraction_sql(relation, resource_type, paths)
         try:
             rows = execute(sql) or []
-        except Exception as e:  # noqa: BLE001
-            log.info("terminology: extraction failed for %s/%s: %s", relation, resource_type, e)
-            continue
+        except Exception as e:  # noqa: BLE001 — as above: an unread path is an unread define, not an empty one
+            raise TerminologyUnavailable(relation, str(e)) from e
         by_path: dict[str, TerminologySection] = {}
         for path, label, system, code, display, subjects, records in rows:
             section = by_path.get(path)

@@ -64,8 +64,8 @@ export function useRevealOnSelect(holdsSelection: boolean, open: () => void) {
  *
  *  `onActivate` overrides what the row's click DOES, never what it looks like. A row that must re-root
  *  AND select in one click needs two URL params written together; everywhere else the default
- *  (select this define) is right. It is an override rather than a second renderer because a spine row
- *  and an Outline row must stay one row style — see this file's header. */
+ *  (select this define) is right. It is an override rather than a second renderer because a Composition
+ *  row and an Outline row must stay one row style — see this file's header. */
 export interface RowOpts { key?: string; repeat?: boolean; rooted?: boolean; onActivate?: () => void }
 
 export interface NavRowKit {

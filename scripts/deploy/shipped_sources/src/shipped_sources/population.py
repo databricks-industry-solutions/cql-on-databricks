@@ -77,7 +77,9 @@ def land(spark, *, catalog: str, raw_by_type: dict, valid_from: str, valid_to: s
         schema = schema_from_ddl(fhir_type, ddl, patient_context=fhir_type != "Patient")
         frame = json_frame(spark, raw, schema, column="value")
         table = store_table(catalog, fhir_type)
-        frame.write.mode("overwrite").saveAsTable(table)
+        # DEPLOY-DEFAULT-ENVIRONMENT (idempotent) — a load replaces the store table whole, its schema too, so a
+        # redeploy whose resource model changed lands rather than failing on the table an earlier deploy wrote.
+        frame.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(table)
 
         props = contract.cql_tblproperties(fhir_type, valid_from=valid_from, valid_to=valid_to)
         kv = ", ".join(f"'{k}' = '{v}'" for k, v in props.items())

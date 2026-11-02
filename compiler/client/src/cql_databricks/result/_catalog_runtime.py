@@ -1,5 +1,5 @@
-"""RUN-CLIENT-CATALOG-CHECKPOINTS, RUN-CLIENT-RESULT-IDENTITY — optimistic current-table execution and portable
-descriptors.
+"""RUN-CLIENT-CATALOG-CHECKPOINTS, RUN-CLIENT-RESULT-IDENTITY — optimistic current-table execution and
+self-contained descriptors.
 
 No metadata-table writes, physical version inference, DESCRIBE, or result-count probes. The caller
 serializes writers for its calculation namespace. UC grants authorize every actual SQL statement.
@@ -21,9 +21,6 @@ from ._durable import (CompletedResult, Definition, Outcome, ResultsUnavailable,
                        _selected, _text, _utc)
 from ._durable_delta import table_sql
 from ._durable_plan import PreparedPlan
-
-
-FORMAT = "cql-catalog-selection-v3"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -425,23 +422,6 @@ class CatalogSelection:
                    tuple(_selected(definitions, tuple(targets.values()))), outcomes,
                    datetime.now(timezone.utc), computed_since)
 
-    def to_dict(self) -> dict:
-        """No tokens, SQL, or lookup-table foreign keys."""
-        return {"format": FORMAT, "session_id": self.session_id, "selection_id": self.selection_id,
-                "destination": list(self.destination), "targets": dict(self.targets),
-                "definitions": [asdict(d) for d in self.definitions],
-                "outcomes": [{"definition": o.definition, "decision": o.decision, "reason": o.reason,
-                              "result": {"fingerprint": o.result.fingerprint,
-                                         "artifact": asdict(o.result.artifact),
-                                         "completed_at": o.result.completed_at.isoformat()}}
-                             for o in self.outcomes],
-                "published_at": self.published_at.isoformat(),
-                "computed_since": self.computed_since.isoformat() if self.computed_since else None}
-
-    def to_json(self) -> str:
-        """Canonical, portable serialization."""
-        return _json(self.to_dict())
-
     @property
     def request_hash(self) -> str:
         """RUN-CLIENT-RESULT-SETS — request compatibility is independent of when results were computed."""
@@ -452,26 +432,3 @@ class CatalogSelection:
         for outcome in self.outcomes:
             if not backend.usable(outcome.result.artifact):
                 raise ResultsUnavailable("selected artifact is unavailable")
-
-    @classmethod
-    def from_json(cls, payload: str) -> CatalogSelection:
-        """Validate locally without recompiling or reading a metadata table."""
-        raw = json.loads(payload)
-        if raw.pop("format") != FORMAT:
-            raise ValueError("unsupported portable result handle format")
-        raw["destination"] = tuple(raw["destination"])
-        raw["definitions"] = tuple(Definition(**(d | {"reads": tuple(d["reads"])})) for d in raw["definitions"])
-        outcomes = []
-        for item in raw["outcomes"]:
-            result = item["result"]
-            artifact = result["artifact"]
-            result["artifact"] = CurrentArtifact(**(artifact | {"table": tuple(artifact["table"])}))
-            result["completed_at"] = datetime.fromisoformat(result["completed_at"])
-            if item["decision"] not in ("computed", "reused"):
-                raise ValueError("invalid outcome decision")
-            outcomes.append(Outcome(**(item | {"result": CompletedResult(**result)})))
-        raw["outcomes"] = tuple(outcomes)
-        raw["published_at"] = datetime.fromisoformat(raw["published_at"])
-        if raw["computed_since"] is not None:
-            raw["computed_since"] = datetime.fromisoformat(raw["computed_since"])
-        return cls(**raw)

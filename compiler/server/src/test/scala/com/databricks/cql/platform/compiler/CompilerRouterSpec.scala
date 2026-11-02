@@ -151,6 +151,26 @@ class CompilerRouterSpec extends AnyFunSuite {
     assert(r.body.contains("library Smoke"))
   }
 
+  test("SVC-PROTOCOL: a retired libraries key is refused with a 400 that names it") {
+    val r = post("/compile-pipeline", ujson.write(ujson.Obj("cql" -> smokeCql, "libraries" -> ujson.Arr())))
+    assert(r.status == 400, r.body)
+    assert(r.body.contains("libraries"), r.body)
+  }
+
+  test("SVC-PROTOCOL: a retired override key is refused with a 400 that names it") {
+    val r = post("/compile-sql", ujson.write(ujson.Obj("cql" -> smokeCql, "target" -> "One",
+      "overrides" -> ujson.Obj("lower.retrieve_views" -> "true"))))
+    assert(r.status == 400, r.body)
+    assert(r.body.contains("lower.retrieve_views"), r.body)
+  }
+
+  test("CORE-NO-SILENT-MISLOWER: an override value that does not parse is a 400 that names the key and value") {
+    val r = post("/compile-sql", ujson.write(ujson.Obj("cql" -> smokeCql, "target" -> "One",
+      "overrides" -> ujson.Obj("materialize.mode" -> "nonsense"))))
+    assert(r.status == 400, r.body)
+    assert(r.body.contains("materialize.mode") && r.body.contains("nonsense"), r.body)
+  }
+
   test("/compile-sql of a data-free measure returns a SQL script (Spark-free, EXEC-SQL-BACKEND)") {
     // cql -> ELM -> SQL script in one call; proves the compile path needs no Spark server.
     val r = post("/compile-sql", ujson.write(ujson.Obj("cql" -> smokeCql, "target" -> "One")))

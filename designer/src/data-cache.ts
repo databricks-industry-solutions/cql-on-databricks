@@ -67,9 +67,8 @@ const listeners = new Set<() => void>();
 export function noteRevision(headers: Headers | undefined | null): void {
   // LEARNING THE REVISION MUST NEVER FAIL THE READ IT RODE ALONG WITH, and that is a property rather
   // than a defensive habit. This runs on the success path of every request, so a throw here would turn
-  // "we could not read a response header" into "the read failed" — and callers like `fetchModeledTypes`
-  // catch their own failures and degrade, so the visible symptom would be an empty list from a request
-  // that actually succeeded. Not learning the revision is already handled: the cache keeps what it has
+  // "we could not read a response header" into "the read failed" — and the caller would then report a
+  // failure for a request that actually succeeded. Not learning the revision is already handled: the cache keeps what it has
   // and the next response corrects it.
   const seen = headers?.get?.(REVISION_HEADER);
   if (!seen) return;

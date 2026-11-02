@@ -31,9 +31,6 @@ object SqlRender {
       s"CREATE OR REPLACE TEMP VIEW ${quoteIdent(name)} AS\n" + renderRel(rel, 0)
     case SqlStmt.CacheTable(name, rel) =>
       s"CACHE TABLE ${quoteIdent(name)} AS\n" + renderRel(rel, 0)
-    case SqlStmt.CreateFunction(name, params, returns, body) =>
-      val ps = params.map { case (p, ty) => s"${quoteIdent(p)} $ty" }.mkString(", ")
-      s"CREATE OR REPLACE TEMPORARY FUNCTION ${quoteIdent(name)}($ps)\nRETURNS $returns\nRETURN ${expr(body)}"
   }
 
   // ---------------------------------------------------------------- relations
@@ -156,8 +153,6 @@ object SqlRender {
   def sizeOf(stmt: SqlStmt): Long = stmt match {
     case SqlStmt.CreateView(n, r)     => n.length + 30L + sizeOf(r)
     case SqlStmt.CacheTable(n, r)     => n.length + 20L + sizeOf(r)
-    case SqlStmt.CreateFunction(n, params, returns, body) =>
-      n.length + 40L + returns.length + params.map { case (p, ty) => p.length + ty.length + 4L }.sum + sizeOf(body)
   }
 
   def sizeOf(rel: SqlRel): Long = rel match {
@@ -193,14 +188,12 @@ object SqlRender {
 
   /** PIPE-SQL-DAG-REUSE — every object NAME a statement reads (`FROM <name>` / `JOIN <name>` — the
     * [[SqlRel.TableRef]]s in its relational tree), so the pipeline-plan cut can partition the one-lowering
-    * DAG at the materialized boundaries. Structural (like [[sizeOf]]) and total; a [[SqlStmt.CreateFunction]]
-    * has no relational body, so it reads nothing. Table references live ONLY in [[SqlRel]] (an [[SqlExpr]]
-    * carries no subquery — a membership test lowers to a relational semi-join), so a `SqlRel` walk is
-    * exhaustive. */
+    * DAG at the materialized boundaries. Structural (like [[sizeOf]]) and total. Table references live ONLY
+    * in [[SqlRel]] (an [[SqlExpr]] carries no subquery — a membership test lowers to a relational
+    * semi-join), so a `SqlRel` walk is exhaustive. */
   def tableRefs(stmt: SqlStmt): Set[String] = stmt match {
     case SqlStmt.CreateView(_, r)  => tableRefs(r)
     case SqlStmt.CacheTable(_, r)  => tableRefs(r)
-    case _: SqlStmt.CreateFunction => Set.empty
   }
 
   def tableRefs(rel: SqlRel): Set[String] = rel match {

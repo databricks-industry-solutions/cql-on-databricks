@@ -45,17 +45,17 @@ describe("NewLibraryForm", () => {
 
   it("saves a copy of a published library into a folder, never the store, with the CQL as edited", async () => {
     // DOC-EDITABLE-IN-SCOPE — a store is read-only in the Designer; its libraries are edited as copies in a folder.
-    createLibrary.mockResolvedValue({ kind: "saved", location: "folder:/Workspace/Users/a@example.org/CMS1Copy",
+    createLibrary.mockResolvedValue({ kind: "saved", location: "folder:/Workspace/Users/a@example.org/ExampleMeasureCopy",
                                       saved: [], deleted: [], sha256: "x" });
-    const definition = { id: "CMS1@1.0.0", name: "CMS1", version: "1.0.0", location: "store:k.measures" } as Definition;
-    render(<NewLibraryForm target={{ kind: "saveAs", definition, cql: "library CMS1 version '1.0.0'\n" }}
+    const definition = { id: "ExampleMeasure@1.0.0", name: "ExampleMeasure", version: "1.0.0", location: "store:k.measures" } as Definition;
+    render(<NewLibraryForm target={{ kind: "saveAs", definition, cql: "library ExampleMeasure version '1.0.0'\n" }}
       at="store:k.measures" onCreated={() => {}} onCancel={() => {}} />);
-    await waitFor(() => expect(screen.getByLabelText("Workspace folder")).toHaveValue("/Workspace/Users/a@example.org/CMS1Copy"));
+    await waitFor(() => expect(screen.getByLabelText("Workspace folder")).toHaveValue("/Workspace/Users/a@example.org/ExampleMeasureCopy"));
     expect(screen.queryByLabelText("Store")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Save copy" }));
     await waitFor(() => expect(createLibrary).toHaveBeenCalledWith({
-      location: "folder:/Workspace/Users/a@example.org/CMS1Copy", name: "CMS1Copy", version: "0.1.0",
-      cql: "library CMS1 version '1.0.0'\n", copyOf: { location: "store:k.measures", name: "CMS1", version: "1.0.0" } }));
+      location: "folder:/Workspace/Users/a@example.org/ExampleMeasureCopy", name: "ExampleMeasureCopy", version: "0.1.0",
+      cql: "library ExampleMeasure version '1.0.0'\n", copyOf: { location: "store:k.measures", name: "ExampleMeasure", version: "1.0.0" } }));
   });
 
   it("creates a library to include in the open folder scope, with no defines", async () => {

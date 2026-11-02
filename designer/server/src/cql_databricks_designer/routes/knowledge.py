@@ -5,10 +5,9 @@ Every handler reads the knowledge corpus of one environment (`DOC-ENVIRONMENT-PI
 the default (`CLIENT-ENVIRONMENT`). None of them touches a result table, an
 orchestrator or a state layer.
 
-`KNOWLEDGE-FAIL-LOUD` governs the reads whose result IS the answer: `discover` raises rather than
-answering 200 with `[]`, because a 200 is cacheable and a plain reload re-served the empty list.
-`library_data_requirements` is the deliberate exception — an enrichment of a document that stands
-without it, so a failure is logged and the section is absent.
+`KNOWLEDGE-FAIL-LOUD` governs every read here: `discover` raises rather than answering 200 with `[]`,
+because a 200 is cacheable and a plain reload re-served the empty list. `library_data_requirements` answers
+500 with the reason, so the section says why it is missing and the document around it still renders.
 
 **Knowledge is read-only here**, except through Publish (`DOC-PUBLISH`). An environment is declared by tagging its
 catalog, not by a record this App stores, so there is nothing to create, edit or delete.
@@ -115,7 +114,8 @@ def router(*, contents: EnvironmentContents) -> APIRouter:
     def library_data_requirements(name: str, version: str, location: str | None = None,
                                   environment: str | None = None) -> JSONResponse:
         # SPEC-DATA-REQUIREMENTS — what this library READS, from `Library.dataRequirement`. A separate
-        # route from `/specification` and independently failable: the document stands without it.
+        # route from `/specification` and independently failable: a failure answers 500 with its reason,
+        # and the rest of the document stands without it (KNOWLEDGE-FAIL-LOUD).
         at = where(location)
         try:
             found = (folder_library_resource(files_for(location), at.path, name, version)
@@ -131,9 +131,10 @@ def router(*, contents: EnvironmentContents) -> APIRouter:
                 corpus = contents.get(environment).corpus()
                 library = corpus.library_in(at.catalog_schema, name, version) if at else corpus.library(name, version)
                 requirements = library.data_requirements if library else []
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — every failure is one answer: this section cannot be read, and why
             log.warning("Data requirements unavailable for %s@%s: %s", name, version, e)
-            requirements = []
+            return JSONResponse(status_code=500,
+                                content={"error": f"{name}@{version}: {e}"})
         return JSONResponse(content={"dataRequirements": requirements})
 
     @router.post("/api/knowledge/reload")

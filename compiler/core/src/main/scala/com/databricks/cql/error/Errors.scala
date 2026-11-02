@@ -44,3 +44,12 @@ final case class VerifierError(pass: String, detail: String)
 /** ELM JSON that could not be lifted into the IR. */
 final case class ElmLoadError(detail: String, cause: Throwable = null)
     extends CompileError(s"Failed to load ELM: $detail", cause)
+
+/** A known setting whose value cannot be read. Raised when the setting is resolved, naming the key and the
+  * value. The default is never taken in its place (CORE-NO-SILENT-MISLOWER). `expected` says what is accepted. */
+final case class ConfigError(key: String, value: String, expected: String)
+    extends RuntimeException(s"Config '$key' has the value '$value'; expected $expected.")
+
+/** A retired setting: no lowering reads it, so the request is refused rather than ignored (SVC-PROTOCOL). */
+final case class RetiredConfigKey(key: String)
+    extends RuntimeException(s"Config key '$key' is retired and no longer accepted. Remove it from the request overrides.")

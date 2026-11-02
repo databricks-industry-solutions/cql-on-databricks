@@ -90,8 +90,8 @@ object Materialize {
   }
 
   /** Bare local name of a (possibly namespaced) FHIR type — mirrors `QueryLowering.localName`
-    * (`substring after the last '}'`) so the count keys match the `retrieve_<Type>` mount keys the
-    * seam consults (`{urn:hl7-org:elm-types:r1}Encounter` → `Encounter`; a bare name is unchanged). */
+    * (`substring after the last '}'`) so the count keys match the FHIR type keys the retrieve seam
+    * binds by (`{urn:hl7-org:elm-types:r1}Encounter` → `Encounter`; a bare name is unchanged). */
   private def localName(dataType: String): String = dataType.substring(dataType.lastIndexOf('}') + 1)
 
   /** True if a define's expression is a BARE unfiltered retrieve — no value-set (`codes`) and no

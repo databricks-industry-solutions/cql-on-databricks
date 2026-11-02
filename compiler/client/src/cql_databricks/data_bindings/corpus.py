@@ -1,4 +1,4 @@
-"""KNOWLEDGE-LAKE-DIRECT — the knowledge corpus, read direct from the tagged tables.
+"""KNOWLEDGE-LAKE-DIRECT — the knowledge corpus, read direct from the environment's tables.
 
 One batch load per knowledge source holds every library (identity, CQL, data requirements) and the
 measure → library edges in memory. Include closure, discovery and source lookups then run over that
@@ -93,7 +93,7 @@ class ResolvedClosure:
 
 
 class Corpus:
-    """Every library from every tagged knowledge source, in memory."""
+    """Every library from every knowledge schema, in memory."""
 
     def __init__(self, run: SqlRunner, sources: list[TaggedSchema], libraries: list[Library]) -> None:
         self._run = run
@@ -123,7 +123,7 @@ class Corpus:
         return candidates[0] if candidates else None
 
     def library_in(self, store: tuple[str, str], name: str, version: str | None = None) -> Library | None:
-        """RUN-ADDRESS-LOCATION — ``name`` (exact ``version``, else its newest) from the one tagged store
+        """RUN-ADDRESS-LOCATION — ``name`` (exact ``version``, else its newest) from the one knowledge store
         ``(catalog, schema)``, or ``None`` when that store does not hold it."""
         held = [lib for lib in self._by_name.get(name, ())
                 if (lib.knowledge.catalog, lib.knowledge.schema) == store
@@ -182,7 +182,7 @@ class Corpus:
     def measure_resource(self, name: str, version: str, *,
                          store: tuple[str, str] | None = None) -> dict[str, Any] | None:
         """SPEC-MEASURE-METADATA — the whole FHIR ``Measure`` whose root library is ``name@version``, from the
-        one tagged ``store`` when given (RUN-ADDRESS-LOCATION).
+        one knowledge ``store`` when given (RUN-ADDRESS-LOCATION).
 
         None for an ordinary library: most libraries are not a measure root, and that is not an error.
         A point read the first time, then cached for the life of this corpus.
@@ -203,11 +203,13 @@ class Corpus:
 
 
 def load_corpus(run: SqlRunner, sources: list[TaggedSchema], *, check: bool = True) -> Corpus:
-    """Read every tagged knowledge source in ``sources`` order; the first copy of a (url, version) wins.
+    """Read the libraries and measures of every knowledge schema in ``sources``, in order; the first copy of a
+    (url, version) wins.
 
-    Each source's layout is checked first, and a source that does not match fails the load: a corpus
-    missing one source's libraries would resolve includes wrongly with nothing to say so. An environment's
-    published views are not checked (``check=False``, `BIND-PUBLISHED-VIEW`): a missing view fails the read.
+    With ``check`` (the default), each schema's layout is checked first, and a schema that does not match fails the
+    load: a corpus missing one schema's libraries would resolve includes wrongly with nothing to say so. The
+    environment's own published views are loaded with ``check=False`` (`BIND-PUBLISHED-VIEW`): a missing view fails
+    the read that needs it.
     """
     libraries: list[Library] = []
     seen: set[tuple[str, str]] = set()

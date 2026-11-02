@@ -25,11 +25,11 @@
 // THE RULE. This module answers what scoring is in effect — proportion, ratio, continuous-variable,
 // or null. Scoring is a first-class input. What has NOT changed is the refusal:
 //
-//   > An unsupported or undeclared scoring renders the SPINE and REFUSES the terminal. It never renders
+//   > An unsupported or undeclared scoring renders the population structure and REFUSES the terminal. It never renders
 //   > a terminal borrowed from another scoring type.
 //
 // WHAT IS DELIBERATELY NOT BUILT: the continuous-variable distribution terminal and the ratio's two
-// spines (`APP-FLOW-GRAIN`). The CV terminal is blocked on more than a fixture — in real CV eCQMs the
+// population structures (`APP-FLOW-GRAIN`). The CV terminal is blocked on more than a fixture — in real CV eCQMs the
 // Measure Observation is a CQL FUNCTION, which `specDocument.ts` treats as transparent, the metrics
 // request filters out, and the pipeline materializes no per-subject relation for. A distribution over it
 // is a probe that pays for a run (`APP-PROBE`). Every function below therefore states the shape and
@@ -92,11 +92,11 @@ export function removesFrom(kind: ScoringKind | null, population: string): strin
   return null;
 }
 
-/** What a measure REPORTS — the terminal, which varies with scoring while the spine does not
+/** What a measure REPORTS — the terminal, which varies with scoring while the population structure does not
  *  (`APP-FLOW-GRAIN`).
  *
- *  `unsupported` is a first-class member and not an error: it is how a surface knows to draw the spine
- *  and say plainly that the terminal is not available, rather than fall through to a rate. */
+ *  `unsupported` is a first-class member and not an error: it is how a surface knows to draw the population
+ *  structure and say plainly that the terminal is not available, rather than fall through to a rate. */
 export type Readout =
   | { kind: "rate"; value: number; numerator: number; base: number }
   | { kind: "ratio"; numerator: number; denominator: number }

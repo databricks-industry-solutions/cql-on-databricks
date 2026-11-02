@@ -675,6 +675,10 @@ function Terminology({ profile, loading, hasScope }: {
   if (loading) return <Pending>Reading the codes…</Pending>;
   if (!hasScope) return <NoData />;
   if (!profile) return <Empty>No profile came back for this definition on this evaluation.</Empty>;
+  // SPEC-TERMINOLOGY-EXTRACT — a failed read is said in the codes' place, never shown as "nothing coded".
+  if (profile.terminologyError) {
+    return <div className="mw-wb-flag warn">Couldn&apos;t read codes: {profile.terminologyError}</div>;
+  }
   if (sections.length === 0) {
     return <Empty>Nothing coded to read here — this definition returns a value rather than records, so
       there is no resource carrying codes.</Empty>;
@@ -1216,7 +1220,7 @@ function Histogram({ label, bins }: { label: string | null; bins: ProfileBin[] }
  *  decided it.
  *
  *  THE RIGHT PANE AND NOT THE CANVAS, and the distinction is `APP-WORKBENCH`'s: this pane holds
- *  assertions ABOUT the document and never a second rendering OF it. A spine re-draws the document's
+ *  assertions ABOUT the document and never a second rendering OF it. A population tree re-draws the document's
  *  population structure, which is why it is the nav's. "3,904 left here, and 1,204 of them for Exclusion B
  *  alone" appears nowhere in the document and cannot be read off it — it is the same kind of thing as
  *  the profile below, and it sits in the same place for the same reason.

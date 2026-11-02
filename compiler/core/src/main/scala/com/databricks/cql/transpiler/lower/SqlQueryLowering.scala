@@ -378,48 +378,6 @@ object SqlQueryLowering {
     (cd.codeSystem.flatMap(cs => lib.codeSystems.find(_.name == cs).map(_.id)).getOrElse(""), cd.id)
   }
 
-  /** The retrieve UDTF's SEVEN EXPLICIT positional arguments — everything the
-    * compiler statically knows about ONE retrieve, spelled out as named/typed SQL parameters:
-    *
-    * {{{
-    * retrieve_<Type>(value_set, code_property, codes, date_property, date_low, date_high, parameters)
-    * }}}
-    *
-    *  1. `value_set STRING` — the canonical value-set id (URL / `urn:oid:…`) of a value-set-filtered
-    *     retrieve, the terminology semi-join key.
-    *  2. `code_property STRING` — the FHIR element the code filter tests, already RESOLVED to its
-    *     PHYSICAL slot ([[resolveCodeSlot]]): a `value[x]`-choice property like
-    *     `MedicationRequest.medication` is emitted as `medicationCodeableConcept`, so a binding can
-    *     navigate `<code_property>.coding` directly and match what the plan filters on.
-    *  3. `codes ARRAY<STRUCT<system STRING, code STRING>>` — the DIRECT declared codes of a
-    *     code-filtered retrieve (`[Condition: "Acute Pharyngitis code"]`). Disjoint from `value_set` in
-    *     practice: a retrieve filters by a value set OR by declared codes, never both.
-    *  4. `date_property STRING` — the FHIR element the date filter applies to.
-    *  5. `date_low STRING` / 6. `date_high STRING` — the folded literal date window on it, as INCLUSIVE
-    *     ISO bounds (`Retrieve.dateRange`, ARCH-PUSHDOWN). Both are emitted only for a CLOSED literal
-    *     interval; a half-open or non-literal range leaves them NULL rather than shift a bound.
-    *  7. `parameters MAP<STRING, VARIANT>` — every parameter the define's dependency closure uses whose
-    *     resolved default is a compile-time literal, keyed by its CQL NAME in the define's own library
-    *     ([[com.databricks.cql.passes.ParameterScope]], EMIT-ROOT-INDEPENDENT). A MAP because those names are not SQL identifiers
-    *     (`'Measurement Period'` has a space) and the set is open per library; VARIANT values because
-    *     a default is not always a string — an interval lands as a `{low, high}` VARIANT
-    *     OBJECT, a scalar as a VARIANT SCALAR.
-    *
-    * Every argument is a FOLDABLE literal, so a guard on any of them — `library[0].id = '…'`,
-    * `try_variant_get(parameters['Measurement Period'], '$.low', 'string')`, `cardinality(codes) > 0` —
-    * folds at ANALYSIS time and Catalyst eliminates the body's non-matching `UNION` arms
-    * (BIND-PUSHDOWN, verified against Spark 4.1.2: an array/map/struct argument folds exactly as well
-    * as a scalar). ABSENT is a NULL (or an empty array/map), never a wrong literal
-    * (CORE-NO-SILENT-MISLOWER) — a binding tests presence exactly as it tests a missing VARIANT
-    * key. Advisory only: [[filteredRetrieve]] re-applies every filter ABOVE the call, so a binding that
-    * ignores all seven arguments still returns a correct un-pruned superset (BIND-CAPABILITY).
-    *
-    * EMIT-ROOT-INDEPENDENT: no argument names a library. The retrieve's rows may depend only on its arguments
-    * and its data source, so a define's SQL, and its stored result, is the same whichever library is being
-    * compiled (`DEC-RESULT-IDENTITY`).
-    *
-    * `r` is `None` for the CONTEXT BASE mount (the per-subject `Patient` scan, [[contextRel]]): it has no
-    * predicates and belongs to no define, so its `parameters` map is empty. */
   /** BIND-CALL-SITE: the mount for one retrieve call site. The context's own retrieve (`r` is `None`) belongs to
     * no define, so its site names no library; every other site names the define being lowered and its library
     * ([[SqlEvalEnv.siteOwner]]). */
@@ -433,6 +391,17 @@ object SqlQueryLowering {
     env.valueSetMount(vsId, CallSite.valueSet(vsId, lib.valueSets.find(_.id == vsId).flatMap(_.version),
       env.siteOwner(lib)))
 
+  /** BIND-RETRIEVE-REQUEST: what one retrieve call site asks its data binding for, as [[RetrieveCall]] holds it.
+    * A relation takes no arguments. The compiled plan re-applies every filter above it (BIND-CAPABILITY), so a
+    * binding that ignores the request still returns a correct superset. An absent value is NULL or an empty array
+    * or map, never a guessed literal (CORE-NO-SILENT-MISLOWER).
+    *
+    * EMIT-ROOT-INDEPENDENT: no request field names a library. The retrieve's rows may depend only on its request
+    * and its data source, so a define's SQL, and its stored result, is the same whichever library is being
+    * compiled (`DEC-RESULT-IDENTITY`).
+    *
+    * `r` is `None` for the CONTEXT BASE read (the per-subject `Patient` scan, [[contextRel]]): it has no
+    * predicates and belongs to no define, so its `parameters` map is empty. */
   private[lower] def retrieveCall(r: Option[Retrieve], rt: String, lib: Library, env: SqlEvalEnv): RetrieveCall = {
     val valueSet = r.flatMap(_.codes).collect {
       case ValueSetRef(name, _)         => valueSetId(lib, name)
@@ -680,7 +649,7 @@ object SqlQueryLowering {
     * THROUGH the `__resource` struct (mirrors `QueryLowering.resourceScanPredicate`): `bindScopes`
     * rewrites scope-rooted navigation and every alias binds to `__resource`.
     *
-    * EMIT-SQL-TEMPORAL-UDF: fold the precision-aware temporal-compare tower to `cql_temporal_cmp` here too.
+    * EMIT-SQL-TEMPORAL-UDF-OPAQUE: fold the precision-aware temporal-compare tower to `cql_temporal_cmp` here too.
     * This is the pushed date-range scan filter (`In(point, range)` folded by `DateRangePushdown` and
     * re-emitted at [[filteredRetrieve]]) — a runtime `__resource.<date>` operand, so it is exactly the
     * operator tower the UDF collapses (a literal-only predicate still const-folds via the `aC/bC` guard in

@@ -2,7 +2,7 @@
 Every edit is written, whether or not it compiles. Folders are the only place the Designer edits: a tagged store is
 read-only here (`DOC-EDITABLE-IN-SCOPE`), so nothing the Designer edits reaches tagged knowledge.
 
-A folder mirrors an eCQI measure package (`folder_content.py`), which holds one library's logic several times: the
+A folder mirrors a measure package (`folder_content.py`), which holds one library's logic several times: the
 ``.cql`` file, the ``Library`` resource's encoded CQL and compiled ELM, the bundle, an XML copy of each resource and
 an HTML rendering. A save rewrites the ``.cql`` and every JSON copy, with ELM compiled from the saved CQL, or with no
 ELM when it does not compile, so no ELM in the folder disagrees with the CQL beside it. The XML copies and the HTML cannot be regenerated here; the first save that would

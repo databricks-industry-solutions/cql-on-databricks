@@ -123,6 +123,12 @@ class CompileServiceSqlSpec extends AnyFunSuite {
     }
   }
 
+  test("SVC-PROTOCOL: CompileRequest.fromJson refuses the retired libraries key, naming it") {
+    val err = intercept[IllegalArgumentException](CompileRequest.fromJson("""{"elm": "", "libraries": []}"""))
+    assert(err.getMessage.contains("has no libraries"), err.getMessage)
+    assert(err.getMessage.contains("BUILD-COMPILE-LINK"), err.getMessage)
+  }
+
   test("a retrieve with no data binding fails the compile, naming the site (BIND-CALL-SITE)") {
     val err = intercept[UnsupportedNode](CompileService.compileSql(
       CompileRequest(elmJson = elm, target = Some("HasEncounter"), context = Some("Patient"))))

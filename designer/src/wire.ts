@@ -162,9 +162,9 @@ export interface RunStage {
 }
 
 /** DESIGNER-SDP-NAV — the merged LibraryGraph from the engine's `/describe` endpoint.
- *  Hand-mirrors the engine's `LibraryGraph` (cql-databricks providers.py). The frontend merges this
- *  with the local CQL source scan (node classification + leaf nodes) to build the hybrid graph.
- *  Nothing fetches one for a Data Source: there is no `data_sources` table to read a library manifest from. */
+ *  Hand-mirrors the engine's `LibraryGraph` (cql-databricks providers.py). It is an optional input to the
+ *  reachability walk (`specModel.ts`); the nav's graph is built from the ELM (`elmGraph.ts`), and nothing
+ *  in the SPA fetches a describe result today. */
 export interface DescribeResult {
   defines: string[];
   dependencies: Record<string, string[]>;
@@ -215,13 +215,6 @@ export interface PreComputedResults {
   defines: DefineResultEntry[];
 }
 
-
-/** Library identity returned from the orchestrator run path. */
-export interface LibraryIdentity {
-  library: string;
-  version: string;
-  environment: string;
-}
 
 // ── APP-DATA-PROFILE — one define's data profile (`insights/model.py`) ─────────────────────────
 //
@@ -346,6 +339,8 @@ export interface DefineProfile {
   /** SPEC-TERMINOLOGY-EXTRACT — DERIVED, never sampled: a `GROUP BY` over the define's own result
    *  relation. Absent for a define that returns no resources (a boolean define has no record to read). */
   terminology?: TerminologySection[];
+  /** SPEC-TERMINOLOGY-EXTRACT — why `terminology` is absent: the warehouse would not return the codes. */
+  terminologyError?: string;
   temporal?: ProfileTemporalBin[];
   strata?: ProfileStratum[];
 }
