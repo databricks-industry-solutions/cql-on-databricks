@@ -142,11 +142,18 @@ variables:
     default: ""
   admins:
     description: >-
-      DEPLOY-ENVIRONMENT-TAG-POLICIES — the project's admins besides the deployer: users (by email), service principals
-      (by application ID) or account groups. They may tag a catalog an environment or the default. Set it in
-      databricks.local.yml. Empty by default: the deployer alone.
+      DEPLOY-PROJECT-ADMINS, DEPLOY-ENVIRONMENT-TAG-POLICIES — the project's admins besides the deployer: users (by
+      email), service principals (by application ID) or groups. Every deploy adds each to the workspace and its admins
+      group, and lets each tag a catalog an environment or the default. Set it in databricks.local.yml. Empty by
+      default: the deployer alone.
     type: complex
     default: []
+  workspace_users_group:
+    description: >-
+      DEPLOY-AGENT-SKILLS — the WORKSPACE group granted read on the workspace skills folder Genie Code loads. A workspace
+      object takes workspace groups, which Unity Catalog does not; the other groups here are account groups. Set it in
+      databricks.local.yml; scripts/deploy/deploy.sh refuses to deploy while it is empty.
+    default: ""
   agent_users_group:
     description: >-
       DEPLOY-AGENT-SKILLS, DEPLOY-AGENT-REGISTRATION — the ACCOUNT group granted READ VOLUME on the agent's UC skills

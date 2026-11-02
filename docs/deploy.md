@@ -44,7 +44,8 @@ cp databricks.local.yml.example databricks.local.yml
 | `uc_catalog` | The catalog for the runtime schema and the Volume. The deploy builds the default environment in it: its schemas, the example measures and patients, its tags (`DEPLOY-DEFAULT-ENVIRONMENT`). Required |
 | `warehouse_id` | The serverless SQL warehouse. The deploy registers the runtime functions with it, and the Apps run on it. Required |
 | `app_users_group` | The account group allowed to use the Apps. It gets read access to the default environment and `CREATE TABLE` on its `draft_results`. Unity Catalog grants take account groups only, so a workspace-local group such as `users` fails the deploy. Required |
-| `admins` | Optional. The project's admins besides you: users by email, service principals by application ID, or account groups, as a list. They and the deployer may tag a catalog an environment or the default (`DEPLOY-ENVIRONMENT-TAG-POLICIES`). Empty by default |
+| `admins` | Optional. The project's admins besides you: users by email, service principals by application ID, or groups, as a list. Every deploy adds each to the workspace and its `admins` group (`DEPLOY-PROJECT-ADMINS`), and lets each tag a catalog an environment or the default (`DEPLOY-ENVIRONMENT-TAG-POLICIES`). Empty by default |
+| `workspace_users_group` | The workspace group that may read the workspace skills folder Genie Code loads, such as the workspace's `users`. A workspace folder takes workspace groups; Unity Catalog takes account groups only, so the other groups can't serve. Required |
 | `run_log_readers_group` | The group allowed to read the Designer run log. Required |
 | `designer_catalog` | Optional. The catalog of the Designer's shared `designer` schema. Defaults to `uc_catalog` |
 | `assistant_endpoint` | The Model Serving chat endpoint the assistant drawer calls. Check it exists in your workspace. Required |
@@ -78,35 +79,37 @@ It runs from any directory and stops on an unknown argument.
 
 The script, in order:
 
-1. Creates or reuses the maintenance service principal and grants it `USE CATALOG` on `uc_catalog`
+1. Adds each of `admins` to the workspace and its `admins` group (`scripts/deploy/project_admins.py`,
+   `DEPLOY-PROJECT-ADMINS`).
+2. Creates or reuses the maintenance service principal and grants it `USE CATALOG` on `uc_catalog`
    (`scripts/deploy/grant-maintenance-access.sh`, `RUN-CLIENT-MAINTENANCE`). Its application ID becomes the
    `cql-databricks-designer-maintenance` Job's run-as. The deployer gets the Service Principal: User role on it,
    which a Job's run-as needs.
-2. Builds and stages each App.
-3. Runs `databricks bundle deploy`, which creates the runtime schema and Volume, the Designer's shared
+3. Builds and stages each App.
+4. Runs `databricks bundle deploy`, which creates the runtime schema and Volume, the Designer's shared
    schema, the default environment's schemas and their schema grants (`DEPLOY-DEFAULT-ENVIRONMENT`,
    `DEPLOY-APP-GRANTS`), the Apps and their permissions, and the `cql-databricks-designer-maintenance` Job.
    `app_users_group` gets `USE SCHEMA` and `SELECT` on `data`, `terminology`, `knowledge` and `results`, and
    `USE SCHEMA` and `CREATE TABLE` on `draft_results`; the Designer's service principal gets `USE SCHEMA` and
    `SELECT` on `knowledge` and `terminology`. The Job's daily schedule deploys paused: unpause it after one run has
    been checked on the workspace.
-4. Uploads the compiler's JRE and jars, the runtime function jar, and the client and agent wheels to the Volume.
-5. Registers the `cql_*` runtime functions in Unity Catalog (`scripts/deploy/register-uc-udfs.sh`).
-6. Grants each App's service principal `USE CATALOG` on `uc_catalog`, and revokes the catalog-wide `USE SCHEMA` and
+5. Uploads the compiler's JRE and jars, the runtime function jar, and the client and agent wheels to the Volume.
+6. Registers the `cql_*` runtime functions in Unity Catalog (`scripts/deploy/register-uc-udfs.sh`).
+7. Grants each App's service principal `USE CATALOG` on `uc_catalog`, and revokes the catalog-wide `USE SCHEMA` and
    `SELECT` an earlier deploy granted (`scripts/deploy/grant-app-access.sh`).
-7. Creates and grants the Designer run log tables (`scripts/deploy/provision-run-log.py`).
-8. Publishes the example notebooks to a shared workspace folder (`scripts/deploy/publish-examples.sh`).
-9. Starts every App.
-10. Publishes every skill from one definition (`scripts/deploy/publish-skills.sh`, `DEPLOY-AGENT-SKILLS`): as Unity
+8. Creates and grants the Designer run log tables (`scripts/deploy/provision-run-log.py`).
+9. Publishes the example notebooks to a shared workspace folder (`scripts/deploy/publish-examples.sh`).
+10. Starts every App.
+11. Publishes every skill from one definition (`scripts/deploy/publish-skills.sh`, `DEPLOY-AGENT-SKILLS`): as Unity
     Catalog skills, which Genie One loads, and to the workspace skills folder `/Workspace/.assistant/skills/`, which
     Genie Code loads. It creates that folder and lets `app_users_group` read it. Creating it needs a workspace
     admin; for any other deployer the skills go to `/Shared/CqlDatabricks/skills`, and the deploy says Genie Code
     won't load them from there. It then registers the agent under Unity Gateway (`scripts/deploy/register_agent_mcp.py`,
     `DEPLOY-AGENT-REGISTRATION`). See [The agent in Genie One](#the-agent-in-genie-one).
-11. Makes the three environment tags governed tags (`scripts/deploy/environment-tag-policies.sh`,
+12. Makes the three environment tags governed tags (`scripts/deploy/environment-tag-policies.sh`,
     `DEPLOY-ENVIRONMENT-TAG-POLICIES`), so only you and `admins` can tag a catalog an environment or the default.
     Creating a tag policy needs a workspace admin, unless an account admin changed who may.
-12. Fills the default environment's schemas (`scripts/deploy/provision-examples.py`, `DEPLOY-DEFAULT-ENVIRONMENT`):
+13. Fills the default environment's schemas (`scripts/deploy/provision-examples.py`, `DEPLOY-DEFAULT-ENVIRONMENT`):
     the example measures and value sets in `knowledge_store` and `terminology_store`, through the import; the
     synthetic small population in `data_store`; the views over them; and the catalog tags. Then the two grants the
     bundle can't make: `USE CATALOG` on `uc_catalog` to `app_users_group`, and `USE SCHEMA` and `MANAGE` on

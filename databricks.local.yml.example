@@ -32,8 +32,10 @@ targets:
       # the default environment with CREATE TABLE on its draft_results.
       # Required by scripts/deploy/deploy.sh; local runs do not read it.
       app_users_group: "<account-group>"
-      # DEPLOY-ENVIRONMENT-TAG-POLICIES — optional: the project's admins besides the deployer (emails, service principal
-      # application IDs or account groups). They may tag a catalog an environment or the default.
+      # DEPLOY-AGENT-SKILLS — the WORKSPACE group that reads the workspace skills folder (e.g. the workspace's `users`).
+      workspace_users_group: "<workspace-group>"
+      # DEPLOY-PROJECT-ADMINS — optional: the project's admins besides the deployer (emails, service principal
+      # application IDs or groups). Every deploy makes them workspace admins; they may tag environments.
       # admins: ["<admin-email>"]
       # DOC-OPEN-SAVE — the base of the canonical URL of every library and measure created in the Designer:
       # <base>/Library/<Name>. Defaults to http://example.org/fhir, the examples' base. Set your own before

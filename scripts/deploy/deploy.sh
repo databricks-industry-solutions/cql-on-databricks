@@ -85,6 +85,13 @@ users_group="$(jqpy "v=d.get('variables') or {};print((v.get('app_users_group') 
   echo "!!! app_users_group is empty. Set it in databricks.local.yml to the account group whose members use"
   echo "!!! the Apps (they get CAN_USE on the Designer and agent Apps; APP-PER-FEATURE)."; exit 1; }
 echo "==> app users group=$users_group"
+# DEPLOY-AGENT-SKILLS — the workspace group that reads the workspace skills folder, a workspace object: Unity Catalog's
+# account groups and workspace groups are not the same, so app_users_group (an account group) cannot serve.
+workspace_users_group="$(jqpy "v=d.get('variables') or {};print((v.get('workspace_users_group') or {}).get('value') or '')")"
+[ -n "$workspace_users_group" ] || {
+  echo "!!! workspace_users_group is empty. Set it in databricks.local.yml to the workspace group that may read the"
+  echo "!!! skills folder Genie Code loads (DEPLOY-AGENT-SKILLS)."; exit 1; }
+echo "==> workspace users group=$workspace_users_group"
 # APP-RUN-LOG — the run log is read by an operator group, granted SELECT at step [5.8]; without one nobody but
 # the deployer could read it, so an empty group stops the deploy here, like app_users_group.
 readers_group="$(jqpy "v=d.get('variables') or {};print((v.get('run_log_readers_group') or {}).get('value') or '')")"
@@ -168,6 +175,14 @@ _workspace_setting enable_databricks_apps custom_apps_preview "Databricks Apps"
 _workspace_setting enable_apps_user_authorization enable_obo_user_apps "user authorization for Apps (SEC-OBO)"
 _workspace_setting enable_unity_gateway ai_gateway_ga_ws "Unity Gateway (DEPLOY-AGENT-REGISTRATION)"
 _workspace_setting enable_genie_uc_skills genie_uc_skills "Unity Gateway skills in Genie (DEPLOY-AGENT-SKILLS)"
+
+echo "==> [1.6] the project's admins are workspace admins (DEPLOY-PROJECT-ADMINS)"
+# Every deploy, as the deployer (a workspace admin): each of admins is added to the workspace and its admins group.
+(
+  if [ -n "$profile_name" ]; then export DATABRICKS_CONFIG_PROFILE="$profile_name"; fi
+  "$venv_py" "$here/scripts/deploy/project_admins.py" \
+    --admins "$(jqpy "import json;v=d.get('variables') or {};print(json.dumps((v.get('admins') or {}).get('value') or []))")"
+)
 
 echo "==> [2/7] stage each App's payload (volume baked into app.yaml)"
 # Export the resolved volume path so stage-compiler.sh substitutes it into the staged app.yaml.
