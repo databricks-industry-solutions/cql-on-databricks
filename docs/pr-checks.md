@@ -9,6 +9,9 @@ can cite it by ID.
 Report every check as `PASS`, `FAIL` or `N/A`. A `FAIL` names the file and line and says in one sentence what
 is wrong. An `N/A` says why the check doesn't apply.
 
+Only a clear violation of a check is a `FAIL`. A subtle difference in wording, style or approach is not; raise
+it as a comment if it matters.
+
 | Outcome on `FAIL` | Means |
 |---|---|
 | `BLOCK` | Don't merge until it's fixed |
