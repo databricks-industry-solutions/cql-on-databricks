@@ -1,12 +1,11 @@
-"""The compile-time data binder seam (`CLIENT-EXEC-DISCOVERY`): ``exec()`` and ``compile_pipeline()`` ask the
-library's binder for its data, told the types the library retrieves (`EMIT-DESCRIBE-RETRIEVE-TYPES`).
+"""BIND-CALL-SITE: ``exec()`` and ``compile_pipeline()`` bind each compile through the library's binder, and a
+library with none binds nothing.
 
 Stdlib unittest with fakes: no pyspark, no compile host.
 """
 import unittest
 
 from cql_databricks.compiler import CqlClient
-from cql_databricks.compiler.binding import BoundData
 from cql_databricks.compiler.providers import (CompileError, CompileProvider, CompileRequest, LibraryGraph,
                                                PipelinePlan, SqlCompileResult, SqlStatement)
 
@@ -39,64 +38,49 @@ class _Provider(CompileProvider):
 
 
 class _Binder:
-    def __init__(self, bound=None):
+    """A binder that records each request it binds and binds every retrieve by one rule."""
+
+    def __init__(self):
         self.calls = []
-        self._bound = bound or BoundData(data_source={"catalog": "c", "schema": "s", "routines": ["retrieve_Condition"]},
-                                         terminology_table="rt.runtime.valuesets")
 
-    def bind(self, library, retrieve_types, *, durable):
-        self.calls.append((list(retrieve_types), durable))
-        return self._bound
+    def bind_request(self, library, request, describe, *, durable):
+        from dataclasses import replace
+
+        self.calls.append(durable)
+        return replace(request, data={"rule": {"schema": "c.s", "identity": "c.s"}})
 
 
-def _client(provider, binder=None, **sources):
+def _client(provider, binder=None):
     b = CqlClient.builder().provider(provider).spark(_Spark())
-    for fhir_type, function in sources.items():
-        b = b.source_binding(fhir_type, function)
     if binder is not None:
         b = b.data_binder(binder)
     return b.build()
 
 
 class BinderTests(unittest.TestCase):
-    def test_exec_sends_what_the_binder_chose_told_the_retrieved_types(self):
+    def test_exec_sends_what_the_binder_bound(self):
         provider, binder = _Provider(), _Binder()
         _client(provider, binder).cql('define "X": exists [Condition]').exec("X")
-        self.assertEqual(binder.calls, [(["Condition", "Patient"], False)])
-        sent = provider.compiled[-1]
-        self.assertEqual(sent.data_source["schema"], "s")
-        self.assertEqual(sent.terminology_table, "rt.runtime.valuesets")
-        self.assertEqual(dict(sent.sources), {})
+        self.assertEqual(binder.calls, [False])
+        self.assertEqual(provider.compiled[-1].to_json()["data"], {"rule": {"schema": "c.s", "identity": "c.s"}})
 
     def test_durable_compile_tells_the_binder(self):
         provider, binder = _Provider(), _Binder()
         _client(provider, binder).cql('define "X": 1').compile_pipeline(durable=True)
-        self.assertEqual(binder.calls, [(["Condition", "Patient"], True)])
-        self.assertEqual(provider.compiled[-1].data_source["catalog"], "c")
+        self.assertEqual(binder.calls, [True])
 
-    def test_explicit_source_binding_beats_the_binder(self):
-        provider, binder = _Provider(), _Binder()
-        _client(provider, binder, Condition="my_retrieve").cql('define "X": 1').exec("X")
-        self.assertEqual(binder.calls, [])
-        self.assertIsNone(provider.compiled[-1].data_source)
-        self.assertEqual(provider.compiled[-1].sources["Condition"]["function"], "my_retrieve")
-
-    def test_no_binder_compiles_to_the_convention_without_a_describe(self):
+    def test_no_binder_binds_nothing_and_asks_no_describe(self):
         provider = _Provider()
         _client(provider).cql('define "X": 1').exec("X")
         self.assertEqual(provider.describes, 0)
-        self.assertIsNone(provider.compiled[-1].data_source)
+        body = provider.compiled[-1].to_json()
+        self.assertNotIn("data", body)
+        self.assertNotIn("terminology", body)
 
-    def test_a_service_that_does_not_report_retrieved_types_fails_loudly(self):
-        with self.assertRaisesRegex(CompileError, "EMIT-DESCRIBE-RETRIEVE-TYPES"):
-            _client(_Provider(retrieve_types=None), _Binder()).cql('define "X": 1').exec("X")
-
-    def test_an_explicit_valueset_table_beats_the_binders(self):
-        provider = _Provider()
-        client = (CqlClient.builder().provider(provider).spark(_Spark()).valueset_table("mine.vs")
-                  .data_binder(_Binder()).build())
-        client.cql('define "X": 1').exec("X")
-        self.assertEqual(provider.compiled[-1].terminology_table, "mine.vs")
+    def test_the_retired_builder_bindings_are_gone(self):
+        """BIND-CALL-SITE: no per-type function, catalog or value-set table on the builder."""
+        for retired in ("source_binding", "data_catalog", "fhir_catalog", "valueset_table"):
+            self.assertFalse(hasattr(CqlClient.builder(), retired), retired)
 
 
 class ResourceSchemaTests(unittest.TestCase):

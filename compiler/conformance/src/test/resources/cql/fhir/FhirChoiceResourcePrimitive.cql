@@ -1,6 +1,6 @@
 library FhirChoiceResourcePrimitive version '1.0.0'
 
-// LANG-CHOICE-RESOURCE (extends ARCH-COND-UNION Phase B / LANG-CHOICE): a list-valued `if` whose
+// LANG-CHOICE-RESOURCE (extends ARCH-COND-UNION / LANG-CHOICE): a list-valued `if` whose
 // branches mix a FHIR RESOURCE body with a PRIMITIVE (or tuple) — the most heterogeneous Choice shape.
 // FhirConditionalUnionHet mixed two SCALAR element types (string vs integer); here one arm is a whole
 // `Encounter` struct and the other is an `Integer` / `String` / anonymous `Tuple`, so the Choice-tagged

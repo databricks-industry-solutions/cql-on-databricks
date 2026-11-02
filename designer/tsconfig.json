@@ -1,5 +1,5 @@
 {
-  "//": "PHASE-S1 / APP-EDITOR, APP-SHELL — typecheck config for the React SPA (DOM + JSX). The backend (BFF) is Python/FastAPI (cql_databricks_designer/), so this is the ONLY TS tsconfig — the former Node-BFF tsconfig.node.json is retired with the Node server.",
+  "//": "APP-EDITOR, APP-SHELL — typecheck config for the React SPA (DOM + JSX). The backend (BFF) is Python/FastAPI (cql_databricks_designer/), so this is the only TS tsconfig.",
   "compilerOptions": {
     "target": "ES2023",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],

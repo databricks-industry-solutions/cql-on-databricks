@@ -9,7 +9,7 @@ import java.net.URI
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.nio.charset.StandardCharsets
 
-/** End-to-end gate for the LOCALLY-HOSTABLE compiler (PHASE-10, `BUILD-COMPILE-SERVICE`):
+/** End-to-end gate for the LOCALLY-HOSTABLE compiler (`BUILD-COMPILE-SERVICE`):
   * start the local host ([[OssCompileHost]], a zero-dependency JDK
   * HttpServer), POST over HTTP, and confirm it serves the compiled SQL script + the neutral library
   * graph — proving the whole compile path is reachable as a local OSS service with NO platform

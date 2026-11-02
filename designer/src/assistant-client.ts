@@ -8,10 +8,10 @@
 // catalogue being fetched five times, which is a different problem.
 //
 // THE CONVERSATION IS THE CLIENT'S STATE. `messages` comes back on every answer and goes back up on
-// the next turn — the server holds no session, for the same reason the tools carry no run id
-// (`SVC-TOOL-ADDRESS`): an answer reproducible only from inside the conversation that produced it is
+// the next turn — the server holds no session, for the same reason the tools carry no run id: an answer reproducible only from inside the conversation that produced it is
 // not reproducible. The drawer keeps them opaque and never reads into them.
 
+import { currentEnvironment } from "./environment.ts";
 import type { ResultSetAddress } from "./wire.ts";
 
 /** APP-ASSISTANT-CONTEXT — what the reader is looking at, as the removable chip states it. */
@@ -22,7 +22,6 @@ export interface AssistantSelection {
   /** RUN-ADDRESS-LOCATION — where the open library is read, so a tool reads the same copy. */
   location?: string;
   define?: string;
-  dataSourceId?: string;
   periodStart?: string;
   periodEnd?: string;
   /** What the identifiers above are CALLED on screen. Sent separately and never passed to a tool: an
@@ -30,7 +29,8 @@ export interface AssistantSelection {
    *  `ExampleMeasure` at someone who calls it *Example Measure*, or
    *  spends a tool round-trip resolving what the screen already had on it. */
   measureTitle?: string;
-  dataSourceName?: string;
+  /** The picked environment's name, so the answer can say whose data it read. */
+  environmentName?: string;
 }
 
 /** SVC-ANSWER-PROVENANCE — whose number a tool call produced.
@@ -46,7 +46,7 @@ export interface AssistantInvocation {
   tool: string;
   arguments: Record<string, unknown>;
   provenance: Provenance;
-  /** The relation the call addressed (`SVC-TOOL-ADDRESS`) — the answer's reproducible citation. */
+  /** The relation the call addressed — the answer's reproducible citation. */
   handle?: string;
   error?: string;
 }
@@ -62,7 +62,7 @@ export interface AssistantAnswer {
 /** Ask one question, reporting each tool call as it lands.
  *
  *  SSE, because a real answer is a SEQUENCE of calls and not one round — `onInvocation` is what lets
- *  the drawer show the investigation instead of a spinner (`THEME-GLASSBOX`). Rejects with the
+ *  the drawer show the investigation instead of a spinner. Rejects with the
  *  server's message so the drawer can state it (`KNOWLEDGE-FAIL-LOUD`).
  *
  *  Frame handling mirrors `run-client.ts`: SSE frames are `\n\n`-delimited and a chunk can split one,
@@ -83,6 +83,8 @@ export async function askAssistant(
       question,
       selection: opts.selection ?? null,
       messages: opts.messages ?? null,
+      // AGENT-DEFAULT-ENVIRONMENT, DOC-ENVIRONMENT-PICKER — every tool runs in the picked environment.
+      environment: currentEnvironment(),
     }),
     signal: opts.signal,
   });

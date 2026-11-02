@@ -17,19 +17,19 @@ import java.time.{LocalDateTime, OffsetDateTime, ZoneOffset}
 import scala.jdk.CollectionConverters._
 
 /** What a closure retrieves: the FHIR resource types its retrieves name and the value sets it declares. A caller
-  * reads exactly these for its patients (`RUN-POINT-CQF`). */
+  * reads exactly these for its patients. */
 final case class CqfRequirements(resourceTypes: Seq[String], valueSets: Seq[String])
 
 /** One patient: its id and every resource of the types the closure retrieves, as FHIR R4 JSON. */
 final case class CqfPatient(id: String, resources: Seq[String])
 
-/** RUN-POINT-CQF, `DEC-POINT-UC-FUNCTION` — evaluate a library's Patient-context defines for a few patients with the
+/** `DEC-POINT-UC-FUNCTION` — evaluate a library's Patient-context defines for a few patients with the
   * CQF CQL engine, in memory, over resources the caller extracted.
   *
   * **The closure arrives as CQL and is translated here**, once per closure, with the compiler's own translator
   * options (`CqlToElmCli.translateText`: annotations and result types on, and only the supplied library sources,
   * FHIRHelpers among them when the closure includes it, LANG-FHIRHELPERS-FROM-CONTENT). It cannot arrive as ELM: cqframework 4.8's ELM JSON reader restores no result types, and the engine
-  * needs them (POINT-CQF-UC-FUNCTION, 2026-10-08). Translated closures are kept, least recently used first out,
+  * needs them (POINT-CQF-UC-FUNCTION). Translated closures are kept, least recently used first out,
   * up to `maxClosures`.
   *
   * **The answers are the conformance oracle's:** the same in-memory providers (`InMemoryFhirRetrieveProvider`,
@@ -37,7 +37,7 @@ final case class CqfPatient(id: String, resources: Seq[String])
   * (`DEC-SAME-ANSWER`).
   *
   * The measurement period is the only parameter, given as ISO bounds and built in the type the root declares
-  * (`Interval<DateTime>` or `Interval<Date>`, both ends inclusive, the canonical bounds of `RUN-EVAL-ID-INPUTS`). It
+  * (`Interval<DateTime>` or `Interval<Date>`, both ends inclusive, the canonical bounds of `LANG-PARAM-INSTANT`). It
   * is given to the root and, by qualified name, to every library in the closure. Thread-safe. */
 final class CqfEvaluator(maxClosures: Int = 32) {
   import CqfEvaluator.Closure

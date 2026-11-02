@@ -1,6 +1,6 @@
 library FhirListDefineConsumed version '1.0.0'
 
-// PHASE-6 step 2 (DATA-SKIP-UNFILTERED, DATA-DEFINE-DF): the broad-define-then-filter measure pattern.
+// DATA-SKIP-UNFILTERED, DATA-DEFINE-DF: the broad-define-then-filter measure pattern.
 // A bare unfiltered-retrieve define `E` is realized as a Relation VIEW over the source scan; a
 // downstream query consumes `E` as a Relation SOURCE (joined on __subject_id, carrying E's __ordinal),
 // so the consumer's `where` folds per-consumer onto the scan instead of iterating a collect_list

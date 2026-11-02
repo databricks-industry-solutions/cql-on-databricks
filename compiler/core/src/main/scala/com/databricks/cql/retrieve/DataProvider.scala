@@ -6,7 +6,7 @@ import org.apache.spark.sql.DataFrame
 /** The Retriever/DataProvider seam (DATA-RETRIEVER, `03`). Set-at-a-time data access: given a FHIR
   * resource type, return ALL instances as ONE frame carrying the context grouping key `__subject_id`
   * (SystemColumns.SubjectId) and the whole resource as a single struct column `__resource`
-  * (SystemColumns.Resource) — the SINGLE schema contract every adapter returns (DATA-RETRIEVE-VIEW,
+  * (SystemColumns.Resource) — the SINGLE schema contract every adapter returns (BIND-CONTRACT,
   * [[ResourceStruct]]). For `Condition` the subject is the `subject` reference's id; for `Patient` it
   * is the resource id.
   *
@@ -22,12 +22,12 @@ trait DataProvider {
     * optimizer already knows): a complex/multi-stage production adapter MAY honor as many as feasible
     * to PRUNE the scan; the local sample-data adapter IGNORES them. Honoring must be SUPERSET-only —
     * correctness NEVER depends on the adapter, because the engine re-applies every predicate at its
-    * natural position in the plan. CONF-GATE-SELFDIFF (pushdown on vs off) proves hints-honored is
+    * natural position in the plan. The self-diff (pushdown on vs off) proves hints-honored is
     * identical to hints-ignored. */
   def retrieve(fhirType: String, hints: RetrieveHints = RetrieveHints.none): DataFrame
 }
 
-/** STATIC, compile-time-determined pushdown hints for a [[DataProvider.retrieve]] (DATA-RETRIEVE-VIEW).
+/** STATIC, compile-time-determined pushdown hints for a [[DataProvider.retrieve]].
   * Runtime-adaptive querying is OUT OF SCOPE — only hints the optimizer knows at compile time are
   * populated. A non-Spark adapter may interpret or ignore them.
   *

@@ -1,8 +1,8 @@
-"""CONTENT-RESOLVER — the layouts data-bindings owns, and the check that a tagged schema meets one.
+"""The layouts data-bindings owns, and the check that a schema meets one.
 
 ``KNOWLEDGE`` is pure FHIR (`CONTENT-LAKEHOUSE-STANDARD-ONLY`): a ``library`` and a ``measure`` table, each
 the resource plus its canonical identity. ``TERMINOLOGY`` is the tall value-set table the compiled SQL
-joins at run time (`BIND-TERMINOLOGY-TABLE`, whose layout data-bindings now owns): one row per code, keeping
+joins at run time (`DATA-ENVIRONMENT-LAYOUT`, whose layout data-bindings now owns): one row per code, keeping
 the expansion version so a measure's pinned value-set version still resolves. Value sets arrive
 already expanded; nothing here computes an expansion.
 
@@ -52,5 +52,5 @@ def check_layout(run: SqlRunner, schema: TaggedSchema, layout: Layout) -> None:
     """Raise when ``schema`` does not meet ``layout``, naming every gap at once."""
     problems = layout_problems(run, schema, layout)
     if problems:
-        raise ResolverError(f"{schema.catalog}.{schema.schema} (tagged {schema.tag} = {schema.name!r}) "
+        raise ResolverError(f"{schema.catalog}.{schema.schema} (environment {schema.name!r}) "
                             f"does not match its layout: {'; '.join(problems)}")

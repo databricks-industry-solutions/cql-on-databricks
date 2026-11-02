@@ -15,7 +15,7 @@ export interface NavScope {
   libraries: Definition[];
   /** The library open now. */
   openId: string;
-  /** Open another library of the scope. The workspace asks first when the open one has unsaved changes. */
+  /** Open another library of the scope. The workspace asks first while the open one has an edit not yet saved (`DOC-AUTO-SAVE`). */
   onOpen: (id: string) => void;
 }
 

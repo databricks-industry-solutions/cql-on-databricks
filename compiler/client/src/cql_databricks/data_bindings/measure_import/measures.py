@@ -1,17 +1,18 @@
 """CONTENT-IMPORT-MEASURES — import quality measures into Unity Catalog. The one import path.
 
 The caller hands over FHIR resources it has already read: ``Measure``, ``Library`` and ``ValueSet`` resources, or
-``Bundle``s of them, plus any value-set codes it holds as rows. This module writes them to the schema the caller
-names and tags it, so the Apps and ``cql(library=...)`` find the measures (``CONTENT-IMPORT-TARGET-TAG``). Where
+``Bundle``s of them, plus any value-set codes it holds as rows. This module writes them to the store tables of the
+environment the caller names, ``<catalog>.knowledge_store`` (``DATA-ENVIRONMENT-LAYOUT``), and tags nothing: the environment's published views select the stores, so the Apps and
+``cql(library=...)`` find the measures there (``BIND-PUBLISHED-VIEW``). Where
 the content comes from is the caller's business: nothing here reads a file or fetches anything. The deploy loads
 the content in ``examples/`` through it (``scripts/deploy/shipped_sources``), and the skill ``import-quality-measures``
 uses it for anything else (``CONTENT-IMPORT-SKILL``).
 
 Everything is checked before anything is written, and every problem is reported at once:
 
-- a ``Measure`` must name a ``Library`` that is in this import or already in the target schema
+- a ``Measure`` must name a ``Library`` that is in this import or already in the knowledge store
   (``CONTENT-MEASURE-LIBRARY-LINK``);
-- every value set a library declares must have codes, in this import or already in the terminology table. A
+- every value set a library declares must have codes, in this import or already in the knowledge store. A
   measure run against a missing value set silently under-counts every population that retrieves through it
   (``CORE-NO-SILENT-MISLOWER``);
 - a ``ValueSet`` resource must carry its codes: an ``expansion``, or a ``compose`` that only lists concepts. One
@@ -48,8 +49,7 @@ class ImportContentError(ValueError):
 @dataclass(frozen=True)
 class ImportSummary:
     """What an import wrote, or would write on a dry run."""
-    knowledge: str                     # catalog.schema of the measures and libraries
-    terminology: str                   # catalog.schema of the value-set codes
+    knowledge: str                     # catalog.schema of the measures, libraries and value-set codes
     measures: list[str]                # canonical url|version of each Measure
     libraries: list[str]               # canonical url|version of each Library
     valuesets: list[str]               # each value set given codes
@@ -127,25 +127,24 @@ def _existing(spark, fqtn: str, column: str) -> set[str]:
     return {row[0] for row in spark.sql(f"SELECT DISTINCT {column} FROM {fqtn}").collect()}
 
 
-def import_measures(spark, resources: Iterable[Mapping[str, Any]], *, catalog: str, schema: str,
-                    source: str, terminology_schema: str | None = None,
-                    codes: Iterable[Mapping[str, Any]] = (), knowledge_name: str | None = None,
-                    terminology_name: str | None = None, lineage: str = "import",
+def import_measures(spark, resources: Iterable[Mapping[str, Any]], *, catalog: str, source: str,
+                    codes: Iterable[Mapping[str, Any]] = (), lineage: str = "import",
                     dry_run: bool = False) -> ImportSummary:
-    """Import measures, libraries and value-set codes into ``catalog.schema`` and tag it.
+    """CONTENT-IMPORT-MEASURES — import measures, libraries and value-set codes into the stores of the environment in
+    ``catalog`` (`DATA-ENVIRONMENT-LAYOUT`): ``knowledge_store.library``, ``.measure`` and ``.valueset``.
 
     ``resources`` are FHIR resources (``Measure``, ``Library``, ``ValueSet``, or ``Bundle``s of them); any other
     type is counted in ``skipped`` and not imported. ``codes`` are value-set codes already in rows:
     ``{valueset_id, system, code}``, with ``display`` and ``version`` optional. ``source`` names where this
-    content came from, as provenance on every row. Value-set codes go to ``terminology_schema``, or to ``schema``
-    when it is not given; the tags take their values from ``knowledge_name`` and ``terminology_name``, or the
-    schema names. ``dry_run`` checks everything and writes nothing.
+    content came from, as provenance on every row. ``dry_run`` checks everything and writes nothing.
     """
-    from .load import _qualify, ensure_valueset_table, load, tag_loaded
+    from cql_databricks.resolvers.environment import KNOWLEDGE_STORE
+
+    from .load import _qualify, ensure_valueset_table, load
 
     if not catalog:
-        raise ImportContentError("no catalog: an import is tagged in Unity Catalog, so it needs one")
-    terminology_schema = terminology_schema or schema
+        raise ImportContentError("no catalog: an import writes an environment's stores, which are in its catalog")
+    schema = KNOWLEDGE_STORE
     now = datetime.now(timezone.utc).isoformat()
     flat = flatten(resources)
 
@@ -181,7 +180,7 @@ def import_measures(spark, resources: Iterable[Mapping[str, Any]], *, catalog: s
         raise ImportContentError("nothing to import: no Measure, no Library with CQL or ELM, and no value-set codes")
 
     knowledge_fqn = _qualify(catalog, schema, "library")
-    valueset_fqn = _qualify(catalog, terminology_schema, "valueset")
+    valueset_fqn = _qualify(catalog, schema, "valueset")
     libraries = {r.url for r in knowledge.libraries} | _existing(spark, knowledge_fqn, "url")
     for m in knowledge.measures:
         unknown = [ref for ref in json.loads(m.resource_json).get("library") or []
@@ -196,12 +195,12 @@ def import_measures(spark, resources: Iterable[Mapping[str, Any]], *, catalog: s
     without_codes = declared - loaded - _existing(spark, valueset_fqn, "valueset_id")
     if without_codes:
         problems.append(f"{len(without_codes)} value set(s) the libraries declare have no codes in this import or "
-                        f"in {catalog}.{terminology_schema}: {_listed(without_codes)}")
+                        f"in {catalog}.{schema}: {_listed(without_codes)}")
     if problems:
         raise ImportContentError("cannot import:\n- " + "\n- ".join(problems))
 
     summary = dict(
-        knowledge=f"{catalog}.{schema}", terminology=f"{catalog}.{terminology_schema}",
+        knowledge=f"{catalog}.{schema}",
         measures=[f"{m.url}|{m.version}" for m in knowledge.measures],
         libraries=[f"{lib.url}|{lib.version}" for lib in knowledge.libraries],
         valuesets=sorted(loaded), skipped=skipped)
@@ -210,10 +209,7 @@ def import_measures(spark, resources: Iterable[Mapping[str, Any]], *, catalog: s
 
     rows = load(spark, TransformResult(measures=knowledge.measures, libraries=knowledge.libraries,
                                        valueset_expansions=expansions),
-                catalog=catalog, authority_schema=schema, valueset_schema=terminology_schema)
-    ensure_valueset_table(spark, catalog=catalog, valueset_schema=terminology_schema)
-    tag_loaded(spark, catalog=catalog,
-               knowledge=(schema, knowledge_name or schema) if (knowledge.measures or knowledge.libraries) else None,
-               terminology=(terminology_schema, terminology_name or terminology_schema))
+                catalog=catalog, authority_schema=schema, valueset_schema=schema)
+    ensure_valueset_table(spark, catalog=catalog, valueset_schema=schema)
     log.info("imported into %s: %s", summary["knowledge"], ", ".join(f"{k}={v}" for k, v in sorted(rows.items())))
     return ImportSummary(**summary, rows=rows)

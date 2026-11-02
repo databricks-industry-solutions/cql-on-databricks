@@ -77,26 +77,6 @@ class ConnectTest(unittest.TestCase):
             connect(app_name="custom-compiler", udf_schema=UDF_SCHEMA)
         ws.app_url.assert_called_once_with("custom-compiler")
 
-    def test_catalog_scopes_reach_discovery_and_durable_results(self):
-        """CLIENT-DISCOVERY-SCOPE, BUILD-RESOLVE — ``connect(catalog_scopes=...)`` is the scopes this client's
-        queries discover in, and the ones ``materialize`` reads results in; it wins over the session setting."""
-        from cql_databricks.compiler.zeroconfig import session_catalog_scopes
-        with mock.patch("cql_databricks.compiler.provider._workspace", _ws()):
-            c = connect(udf_schema=UDF_SCHEMA, catalog_scopes=["acme.results", "acme"])
-            plain = connect(udf_schema=UDF_SCHEMA)
-        # A header keeps each string its own library: no session to join (SVC-NOTEBOOK-SESSION-SCOPE).
-        q = c.cql("library T version '1'\ndefine \"Two\": 2 + 2")
-        self.assertEqual(q._lib.binder.catalog_scopes, ["acme.results", "acme"])
-        with mock.patch.dict(os.environ, {config.ENV_CATALOG_SCOPES: "from.env"}):
-            self.assertEqual(session_catalog_scopes(None, query=q), ["acme.results", "acme"])
-            self.assertEqual(session_catalog_scopes(None, query=plain.cql("library T version '1'\ndefine \"Two\": 2")), ["from.env"])
-            self.assertEqual(session_catalog_scopes(None, ["explicit"], query=q), ["explicit"])
-
-    def test_catalog_scopes_are_a_list_not_one_string(self):
-        with mock.patch("cql_databricks.compiler.provider._workspace", _ws()):
-            with self.assertRaisesRegex(TypeError, "list of entries"):
-                connect(udf_schema=UDF_SCHEMA, catalog_scopes="acme,other")
-
     def test_cql_binds_via_a_lazy_default_client(self):
         with mock.patch("cql_databricks.compiler.provider._workspace", _ws()), \
                 mock.patch("cql_databricks.compiler.zeroconfig.discover_udf_schema", return_value=UDF_SCHEMA):
@@ -167,29 +147,26 @@ class _Rows:
 
 
 class _KnowledgeSpark:
-    """A Spark session holding one tagged knowledge schema, answering the corpus load (`KNOWLEDGE-LAKE-DIRECT`)."""
+    """A Spark session in one environment, catalog ``k``, answering its discovery and the corpus load
+    (`CLIENT-ENVIRONMENT`, `KNOWLEDGE-LAKE-DIRECT`)."""
 
-    def __init__(self, libraries, scopes="k"):
+    def __init__(self, libraries):
         self.libraries = libraries
         self.statements = []
-        self.searched = []
-        # CLIENT-DISCOVERY-SCOPE — the session setting, as a notebook sets it in its Spark conf.
-        self.conf = mock.Mock(get=lambda key, default=None: scopes if key == config.CONF_CATALOG_SCOPES else default)
+        self.conf = mock.Mock(get=lambda key, default=None: default)
 
     def sql(self, statement, args=None):
         self.statements.append(statement)
-        if "schema_tags" in statement:
-            everywhere = args["everywhere"] == "true"
-            self.searched.append("*" if everywhere else json.loads(args["catalogs"]))
-            return _Rows([{"catalog_name": "k", "schema_name": "quality_measures",
-                           "tag_name": "cql_databricks_knowledge", "tag_value": "quality_measures"}]
-                         if everywhere or "k" in json.loads(args["catalogs"]) else [])
-        if "information_schema.columns" in statement:
-            return _Rows([{"table_name": t, "column_name": c} for t in ("library", "measure")
-                          for c in ("url", "version", "resource")])
+        if "information_schema.catalog_tags" in statement:
+            return _Rows([{"catalog": "k", "tag": tag, "value": value, "comment": None}
+                          for tag, value in (("cql_databricks_environment", "env"),
+                                             ("cql_databricks_environment_version", "2"),
+                                             ("cql_databricks_environment_default", "true"))])
         if "measure_url" in statement:
+            assert "`k`.`knowledge`.`measure`" in statement
             return _Rows([])
         if "content_cql" in statement:
+            assert "`k`.`knowledge`.`library`" in statement
             return _Rows([{"url": f"http://x/Library/{n}", "version": v, "title": None, "description": None,
                            "data_requirement": None, "content_cql": cql} for n, v, cql in self.libraries])
         raise AssertionError(f"unexpected statement: {statement}")
@@ -206,11 +183,14 @@ class ResolveLibrariesTest(unittest.TestCase):
     EXCLUSIONS = "library Exclusions version '6.18'\ninclude StatusHelpers version '1.0'\n"
     STATUS = "library StatusHelpers version '1.0'\n"
 
-    def test_resolves_closure_sources_from_tagged_knowledge_in_this_session(self):
+    def test_resolves_closure_sources_from_the_environments_knowledge_in_this_session(self):
+        """CLIENT-ENVIRONMENT, BIND-PUBLISHED-VIEW: the default environment, found by its catalog tags; its knowledge
+        views read with no layout check."""
         spark = _KnowledgeSpark([("Exclusions", "6.18", self.EXCLUSIONS), ("StatusHelpers", "1.0", self.STATUS)])
         sources = resolve_libraries('include "Exclusions" version \'6.18\'', spark=spark)
         self.assertEqual(sources, [self.STATUS, self.EXCLUSIONS])   # dependencies first
-        self.assertTrue(any("schema_tags" in s for s in spark.statements))
+        self.assertTrue(any("catalog_tags" in s for s in spark.statements))
+        self.assertFalse(any("schema_tags" in s or "information_schema.columns" in s for s in spark.statements))
 
     def test_unresolved_include_is_loud(self):
         spark = _KnowledgeSpark([("StatusHelpers", "1.0", self.STATUS)])
@@ -218,39 +198,15 @@ class ResolveLibrariesTest(unittest.TestCase):
             resolve_libraries('include "Missing" version \'1.0.0\'', spark=spark)
         self.assertIn("Missing", str(ctx.exception))
 
-    def test_only_the_sessions_catalog_scopes_are_searched(self):
-        """CLIENT-DISCOVERY-SCOPE — the explicit argument wins over the session's Spark conf, and with neither
-        set (nor ``CQL_DATABRICKS_CATALOG_SCOPES``) every catalog is searched, so a first run finds the library."""
-        spark = _KnowledgeSpark([("StatusHelpers", "1.0", self.STATUS)], scopes="k, other")
-        self.assertEqual(resolve_libraries('include "StatusHelpers" version \'1.0\'', spark=spark), [self.STATUS])
-        self.assertEqual(spark.searched, [["k", "other"]])
-        with self.assertRaisesRegex(RuntimeError, "StatusHelpers"):
-            resolve_libraries('include "StatusHelpers" version \'1.0\'', spark=spark, catalog_scopes=["other"])
-        self.assertEqual(spark.searched[-1], ["other"])
-        unset = _KnowledgeSpark([("StatusHelpers", "1.0", self.STATUS)], scopes=None)
-        with mock.patch.dict(os.environ, {config.ENV_CATALOG_SCOPES: ""}):
-            with self.assertLogs("cql_databricks.data_bindings.resolver", "WARNING"):
-                self.assertEqual(resolve_libraries('include "StatusHelpers" version \'1.0\'', spark=unset), [self.STATUS])
-        self.assertEqual(unset.searched, ["*"])
-
-    def test_connect_resolves_an_include_from_tagged_knowledge_in_scope(self):
-        """CLIENT-KNOWLEDGE-INCLUDES — with no cell and no folder, an inline include resolves from the tagged
-        knowledge in the session's catalog scopes, read once through this session."""
+    def test_connect_resolves_an_include_from_the_environments_knowledge(self):
+        """CLIENT-KNOWLEDGE-INCLUDES — with no cell and no folder, an inline include resolves from the environment's
+        knowledge, read once through this session."""
         from cql_databricks.compiler.libraries import LibrarySource
         spark = _KnowledgeSpark([("Exclusions", "6.18", self.EXCLUSIONS), ("StatusHelpers", "1.0", self.STATUS)])
-        provider = client_mod._library_provider([], spark)
+        provider = client_mod._library_provider([], spark, client_mod._environment(spark, None))
         draft = LibrarySource("Draft", "1", cql="library Draft version '1'\ninclude Exclusions version '6.18'\n")
         self.assertEqual([s.name for s in provider.closure(draft)], ["Exclusions", "StatusHelpers"])
-        self.assertEqual(spark.searched, [["k"]])
-
-    def test_connects_scopes_win_over_the_spark_conf_for_tagged_knowledge(self):
-        """CLIENT-DISCOVERY-SCOPE — the list ``connect(catalog_scopes=...)`` passes is the one searched."""
-        from cql_databricks.compiler.libraries import LibrarySource
-        spark = _KnowledgeSpark([("StatusHelpers", "1.0", self.STATUS)], scopes="other")
-        provider = client_mod._library_provider([], spark, ["k"])
-        draft = LibrarySource("Draft", "1", cql="library Draft version '1'\ninclude StatusHelpers version '1.0'\n")
-        self.assertEqual([s.name for s in provider.closure(draft)], ["StatusHelpers"])
-        self.assertEqual(spark.searched, [["k"]])
+        self.assertEqual(sum("catalog_tags" in s for s in spark.statements), 1)
 
     def test_the_designer_app_is_no_longer_asked(self):
         with self.assertRaisesRegex(TypeError, "no longer calls the Designer"):

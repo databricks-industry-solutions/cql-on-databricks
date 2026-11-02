@@ -146,7 +146,7 @@ def publish(workspace, *, schema: str, users_group: str, workspace_users_group: 
     if not users_group:
         raise PublishError("no users group: set agent_users_group in databricks.local.yml")
     if not workspace_users_group:
-        raise PublishError("no workspace users group: set app_users_group in databricks.local.yml")
+        raise PublishError("no workspace users group: set workspace_users_group in databricks.local.yml")
     documents = {name: skill_document(name) for name in PUBLISHED_SKILLS}
     ensure_schema(workspace, schema)
     grant(workspace, "catalog", schema.split(".", 1)[0], users_group, ["USE_CATALOG"])

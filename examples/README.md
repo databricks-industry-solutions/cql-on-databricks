@@ -1,6 +1,6 @@
 # examples — notebooks and content
 
-Seven notebooks and three content directories that show how to run a CQL measure. They are published to `/Shared/CqlDatabricks/examples` in your workspace. See [`../README.md`](../README.md) for details on each notebook.
+Eight notebooks and three content directories that show how to run a CQL measure. They are published to `/Shared/CqlDatabricks/examples` in your workspace. See [`../README.md`](../README.md) for details on each notebook.
 
 The content directories are **your responsibility in a real deployment** — not part of the product:
 
@@ -15,7 +15,7 @@ The deploy loads all three into your workspace (`CONTENT-EXAMPLE-PRELOAD`).
 
 ## measures/
 
-Four example quality measures in the shape CMS uses for FHIR measures (`CONTENT-EXAMPLE-STANDARDS`): QI-Core
+Four example quality measures in the shape of published FHIR quality measures (`CONTENT-EXAMPLE-STANDARDS`): QI-Core
 6.0.0, proportion scoring, a measurement period passed in at run time, exclusions and
 exceptions. Each has a `.cql`, a `.measure.json`, and a `.synth.json` the synthesizer reads for its realism
 (`SYNTH-PDS-MEASURE-CONFIG`):
@@ -55,10 +55,10 @@ only from code systems that are free to use:
 
 | Code system | Used for | Terms |
 |---|---|---|
-| ICD-10-CM, ICD-10-PCS | Diagnoses; dialysis, transplant, colectomy, colonoscopy | Published by CMS and NCHS, free to use |
-| HCPCS Level II | Wellness visits, hospice care, colonoscopy, sigmoidoscopy | Published by CMS, free to use |
+| ICD-10-CM, ICD-10-PCS | Diagnoses; dialysis, transplant, colectomy, colonoscopy | Free to use |
+| HCPCS Level II | Wellness visits, hospice care, colonoscopy, sigmoidoscopy | Free to use |
 | LOINC | Blood pressure, HbA1c, stool tests | Free, under the LOINC license |
-| CVX | Influenza vaccines | Published by CDC, free to use |
+| CVX | Influenza vaccines | Free to use |
 | HL7 terminology | Reasons a vaccine was not given, discharge to hospice, coverage type | CC0 |
 | `http://example.org/fhir/CodeSystem/local-codes` | Office, telehealth and preventive visits; CT colonography | Written for this repository |
 

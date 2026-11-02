@@ -1,4 +1,4 @@
-"""Spark I/O for the measure import tables (CONTENT-CATALOG-LAYOUT, CONTENT-INCREMENTAL).
+"""Spark I/O for the measure import tables (CONTENT-INCREMENTAL).
 
 **The Lakehouse publishes standards** (``CONTENT-LAKEHOUSE-STANDARD-ONLY``): a table in the
 authority schema is a standardized FHIR resource type or it does not belong there.  Each row is
@@ -15,8 +15,8 @@ no schema to maintain.
 * ``<catalog>.<authority>.measure`` — FHIR Measure, Knowledge Source type=Measure
 * ``<catalog>.<authority>.library`` — FHIR Library, Knowledge Source type=Library
 
-The ``valueset`` table (tall ``valueset_id, system, code`` matching BIND-TERMINOLOGY-TABLE) lives
-in the schema the caller names (``CONTENT-TERMINOLOGY-SCHEMA``): beside the measures, or in a terminology
+The ``valueset`` table (tall ``valueset_id, system, code``, `DATA-ENVIRONMENT-LAYOUT`) lives
+in the schema the caller names: beside the measures, or in a terminology
 schema of its own that several measure sets share.  It is the
 ONE deliberate exception to the FHIR-resource-shape rule: it is the ENGINE's binding contract, read
 directly at run time, so it follows the engine's shape.
@@ -87,8 +87,15 @@ def _ensure_schema(spark: SparkSession, catalog: str | None, schema: str) -> Non
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS {ns}")
 
 
+class DeltaFeaturesError(RuntimeError):
+    """Raised when a knowledge or value-set table cannot take the Delta features its incremental merge reads."""
+
+
 def _enable_delta_features(spark: SparkSession, fqtn: str) -> None:
-    """Enable Change Data Feed and Row Tracking on a newly created table."""
+    """Enable Row Tracking, Change Data Feed and Deletion Vectors on a newly created table.
+
+    A table that refuses them (not Delta, or not writable) raises, naming the table
+    (CORE-NO-SILENT-MISLOWER): the merge that follows depends on them."""
     try:
         spark.sql(
             f"ALTER TABLE {fqtn} SET TBLPROPERTIES ("
@@ -98,7 +105,7 @@ def _enable_delta_features(spark: SparkSession, fqtn: str) -> None:
             f")"
         )
     except Exception as e:
-        log.debug("could not enable delta features on %s (non-Delta?): %s", fqtn, e)
+        raise DeltaFeaturesError(f"could not enable Delta features on {fqtn}: {e}") from e
 
 
 class StaleKnowledgeTableError(RuntimeError):
@@ -202,11 +209,11 @@ def load(spark: SparkSession, result: TransformResult, *,
     """Write a TransformResult into the authority's schema.  Returns row counts per table.
 
     ``catalog`` is the UC catalog; ``authority_schema`` is the content
-    schema (``example_measures`` for the examples).
+    schema (``knowledge_store`` in an environment, `DATA-ENVIRONMENT-LAYOUT`).
     Together they produce ``<catalog>.<schema>.measure``, etc.
 
-    ValueSet expansions are written to ``valueset_schema``, which may be the authority schema or a
-    terminology schema of its own (``CONTENT-TERMINOLOGY-SCHEMA``).
+    ValueSet expansions are written to ``valueset_schema`` (``knowledge_store`` in an environment,
+    `DATA-ENVIRONMENT-LAYOUT`).
     """
     _ensure_schema(spark, catalog, authority_schema)
     counts: dict[str, int] = {}
@@ -233,9 +240,9 @@ def load(spark: SparkSession, result: TransformResult, *,
 
 def ensure_valueset_table(spark: SparkSession, *, catalog: str | None,
                           valueset_schema: str) -> str:
-    """Ensure the ``valueset`` table exists in the terminology schema (empty if no
+    """Ensure the ``valueset`` table exists in ``valueset_schema`` (empty if no
     expansions loaded yet).  Returns the fully-qualified table name.  Allows a Knowledge
-    Location to point to it immediately (CONTENT-TERMINOLOGY-SCHEMA)."""
+    Location to point to it immediately."""
     _ensure_schema(spark, catalog, valueset_schema)
     fqtn = _qualify(catalog, valueset_schema, "valueset")
     if not spark.catalog.tableExists(fqtn):
@@ -244,28 +251,3 @@ def ensure_valueset_table(spark: SparkSession, *, catalog: str | None,
         _enable_delta_features(spark, fqtn)
         log.info("created empty valueset table %s", fqtn)
     return fqtn
-
-
-def tag_loaded(spark: SparkSession, *, catalog: str | None,
-               knowledge: tuple[str, str] | None,
-               terminology: tuple[str, str] | None) -> list[str]:
-    """CONTENT-IMPORT-TARGET-TAG — declare loaded schemas so data-bindings finds them by tag.
-
-    ``knowledge`` and ``terminology`` are ``(schema, tag value)``; None skips that one. A schema is a
-    knowledge source once tagged ``cql_databricks_knowledge`` (``library`` + ``measure``) and a
-    terminology source once tagged ``cql_databricks_terminology`` (``valueset``). Returns the statements
-    run. Tags are a Unity Catalog feature, so a load with no catalog (local Spark) cannot be tagged, and
-    asking it to be is an error rather than a load nobody can find.
-    """
-    from cql_databricks.data_bindings import KNOWLEDGE_TAG, TERMINOLOGY_TAG, tag_statement
-
-    wanted = [(KNOWLEDGE_TAG, knowledge), (TERMINOLOGY_TAG, terminology)]
-    wanted = [(tag, target) for tag, target in wanted if target is not None]
-    if wanted and not catalog:
-        raise ValueError("tagging needs a Unity Catalog catalog; this load has none (--no-catalog). "
-                         "A schema with no tag is invisible to data-bindings.")
-    statements = [tag_statement(tag, name, catalog, schema) for tag, (schema, name) in wanted]
-    for statement in statements:
-        log.info("tag: %s", statement)
-        spark.sql(statement)
-    return statements

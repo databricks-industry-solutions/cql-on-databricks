@@ -57,36 +57,10 @@ application {
     ]
 }
 
-// SVC-COMPILER-UC: fingerprint the host's sources and resolved runtime artifacts, not an environment
-// variable or a JVM startup time. This includes dirty source changes and transitive dependency versions.
-// No self-reference: the generated resource is outside src/main and the classpath excludes this JAR.
-def ucVersionDir = layout.buildDirectory.dir('generated-resources/uc-compiler')
-tasks.register('writeUcCompilerVersion') {
-    def sources = fileTree('src/main')
-    inputs.files(sources, configurations.runtimeClasspath)
-    outputs.dir(ucVersionDir)
-    doLast {
-        def digest = java.security.MessageDigest.getInstance('SHA-256')
-        def entries = [:]
-        sources.files.each { entries['source/' + relativePath(it)] = it }
-        configurations.runtimeClasspath.files.each { entries['dependency/' + it.name] = it }
-        entries.sort().each { name, artifact ->
-            digest.update(name.getBytes('UTF-8'))
-            digest.update((byte) 0)
-            digest.update(java.security.MessageDigest.getInstance('SHA-256').digest(artifact.bytes))
-        }
-        def output = ucVersionDir.get().file('compiler-uc.version').asFile
-        output.parentFile.mkdirs()
-        output.text = 'uc-sha256-' + digest.digest().encodeHex().toString() + '\n'
-    }
-}
-sourceSets.main.resources.srcDir(ucVersionDir)
-tasks.named('processResources') { dependsOn 'writeUcCompilerVersion' }
-
 // Dump the canonical __resource mount DDL for every modeled FHIR resource type (SVC-RESOURCE-SCHEMA).
-// ON-DEMAND, into this project's build directory. The loader's importer owns its own copy of these schemas
-// (CONTENT-IMPORTER-FHIR-SCHEMAS, DEC-CONTENT-FEATURE) and is no longer written by this task: the retrieve UDTF is the adaptation layer,
-// so the two may drift without breaking a run. Diff against loader/importer when the FHIR model changes.
+// ON-DEMAND, into this project's build directory. The shipped sources commit a copy of this output
+// (CONTENT-IMPORTER-FHIR-SCHEMAS): the root `checkResourceSchemas` fails when they differ, and `updateResourceSchemas`
+// refreshes the copy.
 tasks.register('dumpResourceSchemas', JavaExec) {
     group = 'distribution'
     description = 'Dump resource-schema DDLs to build/resource-schemas.json (SVC-RESOURCE-SCHEMA).'

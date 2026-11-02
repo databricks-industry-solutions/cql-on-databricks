@@ -27,9 +27,7 @@ class CompilerRouterSpec extends AnyFunSuite {
     "library Smoke version '1.0.0'\nusing FHIR version '4.0.1'\ndefine \"One\": 1 + 1\n"
 
   test("RUN-CLIENT-RESULT-IDENTITY: only opt-in pipeline responses carry durable claims and input coordinates") {
-    val request = ujson.Obj("cql" -> smokeCql, "overrides" -> ujson.Obj("materialize.mode" -> "all"),
-      "dataSource" -> ujson.Obj("catalog" -> "synthetic", "schema" -> "source",
-        "routines" -> ujson.Arr("retrieve_Patient")))
+    val request = ujson.Obj("cql" -> smokeCql, "overrides" -> ujson.Obj("materialize.mode" -> "all"))
     val ordinary = post("/compile-pipeline", ujson.write(request))
     assert(ordinary.status == 200)
     val ordinaryRecipes = ujson.read(ordinary.body)("datasets").arr
@@ -90,7 +88,9 @@ class CompilerRouterSpec extends AnyFunSuite {
     val identity = ujson.read(get("/capabilities").body)("compilerVersion").str
     val cql = "library Probe version '1.0.0'\nusing FHIR version '4.0.1'\ncontext Patient\n" +
       "define \"Answer\": true\n"
-    val body = ujson.write(ujson.Obj("cql" -> cql))
+    // BIND-CALL-SITE: the Patient context retrieve binds by rule.
+    val body = ujson.write(ujson.Obj("cql" -> cql,
+      "data" -> ujson.Obj("rule" -> ujson.Obj("schema" -> "acme.data", "identity" -> "acme.data"))))
 
     // A consumer that reads the identity off the compile response and one that reads it off
     // discovery must not be able to disagree about which compiler produced a materialization.
@@ -151,6 +151,26 @@ class CompilerRouterSpec extends AnyFunSuite {
     assert(r.body.contains("library Smoke"))
   }
 
+  test("SVC-PROTOCOL: a retired libraries key is refused with a 400 that names it") {
+    val r = post("/compile-pipeline", ujson.write(ujson.Obj("cql" -> smokeCql, "libraries" -> ujson.Arr())))
+    assert(r.status == 400, r.body)
+    assert(r.body.contains("libraries"), r.body)
+  }
+
+  test("SVC-PROTOCOL: a retired override key is refused with a 400 that names it") {
+    val r = post("/compile-sql", ujson.write(ujson.Obj("cql" -> smokeCql, "target" -> "One",
+      "overrides" -> ujson.Obj("lower.retrieve_views" -> "true"))))
+    assert(r.status == 400, r.body)
+    assert(r.body.contains("lower.retrieve_views"), r.body)
+  }
+
+  test("CORE-NO-SILENT-MISLOWER: an override value that does not parse is a 400 that names the key and value") {
+    val r = post("/compile-sql", ujson.write(ujson.Obj("cql" -> smokeCql, "target" -> "One",
+      "overrides" -> ujson.Obj("materialize.mode" -> "nonsense"))))
+    assert(r.status == 400, r.body)
+    assert(r.body.contains("materialize.mode") && r.body.contains("nonsense"), r.body)
+  }
+
   test("/compile-sql of a data-free measure returns a SQL script (Spark-free, EXEC-SQL-BACKEND)") {
     // cql -> ELM -> SQL script in one call; proves the compile path needs no Spark server.
     val r = post("/compile-sql", ujson.write(ujson.Obj("cql" -> smokeCql, "target" -> "One")))
@@ -198,7 +218,7 @@ class CompilerRouterSpec extends AnyFunSuite {
     assert(patient("modeled").bool)
     assert(patient("patientContext").bool) // Patient is keyed by its own id (DATA-SUBJECT-KEY)
     val ddl = patient("ddl").str
-    // The mount contract's identity lineage is always present (DATA-RETRIEVE-VIEW); `id` backs the key.
+    // The mount contract's identity lineage is always present (BIND-CONTRACT); `id` backs the key.
     assert(ddl.contains("__resource_type"), s"ddl=$ddl")
     assert(ddl.contains("__resource_id"), s"ddl=$ddl")
     assert(schemas("Condition")("patientContext").bool) // carries a `subject` reference

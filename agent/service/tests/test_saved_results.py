@@ -1,5 +1,6 @@
-"""AGENT-SAVED-RESULTS — find_results looks in the caller's private schema, then the result scopes, and
-never computes. The client's preparation and resolution are stubbed; they have their own tests."""
+"""AGENT-SAVED-RESULTS, AGENT-DEFAULT-ENVIRONMENT — find_results looks among the caller's own results in the
+environment, then the official ones, and never computes. The client's preparation and resolution are stubbed; they
+have their own tests (`RUN-CLIENT-RESULT-OWNERSHIP`)."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -8,15 +9,21 @@ from types import SimpleNamespace
 import pytest
 
 from cql_databricks.agent.service import saved
+from cql_databricks.resolvers.environment import Environment
+from cql_databricks.resolvers.interfaces import Resolvers
 from cql_databricks.result import ResultsUnavailable
+
+ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="2")
+RESULTS = object()
+RESOLVERS = Resolvers(data=None, terminology=None, results=RESULTS, environment=ENVIRONMENT.name)
 
 PREPARED = SimpleNamespace(library="Diabetes", version="1", targets=("Diabetes.Numerator",),
                            request={"period": ["2026-01-01", "2026-12-31"]})
 
 
-def env(scopes=("shared.published", "shared.other")):
-    return saved.SavedResultsEnv(run=object(), content=object(), compiler=object(), private_catalog="results",
-                                 runtime_catalog="runtime", runtime_schema="runtime", result_scopes=scopes,
+def env():
+    return saved.SavedResultsEnv(run=object(), content=object(), compiler=object(), resolvers=RESOLVERS,
+                                 readers=lambda address: RESOLVERS, runtime_catalog="runtime", runtime_schema="runtime",
                                  scoring_for=lambda *a: "proportion")
 
 
@@ -28,46 +35,38 @@ def outcome(schema, when):
 @pytest.fixture
 def client(monkeypatch):
     calls = {}
-    monkeypatch.setattr(saved, "prepare_calculation", lambda **kw: PREPARED)
-    monkeypatch.setattr(saved, "selection_address", lambda results: {"selection_id": "s1"})
+
+    def prepare(**kw):
+        calls["prepared"] = kw
+        return PREPARED
 
     def resolve(prepared, *targets, **kw):
         calls.update(kw, targets=targets)
         if calls.get("miss"):
             raise ResultsUnavailable("no completed result for Diabetes.Numerator")
-        return SimpleNamespace(outcomes=(outcome("results.me", datetime(2026, 10, 1, tzinfo=timezone.utc)),
-                                         outcome("shared.published", datetime(2026, 10, 12, tzinfo=timezone.utc))))
+        return SimpleNamespace(outcomes=(
+            outcome("synthetic.draft_results", datetime(2026, 10, 1, tzinfo=timezone.utc)),
+            outcome("synthetic.results", datetime(2026, 10, 12, tzinfo=timezone.utc))))
 
+    monkeypatch.setattr(saved, "prepare_calculation", prepare)
+    monkeypatch.setattr(saved, "selection_address", lambda results: {"selection_id": "s1"})
     monkeypatch.setattr(saved, "resolve_results", resolve)
     return calls
 
 
-def test_the_private_schema_is_read_first_then_the_clients_own_result_scopes(client, monkeypatch):
-    monkeypatch.setattr(saved, "find_private_destination", lambda catalog, run: "PRIVATE")
-    found = saved.find_results("Diabetes", "1", "population", (None, None), env=env())
-    assert client["destination"] == "PRIVATE" and client["purpose"] == "private"
-    # The client reads the configured scopes itself; an explicit empty list would be refused there.
-    assert "catalog_scopes" not in client
-    assert found["found"] and found["computedAt"] == "2026-10-12T00:00:00+00:00"
-    assert found["schemas"] == ["results.me", "shared.published"]
+def test_a_draft_lookup_reads_the_callers_own_results_in_the_environment(client):
+    """RUN-CLIENT-RESULT-OWNERSHIP — one read-only lookup through the environment's result resolver: the caller's
+    own in draft_results, then the official ones in results."""
+    found = saved.find_results("Diabetes", "1", (None, None), env=env())
+    assert client["prepared"]["resolvers"] is RESOLVERS
+    assert client["results"] is RESULTS
+    assert found["found"] and found["environment"] == "synthetic-population"
+    assert found["computedAt"] == "2026-10-12T00:00:00+00:00"
+    assert found["schemas"] == ["synthetic.draft_results", "synthetic.results"]
     assert found["resultSet"] == {"selection_id": "s1"}
 
 
-def test_with_no_private_schema_the_first_scope_is_read_as_published(client, monkeypatch):
-    monkeypatch.setattr(saved, "find_private_destination", lambda catalog, run: None)
-    saved.find_results("Diabetes", "1", "population", (None, None), env=env())
-    assert client["destination"] == ("shared", "published") and client["purpose"] == "published"
-    assert "catalog_scopes" not in client
-
-
-def test_a_miss_is_an_answer_not_a_computation(client, monkeypatch):
-    monkeypatch.setattr(saved, "find_private_destination", lambda catalog, run: "PRIVATE")
+def test_a_miss_is_an_answer_not_a_computation(client):
     client["miss"] = True
-    found = saved.find_results("Diabetes", "1", "population", (None, None), env=env())
+    found = saved.find_results("Diabetes", "1", (None, None), env=env())
     assert found == {"found": False, "reason": "no completed result for Diabetes.Numerator"}
-
-
-def test_nowhere_to_look_says_so(client, monkeypatch):
-    monkeypatch.setattr(saved, "find_private_destination", lambda catalog, run: None)
-    found = saved.find_results("Diabetes", "1", "population", (None, None), env=env(scopes=()))
-    assert found["found"] is False and "no private results schema" in found["reason"]

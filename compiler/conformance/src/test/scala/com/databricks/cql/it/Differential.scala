@@ -17,8 +17,7 @@ import org.scalatest.Assertions._
   *
   * ONE path for every context, data model, and value type (PROC-DRY): a scalar/Unfiltered library and a
   * FHIR Patient measure are the same code differing only in the injected dependencies (PROC-SOLID). The
-  * proto/DataFrame back end that once lived here retired with the SQL primary decision (EXEC-SQL-BACKEND);
-  * this object kept only the parts both paths shared, which are now the SQL path's alone. */
+  * The SQL path (EXEC-SQL-BACKEND) is the only execution path; this object holds the parts it uses. */
 object Differential {
 
   /** One differential case: the fixture plus the explicitly-injected engine and reference
@@ -72,7 +71,7 @@ object Differential {
     def nullValue: ujson.Value = ujson.Null
   }
 
-  /** PHASE-8 grain-first opt-in (ARCH-GRAIN). The fixtures whose
+  /** Grain-first opt-in (ARCH-GRAIN). The fixtures whose
     * lowering runs grain-first (list defines carried as `Relation`s, NOT boxed onto a wide frame).
     * Every OTHER fixture lowers byte-unchanged with the flag off. Membership also flips the simplified
     * subject key on (`Corpus`/`SparkFhirData`). Extra names can be opted in for a one-off run via
@@ -150,7 +149,7 @@ object Differential {
     * WHOLE corpus with every filtered read promoted to its own barrier object. The barrier is a pure
     * restructuring — the object holds exactly the rows the inlined form produced — so a full-corpus run
     * under `all` must diff CLEAN against the reference, exactly as the optimized-vs-unoptimized self-diff
-    * does (`CONF-GATE-SELFDIFF`). That run is the correctness gate for the feature; the compiler-level
+    * does. That run is the correctness gate for the feature; the compiler-level
     * specs only prove the emit SHAPE. Defaults to the production `none`, so an ordinary run is unchanged. */
   def withMaterialize(config: Config): Config =
     config.copy(
@@ -182,7 +181,11 @@ object Differential {
   /** Build the normalized engine library for a case (PROC-DRY): a multi-library measure is flattened
     * (link) and pruned to its population slice before the single-library pipeline runs; a self-contained
     * fixture loads its ELM directly. */
-  def buildLibrary(c: Case): Library = {
+  def buildLibrary(c: Case): Library = Pipeline().normalize(loadedLibrary(c))
+
+  /** `c`'s library loaded, linked and with its parameter overrides applied, BEFORE `normalize` inlines
+    * parameters: the library a parameter scope is read from (`BIND-RETRIEVE-REQUEST`). */
+  def loadedLibrary(c: Case): Library = {
     val loaded = c.link match {
       case Some(ls) =>
         val root = Pipeline().load(Paths.read(Paths.elm(c.library)))
@@ -190,6 +193,6 @@ object Differential {
       case None =>
         Pipeline().load(Paths.read(Paths.elm(c.library)))
     }
-    Pipeline().normalize(CompileService.applyParameterOverrides(loaded, c.parameters))
+    CompileService.applyParameterOverrides(loaded, c.parameters)
   }
 }

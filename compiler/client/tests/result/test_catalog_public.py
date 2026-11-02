@@ -1,4 +1,5 @@
-"""RUN-CLIENT-REQUEST-REOPEN — real public runtime over synthetic catalog transports."""
+"""RUN-CLIENT-REQUEST-REOPEN, RUN-CLIENT-DRAFT-RESULTS — real public runtime over synthetic catalog transports, in a
+synthetic environment."""
 from __future__ import annotations
 
 from dataclasses import replace
@@ -7,19 +8,29 @@ from types import SimpleNamespace
 
 import pytest
 
-from cql_databricks.result import durable
+from cql_databricks.resolvers.interfaces import Resolvers
+from cql_databricks.result import DeltaResultStore, durable
 from cql_databricks.result.selection_reading import open_selection, selection_address
-from test_catalog_runtime import DESTINATION, CatalogRunner
+from test_catalog_runtime import CatalogRunner
+
+#: RUN-CLIENT-DRAFT-RESULTS — a run writes the environment's draft_results and finds official results in its results.
+DESTINATION = ("synthetic_catalog", "draft_results")
+RESULTS = ("synthetic_catalog", "results")
 from test_durable_plan import identity, plan
+
+
+def readers(c):
+    """CLIENT-RESOLVERS — a reader's resolvers; only the result resolver is read when the query is given."""
+    return Resolvers(data=None, terminology=None, results=c.settings["results"], environment="synthetic")
 
 
 @pytest.fixture
 def calculation():
     """RUN-CLIENT-CATALOG-CHECKPOINTS — only the warehouse boundary is synthetic."""
-    run = CatalogRunner()
+    run = CatalogRunner(destination=DESTINATION)
     compiled = plan()
     query = SimpleNamespace(compile_pipeline=lambda **options: compiled)
-    settings = dict(run=run, destination=DESTINATION, session_id="synthetic")
+    settings = dict(run=run, results=DeltaResultStore(DESTINATION, run, official=[RESULTS]), session_id="synthetic")
     return SimpleNamespace(run=run, query=query, compiled=compiled, settings=settings)
 
 
@@ -33,7 +44,8 @@ def test_public_compute_reuse_and_readonly_reopen(calculation):
     assert first.selection.selection_id == reopened.selection.selection_id
     assert [o.decision for o in reopened.outcomes] == ["reused", "reused"]
     assert all(sql.startswith("SELECT") for sql, _ in c.run.calls)
-    assert len(c.run.calls) == 2  # Tags, columns; no principal, index or physical probes.
+    # One lookup over the caller's own and the official results, one column read; no index or physical probes.
+    assert len(c.run.calls) == 2
     assert "VERSION AS OF" not in reopened.sql("Output")
     assert "cql_result_" not in reopened.sql("Output")  # RUN-CLIENT-TABLE-NAMES
 
@@ -79,21 +91,39 @@ def test_address_checks_compiler_request_and_current_results(calculation):
     address = selection_address(first)
     assert "definitions" not in address and "outcomes" not in address
     assert "publisher" not in address and "population" not in address
-    reopened = open_selection(address, query=c.query, run=c.run)
+    reopened = open_selection(address, query=c.query, run=c.run, resolvers=readers(c))
     assert reopened.selection.selection_id == first.selection.selection_id
     durable.materialize(c.query, "Output", mode="recompute", **c.settings)
     with pytest.raises(durable.ResultsUnavailable, match="replaced"):
-        open_selection(address, query=c.query, run=c.run)
+        open_selection(address, query=c.query, run=c.run, resolvers=readers(c))
 
 
-def test_a_reader_resolves_published_results_by_name_without_writes(calculation):
-    """RUN-CLIENT-PUBLISHED, RUN-CLIENT-RESULT-IDENTITY — who published a result is not part of finding it."""
+def test_results_takes_only_a_published_calculation(calculation):
+    """RUN-CLIENT-DRAFT-RESULTS — a query that may bind cells, folders, volumes or DataFrames is refused before it
+    computes; a calculation of a library from the environment's knowledge is written to results and reopened."""
     c = calculation
-    first = durable.materialize(c.query, "Output", purpose="published", **c.settings)
-    c.run.calls.clear()
-    resolved = durable.resolve_results(c.query, "Output", **c.settings)
+    from cql_databricks.result.calculation import PreparedCalculation
+
+    own = {"data": "synthetic_catalog.data", "terminology": "synthetic_catalog.terminology",
+           "knowledge": "synthetic_catalog.knowledge"}
+    run = CatalogRunner(destination=RESULTS)
+    official = DeltaResultStore(RESULTS, run, official=[RESULTS],
+                                requires={role: frozenset({identity}) for role, identity in own.items()})
+    settings = dict(c.settings, run=run, results=official)
+    with pytest.raises(PermissionError, match="only results of the environment's own published content"):
+        durable.materialize(c.query, "Output", **settings)
+    cells = PreparedCalculation("Synthetic", "1", "synthetic", ("Output",), c.compiled,
+                                identities=own | {"knowledge": "cql"})
+    with pytest.raises(PermissionError, match="knowledge is cql"):
+        durable.materialize(cells, "Output", **settings)
+    assert not run.writes
+    published = PreparedCalculation("Synthetic", "1", "synthetic", ("Output",), c.compiled, identities=own)
+    first = durable.materialize(published, "Output", **settings)
+    assert {o.result.artifact.table[1] for o in first.outcomes} == {"results"}
+    run.calls.clear()
+    resolved = durable.resolve_results(published, "Output", **settings)
     assert resolved.results["Output"].result == first.results["Output"].result
-    assert all(sql.startswith("SELECT") for sql, _ in c.run.calls)
+    assert all(sql.startswith("SELECT") for sql, _ in run.calls)
 
 
 @pytest.mark.parametrize("removed", ["population", "publisher", "bindings_revision", "data_as_of"])
@@ -105,7 +135,6 @@ def test_removed_identity_arguments_are_refused(calculation, removed):
 
 
 @pytest.mark.parametrize("kwargs,match", [
-    ({"capacity": 0}, "capacity"),
     ({"mode": "changed_only"}, "unsupported reuse"), ({"session_id": ""}, "session_id"),
     ({"computed_since": datetime(2020, 1, 1)}, "timezone"),
     ({"computed_since": datetime.now(timezone.utc) + timedelta(days=1)}, "future"),
@@ -122,10 +151,12 @@ def test_capacity_counts_distinct_tables_not_refreshes(calculation):
     """RUN-CLIENT-LIFECYCLE — replacing a table consumes no additional capacity."""
     c = calculation
     with pytest.raises(RuntimeError, match="capacity"):
-        durable.materialize(c.query, "Output", capacity=1, **c.settings)
+        durable.materialize(c.query, "Output", **(c.settings | {"results": DeltaResultStore(DESTINATION, c.run,
+                                                                                            capacity=1)}))
     assert not c.run.writes
     for mode in ("skip_if_computed", "recompute"):
-        durable.materialize(c.query, "Output", capacity=2, mode=mode, **c.settings)
+        durable.materialize(c.query, "Output", mode=mode,
+                            **(c.settings | {"results": DeltaResultStore(DESTINATION, c.run, capacity=2)}))
     assert len(c.run.tables) == 2
 
 

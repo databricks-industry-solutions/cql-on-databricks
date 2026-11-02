@@ -2,29 +2,26 @@
 //
 // THE RULE: this pane holds assertions ABOUT the document, never a second rendering OF it.
 //
-// ITS SCOPE IS DATA ABOUT THE SELECTION, AND ONLY THAT. Neither occupant is about the selected
-// thing's data: the PATIENT LENS was a member list whose "glass-box as a MODE, not a panel"
-// (`APP-PATIENT-FOCUS`) contradicted this panel's model; the ASSISTANT was a disabled shell
-// reserving tab space for conversations not wired yet. Neither is relocated because the patient
-// lens was per-member run tracing (runs have their own surface) and the assistant needs a home
-// elsewhere when the substrate lands.
+// ITS SCOPE IS DATA ABOUT THE SELECTION, AND ONLY THAT. Neither the PATIENT LENS nor the ASSISTANT is about the
+// selected thing's data, so neither is in this pane. The patient lens is a member list, and its "glass-box as a
+// MODE, not a panel" (`APP-PATIENT-FOCUS`) contradicts this panel's model. It is per-member run tracing, and runs
+// have their own surface. The assistant would be a disabled shell reserving tab space for conversations not wired
+// yet, and it needs a home elsewhere when the substrate lands.
 //
-// WHAT TOOK THE STRIP IS THE DATA ITSELF. The Data tab had grown into a scroll of five unlike blocks —
-// values, code hits, a temporal spread, demographic cuts, departures — and a reader looking for the age
-// band scrolled past three charts to reach it. Those blocks ARE the pane's tabs now, which is the same
-// content reachable in one click instead of one scroll, and it costs no new derivation: every tab reads
-// the SAME `DefineProfile` payload the one tab did. A tab whose block the profile does not carry is
+// WHAT TAKES THE STRIP IS THE DATA ITSELF. The data is five unlike blocks — values, code hits, a temporal spread,
+// demographic cuts, departures — and a reader looking for the age band scrolls past three charts to reach it. Each
+// block is a tab instead: the same content reachable in one click rather than one scroll, at no new derivation,
+// because every tab reads the SAME `DefineProfile` payload. A tab whose block the profile does not carry is
 // DISABLED rather than absent (`APP-STABLE-LAYOUT` — a strip that changes shape with the selection
 // makes the reader re-find every tab), and says why when you land on it.
 //
-// It was drafted as an INSPECTOR keyed to the criterion selected in the Specification. That model died
-// of the Specification's own success: a selected define now shows, in the reading column and at the
-// reader's eye, everything an inspector would have repeated — its what/why/how triple with per-field
-// provenance, its narrative devices (SPEC-NARRATIVE-DEVICES), its CQL sliced at the ELM locator with
-// every claim cited to a line span, its refs as real links (SPEC-ANCHOR), its metric and its badges.
-// A mirror of that has nothing left to say, and two surfaces rendering one element is precisely the
-// failure APP-SPEC-MODEL exists to prevent (the page called an entry `def` while the nav called the
-// same entry `fn`, because each decided for itself what it was).
+// An INSPECTOR keyed to the criterion selected in the Specification would repeat the Specification. A selected
+// define already shows, in the reading column and at the reader's eye, everything an inspector would repeat: its
+// what/why/how triple with per-field provenance, its narrative devices (SPEC-NARRATIVE-DEVICES), its CQL sliced at
+// the ELM locator with every claim cited to a line span, its refs as real links (SPEC-ANCHOR), its metric and its
+// badges. A mirror of that has nothing left to say, and two surfaces rendering one element is precisely the failure
+// APP-SPEC-MODEL exists to prevent (the page would call an entry `def` while the nav calls it `fn`, because each
+// decides for itself what it is).
 //
 // So selection SCOPES this pane. It does not POPULATE it. The scope is resolved ONCE, in the chip at
 // the pane's head, and both tabs read it — rather than each tab re-deciding what "selected" means.
@@ -33,14 +30,13 @@
 //
 //   Details      what the define RETURNS (from the ELM — real today) and what it actually produced: the
 //                top values with their shares, the null rate, the elements-per-subject spread. `Preview`
-//                was rejected because with a Data tab beside it, it reads as the place the data was —
-//                which is the one thing it is not. `Overview` was rejected — the Specification already
+//                is rejected because with a Data tab beside it, it reads as the place the data was —
+//                which is the one thing it is not. `Overview` is rejected — the Specification already
 //                has an Overview section (`SPEC-OVERVIEW-HEADINGS`) and the word is spent.
 //   Demographics who the subjects are — sex, age band, and whatever else the Patient binding gives.
 //                EVERY FIGURE IN IT IS REAL (`insights/profile.py` derives the strata from this
-//                evaluation). The name promises only this content; it held the temporal spread once,
-//                which was fabricated (the ENGINE knows date_property per type; this layer would guess),
-//                so the name shifted to match the honest content. Temporal is kept, exported and
+//                evaluation). The name promises only this content: a temporal spread stays out, because it would be
+//                fabricated (the ENGINE knows date_property per type; this layer would guess). Temporal is kept, exported and
 //                unmounted, for when the retrieve contract surfaces `date_property`. Held
 //                APART from the element-grain cuts by `APP-PROFILE-STRATA`: one patient with nine
 //                encounters contributes nine to an element cut and one to a subject cut, so a single
@@ -54,9 +50,9 @@
 // `APP-DECISIVE-COUNT` wired (the only implementation) rather than deleting a working surface. Do not
 // EXTEND it in the meantime — the `passed`-vs-`reached` base mismatch travels with it.
 //
-// The IDENTITY CARD, IMPACT, and REVIEW tabs are GONE. The identity card held read-once facts now on
-// the page; IMPACT restated navigation already shown on nav rows; REVIEW held coverage metrics and a
-// placeholder for APP-NARRATIVE-VALIDATE, which is specified but unbuilt. `Returns` replaced the card:
+// There is no IDENTITY CARD, IMPACT, or REVIEW tab. The identity card would repeat read-once facts already on
+// the page; IMPACT would restate navigation already shown on nav rows; REVIEW would hold coverage metrics and a
+// placeholder for APP-NARRATIVE-VALIDATE, which is specified but unbuilt. `Returns` is the answer instead:
 // equally compact, and it changes with the selection. When the validation check lands it needs a
 // surface; nothing here reserves the slot for it in the meantime.
 
@@ -65,8 +61,7 @@ import type { Definition } from "../catalog.ts";
 import { fetchDefineProfile, peekDefineProfile, type ResultReadScope } from "../library-client.ts";
 import { useRevision } from "../use-revision.ts";
 import { closureOf, type LogicNode } from "../authoring/logicGraph.ts";
-// `Users` / `CalendarRange` were the Demographics / Timing tab glyphs; both are groups of the Data tab
-// now. `Hash` came back as TERMINOLOGY's glyph — it was Codes', which is what that tab is made of.
+// `Users` is the Demographics glyph. `Hash` is the Terminology glyph: that tab is made of codes.
 import { ArrowDown, ArrowUp, Database, Hash, List, Minus, Plus,
   TableProperties, Users } from "../icons.tsx";
 import type {
@@ -108,10 +103,10 @@ const nodeIdOf = (e: SpecEntry) => (e.kind === "function" ? `fn:${e.name}` : `de
 
 /** APP-DATA-PROFILE — the evaluation a profile is a fact ABOUT. */
 export interface ProfileScope extends ResultReadScope {
-  dataSourceId: string;
+  environment: string;
   periodStart?: string;
   periodEnd?: string;
-  /** RUN-ADDRESS-BY-LIBRARY — the run's draft key, when the CQL run is not the published version. */
+  /** RUN-CLIENT-RESULT-SETS — the label of the run's complete selection. */
   draft?: string;
 }
 
@@ -126,7 +121,7 @@ export interface InspectorContext {
   definitionId: string;
   spec: SpecModel | null;
   doc: SpecDocument | null;
-  /** APP-SAMPLE-METRICS — the same figures the document and the nav render, so no two surfaces
+  /** APP-SPEC-MODEL — the same figures the document and the nav render, so no two surfaces
    *  report a different count for one define. */
   metrics: MetricSet | null;
   live: boolean;
@@ -146,23 +141,16 @@ export interface InspectorContext {
  *  request patterns with two answers to "is it loading" — that is how the pane and a popover over it come
  *  to disagree about the same define.
  *
- *  CACHED IN THE DATA LAYER (`PERF-CLIENT-REVISION`), and this comment used to refuse a cache here —
- *  correctly, for the conditions that held when it was written. It said a `Map` "would reintroduce
- *  exactly the defect `PERF-CACHE-REVISION` was written to remove: a define's profile stayed stale for a
- *  minute AFTER the run that changed it, with nothing able to invalidate it". **That was true of every
- *  client cache available at the time**, because there was no invalidation signal a client could read:
- *  the revision existed only inside an `ETag`, which is addressed to the browser's cache and unreadable
- *  from the SPA. With nothing to bust against, any client cache really was a TTL by another name, and
- *  refusing one was the right call.
+ *  CACHED IN THE DATA LAYER (`PERF-CLIENT-REVISION`). A client cache is not a TTL here: a `Map` would
+ *  reintroduce exactly the defect `PERF-CACHE-REVISION` rules out: a define's profile stays stale for a
+ *  minute AFTER the run that changed it, with nothing able to invalidate it. Without an invalidation
+ *  signal a client can read, any client cache is a TTL by another name. The revision is published to the
+ *  application (`X-CqlDatabricks-Revision`), so a cache is validated by it rather than by a clock:
+ *  `data-cache.ts` has no clock at all, and an entry lives exactly as long as the SERVER says it stands.
  *
- *  The revision is now published to the application (`X-CqlDatabricks-Revision`), so a cache can be
- *  validated by it rather than by a clock — `data-cache.ts` has no clock at all, and an entry lives
- *  exactly as long as the SERVER says it stands. This resolves the old concern about stale entries.
- *
- *  The old reasoning was also right that the server work was already gone — this route is on the
- *  middleware's allowlist, so a duplicate open was a bodyless 304 decided before the handler ran. What
- *  it could not have known is that the saving was invisible to the reader: `no-cache` FORBIDS the
- *  browser from answering without a round trip, so the pane still blanked and still waited.
+ *  A client cache does not save server work either: this route is on the middleware's allowlist, so a
+ *  duplicate open is a bodyless 304 decided before the handler runs. The saving is invisible to the reader:
+ *  `no-cache` FORBIDS the browser from answering without a round trip, so the pane still blanks and still waits.
  *
  *  `peek` is therefore the initial state, not a fetch result: on a remount that the revision has not
  *  invalidated, the first render already has the profile and there is no frame in which the pane is
@@ -192,7 +180,7 @@ export function useDefineProfile(definitionId: string, entry: SpecEntry | null, 
    *  answer might have: showing the previous define's profile under this one's name is the
    *  two-surfaces-disagreeing failure, but blanking a still-accurate figure because a scheduled run
    *  touched something else is a flash for nothing. So the two cases are told apart explicitly. */
-  const question = `${definitionId}|${entry?.key ?? ""}|${scope?.dataSourceId ?? ""}`
+  const question = `${definitionId}|${entry?.key ?? ""}|${scope?.environment ?? ""}`
     + `|${scope?.periodStart ?? ""}|${scope?.periodEnd ?? ""}`;
   const asked = useRef(question);
 
@@ -295,10 +283,10 @@ export function InspectorIdentity({ entry, read, onNavigate }: {
  *  this, and then "pinned and popped show the same thing" is a property of there being one component
  *  rather than a promise two components keep by hand.
  *
- *  WHY THAT MATTERED ENOUGH TO SHARE. The lens used to state the absence instead — *"Distributions and
- *  cuts for this reference are in the inspector — pin it to see them here"* — which was honest but made a
- *  reader pay the pane's price for the pane's answer: pinning MOVES the selection, and the selection is
- *  also the document's you-are-here mark, so asking what a name produced cost them their place. The whole
+ *  WHY THAT MATTERS ENOUGH TO SHARE. A lens that stated the absence instead — *"Distributions and
+ *  cuts for this reference are in the inspector — pin it to see them here"* — would be honest, but it would
+ *  make a reader pay the pane's price for the pane's answer: pinning MOVES the selection, and the selection is
+ *  also the document's you-are-here mark, so asking what a name produces costs them their place. The whole
  *  point of a lens that opens inside a criterion is that it does not do that.
  *
  *  It owns the FETCH and the availability rule; it does not own which tab is open (`useInspectorTab`). */
@@ -316,7 +304,7 @@ export function InspectorScope({ ctx, entry, read, tab, onTab }: {
   // EVERY TAB IS ALWAYS SELECTABLE. Empty tabs stay in the strip because a disabled control that
   // does not say why is indistinguishable from a broken one (`design-system.md` section 2.1). The tab
   // body states why it is empty — better than a hover title could — so there is no reason to hide a
-  // tab's tab. The strip is now identical in shape AND behaviour for every selection (`APP-STABLE-LAYOUT`).
+  // tab's tab. The strip is identical in shape AND behaviour for every selection (`APP-STABLE-LAYOUT`).
   // With no data source at all, Demographics and Details blame the definition, not the lack of scope,
   // so `hasScope` splits the missing-data message from the missing-selection message (`SPEC-METRIC`).
   // This is safe because the two truths apart are unambiguous.
@@ -377,7 +365,7 @@ export function Workbench({
   /** SPEC-EXPLAIN-INPUTS — the server's per-define reference lists, which carry terminology a
    *  retrieve filter does not (`terminologyForDefine`). */
   referenceSets?: ReferenceSet[];
-  /** APP-SAMPLE-METRICS — the same figures the document and the nav render, so the pane cannot
+  /** APP-SPEC-MODEL — the same figures the document and the nav render, so the pane cannot
    *  report a different count for the define whose heading the reader just left. */
   metrics: MetricSet | null;
   live: boolean;
@@ -397,7 +385,7 @@ export function Workbench({
     return entryForName(spec, selected.name);
   }, [selected, spec]);
 
-  // SPEC-NAV-COMPOSITION — the other thing a reader can now select: a READ. It is not an entry and has
+  // SPEC-NAV-COMPOSITION — the other thing a reader can select: a READ. It is not an entry and has
   // no CQL of its own, so it resolves against the retrieve list rather than the model's declarations.
   const read = useMemo(() => {
     if (selected?.kind !== "retrieve") return null;
@@ -417,8 +405,8 @@ export function Workbench({
 
   // A SELECTED READ KEEPS THE PANE'S SHELL. A read has no profile and no metric, so the tabs are
   // empty for it — as they are for many defines. `APP-STABLE-LAYOUT` forbids a strip that changes
-  // shape; removing it entirely was the strongest form of that violation and read as a bug (controls
-  // disappear with no explanation). The read's content is now the PREVIEW tab's body, the other tabs
+  // shape; removing it entirely would be the strongest form of that violation and would read as a bug (controls
+  // disappear with no explanation). The read's content is the PREVIEW tab's body, the other tabs
   // behave as they do for a boolean define, and absence is stated in words, never implied
   // (`SPEC-METRIC`).
 
@@ -449,9 +437,9 @@ export function Workbench({
           the pane control, and the tab strip loses its trailing control. */}
       {/* The chip and the name are `InspectorIdentity` — the same line the reference lens heads its box
           with, so one selection cannot be a `pop` here and a `def` there. What stays the PANE's is what
-          follows it: the pane-state control. NO pane control in the tab strip any more — it moved up here,
-          where the X used to sit, and two of them would be two targets for one job. The nav's strip keeps
-          its own: that pane has no scope row to move it to. */}
+          follows it: the pane-state control. There is no pane control in the tab strip: it sits here, and
+          two of them would be two targets for one job. The nav's strip keeps its own: that pane has no scope
+          row to put it in. */}
       <div className="mw-wb-scope">
         <InspectorIdentity entry={entry} read={read} onNavigate={onNavigate} />
         <PaneControls side="wb" size={size} onSize={onSize} />
@@ -475,9 +463,9 @@ export function Workbench({
  *  every call site with the line span of the clause that asked (`SPEC-DATA-REQUIREMENTS`). What is NOT
  *  here is a row or subject COUNT.
  *
- *  ITS ABSENCE IS SETTLED. Read materialization is retired (`SPEC-READ-METRICS`), so there are no
- *  per-read tables to count. The engine's `retrieve_<Type>` mount is per TYPE with ADVISORY predicates
- *  (`DATA-RETRIEVE-VIEW`); applying the value-set filter here would re-implement membership semantics
+ *  ITS ABSENCE IS SETTLED. Read materialization is retired, so there are no
+ *  per-read tables to count. A read reads the relation its call site binds, and the engine re-applies its
+ *  predicates above that relation. Applying the value-set filter here would re-implement membership semantics
  *  the engine owns, which `APP-DECOUPLE` forbids. This states what the read ASKS FOR and plainly that
  *  nobody counted — absence stated once, never fabricated (`SPEC-METRIC`). */
 function ReadScope({ read, onNavigate }: {
@@ -486,7 +474,7 @@ function ReadScope({ read, onNavigate }: {
   const filter = read.valueSet ?? read.code;
   return (
     <>
-      {/* No scope chip of its own — the pane's shared one names the read now, the same one that names a
+      {/* No scope chip of its own — the pane's shared one names the read, the same one that names a
           define. Two chips for one selection is the drift `APP-SPEC-MODEL` exists to prevent. */}
       <Lead>
         A <b>read</b>: what this measure goes and gets from <b>{read.type}</b>, and what counts as a hit.
@@ -522,7 +510,7 @@ function ReadScope({ read, onNavigate }: {
             product states it: the reference lens over the same read shows what it has and stays silent
             about what it does not, because from there it cannot tell which absence it is looking at. */}
         {/* NO REQUIREMENT ID IN READER-FACING PROSE. The REASON belongs on the page; the id belongs
-            in this comment, where the next engineer reads it (`SPEC-READ-METRICS`). */}
+            in this comment, where the next engineer reads it (`SPEC-READ-REF`). */}
         <p className="mw-wb-lead">
           Not counted, and not countable here. A read is not stored as its own table, so there is nothing
           to count rows of. Counting <em>this</em> read would mean re-applying its filter, and what that
@@ -564,8 +552,8 @@ function TabBody({ tab, spec, doc, entry, read, metrics, live, profile, loading,
   profile: DefineProfile | null; loading: boolean;
   /** Whether a data source is selected at all (`APP-DATA-PROFILE`). It separates two absences a null
    *  profile cannot: nobody has chosen an evaluation, versus this evaluation produced nothing for this
-   *  define. Before every tab was made selectable the difference was hidden by a disabled tab; now a
-   *  reader lands on the body and it has to be honest about which one it is (`SPEC-METRIC`). */
+   *  define. A disabled tab would hide the difference; instead a reader lands on the body, and it has to be
+   *  honest about which one it is (`SPEC-METRIC`). */
   hasScope: boolean;
   funnel: Funnel | null;
   onNavigate: (sel: Selection) => void;
@@ -625,10 +613,10 @@ function NoScope({ spec, funnel }: { spec: SpecModel; funnel: Funnel | null }) {
  *  EVERY FIGURE HERE IS REAL. `insights/profile.py` derives the subject strata from THIS evaluation, by
  *  joining the bound Patient retrieve to the subjects the define is true of — the same binding that is
  *  already the authority for the evaluated-subject total, so the cohort and its breakdowns cannot
- *  disagree. That is why the tab is named for what it holds rather than the generic "Data" it inherited:
- *  the name now promises exactly one thing, and the promise is kept.
+ *  disagree. That is why the tab is named for what it holds rather than the generic "Data":
+ *  the name promises exactly one thing, and the promise is kept.
  *
- *  THE TEMPORAL SPREAD IS NOT HERE. It was the one fabricated block — `insights/sample.py` invents it,
+ *  THE TEMPORAL SPREAD IS NOT HERE. It would be the one fabricated block: `insights/sample.py` invents it,
  *  because the spread needs date_property per FHIR type, which the ENGINE knows and this layer would
  *  guess (`APP-DECOUPLE`). A tab that is real except for one invented histogram cannot be described
  *  honestly. `Temporal` is kept, exported and unmounted, for when the retrieve contract surfaces
@@ -673,7 +661,7 @@ function Demographics({ profile, loading, hasScope }: {
  *  sitting next to a SNOMED diagnosis looking like a peer.
  *
  *  WHAT THIS IS NOT. It does not report which value set qualified a record. That needs the filter
- *  re-applied, which this layer may not do (`SPEC-CLAUSE-PROBE`, rejected) — and it does not need to,
+ *  re-applied, which this layer may not do — and it does not need to,
  *  because a returned record survived every filter by construction, so its codes qualified whether the
  *  test lived in the retrieve or in a `where`. The value-set coverage question (declared against fired)
  *  is a corpus report and belongs to Data Readiness, not to a reading pane.
@@ -687,6 +675,10 @@ function Terminology({ profile, loading, hasScope }: {
   if (loading) return <Pending>Reading the codes…</Pending>;
   if (!hasScope) return <NoData />;
   if (!profile) return <Empty>No profile came back for this definition on this evaluation.</Empty>;
+  // SPEC-TERMINOLOGY-EXTRACT — a failed read is said in the codes' place, never shown as "nothing coded".
+  if (profile.terminologyError) {
+    return <div className="mw-wb-flag warn">Couldn&apos;t read codes: {profile.terminologyError}</div>;
+  }
   if (sections.length === 0) {
     return <Empty>Nothing coded to read here — this definition returns a value rather than records, so
       there is no resource carrying codes.</Empty>;
@@ -735,7 +727,7 @@ function PreviewTab({ spec, doc, entry, metrics, live, profile, loading, hasScop
 }) {
   const graph = spec.graph ?? null;
 
-  // Which population criteria reach this define. The one thing the retired Impact tab said that the
+  // Which population criteria reach this define. The one thing an Impact tab could say that the
   // nav cannot: SPEC-PLACEMENT renders a define once at its lowest common dominator, so the section it
   // sits in does not name the populations depending on it, and the nav's closure tint shows the shape
   // of the dependency without naming its endpoints.
@@ -765,15 +757,14 @@ function PreviewTab({ spec, doc, entry, metrics, live, profile, loading, hasScop
 
   const metric = doc ? doc.byDefine[entry.key]?.metric ?? null : null;
 
-  // ONE resolution of the define's result type for the whole tab. `Returns` used to resolve it privately
-  // and the Preview block now needs the same answer — two resolutions of one type is how a pane comes to
-  // state a type in one block and dispatch off a different one in the next (`APP-SPEC-MODEL`).
+  // ONE resolution of the define's result type for the whole tab. `Returns` and the Preview block both need
+  // the same answer: two resolutions of one type is how a pane comes to state a type in one block and
+  // dispatch off a different one in the next (`APP-SPEC-MODEL`).
   const resultType = metric?.resultType ?? entry.variants[0]?.returns ?? null;
 
   return (
     <>
-      {/* RETURNS — the real thing, from the ELM. Replaces the identity card: equally compact, and it
-          changes with the selection, which is what the old card never did. */}
+      {/* RETURNS — the real thing, from the ELM. Equally compact, and it changes with the selection. */}
       <Returns entry={entry} metric={metric} resultType={resultType} metrics={metrics} live={live} />
 
       {/* The top-N sample sits directly under the type, because the type is a promise and the sample
@@ -948,18 +939,18 @@ function SampleValues({ profile, loading, hasScope, entry, shape }: {
  *
  *  THE SHARE BAR IS DRAWN ONLY OVER VALUES THAT AGGREGATE (`shape === "value"`). `true` in 1,204 of 1,288
  *  subjects is a distribution and the bar states it; an Encounter returned once is not one. Resources are
- *  near-unique by construction, so over rows the bar drew eight near-equal segments and invited a reader
- *  to compare frequencies that measured only how many distinct records came back — a claim nobody made and
- *  the data cannot support. The COUNT stays on every row either way: "this value came back for N subjects"
- *  What goes on `row` shape is the bar AND the count: the bar asserts a distribution that a set of records
- *  does not have, and the count is 1 on every line, which reads as data and carries none. (An earlier note
- *  here kept the count on the grounds that "a column of 1s is itself worth reading" — withdrawn, because
- *  what it tells a reader is that the define returns records, which the rows already show by being records.) The shape is dispatched off the ELM result type
+ *  near-unique by construction, so a bar over rows would draw eight near-equal segments and invite a reader
+ *  to compare frequencies that measure only how many distinct records came back — a claim nobody makes and
+ *  the data cannot support. On `value` shape the count sits on every row: "this value came back for N
+ *  subjects". On `row` shape neither the bar nor the count is drawn: the bar asserts a distribution that a
+ *  set of records does not have, and the count is 1 on every line, which reads as data and carries none.
+ *  A column of 1s is not worth reading: what it tells a reader is that the define returns records, which the
+ *  rows already show by being records. The shape is dispatched off the ELM result type
  *  (`valueShapeOf`), not off each row's contents — see there for why.
  *
- *  THE WHOLE ROW IS THE CONTROL, marked by a leading `+` that becomes a `−`. It was a "FIELDS" disclosure
- *  underneath, and that was two mistakes in one: it put a second labelled control inside a row that is
- *  already one thing, and it made the target a word at the row's left edge rather than the row a reader
+ *  THE WHOLE ROW IS THE CONTROL, marked by a leading `+` that becomes a `−`. A "FIELDS" disclosure underneath
+ *  would be two mistakes in one: it would put a second labelled control inside a row that is
+ *  already one thing, and it would make the target a word at the row's left edge rather than the row a reader
  *  is looking at. A row that expands in place needs no name for the act of expanding.
  *
  *  The mark LEADS the row rather than trailing it: a reader scanning a block of these looks down the left
@@ -988,9 +979,8 @@ export function SampleRow({ sample, shape }: { sample: ProfileSample; shape: Met
           <span className="lb" title={read.raw}>{read.summary}</span>
           {/* A COUNT ONLY WHERE IT COUNTS SOMETHING. On `value` shape the rows are repeated values and the
               figure is the distribution. On `row` shape each row is one RECORD, so the count is 1 on every
-              line — a column of 1s that reads as data and carries none. The earlier note here argued the
-              opposite ("a column of 1s is itself worth reading"); it is withdrawn: what that column tells
-              a reader is that this define returns records, which the rows already show by being records. */}
+              line — a column of 1s that reads as data and carries none. Its only message is that the define
+              returns records, which the rows already show by being records. */}
           {shape === "value" && <span className="ct tnum">{sample.count.toLocaleString()}</span>}
         </span>
         {shape === "value" && (
@@ -1016,8 +1006,8 @@ export function SampleRow({ sample, shape }: { sample: ProfileSample; shape: Met
  *  Per block, not per payload. The value profile and the top values are read from the evaluation while
  *  code hits and the temporal spread are still invented, and one word for the whole payload can only be
  *  wrong in one direction or the other: `run` strips the mark off invented bars, `sample` puts a false
- *  warning on real figures. A payload with no `sampled` list at all is read the old way — the whole
- *  thing is sample unless it says `run`. */
+ *  warning on real figures. A payload with no `sampled` list at all is read as a whole-payload sample
+ *  unless it says `run`. */
 export function isSampled(profile: DefineProfile, block: ProfileBlock): boolean {
   if (profile.sampled) return profile.sampled.includes(block);
   return profile.provenance !== "run";
@@ -1230,7 +1220,7 @@ function Histogram({ label, bins }: { label: string | null; bins: ProfileBin[] }
  *  decided it.
  *
  *  THE RIGHT PANE AND NOT THE CANVAS, and the distinction is `APP-WORKBENCH`'s: this pane holds
- *  assertions ABOUT the document and never a second rendering OF it. A spine re-draws the document's
+ *  assertions ABOUT the document and never a second rendering OF it. A population tree re-draws the document's
  *  population structure, which is why it is the nav's. "3,904 left here, and 1,204 of them for Exclusion B
  *  alone" appears nowhere in the document and cannot be read off it — it is the same kind of thing as
  *  the profile below, and it sits in the same place for the same reason.

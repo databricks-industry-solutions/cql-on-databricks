@@ -1,8 +1,9 @@
 // KNOWLEDGE-LAKE-DIRECT (PROC-TDD) — the SPA library client: record→Definition mapping + fetch.
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { toDefinition, fetchDefinitions, fetchDefineProfile, fetchLibrarySource, fetchMeasureMetrics, fetchStoreAccess, peekDefineProfile } from "./library-client.ts";
+import { toDefinition, fetchDefinitions, fetchDataRequirements, fetchDefineProfile, fetchLibrarySource, fetchMeasureMetrics, publishLibrary, peekDefineProfile } from "./library-client.ts";
 import { fetchResults } from "./run-client.ts";
 import type { ResultSetAddress } from "./wire.ts";
+import { setCurrentEnvironment } from "./environment.ts";
 
 const measure = {
   id: { name: "ExampleMeasure", version: "1.0.0" },
@@ -15,6 +16,23 @@ const measure = {
   updated: "2026-06-15T00:00:00.000Z",
 };
 
+describe("data requirements read (SPEC-DATA-REQUIREMENTS)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("answers the rows the server returns", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      dataRequirements: [{ type: "Condition" }] }))));
+    expect(await fetchDataRequirements("Measure", "1.0.0")).toEqual([{ type: "Condition" }]);
+  });
+
+  it("rejects with the server's reason, never as an empty list (KNOWLEDGE-FAIL-LOUD)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ error: "Measure@1.0.0: workspace folder not readable" }), { status: 500 })));
+    await expect(fetchDataRequirements("Measure", "1.0.0"))
+      .rejects.toThrow("Measure@1.0.0: workspace folder not readable");
+  });
+});
+
 describe("result request transport (RUN-CLIENT-REQUEST-REOPEN)", () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -22,7 +40,7 @@ describe("result request transport (RUN-CLIENT-REQUEST-REOPEN)", () => {
     destination: ["synthetic", "results"], publisher: "synthetic-owner", session_id: "session",
     selection_id: "generation-digest", request_hash: "request", purpose: "private",
     population: "synthetic", targets: ["Synthetic.Output"], computed_since: null,
-    calculation: { data_source: "synthetic", runtime_catalog: "synthetic", runtime_schema: "runtime",
+    calculation: { environment: "synthetic", runtime_catalog: "synthetic", runtime_schema: "runtime",
       cql: "library Synthetic version '1'\ndefine Output: 1", period: ["2026-01-01", "2026-12-31"],
       targets: ["Synthetic.Output"] },
   };
@@ -31,7 +49,7 @@ describe("result request transport (RUN-CLIENT-REQUEST-REOPEN)", () => {
     const profile = { kind: "synthetic-profile" };
     const fetcher = vi.fn().mockImplementation(async () => new Response(JSON.stringify(profile)));
     vi.stubGlobal("fetch", fetcher);
-    const scope = { dataSourceId: "synthetic", draft: "durable.session", resultSet };
+    const scope = { environment: "synthetic", draft: "durable.session", resultSet };
     expect(await fetchDefineProfile("Synthetic", "1", "Output", "Synthetic", scope)).toEqual(profile);
     expect(peekDefineProfile("Synthetic", "1", "Output", "Synthetic", scope)).toEqual(profile);
     const changed = { ...scope, resultSet: { ...resultSet, selection_id: "new-generation" } };
@@ -57,7 +75,7 @@ describe("result request transport (RUN-CLIENT-REQUEST-REOPEN)", () => {
 
 describe("figure reads (RUN-CLIENT-RESULT-SETS)", () => {
   afterEach(() => vi.unstubAllGlobals());
-  const scope = { dataSourceId: "synthetic", draft: "durable.figures" };
+  const scope = { environment: "synthetic", draft: "durable.figures" };
 
   it("reads a 409 as no figures", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "nothing computed yet" }), { status: 409 })));
@@ -71,19 +89,31 @@ describe("figure reads (RUN-CLIENT-RESULT-SETS)", () => {
   });
 });
 
-describe("store access (DOC-EDITABLE-IN-SCOPE)", () => {
+describe("publishLibrary (DOC-PUBLISH)", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("asks for the store and reads the answer", async () => {
-    const fetchMock = vi.fn(async (_url: string) => new Response(JSON.stringify({ writable: false, reason: "You cannot write k.m." })));
-    vi.stubGlobal("fetch", fetchMock);
-    expect(await fetchStoreAccess("store:k.m")).toEqual({ writable: false, reason: "You cannot write k.m." });
-    expect(fetchMock.mock.calls[0]![0]).toBe("/api/locations/access?location=store%3Ak.m");
+  it("reads a refusal and a failed write apart, each with its summary", async () => {
+    const summary = { store: "k.m", libraries: [] };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "no", summary }), { status: 400 })));
+    expect(await publishLibrary({ location: "folder:/x", name: "S", version: "1" }))
+      .toEqual({ kind: "refused", error: "no", summary });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "denied", summary }), { status: 502 })));
+    expect(await publishLibrary({ location: "folder:/x", name: "S", version: "1" }))
+      .toEqual({ kind: "failed", error: "denied", summary });
   });
 
-  it("throws the server's error when the check could not run", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "Could not check access to k.m: x" }), { status: 502 })));
-    await expect(fetchStoreAccess("store:k.m")).rejects.toThrow("Could not check access to k.m: x");
+  it("publishes into the picked environment (DOC-ENVIRONMENT-PICKER)", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ store: "k.knowledge_store", libraries: [] })));
+    vi.stubGlobal("fetch", fetcher);
+    setCurrentEnvironment("example");
+    try {
+      await publishLibrary({ location: "folder:/x", name: "S", version: "1" });
+    } finally {
+      setCurrentEnvironment(null);
+    }
+    const init = (fetcher.mock.calls[0] as unknown as [string, RequestInit])[1];
+    expect(JSON.parse(String(init.body))).toEqual({ location: "folder:/x", name: "S", version: "1",
+                                                    environment: "example" });
   });
 });
 

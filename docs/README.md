@@ -22,6 +22,7 @@ Each feature's docs sit next to its code. Start with the feature you need.
 | [structure.md](structure.md) | How the repository is organized, and naming |
 | [systems.md](systems.md) | What each feature owns and the dependency rules |
 | [coding-standards.md](coding-standards.md) | Code conventions. Read before writing code |
+| [pr-checks.md](pr-checks.md) | The checks every pull request must pass, including customer compatibility |
 | [requirements.md](requirements.md) | Requirements that span features, and where each feature's registry is |
 | [decisions/](decisions/README.md) | An index of decision IDs cited in code |
 | [roadmap.md](roadmap.md) | The plan, open decisions and known compiler gaps |
@@ -31,7 +32,7 @@ Each feature's docs sit next to its code. Start with the feature you need.
 - File names are kebab-case. Only `README.md`, `LICENSE.md`, `NOTICE.md` and similar are upper case.
 - Every ID is a descriptive mnemonic, `<TYPE>-<SLUG>`, never a number (`PROC-DESCRIPTIVE-ID`). Order goes
   in an "after" column, never in the name.
-- A requirement that stops being true becomes a one-line "Retired" row. It's never deleted, so old
-  citations still resolve.
+- A requirement that stops being true is deleted from its registry, in the same change that removes every
+  citation of it (`PROC-CURRENT-DEFINITION`).
 - `DEC-<SLUG>` is a decision. Open ones are in the [roadmap](roadmap.md). Settled ones amend a requirement
   and are listed in [decisions/](decisions/README.md).

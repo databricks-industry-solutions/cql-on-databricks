@@ -1,12 +1,11 @@
 /** PERF-CLIENT-REVISION — the SPA's data cache, busted by the server's own revision.
  *
- *  WHAT IT FIXES. Every read was reissued on every mount, so clicking away from the inspector and back
- *  blanked the pane and refetched. For the five GET reads that was cheap on the server — the browser
- *  revalidates and `PERF-CACHE-REVISION` answers 304 before the handler runs — but a round trip is a
- *  round trip and the pane still flashed. For the three POST reads (`/metrics`, `/cohort-flow`,
- *  `/read-metrics`) there was no caching AT ALL, at any layer: the middleware early-returns on
- *  non-GET, so coming back re-executed several SQL warehouse statements to recompute figures that had
- *  not changed.
+ *  WHAT IT FIXES. Without it, every read is reissued on every mount, so clicking away from the inspector and back
+ *  blanks the pane and refetches. For the five GET reads that is cheap on the server — the browser revalidates and
+ *  `PERF-CACHE-REVISION` answers 304 before the handler runs — but a round trip is a round trip and the pane still
+ *  flashes. For the three POST reads (`/metrics`, `/cohort-flow`, `/read-metrics`) there is no caching at all, at any
+ *  layer: the middleware early-returns on non-GET, so coming back re-executes several SQL warehouse statements to
+ *  recompute figures that have not changed.
  *
  *  WHY HTTP CACHING CANNOT DO THIS. `Cache-Control: private, no-cache` means "cache this, and
  *  revalidate before reuse" — the browser is FORBIDDEN from answering without asking the server. That
@@ -27,10 +26,10 @@
  *  for a future reader to tune. The common SPA alternative — invalidating per query from the mutation
  *  that caused it — requires remembering which write affects which read, and forgetting is silent.
  *
- *  THE `max-age=60` OBJECTION, ANSWERED. `Workbench.tsx` used to argue that a client cache would
- *  reintroduce the defect `PERF-CACHE-REVISION` removed: "a define's profile stayed stale for a minute
- *  AFTER the run that changed it, with nothing able to invalidate it". That defect was TIME-BASED
- *  expiry with no invalidation path. This cache has no clock. It cannot outlive the revision, because
+ *  THE `max-age=60` OBJECTION, ANSWERED. A client cache would reintroduce the defect that
+ *  `PERF-CACHE-REVISION` rules out: "a define's profile stayed stale for a minute AFTER the run that
+ *  changed it, with nothing able to invalidate it". That defect is TIME-BASED expiry with no
+ *  invalidation path. This cache has no clock. It cannot outlive the revision, because
  *  the revision is the only thing that keeps an entry alive.
  */
 
@@ -68,9 +67,8 @@ const listeners = new Set<() => void>();
 export function noteRevision(headers: Headers | undefined | null): void {
   // LEARNING THE REVISION MUST NEVER FAIL THE READ IT RODE ALONG WITH, and that is a property rather
   // than a defensive habit. This runs on the success path of every request, so a throw here would turn
-  // "we could not read a response header" into "the read failed" — and callers like `fetchModeledTypes`
-  // catch their own failures and degrade, so the visible symptom would be an empty list from a request
-  // that actually succeeded. Not learning the revision is already handled: the cache keeps what it has
+  // "we could not read a response header" into "the read failed" — and the caller would then report a
+  // failure for a request that actually succeeded. Not learning the revision is already handled: the cache keeps what it has
   // and the next response corrects it.
   const seen = headers?.get?.(REVISION_HEADER);
   if (!seen) return;
@@ -83,8 +81,8 @@ export function noteRevision(headers: Headers | undefined | null): void {
   revision = seen;
   if (previous !== null && seen !== previous) {
     entries.clear();
-    // In-flight requests are deliberately NOT cancelled. They were issued against the old revision,
-    // but the server answers them from current state, so their results are newer than what was just
+    // In-flight requests are deliberately NOT cancelled. A request issued against the old revision is
+    // still answered from current state, so its result is newer than what was just
     // dropped. Cancelling would turn a revision change into a visible failure.
     for (const notify of listeners) notify();
   }

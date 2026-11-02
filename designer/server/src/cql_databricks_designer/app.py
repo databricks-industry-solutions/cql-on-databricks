@@ -1,12 +1,12 @@
 """The Designer's App (`SVC-APP-TOPOLOGY`, `APP-PER-FEATURE`) — the SPA's backend (BFF).
 
 Serves the built React SPA (dist/) and the Designer's `/api` surface. It proxies authoring compiles to the
-CQL Compiler Service over HTTP (translate), and reads the tagged knowledge tables through the
-resolver for library discovery and include resolution (KNOWLEDGE-LAKE-DIRECT, CONTENT-RESOLVER).
+CQL Compiler Service over HTTP (translate), and reads the picked environment's knowledge for library discovery and
+include resolution (KNOWLEDGE-LAKE-DIRECT, `DOC-ENVIRONMENT-PICKER`).
 
-It runs calculations through the evaluator's client as the signed-in user (`RUN-CLIENT-MIGRATION`), and serves
-the data sources and the knowledge-view Bind itself (`routes/data_sources.py`, `DEC-EVALUATOR-APP-REHOME`): there
-is no evaluator App to forward to since EVALUATOR-REMOVE. Browser -> Designer -> Compiler Service / SQL warehouse.
+It runs calculations through the client as the signed-in user (`RUN-CLIENT-MIGRATION`) in the environment the user
+picks, and lists the environments the user can see (`routes/environments.py`). Browser -> Designer -> Compiler
+Service / SQL warehouse.
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from cql_databricks.agent.server.wiring import assistant_server
 from cql_databricks_common import config
 from cql_databricks_designer.cache_stamp import CacheStamp, install as install_cache_revision
 from cql_databricks_common.compiler import CompilerClient, compile_provider
-from cql_databricks_designer.data_bindings import app_content_resolver
+from cql_databricks_designer.data_bindings import app_contents
 from cql_databricks_common.warehouse import close_sessions
 from cql_databricks_common.workspace import install_forwarded_identity
 
@@ -35,7 +35,7 @@ from .routes import (
     compile as compile_routes,
     designer as designer_routes,
     deployment as deployment_routes,
-    data_sources as data_sources_routes,
+    environments as environments_routes,
     runs as runs_routes,
     save as save_routes,
 )
@@ -71,17 +71,17 @@ def create_app() -> FastAPI:
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
     compiler = CompilerClient(config.compiler_endpoint(), config.compiler_token())
-    # DATA-SOURCE-UC-TAG — the data sources, read as each signed-in user and cached per user.
-    data_sources = data_sources_routes.user_data_sources(compiler.list_modeled_types)
-    # CONTENT-RESOLVER — one per process; it reads nothing until the first knowledge request.
-    content = app_content_resolver()
+    # DOC-ENVIRONMENT-PICKER — the environments, read as each signed-in user and cached per user.
+    environments = environments_routes.user_environments()
+    # KNOWLEDGE-LAKE-DIRECT — each environment's content, held per process; nothing is read until first asked.
+    contents = app_contents()
 
     # APP-ASSISTANT — the drawer's `/api/assistant/ask` loop dispatches through the agent's server
     # object, in process: the tool definitions it sends the model are generated from
     # `mcp_server.list_tools()`, so there is no second set of schemas to keep in step. The Designer adds
     # its own `get_specification` (AGENT-TOOL-REGISTRY). The agent's MCP surface is the agent's App;
     # this one mounts no `/mcp` (`APP-PER-FEATURE`).
-    mcp_server = assistant_server(contributed=designer_tools(content=content))
+    mcp_server = assistant_server(contributed=designer_tools(contents=contents))
 
     # PERF-CACHE-REVISION — browser caching for the whole reading surface, with ONE thing that
     # busts it. The stamp is a digest of the corpus generation and the data-source cache's generation plus
@@ -89,8 +89,8 @@ def create_app() -> FastAPI:
     # `cache_stamp.py` holds the whole policy and states what the digest cannot see.
     install_cache_revision(app, CacheStamp(version=app.version, readers={
         # `generation` moves on every load and reload, and reading it never forces a load.
-        "knowledge": lambda: [content.generation],
-        "data-sources": lambda: [data_sources.generation],
+        "knowledge": lambda: [contents.generation],
+        "environments": lambda: [environments.generation],
     }))
 
     # SEC-OBO — bind the signed-in user's forwarded credentials to the request context, so that
@@ -109,12 +109,12 @@ def create_app() -> FastAPI:
     # registered BEFORE the SPA catch-all, because that catch-all matches `/{path:path}` and swallows
     # whatever follows it. `tests/test_app_routes.py` pins the order for exactly that reason.
     app.include_router(deployment_routes.router(compiler=compiler))
-    app.include_router(compile_routes.router(compiler=compiler, content=content))
-    app.include_router(knowledge_routes.router(content=content, warehouse=data_sources_routes.warehouse))
-    app.include_router(designer_routes.router(content=content))
+    app.include_router(compile_routes.router(compiler=compiler, contents=contents))
+    app.include_router(knowledge_routes.router(contents=contents))
+    app.include_router(designer_routes.router(contents=contents))
     # DOC-OPEN-SAVE — save a library where it was opened, as the signed-in user.
-    app.include_router(save_routes.router(compiler=compiler, content=content, warehouse=data_sources_routes.warehouse))
-    app.include_router(data_sources_routes.router(data_sources=data_sources, content=content))
+    app.include_router(save_routes.router(compiler=compiler, contents=contents, warehouse=environments_routes.warehouse))
+    app.include_router(environments_routes.router(environments=environments))
     # RUN-CLIENT-MIGRATION — caller-owned durable calculations and complete-selection reads.
     app.include_router(runs_routes.router(
         compiler=compile_provider(config.compiler_endpoint(), config.compiler_token()), env=calculation_env()))

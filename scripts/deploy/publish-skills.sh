@@ -22,7 +22,7 @@ venv_py="$here/.venv/bin/python"
 cfg="$(cd "$here" && databricks bundle validate -t "$target" ${profile_args[@]+"${profile_args[@]}"} -o json)"
 var() { printf '%s' "$cfg" | python3 -c "import sys,json;v=json.load(sys.stdin).get('variables') or {};print((v.get(sys.argv[1]) or {}).get('value') or '')" "$1"; }
 args=(--schema "$(var agent_skills_schema)" --users-group "$(var agent_users_group)"
-      --workspace-users-group "$(var app_users_group)")
+      --workspace-users-group "$(var workspace_users_group)")
 
 [ ${#profile_args[@]} -eq 0 ] || export DATABRICKS_CONFIG_PROFILE="${profile_args[1]}"
 "$venv_py" "$here/scripts/deploy/publish_skills.py" "${args[@]}"

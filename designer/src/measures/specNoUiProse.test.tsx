@@ -9,12 +9,12 @@
 // same type as the author's own words — so the reader cannot tell it apart, and the provenance
 // machinery (`APP-NARRATIVE-PROVENANCE`) reports nothing about it because it does not know it exists.
 //
-// WHY A TEST AND NOT A CONVENTION. Both violations this was written for read as perfectly reasonable
-// code and were defended in their own comments at the time: the reaches sentence ("derived from the
+// WHY A TEST AND NOT A CONVENTION. Both violations this guards against read as perfectly reasonable
+// code and are defended in their own comments: the reaches sentence ("derived from the
 // ELM, so it is a fact") and the How-to-read fallback ("product copy about the page, not narration of a
 // measure"). Neither argument is about the reader's position, which is the thing that actually decides
-// it — and the fallback had gone stale exactly where it claimed authority, still describing an "Explain
-// chip" the document replaced with a heading badge. A grep is the only thing that catches the next one.
+// it — and a fallback goes stale exactly where it claims authority, still describing an "Explain
+// chip" when the document has a heading badge. A grep is the only thing that catches the next one.
 //
 // WHAT THIS DOES NOT FORBID. Labels, headings, empty states, tooltips, control text, and the
 // disclaimer that states whose words a paragraph is — none of them are prose ABOUT THE MEASURE. The
@@ -31,7 +31,7 @@ const READING_SURFACES = [
   "src/measures/MeasureNarrative.tsx",
 ];
 
-/** No exemptions. The one there was — the provenance popover's disclaimer — went with the badge
+/** No exemptions: the provenance popover's disclaimer is removed with the badge
  *  (`DOC-EXPLAIN-REMOVE`). Matched on a distinctive fragment rather than a line number, so a new entry
  *  re-opens the question rather than silently widening the rule. */
 const EXEMPT: string[] = [];

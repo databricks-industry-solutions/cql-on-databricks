@@ -1,6 +1,6 @@
-// PHASE-S2 / APP-LOGIC-VIEW (PROC-TDD) — Narrative derivation from CQL source.
+// APP-LOGIC-VIEW (PROC-TDD) — Narrative derivation from CQL source.
 import { describe, it, expect } from "vitest";
-import { libraryHeader, parseDefinitions } from "./logic.ts";
+import { parseDefinitions } from "./logic.ts";
 
 const SRC = `library ExampleMeasure version '1.2.0'
 using FHIR version '4.0.1'
@@ -18,15 +18,6 @@ define public "Denominator":
 define function "ToString"(value String):
   value
 `;
-
-describe("libraryHeader", () => {
-  it("reads the library name, version, and model", () => {
-    expect(libraryHeader(SRC)).toEqual({ name: "ExampleMeasure", version: "1.2.0", model: "FHIR 4.0.1" });
-  });
-  it("is empty for a headerless snippet", () => {
-    expect(libraryHeader("define \"X\": 1").name).toBe("");
-  });
-});
 
 describe("parseDefinitions (APP-LOGIC-VIEW)", () => {
   it("lists every top-level definition in source order with kind + access", () => {

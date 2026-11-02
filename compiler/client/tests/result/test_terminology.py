@@ -17,7 +17,7 @@ from cql_databricks.result.insights.terminology import extraction_sql, resource_
 
 
 def paths_for(model: str, resource_type: str):
-    """The coding elements of a (model, type) — what this module used to own outright."""
+    """The coding elements of a (model, type)."""
     return elements_for(model, resource_type, kind=KIND_CODING)
 
 

@@ -2,8 +2,8 @@
 
 Requirements the loader owns. Requirements that span features, and the rule for where a requirement
 lives, are in [`docs/requirements.md`](../../docs/requirements.md). Each ID is stable, unique across
-every registry, and cited from code (`PROC-CITE-REQ`). A requirement that stops being true moves to
-[Retired](#retired) with a one-line reason, so old citations still resolve.
+every registry, and cited from code (`PROC-CITE-REQ`). A requirement that stops being true is
+deleted, with every citation of it (`PROC-CURRENT-DEFINITION`).
 
 ## Content
 
@@ -11,29 +11,17 @@ Importing, storing and resolving measure content and value sets.
 
 | ID | Requirement |
 |---|---|
-| `CONTENT-BAKE-AUTHORITY` | Content-ingest schema names are named constants, not parameters. The one built-in schema is the examples', `example_measures` (`CONTENT-EXAMPLE-PRELOAD`). |
-| `CONTENT-CATALOG-LAYOUT` | Authority-segregated schemas: catalog.&lt;authority&gt;.{measure, library} for measure content; catalog.&lt;schema&gt;.valueset for value sets, beside the measures or apart (`CONTENT-TERMINOLOGY-SCHEMA`). |
 | `CONTENT-FHIR-VARIANT` | Knowledge tables store each FHIR resource in one `VARIANT` column, so nothing is lost and no schema is generated. A typed struct is not used: the Measure resource alone has thousands of fields. |
-| `CONTENT-FIXTURE-ONE-PER-SUBJECT` | SUPERSEDED: the importer does not load test cases. |
-| `CONTENT-IG-ENGINE-ALIGN` | SUPERSEDED: nothing is fetched from an implementation-guide repository. |
-| `CONTENT-IMPORT-MEASURES` | One function, `cql_databricks.data_bindings.measure_import.import_measures` in the `cql-databricks` client, imports measures: FHIR `Measure`, `Library` and `ValueSet` resources (or Bundles of them) and value-set code rows the caller has read, into a catalog and schema the caller names, with value sets beside them or in a terminology schema of their own, then tags them. It reads no file and fetches nothing. Before writing it checks every problem and reports them together: a Measure naming a Library not in the import or the schema, a value set a library declares with no codes in the import or the terminology table, a ValueSet that needs expanding. Other resource types are counted as skipped. A dry run checks and writes nothing. |
+| `CONTENT-IMPORT-MEASURES` | One function, `cql_databricks.data_bindings.measure_import.import_measures` in the `cql-databricks` client, imports measures: FHIR `Measure`, `Library` and `ValueSet` resources (or Bundles of them) and value-set code rows the caller has read, into the `knowledge_store` of the environment the caller names (`DATA-ENVIRONMENT-LAYOUT`). It reads no file and fetches nothing. Before writing it checks every problem and reports them together: a Measure naming a Library not in the import or the schema, a value set a library declares with no codes in the import or the store's `valueset` table, a ValueSet that needs expanding. Other resource types are counted as skipped. A dry run checks and writes nothing. |
 | `CONTENT-IMPORT-SKILL` | One of the agent's skills (`SVC-MCP-SKILLS`), `agent/skills/import-quality-measures/SKILL.md`, guides a user through importing quality measures with `CONTENT-IMPORT-MEASURES`: reaching and reading their content, getting value-set codes from a terminology service they name, finding targets they may write and the deployment can see, a dry run, the import and a compile check. It names no content source; the agent reasons out where the content is from what the user says. It asks the user to confirm they may use the content under its terms. Served by `get_skill`, and published by `DEPLOY-AGENT-SKILLS` to the workspace skills folder and as a Unity Catalog skill. It installs the client wheel alone and holds no deployment value, since it is served verbatim: it finds the runtime Volume by its comment, and asks the user for the deployment's catalog scopes. |
-| `CONTENT-IMPORT-TARGET-TAG` | The import (`CONTENT-IMPORT-MEASURES`) loads into named catalog.schema and tags it cql_databricks_knowledge / cql_databricks_terminology. Tags need Unity Catalog. |
-| `CONTENT-IMPORTER-FHIR-SCHEMAS` | The shipped sources own their FHIR resource schemas (`scripts/deploy/shipped_sources/src/shipped_sources/resource-schemas.json`). Compiler's dumpResourceSchemas does not overwrite it; retrieve UDTF adapts, so they can drift without breaking runs. |
+| `CONTENT-IMPORTER-FHIR-SCHEMAS` | The shipped sources' FHIR resource schemas (`scripts/deploy/shipped_sources/src/shipped_sources/resource-schemas.json`) are the compiler's `dumpResourceSchemas` output, committed, so the synthetic population lands in the shape the compiler reads (`DATA-MODEL-SCHEMA`). `./gradlew checkResourceSchemas`, part of `checkAll`, fails when they differ; `./gradlew updateResourceSchemas` refreshes the copy. |
 | `CONTENT-INCREMENTAL` | MERGE on (url, version) for Measure/Library (upsert). Re-runnable without data loss. A value set's codes replace that value set's earlier codes whole, keyed on `valueset_id`, so two imports sharing a value set keep one copy and an import never deletes a value set it did not bring. |
 | `CONTENT-INGEST` | Standalone ETL tool loads FHIR Measure/Library resources into Unity Catalog; zero dependency on app or engine. It fetches nothing. One import function (`CONTENT-IMPORT-MEASURES`) takes the resources a caller has read; the deploy loads `examples/` through it (`CONTENT-EXAMPLE-PRELOAD`). |
 | `CONTENT-LAKEHOUSE-STANDARD-ONLY` | Published tables are standardized FHIR resources or do not belong. Junctions and denormalizations are derived downstream. The published schema has no measure_library or valueset_ref. Valueset keeps tall shape (engine binding contract). |
 | `CONTENT-MARKETPLACE-READY` | Table layout and provenance columns designed for eventual Databricks Marketplace publishing. |
 | `CONTENT-MEASURE-LIBRARY-LINK` | The link from a Measure to its root CQL Library is derived from the Measure resource when read. It is an index with no truth of its own. |
-| `CONTENT-MEASURE-NAME-PUBLISHED` | SUPERSEDED: there are no fixtures and no pins, so there is no rename to record. |
 | `CONTENT-NO-DERIVED-COLUMNS` | A knowledge table holds the resource, its identity and its provenance only. `url` and `version` are generated columns. Anything else derived from the resource is computed when read. |
-| `CONTENT-PIN-ASSERT` | SUPERSEDED: the importer fetches no packages, so there is no pin to assert against. |
-| `CONTENT-PIN-IG-TEST-DIR` | SUPERSEDED: there are no pins. |
-| `CONTENT-PIN-LOCAL-EDIT` | SUPERSEDED: the importer fetches no packages; the measurement period is a run-time parameter (`LANG-PARAMETER`). |
-| `CONTENT-PIN-LOCK` | SUPERSEDED: the importer fetches no packages, so there is no lock. |
-| `CONTENT-RUN-ALL-DEFAULT` | SUPERSEDED: the importer has one input and no flags. |
 | `CONTENT-SHARE-FAITHFUL` | Published knowledge stays faithful to FHIR spec including where inconvenient (base64 stays base64). Ergonomics live downstream of the share. Consumers derive optimized forms. |
-| `CONTENT-TERMINOLOGY-SCHEMA` | Value-set expansions live in the schema the loader names: beside the measures, or in a terminology schema of their own, so several measure sets share one copy. |
 
 ## Synthetic data
 
@@ -41,9 +29,9 @@ The synthetic patient generator and the populations it produces.
 
 | ID | Requirement |
 |---|---|
-| `DATA-SYNTH-LARGE` | The synthetic population large data source (`synthetic-population-large`, schema `synthetic_population_large`): about a million patients, 250,000 requested per pinned measure across the four pinned example measures (`loader/docs/synthetic-data.md`), generated by the patient data synthesizer at realistic rates, with one patient per manifest row carrying expected results. The cohorts are synthesized from the repository's own measures. Managed source, never the default. The recipe `loader/synthesizer/recipes/synthetic-large.json` defines the cohorts, their seeds and size, in the same shape as `DATA-SYNTH-SMALL`'s, and `scripts/generate-large-data.sh` generates, verifies and lands them, run only by hand. No build, test or deploy step runs it. `load.py` uploads each cohort's resources and manifest gzipped (`<Type>.ndjson.gz`, `manifest.jsonl.gz`) and reads only that form; a cohort found uncompressed in the volume fails the load. |
-| `DATA-SYNTH-MARKETPLACE` | Not built. Planned after v0.3 (roadmap `DATA-SYNTH-MARKETPLACE`). A pre-generated synthetic population (`DATA-SYNTH-LARGE`), on the `DATA-CONTRACT` layout with synthetic markers (`SYNTH-PDS-SYNTHETIC-TAG`), is published as a free Databricks Marketplace listing. A deployment installs it as a catalog and tags its schema `cql_databricks_data_source` (`DATA-SOURCE-UC-TAG`), so it is demoable from the first deploy without generating data in the workspace. One population serves every measure, so a shared library's results are computed once (`DEC-LIBRARY-OWNS-RESULTS`). The repository holds the generation Job, the install-and-tag step and the docs; the listing's provider profile is the publisher's. |
-| `DATA-SYNTH-SMALL` | The synthetic population small data source (`synthetic-population-small`, schema `synthetic_population_small`): roughly 1,000 patients per pinned example measure, defined in the synthesizer and run at a small scale to get people started easily. It is deployed with the project by default, not something they have to synthesize. It is the one example set and the default data source. It is plausible, comprehensive data with no answer key; the answer keys are the conformance tests' (`compiler/conformance`). The recipe is `loader/synthesizer/recipes/synthetic-small.json`. The committed data is regenerated only by hand, with `scripts/generate-example-data.sh`, to update the project's sample data. No build, test or deploy step regenerates it. |
+| `DATA-SYNTH-LARGE` | The synthetic population large, the data of an environment of its own, `synthetic-population-large`, in its own catalog: about a million patients, 250,000 requested per pinned measure across the four pinned example measures (`loader/docs/synthetic-data.md`), generated by the patient data synthesizer at realistic rates, with one patient per manifest row carrying expected results. The cohorts are synthesized from the repository's own measures. Never the default environment. The recipe `loader/synthesizer/recipes/synthetic-large.json` defines the cohorts, their seeds and size, in the same shape as `DATA-SYNTH-SMALL`'s, and `scripts/generate-large-data.sh` generates, verifies and lands them, run only by hand. No build, test or deploy step runs it. `load.py` uploads each cohort's resources and manifest gzipped (`<Type>.ndjson.gz`, `manifest.jsonl.gz`) and reads only that form; a cohort found uncompressed in the volume fails the load. |
+| `DATA-SYNTH-MARKETPLACE` | Not built. Planned after v0.3 (roadmap `DATA-SYNTH-MARKETPLACE`). A pre-generated synthetic population (`DATA-SYNTH-LARGE`), on the `DATA-CONTRACT` layout with synthetic markers (`SYNTH-PDS-SYNTHETIC-TAG`), is published as a free Databricks Marketplace listing. A deployment installs it as a catalog and tags it as an environment (`CLIENT-ENVIRONMENT`), so it is demoable from the first deploy without generating data in the workspace. One population serves every measure, so a shared library's results are computed once (`DEC-LIBRARY-OWNS-RESULTS`). The repository holds the generation Job, the install-and-tag step and the docs; the listing's provider profile is the publisher's. |
+| `DATA-SYNTH-SMALL` | The synthetic population small, the data of the default environment, in its `data_store` (`DEPLOY-DEFAULT-ENVIRONMENT`): roughly 1,000 patients per pinned example measure, defined in the synthesizer and run at a small scale to get people started easily. It is deployed with the project by default, not something they have to synthesize. It is the one example set. It is plausible, comprehensive data with no answer key; the answer keys are the conformance tests' (`compiler/conformance`). The recipe is `loader/synthesizer/recipes/synthetic-small.json`. The committed data is regenerated only by hand, with `scripts/generate-example-data.sh`, to update the project's sample data. No build, test or deploy step regenerates it. |
 | `SYNTH-MODULE` | The compiler ships a synthetic data generation module: realistic synthetic healthcare data across multiple standards (FHIR first, generated from measure logic by `SYNTH-PDS-MODULE`), landed on the same `data-contract` so a generated source is indistinguishable from a customer source to the binding path. |
 | `SYNTH-PDS-CORRELATED` | The solver instantiates related resources and solves temporal relations by pinning slots, supporting measures with multiple encounters, extension slots, and constraints on value sets or null values. |
 | `SYNTH-PDS-DETERMINISM` | All randomness flows from one seed via `(seed, patient, site)` keying. Identical (measure, config, seed) reproduce byte-identical NDJSON and manifest; rows carry no wall-clock timestamp. |
@@ -68,24 +56,4 @@ The data sources the loader lands.
 
 | ID | Requirement |
 |---|---|
-| `CONFORMANCE-SCHEMA` | SUPERSEDED by `CONTENT-EXAMPLE-PRELOAD` and `DATA-SAMPLE-SOURCE`, which land the example patients as one data source: the per-measure conformance sources were built from official test cases fetched from GitHub, which are removed. The compiler's conformance corpus stays internal to `compiler/`. |
-| `DATA-CONFORMANCE-CORPUS` | SUPERSEDED by `DATA-SAMPLE-SOURCE`: the deck corpus existed only for published test content, which is removed. |
-| `DATA-DEMO-POPULATION` | SUPERSEDED by `DATA-SYNTH-SMALL`, which reuses its tag and schema name: the demo population and its generator were built on an official measure's shape, which is removed. Synthetic populations are re-synthesized from the repository's own measures (`DATA-SYNTH-LARGE`). |
-| `DATA-SAMPLE-SOURCE` | SUPERSEDED by `DATA-SYNTH-SMALL`: one example set. The 48 hand-written patients remain only as conformance fixtures. |
 
-## Retired
-
-| ID | Status |
-|---|---|
-| `CONTENT-FHIR-IG` | Retired: IG packages are not fetched from CI builds. See `CONTENT-IG-ENGINE-ALIGN`. |
-| `CONTENT-STRUCT-RENDER-FIDELITY` | Retired: resources are stored as `VARIANT`, which drops nothing. See `CONTENT-FHIR-VARIANT`. |
-| `CONTENT-STRUCT-ROUNDTRIP` | Retired: resources are stored as `VARIANT`, which drops nothing. See `CONTENT-FHIR-VARIANT`. |
-| `DATA-SYNTH-1M` | SUPERSEDED by `DATA-SYNTH-LARGE`: renamed, because the population grows with each measure's cohort, so a count in its name goes stale. |
-| `DATA-SYNTHEA-SOURCE` | SUPERSEDED by `SYNTH-PDS-MODULE`: the synthesizer generates the synthetic sources from measure logic, and nothing used Synthea. The importer's Synthea path and the Synthea seeder are removed. |
-| `MOUNT-MEASURE-NAME-MAP` | Retired: the published name is stored at ingest. See `CONTENT-MEASURE-NAME-PUBLISHED`. |
-| `SYNTH-DETERMINISM` | Retired: Proposed, see `SYNTH-PDS-DETERMINISM`. |
-| `SYNTH-FORMAT-EMITTER` | Retired: Proposed multi-format support. Not implemented. |
-| `SYNTH-MEASURE-PROFILE` | Retired: Proposed generation profiles. Not implemented. |
-| `SYNTH-REALISM` | Retired: Proposed realism layer. Not implemented. |
-| `SYNTH-ROUNDTRIP` | Retired: Proposed cross-format parsing. Not implemented. |
-| `SYNTH-SINGLE-SOURCE` | Retired: Proposed design principle. Not implemented. |

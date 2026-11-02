@@ -98,8 +98,7 @@ def test_unreviewed_draft_is_serialisable(schema):
 
 
 def test_narrated_prose_carries_inline_references(schema):
-    """Fixes B6. Inline refs are structural, which is what retires scanning prose for known define
-    names."""
+    """Inline refs are structural, which is what replaces scanning prose for known define names."""
     narrative = ('<Narrative provenance="narrated">Excludes patients meeting '
                  '<ConceptRef library="Exclusions" define="Has End Of Life Care"/>.</Narrative>')
     assert schema.is_valid(_minimal(narrative))
@@ -172,7 +171,7 @@ def test_population_carries_a_stable_id(schema):
 
 
 def test_episode_and_stratifier_populations_are_expressible(schema):
-    """F8/F9 — CMS eCQMs are the demo corpus and several use stratifiers and SDEs; a model that
+    """F8/F9 — published eCQMs are the demo corpus and several use stratifiers and SDEs; a model that
     cannot express them cannot describe the content we ship."""
     doc = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Specification xmlns="{NS}" schemaVersion="1.0">

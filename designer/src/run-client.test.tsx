@@ -1,30 +1,27 @@
-// SVC-RESOURCE-SCHEMA / DATA-SOURCE-PROFILE (PROC-TDD) — fetchModeledTypes fallback contract: the editor's
-// type dropdown must get the engine's modeled types when available, and an EMPTY list (never a throw) when
-// the compiler is unreachable/degraded, so it falls back to its static list rather than an empty picker.
+// SVC-RESOURCE-SCHEMA — fetchModeledTypes: the editor's type list is the engine's answer, and a failure is an
+// error the editor can show. Never an empty list, which would read as "the engine models nothing".
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { fetchModeledTypes } from "./run-client.ts";
 
-function mockFetch(body: unknown, ok = true) {
-  global.fetch = vi.fn(async () => ({ ok, json: async () => body })) as unknown as typeof fetch;
+function mockFetch(body: unknown, { ok = true, status = 200 } = {}) {
+  global.fetch = vi.fn(async () => ({ ok, status, json: async () => body })) as unknown as typeof fetch;
 }
 
-describe("fetchModeledTypes", () => {
+describe("fetchModeledTypes (SVC-RESOURCE-SCHEMA)", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("returns the engine's modeled types when not a fallback", async () => {
-    mockFetch({ types: ["Patient", "Encounter"], fallback: false });
+  it("returns the engine's modeled types", async () => {
+    mockFetch({ types: ["Patient", "Encounter"] });
     expect(await fetchModeledTypes()).toEqual(["Patient", "Encounter"]);
   });
 
-  it("returns [] on the compiler fallback so the editor uses its static list", async () => {
-    mockFetch({ types: [], fallback: true });
-    expect(await fetchModeledTypes()).toEqual([]);
+  it("rejects with the server's message when the compiler cannot answer", async () => {
+    mockFetch({ error: "compiler unreachable listing modeled types" }, { ok: false, status: 502 });
+    await expect(fetchModeledTypes()).rejects.toThrow("compiler unreachable listing modeled types");
   });
 
-  it("returns [] on an HTTP or transport failure (never throws)", async () => {
-    mockFetch({}, false);
-    expect(await fetchModeledTypes()).toEqual([]);
+  it("rejects when the request itself fails, rather than answering with no types", async () => {
     global.fetch = vi.fn(async () => { throw new Error("unreachable"); }) as unknown as typeof fetch;
-    expect(await fetchModeledTypes()).toEqual([]);
+    await expect(fetchModeledTypes()).rejects.toThrow("unreachable");
   });
 });

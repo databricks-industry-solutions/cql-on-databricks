@@ -16,8 +16,10 @@ from cql_databricks.compiler import CqlClient, CqlQuery, config, cql as run_cql
 from cql_databricks.compiler.config import ConfigResolutionError
 from cql_databricks.compiler.library import Library, load_library, _cql_literal
 from cql_databricks.compiler.providers import (
+    SCALAR,
     CompileProvider,
     CompileRequest,
+    DefineShape,
     LibraryGraph,
     SqlCompileResult,
     SqlStatement,
@@ -62,7 +64,8 @@ class _FakeProvider(CompileProvider):
         stmts = [SqlStatement("__frame_base", "view", "CREATE OR REPLACE TEMP VIEW __frame_base AS SELECT 1")]
         stmts += [SqlStatement(d, "view", f"CREATE OR REPLACE TEMP VIEW `{d}` AS SELECT 1")
                   for d in self._defines]
-        return SqlCompileResult(statements=stmts, target="__frame_base", defines=list(self._defines))
+        shapes = [DefineShape(define=d, obj=d, kind=SCALAR) for d in self._defines]
+        return SqlCompileResult(statements=stmts, target="__frame_base", defines=list(self._defines), shapes=shapes)
 
     def describe(self, request: CompileRequest) -> LibraryGraph:
         self.described = request
@@ -72,7 +75,7 @@ class _FakeProvider(CompileProvider):
 
 
 def _client(provider):
-    return (CqlClient.builder().provider(provider).data_catalog("fhir").spark(_FakeSpark()).build())
+    return (CqlClient.builder().provider(provider).spark(_FakeSpark()).build())
 
 
 class HandleTests(unittest.TestCase):
@@ -101,9 +104,9 @@ class HandleTests(unittest.TestCase):
                              '{"library": {"identifier": {"id": "Sample"}}}')
 
     def test_cql_resource_without_sibling_elm_falls_back_to_cql_text(self):
-        """A `.cql` resource with NO pre-translated sibling used to raise FileNotFoundError, which made
-        `client.cql("measures/Foo.cql")` unusable against any checkout of published content (content repos
-        ship CQL, not ELM). It now binds the CQL TEXT and lets the service translate."""
+        """A `.cql` resource with NO pre-translated sibling binds the CQL TEXT and lets the service translate.
+        Content repos ship CQL, not ELM, so `client.cql("measures/Foo.cql")` works against any checkout of
+        published content."""
         client = _client(_FakeProvider())
         with tempfile.TemporaryDirectory() as d:
             path = pathlib.Path(d) / "Solo.cql"
@@ -121,8 +124,8 @@ class HandleTests(unittest.TestCase):
         self.assertIsNone(client.cql("ScreeningMeasure")._lib.elm or None)
 
     def test_a_source_and_library_together_is_a_loud_error(self):
-        """Two bodies is a mistake, not a precedence question. Silently honoring one (it used to compile
-        `library=` and drop the source with no warning) is the quiet-wrong-answer class this surface
+        """Two bodies is a mistake, not a precedence question. Silently honoring one (compiling
+        `library=` and dropping the source with no warning) is the quiet-wrong-answer class this surface
         exists to avoid."""
         client = _client(_FakeProvider())
         with self.assertRaises(ValueError) as ctx:
@@ -137,14 +140,7 @@ class HandleTests(unittest.TestCase):
                   .udf_schema("acme.runtime").build())
         client.cql(cql='define "x": 1').exec("Numerator")
         self.assertEqual(prov.seen.udf_schema, "acme.runtime")
-        self.assertEqual(prov.seen.to_json()["sources"]["udfs"], {"schema": "acme.runtime"})
-
-    def test_valueset_table_knob_reaches_the_request_where_the_service_reads_it(self):
-        prov = _FakeProvider()
-        client = (CqlClient.builder().provider(prov).spark(_FakeSpark())
-                  .valueset_table("cat.sch.vs").build())
-        client.cql(cql='define "x": 1').exec("Numerator")
-        self.assertEqual(prov.seen.to_json()["sources"]["valuesets"], {"table": "cat.sch.vs"})
+        self.assertEqual(prov.seen.to_json()["runtime"], {"schema": "acme.runtime"})
 
     def test_udf_jar_is_shipped_once_per_session_not_once_per_exec(self):
         """The upload hook runs on EVERY exec, and Spark Connect rejects re-adding an artifact it already
@@ -205,8 +201,8 @@ class HandleTests(unittest.TestCase):
                          "Interval[@2026-01-01T00:00:00.0, @2026-12-31T23:59:59.999]")
 
     def test_measurement_period_bounds_follow_the_declared_point_type(self):
-        """RUN-EVAL-ID-INPUTS — one rule for the compile parameter and the evaluator's ``__eval_id``: a DateTime
-        period widens a bare date, a Date period truncates a datetime, anything else is refused."""
+        """LANG-PARAM-INSTANT — a DateTime period widens a bare date, a Date period truncates a datetime, anything
+        else is refused."""
         from cql_databricks.compiler import measurement_period_bounds, measurement_period_literal
         self.assertEqual(measurement_period_bounds("2026-01-01", "2026-12-31"),
                          ("2026-01-01T00:00:00.000", "2026-12-31T23:59:59.999"))
@@ -243,11 +239,10 @@ class ExecTests(unittest.TestCase):
     def test_exec_arity_follows_the_CALL_not_the_librarys_contents(self):
         """BUILD-CLIENT-QUERY. A library with exactly ONE population must still give `exec()` a dict.
 
-        Previously the branch was `len(resolved_set) == 1`, so `exec()` returned a bare DataFrame for a
-        one-population measure and a dict for every other — meaning `for name, df in q.exec().items()`
-        worked on ScreeningMeasure and raised AttributeError on the next measure. It also made the planned switch to
-        authoritative populations metadata (a FHIR `Measure`) able to change the RETURN TYPE of released
-        caller code. Arity now depends only on how many targets the CALLER named.
+        Arity follows the CALL, not the library's contents: `exec()` returns a dict whatever the number of
+        populations the library resolves, so `for name, df in q.exec().items()` works on every measure. A planned
+        switch to authoritative populations metadata (a FHIR `Measure`) cannot change the RETURN TYPE of caller
+        code. Arity depends only on how many targets the CALLER named.
         """
         one_pop = _FakeProvider(defines=("Numerator", "DemographicAttribute"), materialized=())
         q = _client(one_pop).cql(cql='define "x": 1')
@@ -313,15 +308,14 @@ class ContextAndOptionTests(unittest.TestCase):
         _client(prov).cql(cql='define "x": 1', context="Population").exec("x")
         self.assertEqual(prov.seen.context, "Population")
 
-    def test_option_alias_and_data_model_and_data_catalog_knobs(self):
+    def test_option_alias_and_data_model_knobs(self):
         prov = _FakeProvider()
         client = (CqlClient.builder().provider(prov).spark(_FakeSpark())
                   .option(config.CONF_CONTEXT, "Practitioner")
-                  .data_model("OMOP").data_catalog("myhosp").build())
+                  .data_model("OMOP").build())
         lib = client.with_library(cql='define "x": 1')
         self.assertEqual(lib.context, "Practitioner")
         self.assertEqual(lib.overrides[config.OVERRIDE_DATA_MODEL], "OMOP")
-        self.assertEqual(lib.overrides[config.OVERRIDE_FHIR_CATALOG], "myhosp")
 
 
 class StringFormTests(unittest.TestCase):
@@ -344,11 +338,12 @@ class StringFormTests(unittest.TestCase):
         #
         # The exception CLASS is deliberately not pinned. This package resolves the zero-config
         # Databricks tier before the config tier (decision 10), so with no endpoint the first thing to
-        # fail is App-registry discovery (ValueError naming the conf keys) rather than config resolution
+        # fail is App-registry discovery (AppLookupError naming the App) rather than config resolution
         # (ConfigResolutionError). Both are loud and both name the fix; asserting one class would be
         # asserting which tier ran, which is not the behavior a caller depends on.
+        from cql_databricks.compiler._workspace import AppLookupError
         with mock.patch.dict(os.environ, {}, clear=True):
-            with self.assertRaises((ConfigResolutionError, ValueError)) as caught:
+            with self.assertRaises((ConfigResolutionError, AppLookupError, ValueError)) as caught:
                 run_cql('define "x": 1')                           # no client, no endpoint → loud FAIL
         self.assertRegex(str(caught.exception), r"endpoint|appName|provider\.",
                          "the failure must name the setting that would fix it")

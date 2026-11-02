@@ -39,11 +39,11 @@ sync:
 
 # DEPLOY-APP-GRANTS — the App service-principal grants, as part of the bundle.
 #
-# The Designer has no Lakebase (`SPLIT-LAKEBASE` SUPERSEDED). The UNITY CATALOG grants cannot be declarative: an App
-# `uc_securable` resource covers only CONNECTION/FUNCTION/TABLE/VOLUME, and what the BFF needs
-# is CATALOG-level (USE CATALOG / CREATE SCHEMA). The only declarative route would be `resources.catalogs`,
-# which would put the product's data catalog under bundle management — and therefore under
-# `bundle destroy` — for a catalog this bundle does not create and must not own.
+# The Designer has no Lakebase. The Apps' SCHEMA grants are bundle resources (the
+# environment schemas under `resources.schemas`, naming each App's service principal). Their CATALOG grant, USE CATALOG,
+# cannot be: an App `uc_securable` resource covers only CONNECTION/FUNCTION/TABLE/VOLUME, and the only declarative
+# route would be `resources.catalogs`, which would put the product's data catalog under bundle management — and
+# therefore under `bundle destroy` — for a catalog this bundle does not create.
 #
 # So it is a bundle SCRIPT: `databricks bundle run grant_app_access` executes it in the bundle's own auth
 # + target context (DATABRICKS_BUNDLE_TARGET), which is what makes it part of the deployment rather than
@@ -68,6 +68,11 @@ scripts:
   # type for a skill or a workspace folder. `scripts/deploy/deploy.sh` (step 7.5) also calls it directly.
   publish_skills:
     content: ./scripts/deploy/publish-skills.sh
+  # DEPLOY-ENVIRONMENT-TAG-POLICIES — govern the environment tags, so only the deployer and `admins` can tag a catalog
+  # an environment or the default. A script because a bundle has no tag-policy resource. deploy.sh (step 7.9) also
+  # calls it directly, before step 8 tags the default environment.
+  environment_tag_policies:
+    content: bash ./scripts/deploy/environment-tag-policies.sh
 
 variables:
   compiler_token:
@@ -75,9 +80,6 @@ variables:
       RFC 6750 bearer the Designer BFF / notebook client send to the Compiler Service. Local-dev fallback
       only; on Databricks this is replaced by serverless->App OAuth token-exchange (SVC-COMPILE-ENDPOINT).
     default: ""
-  terminology_mounted:
-    description: Whether the compiler signals runtime-mounted value-set views (CQL_TERMINOLOGY; on = default).
-    default: "on"
   # The runtime LAYER (SVC-CATALOG-LAYOUT): catalog = product, `runtime` schema = the execution machinery
   # (deploy-once / version-pinned, its own grant). The bundle CREATES the schema + volume (resources below);
   # these three knobs make its location configurable. The volume holds: the opaque-UDF catalog JAR (the
@@ -102,15 +104,6 @@ variables:
       (SVC-RUNTIME-UDF-UC) in one SQL session. Also the warehouse the run log, the
       example provisioning and the Apps use. Required: scripts/deploy/deploy.sh stops while it is empty.
     default: ""
-  designer_results_catalog:
-    description: >-
-      RUN-CLIENT-PRIVATE-PROVISIONING — the catalog holding the Designer's per-user result schemas. A
-      platform administrator creates it and grants Designer users USE CATALOG and CREATE SCHEMA;
-      deployment does neither. Callers create their own stable schemas. May equal uc_catalog for a
-      single-catalog deployment. No exclusive-access guarantee. Not bundle-owned, so bundle destroy
-      cannot delete its data. It is the only results catalog (PIPE-RESULTS-CATALOG-ISOLATION SUPERSEDED).
-      Required: set it in databricks.local.yml; scripts/deploy/deploy.sh refuses to deploy while it is empty.
-    default: ""
   assistant_endpoint:
     description: >-
       APP-ASSISTANT — the Model Serving chat endpoint the assistant drawer's tool loop calls
@@ -126,23 +119,16 @@ variables:
       is the base the example measures use; set your organization's own in databricks.local.yml before anyone
       creates a library, since a canonical URL is an identity a library keeps.
     default: "http://example.org/fhir"
-  catalog_scopes:
-    description: >-
-      CLIENT-DISCOVERY-SCOPE — the ordered, comma-separated catalog scopes (`catalog` or `catalog.schema`) the
-      Apps and the deploy's knowledge-view bind discover data sources, knowledge and terminology in; an earlier
-      scope wins a name. Required: set it in databricks.local.yml; scripts/deploy/deploy.sh refuses to deploy while it
-      is empty. A customer's own notebooks and Jobs set their own scopes in their client session.
-    default: ""
   designer_catalog:
     description: >-
       APP-RUN-LOG, DEC-RUN-LOG-LOCATION — the catalog of the shared, bundle-created `designer` schema, which
       holds the Designer run log (`designer.runs`, `designer.run_steps`) and later Designer-owned shared
-      tables. Not designer_results_catalog: that one holds users' private schemas. The deployer needs CREATE
-      SCHEMA on it.
+      tables. The deployer needs CREATE SCHEMA on it.
     default: "${var.uc_catalog}"
   run_log_readers_group:
     description: >-
-      APP-RUN-LOG — the account group granted SELECT on the Designer run log (operators). Set it in
+      APP-RUN-LOG — the account group granted SELECT on the Designer's shared schema, which holds the run log
+      (operators). Set it in
       databricks.local.yml; scripts/deploy/deploy.sh refuses to deploy while it is empty.
     default: ""
   app_users_group:
@@ -151,6 +137,26 @@ variables:
       reached through another App is reached as themselves (APP-TO-APP-OBO), so each App must grant them.
       Set it in databricks.local.yml; scripts/deploy/deploy.sh refuses to deploy while it is empty. Empty by
       default so local runs, which read the bundle, do not need it.
+    default: ""
+  admins:
+    description: >-
+      DEPLOY-PROJECT-ADMINS, DEPLOY-ENVIRONMENT-TAG-POLICIES — the project's admins besides the deployer: users (by
+      email), service principals (by application ID) or groups. Every deploy adds each to the workspace and its admins
+      group, and lets each tag a catalog an environment or the default. Set it in databricks.local.yml. Empty by
+      default: the deployer alone.
+    type: complex
+    default: []
+  govern_environment_tags:
+    description: >-
+      DEPLOY-ENVIRONMENT-TAG-POLICIES — true makes the three environment tags governed tags, so only the deployer and
+      admins can tag a catalog an environment or the default. false skips it, for an account with no room for three
+      more tag policies (1,000 per account), and the deploy warns that the tags are not governed.
+    default: true
+  workspace_users_group:
+    description: >-
+      DEPLOY-AGENT-SKILLS — the WORKSPACE group granted read on the workspace skills folder Genie Code loads. A workspace
+      object takes workspace groups, which Unity Catalog does not; the other groups here are account groups. Set it in
+      databricks.local.yml; scripts/deploy/deploy.sh refuses to deploy while it is empty.
     default: ""
   agent_users_group:
     description: >-
@@ -254,7 +260,11 @@ resources:
     # (`DEC-EVALUATOR-APP-REHOME`).
     cql_databricks_designer:
       name: cql-databricks-designer
-      description: "CQL-on-Databricks Designer — the Specification authoring UI (SPA + FastAPI BFF). SVC-APP-TOPOLOGY."
+      # DEPLOY-APP-GRANTS — the reference to the agent App orders this App after it. Both declare the compiler App as
+      # a resource, so creating each writes its service principal into the compiler App's permissions; created at
+      # once (they otherwise depend on the same two resources), one write failed with RESOURCE_CONFLICT and left this
+      # App in a fatal state. A bundle has no depends_on for resources: a reference is the only ordering edge.
+      description: "CQL-on-Databricks Designer — the Specification authoring UI (SPA + FastAPI BFF). SVC-APP-TOPOLOGY. Deployed with ${resources.apps.cql_databricks_agent.name}."
       source_code_path: ./designer/server/build/app
       # SEC-OBO — USER AUTHORIZATION. Declaring these scopes is what makes the platform forward the
       # signed-in user's OAuth access token (`x-forwarded-access-token`), which is the whole of
@@ -269,14 +279,14 @@ resources:
       # and Apps accepts about a dozen of them. A name outside the Apps set fails the DEPLOY, not the
       # request — `terraform apply` answers `The specified scope <x> is not a valid scope` against
       # `databricks_app.cql_databricks_app` and NOTHING ships, including every unrelated resource in the
-      # bundle. Probed one name at a time against this workspace 2026-08-09:
+      # bundle. Probed one name at a time against this workspace:
       #   accepted — sql, sql.statement-execution, sql.warehouses, workspace.workspace, files,
       #              files.files, genie, dashboards.genie, model-serving, serving.serving-endpoints,
       #              vector-search, apps, postgres, ai-gateway, catalog.tables
       #   refused  — jobs, pipelines, clusters, compute, unity-catalog, secrets, query-history,
       #              alerts, all-apis, ... and bare `workspace` (ONLY `workspace.workspace` is taken).
       #
-      # NO `jobs` OR `pipelines` SCOPE EXISTS (`SEC-OBO-SCOPE-GAP`, probed 2026-08-09: every spelling refused), so
+      # NO `jobs` OR `pipelines` SCOPE EXISTS (`SEC-OBO-SCOPE-GAP`, probed: every spelling refused), so
       # nothing this App does as the user may create a Job or a pipeline.
       #
       # PREREQUISITE, and it is not declarative: a workspace admin must enable user authorization
@@ -298,7 +308,7 @@ resources:
       #   workspace.workspace — Save writes a library's CQL to a /Workspace folder as the user, through the
       #         Workspace API (`DOC-OPEN-SAVE`). The Files API refuses /Workspace paths.
       #   files — Save writes a library's CQL to a /Volumes folder as the user, through the Files API.
-      #         Both checked on the workspace 2026-10-30 (`DOC-WRITE-SCOPE-CHECK`).
+      #         Both checked on the workspace (`DOC-WRITE-SCOPE-CHECK`).
       user_api_scopes:
         - sql
         - serving.serving-endpoints
@@ -369,8 +379,8 @@ resources:
           group_name: ${var.app_users_group}
       resources:
         # DEPLOY-APP-GRANTS: this App has its own service principal, created BY this deploy. It needs NO
-        # Lakebase (data sources are tagged schemas, `DATA-SOURCE-UC-TAG`). It compiles nothing, but the
-        # data-source layout check reads the compiler's modeled FHIR types (`BIND-DATA-SOURCE-LAYOUT`).
+        # Lakebase (environments are tagged catalogs, `CLIENT-ENVIRONMENT`). It calls the compiler to translate and
+        # compile the CQL its tools run, so it holds CAN_USE on the compiler App below.
         # SEC-APP-TO-APP — CAN_USE on the compiler App for this App's service principal, or every call to it
         # is answered by the platform OAuth gate with a redirect to the sign-in page. Declared as an `app`
         # resource (DEPLOY-APP-GRANTS): the service principal is created BY this deploy, so nothing that ran
@@ -408,32 +418,88 @@ resources:
   schemas:
     # The runtime LAYER schema (SVC-CATALOG-LAYOUT): the execution machinery — the cql_* UC Scala UDF catalog
     # (SVC-RUNTIME-UDF-UC) + the artifact volume. Deploy-once / version-pinned, one occupant, its own grant;
-    # orthogonal to the per-source data schemas below. Bundle-created so `bundle deploy` provisions the layer.
+    # orthogonal to the environment schemas below. Bundle-created so `bundle deploy` provisions the layer.
     cql_databricks_runtime:
       catalog_name: ${var.uc_catalog}
       name: ${var.uc_schema}
       comment: "CQL on Databricks runtime layer (SVC-CATALOG-LAYOUT): cql_* UC Scala UDF catalog + the artifact volume."
     # APP-RUN-LOG, DEC-RUN-LOG-LOCATION — the Designer's shared schema: the run log, and later other Designer-owned
-    # shared tables. Bundle-created so it is deploy-owned; its tables and grants are applied as the deployer by
-    # scripts/deploy/provision-run-log.py (deploy.sh), never by the App. No `grants:` here: a bundle's grants are
-    # authoritative and would revoke the App's MODIFY, which the deploy can only grant once the App exists.
+    # shared tables. Bundle-created so it is deploy-owned; its tables are created as the deployer by
+    # scripts/deploy/provision-run-log.py (deploy.sh), never by the App. Its grants are the schema's whole grant list:
+    # the Designer App inserts the run log, and the readers group reads every table in the schema.
     # Keyed `_shared`: `cql_databricks_designer` is the Designer App's key, and bundle keys are unique across types.
     cql_databricks_designer_shared:
       catalog_name: ${var.designer_catalog}
       name: designer
       comment: "CQL on Databricks Designer shared schema (APP-RUN-LOG): the run log, runs and run_steps."
+      grants:
+        - principal: ${resources.apps.cql_databricks_designer.service_principal_client_id}
+          privileges: [USE_SCHEMA, MODIFY]
+        - principal: ${var.run_log_readers_group}
+          privileges: [USE_SCHEMA, SELECT]
+
+    # DEPLOY-DEFAULT-ENVIRONMENT, DATA-ENVIRONMENT-LAYOUT — the default environment's schemas in uc_catalog, and every
+    # schema grant the deploy makes on them. Bundle grants are the schema's whole grant list: a grant made on these
+    # schemas by hand is revoked by the next deploy. The comments are shipped_sources.environment.SCHEMAS
+    # (test_deploy_requirements checks they match). scripts/deploy/provision-examples.py then fills them: the stores,
+    # the views over them and the catalog tags. Readers get SELECT on the published schemas only, never a store.
+    environment_data:
+      catalog_name: ${var.uc_catalog}
+      name: data
+      comment: "Published data: one view per FHIR type on the contract (__subject_id, __resource), and change_log"
+      grants:
+        - principal: ${var.app_users_group}
+          privileges: [USE_SCHEMA, SELECT]
+    environment_data_store:
+      catalog_name: ${var.uc_catalog}
+      name: data_store
+      comment: "The data store the data views select"
+    environment_knowledge:
+      catalog_name: ${var.uc_catalog}
+      name: knowledge
+      comment: "Published knowledge: the library, measure and valueset views"
+      grants:
+        - principal: ${var.app_users_group}
+          privileges: [USE_SCHEMA, SELECT]
+        # KNOWLEDGE-LAKE-DIRECT — the Designer App's principal reads the knowledge and value sets it holds in memory,
+        # and nothing else: never a store or a result.
+        - principal: ${resources.apps.cql_databricks_designer.service_principal_client_id}
+          privileges: [USE_SCHEMA, SELECT]
+    environment_knowledge_store:
+      catalog_name: ${var.uc_catalog}
+      name: knowledge_store
+      comment: "The knowledge store the library, measure and valueset views select"
+    environment_results:
+      catalog_name: ${var.uc_catalog}
+      name: results
+      comment: "Published results, written by their publishers"
+      grants:
+        - principal: ${var.app_users_group}
+          privileges: [USE_SCHEMA, SELECT]
+    # RUN-CLIENT-DRAFT-RESULTS — users create their own tables and read only what they own: no SELECT or MODIFY on
+    # the schema. The maintenance principal's MANAGE, to expire them (RUN-CLIENT-MAINTENANCE), is not here: the
+    # principal is created by deploy.sh, so every other reader of this bundle sees maintenance_principal empty, and a
+    # grant needs a principal. provision-examples.py grants it.
+    environment_draft_results:
+      catalog_name: ${var.uc_catalog}
+      name: draft_results
+      comment: "Each user's own results, one table per result, owned by its writer"
+      grants:
+        - principal: ${var.app_users_group}
+          privileges: [USE_SCHEMA, CREATE_TABLE]
 
   jobs:
 
-    # --- RUN-CLIENT-MAINTENANCE: the daily expiry of the Designer's private results. It drops completed private
-    # result tables older than the retention period, found by their UC tags, in every user's schema of
-    # designer_results_catalog (cql_databricks.result.maintenance). It runs as the deployment's dedicated
-    # maintenance principal, which deploy.sh creates and grants before this Job is deployed
-    # (scripts/deploy/grant-maintenance-access.sh). The schedule deploys PAUSED: unpause it once one run has been
-    # checked on the workspace, because MANAGE exposing every user's tables to the principal is not yet verified.
+    # --- RUN-CLIENT-MAINTENANCE: the daily expiry of draft results. It drops completed result tables older than the
+    # retention period, found by their UC tags, in the default environment's draft_results
+    # (cql_databricks.result.maintenance, RUN-CLIENT-DRAFT-RESULTS). It runs as the deployment's dedicated
+    # maintenance principal, which deploy.sh creates before this Job is deployed
+    # (scripts/deploy/grant-maintenance-access.sh) and grants MANAGE on draft_results once it exists
+    # (DEPLOY-DEFAULT-ENVIRONMENT). The schedule deploys PAUSED: unpause it once one run has been checked on the
+    # workspace, because MANAGE exposing every user's tables to the principal is not yet verified.
     cql_databricks_maintenance:
       name: cql-databricks-designer-maintenance
-      description: "Deployment maintenance: expire completed private Designer results (RUN-CLIENT-MAINTENANCE)."
+      description: "Deployment maintenance: expire completed draft results (RUN-CLIENT-MAINTENANCE)."
       run_as:
         service_principal_name: ${var.maintenance_principal}
       max_concurrent_runs: 1
@@ -451,7 +517,7 @@ resources:
             dependencies:
               - /Volumes/${var.uc_catalog}/${var.uc_schema}/${var.runtime_volume}/wheels/cql_databricks-${var.client_wheel_version}-py3-none-any.whl
       tasks:
-        - task_key: expire_private_results
+        - task_key: expire_draft_results
           environment_key: maintenance
           max_retries: 1
           min_retry_interval_millis: 60000
@@ -460,8 +526,8 @@ resources:
           spark_python_task:
             python_file: ./scripts/jobs/maintenance.py
             parameters:
-              - --private-catalog
-              - ${var.designer_results_catalog}
+              - --environment-catalog
+              - ${var.uc_catalog}
               - --warehouse
               - ${var.warehouse_id}
               - --retention-days

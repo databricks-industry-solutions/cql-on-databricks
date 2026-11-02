@@ -8,7 +8,7 @@ argument name diverge with nothing failing until an agent called it.
 
 SSE, and no JSON sibling beside it. A real answer is a SEQUENCE of tool calls rather than one round, so
 a client that waited for the whole loop would show a spinner over an investigation the reader is
-entitled to watch — `THEME-GLASSBOX` rather than a progress bar.
+entitled to watch — a glass box rather than a progress bar.
 """
 from __future__ import annotations
 
@@ -45,7 +45,6 @@ class AssistantSelectionDto(BaseModel):
     #: RUN-ADDRESS-LOCATION — where the open library is read, so a tool reads the same copy.
     location: str | None = None
     define: str | None = None
-    data_source_id: str | None = Field(default=None, alias="dataSourceId")
     period_start: str | None = Field(default=None, alias="periodStart")
     period_end: str | None = Field(default=None, alias="periodEnd")
     result_set: dict | None = Field(default=None, alias="resultSet")
@@ -54,14 +53,14 @@ class AssistantSelectionDto(BaseModel):
     #: assistant that says `synthetic-population-small` at someone who calls it *the example patients*
     #: is describing the registry rather than the data.
     measure_title: str | None = Field(default=None, alias="measureTitle")
-    data_source_name: str | None = Field(default=None, alias="dataSourceName")
+    environment_name: str | None = Field(default=None, alias="environmentName")
 
 class AssistantAskRequest(BaseModel):
     """APP-ASSISTANT — one turn of the drawer's conversation.
 
     **`messages` carries the conversation, and the server holds no session.** The client sends back
-    what the last answer returned, for the same reason the tools carry no run id
-    (`SVC-TOOL-ADDRESS`): a server-side conversation would make an answer reproducible only from
+    what the last answer returned, for the same reason the tools carry no run id:
+    a server-side conversation would make an answer reproducible only from
     inside the conversation that produced it. Module scope, per `MeasureMetricsRequest`'s note about
     postponed annotations.
     """
@@ -71,6 +70,9 @@ class AssistantAskRequest(BaseModel):
     selection: AssistantSelectionDto | None = None
     #: The prior turns, verbatim from the previous response. Absent starts a new conversation.
     messages: list[dict[str, Any]] | None = None
+    #: AGENT-DEFAULT-ENVIRONMENT, DOC-ENVIRONMENT-PICKER — the environment the Designer has picked. Every tool runs in
+    #: it; it is never a tool argument. None is the default.
+    environment: str | None = None
 
 def router(*, mcp_server: FastMCP) -> APIRouter:
 
@@ -86,7 +88,7 @@ def router(*, mcp_server: FastMCP) -> APIRouter:
         # SSE, AND THAT IS THE ONLY SHAPE — there is no second JSON endpoint beside it (one path per
         # feature). A real answer is a SEQUENCE of tool calls, not one round, so a client that waited
         # for the whole loop would show a spinner for an investigation the reader is entitled to
-        # watch: each tool result is emitted AS IT LANDS, which is `THEME-GLASSBOX` rather than a
+        # watch: each tool result is emitted AS IT LANDS, which is a glass box rather than a
         # progress bar — the reads the answer will be built from are the same evidence it cites.
         #
         # READ-ONLY, and that is a product statement rather than a limitation of this route
@@ -107,7 +109,7 @@ def router(*, mcp_server: FastMCP) -> APIRouter:
             try:
                 for event in run_assistant_events(
                         req.question, server=mcp_server, selection=selection,
-                        history=req.messages):
+                        history=req.messages, environment=req.environment):
                     yield f"data: {json.dumps(event, default=str)}\n\n"
             except AssistantError as e:
                 # The loop ran out of rounds. An ERROR EVENT rather than a partial answer: a

@@ -10,7 +10,7 @@ import org.junit.runner.RunWith
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.junit.JUnitRunner
 
-/** PHASE-0 exit criteria, end to end on the authored corpus:
+/** End-to-end checks on the authored corpus:
   *   - the pipeline round-trips ELM->IR->ELM with verifiers passing;
   *   - a trivial measure normalizes clean (no unmodeled nodes, verifiers green);
   *   - an unmodeled construct fails LOUDLY (CORE-NO-SILENT-MISLOWER);
@@ -51,7 +51,7 @@ class RoundTripAndPipelineSpec extends AnyFunSuite {
   test("an unmodeled construct fails loudly at the Normalize verifier (CORE-NO-SILENT-MISLOWER)") {
     // Unsupported.cql uses `collapse` (a list-of-intervals op) not modeled yet; it becomes
     // UnknownExpr and MUST trip the OnlyKernelNodes verifier — never silently lowered to a
-    // plausible-but-wrong plan. (Intervals.cql is now fully modeled in Phase 3, LANG-INTERVAL.)
+    // plausible-but-wrong plan.
     val elm = Paths.read(Paths.elm("Unsupported"))
     val loaded = ElmCodec.loadString(elm)
     assert(loaded.collect { case u: UnknownExpr => u }.nonEmpty, "expected unmodeled nodes in Unsupported")

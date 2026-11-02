@@ -3,7 +3,8 @@
 ``check_cql`` · ``run_cql`` · ``compare_cql``.
 
 **AN EXPERIMENT IS CQL TEXT, NOT A REFERENCE.** Each tool takes the whole library as written. It runs
-inline on the caller's warehouse session (`CLIENT-INLINE-WAREHOUSE`), from the data source as it is now,
+inline on the caller's warehouse session (`CLIENT-INLINE-WAREHOUSE`), from the environment's data as it is now
+(`AGENT-DEFAULT-ENVIRONMENT`),
 and its views are dropped before the tool returns. Nothing is saved, tagged or reused, so nothing
 official can change.
 
@@ -25,9 +26,10 @@ from typing import Any
 from cql_databricks.result import InlineRun
 from cql_databricks.result.insights.score import POPULATIONS
 
-#: ``(cql, data_source, period, location) -> InlineRun`` — an inline run as the caller (`SEC-OBO`). The location
-#: (RUN-ADDRESS-LOCATION) is where includes resolve first; None is all of tagged knowledge.
-InlineRunner = Callable[[str, str, tuple[str | None, str | None], str | None], InlineRun]
+#: ``(cql, period, location) -> InlineRun`` — an inline run as the caller (`SEC-OBO`), in the environment the tools
+#: run in (`AGENT-DEFAULT-ENVIRONMENT`). The location (RUN-ADDRESS-LOCATION) is where includes resolve first; None is
+#: the environment's knowledge.
+InlineRunner = Callable[[str, tuple[str | None, str | None], str | None], InlineRun]
 
 #: ``(library, version, location) -> scoring or None`` — the declared scoring of a measure in scope.
 ScoringLookup = Callable[[str, str, str | None], str | None]
@@ -49,21 +51,21 @@ def check_cql(cql: str, baseline_cql: str | None = None, *, translate: Translato
     return out
 
 
-def run_cql(cql: str, data_source: str, period: tuple[str | None, str | None], *, scoring: str | None,
+def run_cql(cql: str, period: tuple[str | None, str | None], *, scoring: str | None,
             defines: list[str] | None, inline: InlineRunner, scoring_for: ScoringLookup,
             baseline_cql: str | None = None, location: str | None = None) -> dict[str, Any]:
     """Run ``cql`` inline: each define's subjects as written, and the score when one is declared."""
-    with inline(cql, data_source, period, location) as run:
+    with inline(cql, period, location) as run:
         return _summary(run, scoring, defines, scoring_for, baseline_cql, location)
 
 
-def compare_cql(baseline_cql: str, cql: str, data_source: str, period: tuple[str | None, str | None], *,
+def compare_cql(baseline_cql: str, cql: str, period: tuple[str | None, str | None], *,
                 scoring: str | None, defines: list[str] | None, inline: InlineRunner,
                 scoring_for: ScoringLookup, location: str | None = None) -> dict[str, Any]:
     """Run both inline, then compare: counts, score, and who moved in or out of each define."""
     with ExitStack() as views:
-        before = views.enter_context(inline(baseline_cql, data_source, period, location))
-        after = views.enter_context(inline(cql, data_source, period, location))
+        before = views.enter_context(inline(baseline_cql, period, location))
+        after = views.enter_context(inline(cql, period, location))
         baseline = _summary(before, scoring, defines, scoring_for, None, location)
         experiment = _summary(after, scoring, defines, scoring_for, baseline_cql, location)
         shared = [d for d in baseline["counts"] if d in experiment["counts"]]
@@ -87,7 +89,7 @@ def _summary(run: InlineRun, scoring: str | None, defines: list[str] | None, sco
     if unknown:
         raise ValueError(f"{unknown} are not defines of {run.library or 'this CQL'}; it declares {list(run.defines)}")
     declared = scoring or (scoring_for(run.library, run.version, location) if run.library else None)
-    out: dict[str, Any] = {"library": run.library, "version": run.version, "dataSource": run.data_source,
+    out: dict[str, Any] = {"library": run.library, "version": run.version, "environment": run.environment,
                            "period": list(run.period), "counts": run.counts(wanted), "cql": run.cql,
                            "provenance": PROVENANCE}
     if declared:

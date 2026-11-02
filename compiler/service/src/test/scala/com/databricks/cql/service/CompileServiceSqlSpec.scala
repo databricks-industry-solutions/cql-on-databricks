@@ -1,6 +1,5 @@
 package com.databricks.cql.service
 
-import com.databricks.cql.env.SourceBinding
 import com.databricks.cql.error.UnsupportedNode
 import com.databricks.cql.spark.SystemColumns
 import com.databricks.cql.translate.CqlToElmCli
@@ -33,8 +32,7 @@ class CompileServiceSqlSpec extends AnyFunSuite {
 
   test("compileSql lowers a Patient library to a SQL script of named views, in dependency order") {
     val res = CompileService.compileSql(
-      CompileRequest(elmJson = elm, target = Some("HasEncounter"), context = Some("Patient")),
-      hasTerminology = false)
+      CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = elm, target = Some("HasEncounter"), context = Some("Patient")))
 
     val names = res.statements.map(_.name)
     // A named context base, a grain-first relation view for the retrieve, and a scalar define view.
@@ -45,15 +43,14 @@ class CompileServiceSqlSpec extends AnyFunSuite {
     assert(names.indexOf("AllEncounters") < names.indexOf("HasEncounter"))
     // The whole thing is CREATE OR REPLACE TEMP VIEW statements (no barrier at the default threshold).
     assert(res.statements.forall(_.kind == "view"))
-    // The base reads the mounted context retrieve; the script is auditable SQL text.
-    assert(res.script.contains("FROM retrieve_Patient"))
+    // The base reads the context retrieve's relation; the script is auditable SQL text.
+    assert(res.script.contains("FROM acme.data.patient"))
     assert(res.script.contains("CREATE OR REPLACE TEMP VIEW AllEncounters AS"))
   }
 
   test("the target and defines metadata are carried through") {
     val res = CompileService.compileSql(
-      CompileRequest(elmJson = elm, target = Some("HasEncounter"), context = Some("Patient")),
-      hasTerminology = false)
+      CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = elm, target = Some("HasEncounter"), context = Some("Patient")))
     assert(res.target == "HasEncounter")
     assert(res.defines.contains("AllEncounters") && res.defines.contains("HasEncounter"))
   }
@@ -63,7 +60,7 @@ class CompileServiceSqlSpec extends AnyFunSuite {
     * (`ARCH-NO-RUNTIME-SCHEMA`) — so both travel as metadata, and the value column is the SAME for both kinds. */
   test("compileSql publishes a DefineShape per define: uniform value column + row kind") {
     val res = CompileService.compileSql(
-      CompileRequest(elmJson = elm, context = Some("Patient")), hasTerminology = false)
+      CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = elm, context = Some("Patient")))
 
     assert(res.shapes.map(_.define) == res.defines, "one shape per define, in the same order")
     // EVERY define publishes the same payload column — that is the whole point of the contract.
@@ -81,8 +78,7 @@ class CompileServiceSqlSpec extends AnyFunSuite {
 
   test("exists over the relation define renders a presence join, absent -> false") {
     val res = CompileService.compileSql(
-      CompileRequest(elmJson = elm, target = Some("HasEncounter"), context = Some("Patient")),
-      hasTerminology = false)
+      CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = elm, target = Some("HasEncounter"), context = Some("Patient")))
     val hasEnc = res.statements.find(_.name == "HasEncounter").getOrElse(fail("no HasEncounter statement"))
     assert(hasEnc.sql.contains("LEFT OUTER JOIN"))
     assert(hasEnc.sql.contains("FROM AllEncounters"))
@@ -91,13 +87,12 @@ class CompileServiceSqlSpec extends AnyFunSuite {
 
   // --- LANG-CONTEXT-DEFAULT: spec-conformant context resolution -----------------------------------
 
-  test("a context-free define with NO request context lowers to a data-free frame, not retrieve_Patient") {
+  test("a context-free define with NO request context lowers to a data-free frame, reading no patient") {
     // No `using`, no `context`, no request context (LANG-CONTEXT-DEFAULT → Unfiltered).
     val res = CompileService.compileSql(
-      CompileRequest(elmJson = contextFreeElm, target = Some("One"), context = None),
-      hasTerminology = false)
+      CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = contextFreeElm, target = Some("One"), context = None))
     assert(res.target == "One")
-    assert(!res.script.contains("retrieve_"),
+    assert(!res.script.contains("acme.data."),
       s"context-free define must not force a retrieve, got:\n${res.script}")
     // The Unfiltered one-subject frame (ARCH-SET-EVAL), seeded with no data.
     assert(res.script.contains("__subject_id"))
@@ -106,64 +101,46 @@ class CompileServiceSqlSpec extends AnyFunSuite {
   test("a library that DECLARES context Patient stays Patient-scoped when the request omits context") {
     // The `cql` above declares `context Patient`; the request carries NONE (tier 2: declared context wins).
     val res = CompileService.compileSql(
-      CompileRequest(elmJson = elm, target = Some("InitialPopulation"), context = None),
-      hasTerminology = false)
-    assert(res.script.contains("retrieve_Patient"),
+      CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = elm, target = Some("InitialPopulation"), context = None))
+    assert(res.script.contains("acme.data.patient"),
       s"declared context Patient must scope to the patient frame, got:\n${res.script}")
   }
 
   test("an explicit request context overrides the library's declared context (tier 1 wins)") {
     // Same Patient-declared library, but the caller explicitly asks for Unfiltered → data-free frame.
     val res = CompileService.compileSql(
-      CompileRequest(elmJson = elm, target = Some("InitialPopulation"), context = Some("Unfiltered")),
-      hasTerminology = false)
-    assert(!res.script.contains("retrieve_Patient"),
+      CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = elm, target = Some("InitialPopulation"), context = Some("Unfiltered")))
+    assert(!res.script.contains("acme.data.patient"),
       s"explicit Unfiltered must win over declared Patient, got:\n${res.script}")
   }
 
-  // --- BIND-MANIFEST / BIND-RETRIEVE-UDF: the client-supplied retrieve UDTF binding table -----------
+  // --- BIND-CALL-SITE: the per-type bindings it replaced are refused --------------------------------
 
-  test("a sources binding emits FROM [catalog.]fn(<explicit args>), no bare mount (BIND-RETRIEVE-UDF)") {
-    val res = CompileService.compileSql(
-      CompileRequest(elmJson = elm, target = Some("HasEncounter"), context = Some("Patient"),
-        sources = Map(
-          "Encounter" -> SourceBinding("fetch_encounter", Some("acme.fhir")), // bound, catalog-qualified
-          "Patient"   -> SourceBinding("fetch_patient", None))),              // bound, default schema
-      hasTerminology = false)
-    // the bound Encounter retrieve resolves to its catalog-qualified UDTF
-    assert(res.script.contains("acme.fhir.fetch_encounter("),
-      s"expected the bound Encounter UDTF call, got:\n${res.script}")
-    // the Patient context base routes through its bound UDTF too, with no predicates and no parameters
-    assert(res.script.contains("fetch_patient(NULL, NULL, array(), NULL, NULL, NULL, map())"),
-      s"expected the bound Patient context-base call, got:\n${res.script}")
-    // EMIT-ROOT-INDEPENDENT: no retrieve argument names a library (BIND-EXPLICIT-PARAMS)
-    assert(!res.script.contains("named_struct('id'"), s"a library argument leaked:\n${res.script}")
-    assert(!res.script.contains("fetch_patient(parse_json('{}')"),
-      s"the retired empty-envelope context base leaked:\n${res.script}")
-    // no bare `retrieve_<Type>` view mount survives under the UDTF flag
-    assert(!res.script.contains("FROM retrieve_"), s"a bare mount leaked:\n${res.script}")
+  test("CompileRequest.fromJson refuses the retired sources and dataSource fields, naming them (BIND-CALL-SITE)") {
+    for (field <- Seq("sources", "dataSource")) {
+      val err = intercept[IllegalArgumentException](CompileRequest.fromJson(s"""{"elm": "", "$field": {}}"""))
+      assert(err.getMessage.contains(s"has no $field"), err.getMessage)
+    }
   }
 
-  test("CompileRequest.fromJson parses the sources binding table leniently (BIND-MANIFEST)") {
-    val json =
-      s"""{"elm": ${ujson.Str(elm)},
-         | "sources": {
-         |   "Encounter": {"function": "fetch_encounter", "catalog": "acme.fhir"},
-         |   "Condition": {"function": "fetch_condition"},
-         |   "Broken":    {"catalog": "x"}
-         | }}""".stripMargin
-    val req = CompileRequest.fromJson(json)
-    assert(req.sources("Encounter") == SourceBinding("fetch_encounter", Some("acme.fhir")))
-    assert(req.sources("Condition") == SourceBinding("fetch_condition", None)) // optional catalog defaulted
-    assert(!req.sources.contains("Broken"))                                    // no `function` → ignored
+  test("SVC-PROTOCOL: CompileRequest.fromJson refuses the retired libraries key, naming it") {
+    val err = intercept[IllegalArgumentException](CompileRequest.fromJson("""{"elm": "", "libraries": []}"""))
+    assert(err.getMessage.contains("has no libraries"), err.getMessage)
+    assert(err.getMessage.contains("BUILD-COMPILE-LINK"), err.getMessage)
+  }
+
+  test("a retrieve with no data binding fails the compile, naming the site (BIND-CALL-SITE)") {
+    val err = intercept[UnsupportedNode](CompileService.compileSql(
+      CompileRequest(elmJson = elm, target = Some("HasEncounter"), context = Some("Patient"))))
+    assert(err.getMessage.contains("needs data"), err.getMessage)
   }
 
   // --- ELM origin: library, libraryVersion, define on DatasetRecipe -------------------
 
   test("pipeline recipe carries ELM origin: library, libraryVersion, define (single-library)") {
-    val req = CompileRequest(elmJson = elm, context = Some("Patient"),
+    val req = CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = elm, context = Some("Patient"),
       overrides = Map("materialize.mode" -> "all"))
-    val plan = CompileService.compilePipeline(req, hasTerminology = false)
+    val plan = CompileService.compilePipeline(req)
     assert(plan.datasets.nonEmpty, "expected at least one recipe")
     plan.datasets.foreach { r =>
       assert(r.library == "Test", s"recipe ${r.name}: expected library 'Test', got '${r.library}'")
@@ -183,9 +160,9 @@ class CompileServiceSqlSpec extends AnyFunSuite {
   // --- PIPE-EMIT-SQL: deploy-ready SDP SQL on each DatasetRecipe ------------------------------------
 
   test("pipeline recipe carries deploy-ready sqlFile (PIPE-EMIT-SQL)") {
-    val req = CompileRequest(elmJson = elm, context = Some("Patient"),
+    val req = CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = elm, context = Some("Patient"),
       overrides = Map("materialize.mode" -> "all"))
-    val plan = CompileService.compilePipeline(req, hasTerminology = false)
+    val plan = CompileService.compilePipeline(req)
     assert(plan.datasets.nonEmpty, "expected at least one recipe")
     plan.datasets.foreach { r =>
       assert(r.sqlFile.nonEmpty, s"recipe ${r.name}: sqlFile must not be empty")
@@ -212,9 +189,9 @@ class CompileServiceSqlSpec extends AnyFunSuite {
         |""".stripMargin
     val paramElm = CqlToElmCli.translateText(paramCql).elmJson.getOrElse(fail("no ELM"))
     val params = Map("Measurement Period" -> """Interval[@2026-01-01, @2027-01-01)""")
-    val req = CompileRequest(elmJson = paramElm, context = Some("Unfiltered"),
+    val req = CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = paramElm, context = Some("Unfiltered"),
       overrides = Map("materialize.mode" -> "all"), parameters = params)
-    val plan = CompileService.compilePipeline(req, hasTerminology = false)
+    val plan = CompileService.compilePipeline(req)
     assert(plan.datasets.nonEmpty, "expected at least one recipe")
     val name = plan.datasets.head.name
     // The name must follow {lib}_{ver}_{hash}__{define} — 4 underscore-separated segments before __.
@@ -244,15 +221,14 @@ class CompileServiceSqlSpec extends AnyFunSuite {
     val ageElm = CqlToElmCli.translateText(ageCql, Seq(FhirHelpersCql.text)).elmJson.getOrElse(fail("no ELM"))
     // Without udfSchema — bare function names.
     val bare = CompileService.compileSql(
-      CompileRequest(elmJson = ageElm, target = Some("Age")), hasTerminology = false)
+      CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = ageElm, target = Some("Age")))
     assert(bare.script.contains("cql_age_at("), s"expected bare cql_age_at call:\n${bare.script}")
     assert(!bare.script.contains("runtime.cql_age_at"),
       s"bare mode must not qualify:\n${bare.script}")
     // With udfSchema — qualified function names.
     val qualified = CompileService.compileSql(
-      CompileRequest(elmJson = ageElm, target = Some("Age"),
-        udfSchema = Some("acme.runtime")),
-      hasTerminology = false)
+      CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = ageElm, target = Some("Age"),
+        udfSchema = Some("acme.runtime")))
     assert(qualified.script.contains("acme.runtime.cql_age_at("),
       s"expected qualified cql_age_at call:\n${qualified.script}")
     // Non-cql_* functions stay unqualified.
@@ -270,9 +246,8 @@ class CompileServiceSqlSpec extends AnyFunSuite {
         |""".stripMargin
     val ageElm = CqlToElmCli.translateText(ageCql, Seq(FhirHelpersCql.text)).elmJson.getOrElse(fail("no ELM"))
     val plan = CompileService.compilePipeline(
-      CompileRequest(elmJson = ageElm, udfSchema = Some("rt"),
-        overrides = Map("materialize.mode" -> "all")),
-      hasTerminology = false)
+      CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = ageElm, udfSchema = Some("rt"),
+        overrides = Map("materialize.mode" -> "all")))
     assert(plan.datasets.nonEmpty)
     // Both the statements SQL and the declarative query must be qualified.
     val recipe = plan.datasets.find(_.define == "Age").getOrElse(fail("no Age recipe"))
@@ -282,11 +257,11 @@ class CompileServiceSqlSpec extends AnyFunSuite {
       s"expected qualified cql_age_at in sqlFile:\n${recipe.sqlFile}")
   }
 
-  test("CompileRequest.fromJson parses sources.udfs.schema (EMIT-UDF-QUALIFY)") {
-    val json = s"""{"elm": ${ujson.Str(elm)}, "sources": {"udfs": {"schema": "acme.rt"}}}"""
+  test("CompileRequest.fromJson parses runtime.schema (EMIT-UDF-QUALIFY)") {
+    val json = s"""{"elm": ${ujson.Str(elm)}, "runtime": {"schema": "acme.rt"}}"""
     val req = CompileRequest.fromJson(json)
     assert(req.udfSchema.contains("acme.rt"))
-    // Absent udfs entry → None.
+    // Absent runtime → None.
     val json2 = s"""{"elm": ${ujson.Str(elm)}}"""
     assert(CompileRequest.fromJson(json2).udfSchema.isEmpty)
   }
@@ -320,11 +295,10 @@ class CompileServiceSqlSpec extends AnyFunSuite {
   test("a multi-library measure links its supplied deps and compiles (BUILD-COMPILE-LINK)") {
     // The measure's include closure is shipped as `deps`; the service flattens root + deps before lowering.
     val res = CompileService.compileSql(
-      CompileRequest(
+      CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, 
         elmJson = translate(multiLibCql, Seq(sdeHelperCql)),
         deps    = Seq(translate(sdeHelperCql)),
-        target  = Some("Supplemental Sex")),
-      hasTerminology = false)
+        target  = Some("Supplemental Sex")))
     assert(res.statements.nonEmpty)
     assert(res.defines.contains("Supplemental Sex"))
   }
@@ -334,8 +308,7 @@ class CompileServiceSqlSpec extends AnyFunSuite {
     // scheduler; it must now degrade to a loud compile error (CORE-NO-SILENT-MISLOWER) instead.
     val thrown = intercept[Throwable] {
       CompileService.compileSql(
-        CompileRequest(elmJson = translate(multiLibCql, Seq(sdeHelperCql)), target = Some("Supplemental Sex")),
-        hasTerminology = false)
+        CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = translate(multiLibCql, Seq(sdeHelperCql)), target = Some("Supplemental Sex")))
     }
     assert(!thrown.isInstanceOf[StackOverflowError],
       "a same-named cross-library re-export must not overflow the Schedule pass (ARCH-SCHEDULE-ACYCLIC)")
@@ -358,11 +331,10 @@ class CompileServiceSqlSpec extends AnyFunSuite {
 
   private def readPlan(retrieves: String): PipelinePlan =
     CompileService.compilePipeline(
-      CompileRequest(
+      CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, 
         elmJson   = CqlToElmCli.translateText(sharedReadCql).elmJson.getOrElse(fail("no ELM")),
         context   = Some("Patient"),
-        overrides = Map("materialize.mode" -> "all", "materialize.retrieves" -> retrieves)),
-      hasTerminology = true)
+        overrides = Map("materialize.mode" -> "all", "materialize.retrieves" -> retrieves)))
 
   test("retrieves=none publishes no read datasets (the default is inert on the pipeline path too)") {
     assert(readPlan("none").datasets.forall(_.retrieveRead.isEmpty))
@@ -415,8 +387,7 @@ class CompileServiceSqlSpec extends AnyFunSuite {
 
   test("objectPrefix is OFF by default — emitted object names stay bare") {
     val res = CompileService.compileSql(
-      CompileRequest(elmJson = elm, target = Some("HasEncounter"), context = Some("Patient")),
-      hasTerminology = false)
+      CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = elm, target = Some("HasEncounter"), context = Some("Patient")))
     assert(res.statements.exists(_.name == "HasEncounter"),
       s"expected a bare 'HasEncounter' object, got ${res.statements.map(_.name)}")
     assert(!res.statements.exists(_.name.contains("__HasEncounter")))
@@ -424,9 +395,8 @@ class CompileServiceSqlSpec extends AnyFunSuite {
 
   test("objectPrefix namespaces every define-derived object AND the shape a client reads back by") {
     val res = CompileService.compileSql(
-      CompileRequest(elmJson = elm, target = Some("HasEncounter"), context = Some("Patient"),
-        objectPrefix = Some("Test_1_0_0")),
-      hasTerminology = false)
+      CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = elm, target = Some("HasEncounter"), context = Some("Patient"),
+        objectPrefix = Some("Test_1_0_0")))
 
     assert(res.statements.exists(_.name == "Test_1_0_0__HasEncounter"),
       s"expected a prefixed object, got ${res.statements.map(_.name)}")
@@ -447,35 +417,12 @@ class CompileServiceSqlSpec extends AnyFunSuite {
     def lib(name: String) = CqlToElmCli.translateText(
       s"library $name version '1.0.0'\ndefine \"Numerator\": true\n").elmJson.getOrElse(fail("no ELM"))
     def objects(name: String) = CompileService.compileSql(
-      CompileRequest(elmJson = lib(name), target = Some("Numerator"), objectPrefix = Some(name)),
-      hasTerminology = false).statements.map(_.name).toSet
+      CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = lib(name), target = Some("Numerator"), objectPrefix = Some(name))).statements.map(_.name).toSet
 
     val a = objects("MeasureA")
     val b = objects("MeasureB")
     assert(a.contains("MeasureA__Numerator") && b.contains("MeasureB__Numerator"))
     assert(a.intersect(b).isEmpty, s"namespaces overlap: ${a.intersect(b)}")
-  }
-
-  // -- RUN-RESULTS-BY-EVAL / DEC-EVAL-ID-LOOKUP -------------------------------------------------
-
-  test("RUN-RESULTS-BY-EVAL: with an evalId, a recipe reads a published sibling's rows for that evaluation only") {
-    val req = CompileRequest(elmJson = elm, context = Some("Patient"), evalId = Some("abcd1234"),
-      overrides = Map("materialize.mode" -> "all"))
-    val plan = CompileService.compilePipeline(req, hasTerminology = false)
-    val reader = plan.datasets.find(_.reads.nonEmpty).getOrElse(fail("no recipe reads a sibling"))
-    val flat = reader.query.replaceAll("\\s+", " ")
-    reader.reads.foreach { sibling =>
-      assert(flat.contains(s"( SELECT * EXCEPT (`__eval_id`) FROM $sibling WHERE (__eval_id = 'abcd1234') ) AS __scoped_"),
-        reader.query)
-      // The evaluator relocates every occurrence of a dataset name to its three-part results address
-      // (PIPE-CROSS-SCHEMA-QUALIFY); a name used as an alias would become `AS c.s.t`, which does not parse.
-      assert(!flat.contains(s"AS $sibling"), reader.query)
-    }
-    // No bare read of a sibling survives beside the scoped one.
-    val bare = CompileService.compilePipeline(req.copy(evalId = None), hasTerminology = false)
-    assert(!bare.datasets.exists(_.query.contains("__eval_id")))
-    assert(CompileRequest.fromJson("""{"elm": "{}", "evalId": "abcd1234"}""").evalId.contains("abcd1234"))
-    assert(CompileRequest.fromJson("""{"elm": "{}"}""").evalId.isEmpty)
   }
 
   // -- PIPE-READS-SORTED ------------------------------------------------------------------------
@@ -492,8 +439,7 @@ class CompileServiceSqlSpec extends AnyFunSuite {
         |""".stripMargin
     val orderElm = CqlToElmCli.translateText(src).elmJson.getOrElse(fail("no ELM"))
     val plan = CompileService.compilePipeline(
-      CompileRequest(elmJson = orderElm, context = Some("Patient"), overrides = Map("materialize.mode" -> "all")),
-      hasTerminology = false)
+      CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = orderElm, context = Some("Patient"), overrides = Map("materialize.mode" -> "all")))
     val both = plan.datasets.find(_.define == "Both").getOrElse(fail(s"no Both recipe in ${plan.datasets.map(_.name)}"))
     assert(both.reads.sizeIs == 2, s"Both should read Zed and Alpha, got ${both.reads}")
     assert(both.query.indexOf(both.reads.last) < both.query.indexOf(both.reads.head),
@@ -517,15 +463,13 @@ class CompileServiceSqlSpec extends AnyFunSuite {
 
     // Without the closure the root cannot translate at all — the include has no source.
     val bare = intercept[IllegalArgumentException] {
-      CompileService.compileSql(CompileRequest(cql = Some(root), target = Some("UsesDep")),
-        hasTerminology = false)
+      CompileService.compileSql(CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, cql = Some(root), target = Some("UsesDep")))
     }
     assert(bare.getMessage.contains("translation produced errors"))
 
     // With it, the whole set translates together and the cross-library define lowers.
     val res = CompileService.compileSql(
-      CompileRequest(cql = Some(root), depCql = Seq(dep), target = Some("UsesDep")),
-      hasTerminology = false)
+      CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, cql = Some(root), depCql = Seq(dep), target = Some("UsesDep")))
     assert(res.defines.contains("UsesDep"), s"expected UsesDep, got ${res.defines}")
   }
 

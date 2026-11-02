@@ -93,7 +93,7 @@ describe("the entering cohort", () => {
 describe("polarity", () => {
   it("makes an exclusion population the DISJUNCTION and everything else the conjunction", () => {
     // The one thing that differs between the two shapes, and the narrowest claim we can support: the
-    // ELM operator that would settle it directly is not derived anywhere (APP-FLOW-SPINE, deferred),
+    // ELM operator that would settle it directly is not derived anywhere (deferred),
     // so this reads the population's ROLE, which the declared scoring already tells us.
     const gates = buildFlowRequest(doc(), "proportion");
     expect(gates.map((g) => [g.stage, g.polarity])).toEqual([

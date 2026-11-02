@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Deploy CQL on Databricks as ONE Databricks Asset Bundle (SVC-DEPLOY-BUNDLE) and START its Apps. The whole
 # install/redeploy story in one command. Steps:
-#   1. (Retired 2026-10-10: the Designer's Lakebase is removed, SPLIT-LAKEBASE SUPERSEDED.)
 #   2. Stage each App's payload (SVC-PACKAGING) — with the deploy-resolved volume path baked in.
 #   3. `databricks bundle deploy` — CREATES the runtime schema (SVC-CATALOG-LAYOUT) + volume, the Apps, perms.
 #   4. Populate the runtime volume: the compiler App's JRE + 3 oversized jars (SVC-PACKAGING) and the
@@ -15,8 +14,8 @@
 #   7.5 Publish every skill, from one definition, as a Unity Catalog skill and to the workspace skills folder
 #      (DEPLOY-AGENT-SKILLS).
 #   7.6 Register the agent App under Unity Gateway, per user, so Genie One can call it (DEPLOY-AGENT-REGISTRATION).
-#   8. Load the example measures and patients from examples/ and bind the knowledge views, as the deployer
-#      (CONTENT-EXAMPLE-PRELOAD, DATA-BIND-AUTO).
+#   8. Build the default environment in uc_catalog, as the deployer: its schemas, the example measures and patients
+#      from examples/ in its stores, its views, its tags and its grants (DEPLOY-DEFAULT-ENVIRONMENT).
 # Before 2, the workspace settings set to true in databricks.local.yml are turned on (DEPLOY-WORKSPACE-SETTINGS), and
 # the maintenance principal is created and granted (RUN-CLIENT-MAINTENANCE): it is the run-as of the
 # cql-databricks-designer-maintenance Job the bundle deploys at 3.
@@ -85,12 +84,19 @@ users_group="$(jqpy "v=d.get('variables') or {};print((v.get('app_users_group') 
   echo "!!! app_users_group is empty. Set it in databricks.local.yml to the account group whose members use"
   echo "!!! the Apps (they get CAN_USE on the Designer and agent Apps; APP-PER-FEATURE)."; exit 1; }
 echo "==> app users group=$users_group"
+# DEPLOY-AGENT-SKILLS — the workspace group that reads the workspace skills folder, a workspace object: Unity Catalog's
+# account groups and workspace groups are not the same, so app_users_group (an account group) cannot serve.
+workspace_users_group="$(jqpy "v=d.get('variables') or {};print((v.get('workspace_users_group') or {}).get('value') or '')")"
+[ -n "$workspace_users_group" ] || {
+  echo "!!! workspace_users_group is empty. Set it in databricks.local.yml to the workspace group that may read the"
+  echo "!!! skills folder Genie Code loads (DEPLOY-AGENT-SKILLS)."; exit 1; }
+echo "==> workspace users group=$workspace_users_group"
 # APP-RUN-LOG — the run log is read by an operator group, granted SELECT at step [5.8]; without one nobody but
 # the deployer could read it, so an empty group stops the deploy here, like app_users_group.
 readers_group="$(jqpy "v=d.get('variables') or {};print((v.get('run_log_readers_group') or {}).get('value') or '')")"
 [ -n "$readers_group" ] || {
   echo "!!! run_log_readers_group is empty. Set it in databricks.local.yml to the account group that may read"
-  echo "!!! the Designer run log (it gets SELECT on <designer_catalog>.designer.runs and run_steps; APP-RUN-LOG)."; exit 1; }
+  echo "!!! the Designer run log (it gets SELECT on the <designer_catalog>.designer schema; APP-RUN-LOG)."; exit 1; }
 echo "==> run log readers group=$readers_group"
 # DEPLOY-AGENT-SKILLS — the schema the agent's skills are published in as UC skills. No default, so an empty one
 # stops the deploy here.
@@ -119,27 +125,15 @@ if [ -n "$_agent_account_profile" ]; then
 else
   echo "==> no agent_account_profile: the deploy connects Genie One only if its connection is already in place"
 fi
-# CLIENT-DISCOVERY-SCOPE — the Apps and the knowledge-view bind discover only inside these scopes, and there is no
-# default to fall back to, so an empty list stops the deploy here.
-_catalog_scopes="$(jqpy "v=d.get('variables') or {};print((v.get('catalog_scopes') or {}).get('value') or '')")"
-[ -n "$_catalog_scopes" ] || {
-  echo "!!! catalog_scopes is empty. Set it in databricks.local.yml to the comma-separated catalogs or"
-  echo "!!! catalog.schemas the Apps discover data sources, knowledge and terminology in (CLIENT-DISCOVERY-SCOPE)."; exit 1; }
-echo "==> catalog scopes=$_catalog_scopes"
-
-# RUN-CLIENT-MAINTENANCE — the private catalog is an administrator prerequisite; deployment only grants
-# the maintenance principal its authority on it (RUN-CLIENT-PRIVATE-PROVISIONING). Its application ID is the
-# cql-databricks-designer-maintenance Job's run-as, so it must exist before [3/7] deploys the Job.
+# RUN-CLIENT-MAINTENANCE — the maintenance principal is the cql-databricks-designer-maintenance Job's run-as, so it
+# must exist before [3/7] deploys the Job. Its MANAGE on the default environment's draft_results is granted at [8],
+# after [3/7] makes the schema (DEPLOY-DEFAULT-ENVIRONMENT).
 _maintenance_principal="$(bash "$here/scripts/deploy/grant-maintenance-access.sh" -t "$target" ${profile_args[@]+"${profile_args[@]}"} | tail -1)"
 [ -n "$_maintenance_principal" ] || { echo "!!! the maintenance principal setup printed no application ID"; exit 1; }
 export BUNDLE_VAR_maintenance_principal="$_maintenance_principal"
 
-# Export catalog + warehouse vars so stage-app.sh bakes them into each App's app.yaml
-# (PIPE-DEPLOY-CATALOG-VARS). Values come from the resolved bundle variables (authoritative).
-_designer_results_catalog="$(jqpy "v=d.get('variables') or {};print((v.get('designer_results_catalog') or {}).get('value') or '')")"
-[ -n "$_designer_results_catalog" ] || {
-  echo "!!! designer_results_catalog is empty. Set it in databricks.local.yml to the catalog holding the"
-  echo "!!! Designer's per-user result schemas (RUN-CLIENT-PRIVATE-PROVISIONING). There is no default."; exit 1; }
+# Export catalog + warehouse vars so stage-app.sh bakes them into each App's app.yaml.
+# Values come from the resolved bundle variables (authoritative).
 _designer_catalog="$(jqpy "v=d.get('variables') or {};print((v.get('designer_catalog') or {}).get('value') or '')")"
 _warehouse_id="$(jqpy "v=d.get('variables') or {};print((v.get('warehouse_id') or {}).get('value') or '')")"
 # APP-ASSISTANT — the FM endpoint NAME. The App resolves it from the signed-in user (`SEC-OBO`), which
@@ -149,11 +143,9 @@ _assistant_endpoint="$(jqpy "v=d.get('variables') or {};print((v.get('assistant_
   echo "!!! assistant_endpoint is empty. Set it in databricks.local.yml to the Model Serving chat endpoint"
   echo "!!! the assistant drawer calls (APP-ASSISTANT). There is no default."; exit 1; }
 export BUNDLE_VAR_uc_catalog="${_uc_catalog}"
-export BUNDLE_VAR_designer_results_catalog="${_designer_results_catalog}"
 export BUNDLE_VAR_designer_catalog="${_designer_catalog}"
 export BUNDLE_VAR_warehouse_id="${_warehouse_id}"
 export BUNDLE_VAR_assistant_endpoint="${_assistant_endpoint}"
-export BUNDLE_VAR_catalog_scopes="${_catalog_scopes}"
 # DOC-OPEN-SAVE — the canonical URL base of libraries created in the Designer. databricks.yml has a default, so
 # empty here means it was set empty on purpose.
 _canonical_base="$(jqpy "v=d.get('variables') or {};print((v.get('canonical_base') or {}).get('value') or '')")"
@@ -182,6 +174,14 @@ _workspace_setting enable_databricks_apps custom_apps_preview "Databricks Apps"
 _workspace_setting enable_apps_user_authorization enable_obo_user_apps "user authorization for Apps (SEC-OBO)"
 _workspace_setting enable_unity_gateway ai_gateway_ga_ws "Unity Gateway (DEPLOY-AGENT-REGISTRATION)"
 _workspace_setting enable_genie_uc_skills genie_uc_skills "Unity Gateway skills in Genie (DEPLOY-AGENT-SKILLS)"
+
+echo "==> [1.6] the project's admins are workspace admins (DEPLOY-PROJECT-ADMINS)"
+# Every deploy, as the deployer (a workspace admin): each of admins is added to the workspace and its admins group.
+(
+  if [ -n "$profile_name" ]; then export DATABRICKS_CONFIG_PROFILE="$profile_name"; fi
+  "$venv_py" "$here/scripts/deploy/project_admins.py" \
+    --admins "$(jqpy "import json;v=d.get('variables') or {};print(json.dumps((v.get('admins') or {}).get('value') or []))")"
+)
 
 echo "==> [2/7] stage each App's payload (volume baked into app.yaml)"
 # Export the resolved volume path so stage-compiler.sh substitutes it into the staged app.yaml.
@@ -225,13 +225,6 @@ _designer_app="$(jqpy "a=(d.get('resources') or {}).get('apps') or {};print((a.g
     --designer-app "$_designer_app" --readers-group "$readers_group"
 )
 
-# [5.85] is retired (DOC-EXPLAIN-REMOVE): there is no narration cache table (APP-NARRATIVE-OVERLAY, SUPERSEDED).
-# [5.9] is retired (SVC-COMPILER-M2M SUPERSEDED): a Job reaches the compiler App with its own identity
-# through the token exchange (SVC-EXCHANGE-RETRY), so the deploy provisions no compiler caller.
-# [5.5/7] is retired: the Designer's Lakebase is removed.
-# [6/7] is retired (CARVE-CONTENT): there are no config rows to seed and no knowledge sync. The
-# knowledge corpus is read from the tagged tables (KNOWLEDGE-LAKE-DIRECT).
-
 echo "==> [6.7/7] publish the example notebooks to /Shared (SVC-EXAMPLE-NOTEBOOKS)"
 # Runs after [3/7], which creates the runtime Volume the notebooks' %pip cells name. Overwrites in place, so
 # each deploy restores the published copy to what the repo says it is.
@@ -261,16 +254,24 @@ _agent_app="$(jqpy "a=(d.get('resources') or {}).get('apps') or {};print((a.get(
     --users-group "$_agent_users_group" --account-profile "$_agent_account_profile"
 )
 
-echo "==> [8] load the example measures and patients + bind the knowledge views, as the deployer (CONTENT-EXAMPLE-PRELOAD)"
-# After [7/7], like before; the bind reads the tagged knowledge this step loads. FATAL on failure, like every step
+echo "==> [7.9] govern the environment tags (DEPLOY-ENVIRONMENT-TAG-POLICIES)"
+# Before [8], which tags the default environment: once a key is governed, only its assigners can apply it.
+_govern="$(jqpy "v=d.get('variables') or {};print(str((v.get('govern_environment_tags') or {}).get('value', True)).lower())")"
+case "$_govern" in
+  true) bash "$here/scripts/deploy/environment-tag-policies.sh" -t "$target" ${profile_args[@]+"${profile_args[@]}"};;
+  false)
+    echo "!!! WARNING: govern_environment_tags is false, so the environment tags are NOT governed: anyone who can tag a"
+    echo "!!! catalog can make it an environment or the default environment (DEPLOY-ENVIRONMENT-TAG-POLICIES).";;
+  *) echo "!!! govern_environment_tags must be true or false, not $_govern"; exit 1;;
+esac
+
+echo "==> [8] fill the default environment in $_uc_catalog, as the deployer (DEPLOY-DEFAULT-ENVIRONMENT)"
+# After [3/7], whose bundle deploy made the environment's schemas and their grants. FATAL on failure, like every step
 # that provisions what a run reads.
-_runtime_schema="$(jqpy "v=d.get('variables') or {};print((v.get('uc_schema') or {}).get('value') or '')")"
-[ -n "$_warehouse_id" ] || { echo "!!! warehouse_id is not set — the knowledge views need it"; exit 1; }
 (
   if [ -n "$profile_name" ]; then export DATABRICKS_CONFIG_PROFILE="$profile_name"; fi
-  export CQL_DATABRICKS_CATALOG_SCOPES="$_catalog_scopes"
-  "$venv_py" "$here/scripts/deploy/provision-examples.py" --catalog "$_uc_catalog" --runtime-schema "$_runtime_schema" \
-    --warehouse "$_warehouse_id"
+  "$venv_py" "$here/scripts/deploy/provision-examples.py" --catalog "$_uc_catalog" --users-group "$users_group" \
+    --maintenance-principal "$_maintenance_principal"
 )
 
 echo "==> done. Apps deployed + started: $(echo $keys). Runtime volume populated at $volume."

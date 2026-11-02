@@ -18,10 +18,10 @@ from cql_databricks.result.insights.extractors import (
 
 import pytest
 
-from cql_databricks.result.insights.evaluation import MetricsUnavailable, StateClosure
+from cql_databricks.result.insights.evaluation import MetricsUnavailable
 from cql_databricks.result.insights.model import PROVENANCE_MIXED, PROVENANCE_RUN
 from cql_databricks.result.insights.profile import define_profile
-from cql_databricks.result.address import evaluation_version
+from closure_fixture import CATALOG, DATA_SOURCE, SELECTION_ID, FixedClosure, library, pinned
 
 
 def _warehouse(warehouse_id, sql):
@@ -34,39 +34,17 @@ def _execute(warehouse_id="wh-1"):
     return lambda sql: _warehouse(warehouse_id, sql)
 
 
-CATALOG = "acme_results"
-DATA_SOURCE = "conformance"
+def _default_rows(sql):
+    if "IS NULL THEN" in sql:          # the null-rate probe
+        return [["0", "67"]]
+    if "GROUP BY 1 ORDER BY n DESC, v" in sql:   # top values
+        return [["true", "67"], ["false", "1"]]
+    return [["female", "65"], ["male", "2"]]     # a stratum cut
+
+
+MEASURE_SCHEMA = "examplemeasure_1_0_0"
 PERIOD = ("2026-01-01", "2026-12-31")
-SUFFIX = evaluation_version(DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1])
-PATIENT_FN = "acme.conformance.retrieve_Patient"
-
-
-class _Row:
-    def __init__(self, id_: str, name: str, version: str) -> None:
-        self.id, self.library_name, self.library_version = id_, name, version
-
-
-class _Define:
-    def __init__(self, define_name: str, mv_name: str) -> None:
-        self.define_name, self.mv_name = define_name, mv_name
-
-
-#: The suffix of the same data source with no period stated — a different evaluation, and one the
-#: no-period test still has to find a compiled library for.
-NO_PERIOD_SUFFIX = evaluation_version(DATA_SOURCE, period_start=None, period_end=PERIOD[1])
-
-
-class _State:
-    def list_libraries(self, data_source_id: str):
-        if data_source_id != DATA_SOURCE:
-            return []
-        return [_Row("lib-measure", "ExampleMeasure", f"1.0.0_{SUFFIX}"),
-                _Row("lib-noperiod", "ExampleMeasure", f"1.0.0_{NO_PERIOD_SUFFIX}")]
-
-    def list_defines(self, library_id: str):
-        return [_Define("Initial_Population", "initial_population"),
-                _Define("Example_Results", "example_results")]
-
+PATIENT_VIEW = "acme.data.patient"
 
 #: The boolean population relation. Its value column is named after the DEFINE, which is why the
 #: value column is found by elimination rather than by looking for `__val`.
@@ -77,39 +55,33 @@ LIST_VALUED = {"__subject_id": "STRING", "__ordinal": "STRING", "__val": "STRUCT
 
 
 def _run(define="Initial Population", columns=BOOLEAN,
-         counts=(67, None), patient_function=PATIENT_FN, rows=None, **overrides):
-    """Drive the builder with every warehouse read stubbed, capturing the SQL it issued."""
+         counts=(67, None), patient_relation=PATIENT_VIEW, rows=None, *, present=True, **overrides):
+    """Drive the builder with every warehouse read stubbed, capturing the SQL it issued.
+
+    The define's relation is pinned with ``columns``; ``present=False`` gives the selection no relation for it.
+    """
     issued: list[str] = []
+    relation_name = define.lower().replace(" ", "_")
+    relations = {define: pinned(MEASURE_SCHEMA, relation_name, columns)} if present else {}
+    closure = FixedClosure({"ExampleMeasure": library("ExampleMeasure", "1.0.0", relations)})
 
-    # Keyed off whatever relation the builder RESOLVES to rather than a hard-coded schema, so a test
-    # that changes the evaluation (the no-period case) still describes the relation it asks about.
-    def describe(_catalog, refs, **_kw):
-        return {r: columns for r in refs}
-
-    def count(_warehouse_id, cols, *, eval_id):
-        assert eval_id in (SUFFIX, NO_PERIOD_SUFFIX)  # RUN-RESULTS-BY-EVAL: one evaluation set per count
+    def count(_run_sql, cols, *, eval_id):
+        assert eval_id == SELECTION_ID  # RUN-CLIENT-RESULT-SETS: the complete selection's identity, per count
         return {r: counts for r in cols}
 
     def execute(_warehouse_id, sql):
         issued.append(sql)
-        if rows is not None:
-            return rows(sql)
-        if "IS NULL THEN" in sql:          # the null-rate probe
-            return [["0", "67"]]
-        if "GROUP BY 1 ORDER BY n DESC, v" in sql:   # top values
-            return [["true", "67"], ["false", "1"]]
-        return [["female", "65"], ["male", "2"]]     # a stratum cut
+        return rows(sql) if rows is not None else _default_rows(sql)
 
     kwargs = dict(
         library="ExampleMeasure", version="1.0.0",
         define=define, define_library="ExampleMeasure",
-        data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
-        closure=StateClosure(_State()), patient_function=patient_function,
+        data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SELECTION_ID, draft="",
+        closure=closure, patient_relation=patient_relation,
         results_catalog=CATALOG, execute=_execute(),
     )
     kwargs.update(overrides)
-    with patch("cql_databricks.result.insights.profile.relation_columns", side_effect=describe), \
-         patch("cql_databricks.result.insights.profile.count_relations", side_effect=count), \
+    with patch("cql_databricks.result.insights.profile.count_relations", side_effect=count), \
          patch(f"{__name__}._warehouse", side_effect=execute):
         return define_profile(**kwargs), issued
 
@@ -155,11 +127,11 @@ def test_strata_are_cut_over_the_subjects_the_define_is_TRUE_of():
     assert "CASE WHEN `Initial_Population` THEN __subject_id END" in cut
 
 
-def test_the_patient_binding_is_called_with_no_argument():
-    """BIND-RETRIEVE-UDF, EMIT-ROOT-INDEPENDENT — the same call the evaluated total makes: the data source is the
+def test_the_patient_view_is_read_with_no_argument():
+    """BIND-PUBLISHED-VIEW, EMIT-ROOT-INDEPENDENT — the same call the evaluated total makes: the data source is the
     population, so no argument names a measure."""
     _, issued = _run()
-    assert any("retrieve_Patient() p" in sql for sql in issued)
+    assert any("FROM acme.data.patient p" in sql for sql in issued)
     assert not any("library" in sql for sql in issued)
 
 
@@ -179,12 +151,28 @@ def test_no_period_means_no_age_band_rather_than_an_age_measured_from_today():
 def test_no_patient_binding_drops_the_cuts_and_keeps_the_rest():
     """Unlike the evaluated total — which is a BASE and must be stated or the whole set fails — a
     missing demographic cut is an absence the rest of the profile survives."""
-    profile, _ = _run(patient_function=None)
+    profile, _ = _run(patient_relation=None)
     assert profile.values.subjects == 67
     assert not [s for s in profile.strata if not s.sampled]
 
 
 # ── what is NOT derived, and says so ──────────────────────────────────────────────────────────────
+
+def test_a_failed_codes_read_is_stated_and_the_rest_of_the_profile_stands():
+    """SPEC-TERMINOLOGY-EXTRACT — a warehouse failure on the coded values is not "no codes". The payload
+    carries the reason where the codes would be, and the value profile still reads."""
+    def rows(sql):
+        if "resourceType AS resource_type" in sql:
+            raise RuntimeError("SQL warehouse stopped")
+        return _default_rows(sql)
+
+    profile, _ = _run(define="Example Results", columns=LIST_VALUED, counts=(33, 80), rows=rows)
+    assert profile.terminology == []
+    assert profile.terminology_error == "SQL warehouse stopped"
+    assert profile.values.subjects == 33
+    wire = profile.to_dict()
+    assert "terminology" not in wire and wire["terminologyError"] == "SQL warehouse stopped"
+
 
 def test_cardinality_is_omitted_rather_than_sampled():
     """It sits inside `values`, a block this builder marks as REAL, and an invented histogram inside a
@@ -194,17 +182,14 @@ def test_cardinality_is_omitted_rather_than_sampled():
 
 
 def test_nothing_on_this_payload_is_fabricated_any_more():
-    """SUPERSEDES three tests that pinned the opposite, and the reversal is on evidence rather than
-    tidiness. `value_sets` is superseded by `SPEC-TERMINOLOGY-EXTRACT`, which reads real codes off the
-    define's own results; `temporal` is rendered by nothing since it left the Demographics tab; and the
-    race / ethnicity / payer cuts are now known to be UNDERIVABLE rather than merely underived — US Core
+    """`value_sets` is not fabricated: `SPEC-TERMINOLOGY-EXTRACT` reads real codes off the define's own
+    results. `temporal` is rendered by nothing. The race / ethnicity / payer cuts are UNDERIVABLE rather than merely
+    underived: US Core
     nests race and ethnicity under `extension[url=…].extension[url=ombCategory]` and the emitted
     extension struct is flat, so the accessor fails with `No such struct field 'extension'`
     (`DATA-INSIGHT-EXTRACTION`), and payer lives on Coverage, not Patient.
 
-    The old rule — keep a fabricated cut and MARK it, because removing it quietly shrinks a pane the
-    design was built around — was right while "no table answers this YET" was true. It is not true, and
-    an invented bar stops being the lesser evil against an absent one once the absence is a finding."""
+    A cut that is fabricated is MARKED; an absent cut is a finding, not a gap to fill."""
     profile, _ = _run(define="Example Results",
                       columns=LIST_VALUED, counts=(33, 80))
     assert profile.sampled == []
@@ -242,4 +227,4 @@ def test_a_define_with_no_relation_here_raises_rather_than_returning_an_empty_pr
     """CORE-NO-SILENT-MISLOWER — "never materialized here" and "materialized and found nothing" are
     opposite claims, and an empty profile would render as the second."""
     with pytest.raises(MetricsUnavailable, match="no result relation"):
-        _run(define="Never Reached")
+        _run(define="Never Reached", present=False)

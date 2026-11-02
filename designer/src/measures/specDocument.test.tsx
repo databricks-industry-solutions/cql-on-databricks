@@ -423,7 +423,7 @@ describe("narration from CQL annotation tags (APP-NARRATIVE-TAGS)", () => {
   });
 
   it("reads @comment as a field of its own — the author's elaboration, kept out of the lede", () => {
-    // The tag was on the wire and dropped on the floor. It is NOT concatenated into `text`: the
+    // The tag is on the wire and must not be dropped on the floor. It is NOT concatenated into `text`: the
     // description's plain projection is what a nav row and a catalogue line print, and folding a
     // paragraph into it would make every one-line summary a paragraph. `authored` like every other tag.
     const concept = scope(document(), "Initial Population").concepts[0]!;
@@ -450,7 +450,7 @@ describe("narration from CQL annotation tags (APP-NARRATIVE-TAGS)", () => {
   });
 });
 
-describe("Specification overlay join (APP-NARRATIVE-OVERLAY)", () => {
+describe("Specification overlay join", () => {
   // The overlay narrates defines the CQL says nothing about, and the CQL wins wherever both speak.
   // Its keys are LIBRARY-QUALIFIED, which is what keeps `Exclusions."Has Excluded Care"` from picking
   // up the root library's prose.
@@ -566,8 +566,8 @@ describe("Specification overlay join (APP-NARRATIVE-OVERLAY)", () => {
 
 // ── SPEC-DERIVED-APPENDIX — the reference tables, read off the ELM declarations ──────────────────
 //
-// These used to be hand-written rows in the narration instance, which is how an OID could go stale
-// with nothing to catch it. The Appendix is now derived from the same compiled libraries the document
+// These are derived, not hand-written rows in the narration instance: hand-written rows let an OID go
+// stale with nothing to catch it. The Appendix is derived from the same compiled libraries the document
 // above is built from, so it cannot say something the document does not.
 
 describe("Appendix (SPEC-DERIVED-APPENDIX)", () => {
@@ -622,7 +622,7 @@ describe("Appendix (SPEC-DERIVED-APPENDIX)", () => {
   });
 
   it("omits what it cannot obtain rather than transcribing it", () => {
-    // Code counts and expansion dates belong to the terminology tables (CONTENT-TERMINOLOGY-SCHEMA),
+    // Code counts and expansion dates belong to the terminology tables (DATA-ENVIRONMENT-LAYOUT),
     // which the document has no read path to. There is no field here to fill in from a copy.
     const { appendix } = appendixDoc(withDeclarations("Doc", "urn:oid:1"));
     expect(Object.keys(appendix.valuesets[0]!).sort()).toEqual(["library", "name", "oid"]);

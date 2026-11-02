@@ -3,7 +3,7 @@ library FhirConditional version '1.0.0'
 // Conditional whose branches/condition reach into DIFFERENT sources (ARCH-CONDITIONAL): per patient,
 // choose between list-valued queries based on a retrieve-derived condition. Each branch is
 // materialized per subject and CASE-selected (co-located on __subject_id), the set-at-a-time form
-// of the canonical UNION-ALL-of-filtered-branches. (Phase 4c.)
+// of the canonical UNION-ALL-of-filtered-branches.
 using FHIR version '4.0.1'
 include FHIRHelpers version '4.0.1' called FHIRHelpers
 

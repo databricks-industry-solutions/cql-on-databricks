@@ -1,13 +1,11 @@
 """APP-COHORT-ALGEBRA, APP-DECISIVE-COUNT — where the cohort went, and why it left.
 
-The measure flow (`APP-MEASURE-FLOW`) draws a spine of populations and, once there is a run, a rail
-of everything that departed from each one. The spine's counts are `insights/metrics.py`'s. This module
-answers the harder half: of the subjects who entered a gate and did not pass it, which criterion was
-responsible.
+The Designer reads this for each gate of a measure. The population counts are `insights/metrics.py`'s. This module
+answers the harder half: of the subjects who entered a gate and did not pass it, which criterion was responsible.
 
 **IT IS A SET DIFFERENCE, NOT A NEGATION.** "How many were in the Initial Population and failed the
-encounter criterion" is an anti-join on subject id over relations the run already materialized
-(`SDP-ALL-DEFINES`). Nothing is inferred, no negative expression is authored, and no second run is paid
+encounter criterion" is an anti-join on subject id over relations the run already materialized.
+Nothing is inferred, no negative expression is authored, and no second run is paid
 for. The universe is bounded — the subjects the measure was evaluated against — so the complement of a
 criterion within it is a fact, not the unprovable negative it can look like.
 
@@ -42,7 +40,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ..relation import SUBJECT_ID, literal, met_expr, quote, value_column
-from ..results import Execute, RelationRef, relation_columns, result_relation
+from ..results import Execute, PinnedRelation, relation_columns, result_relation
 from .evaluation import ClosureSource, MetricsUnavailable, locate
 from .model import PROVENANCE_RUN, _clean
 
@@ -169,7 +167,7 @@ def cohort_flow(
     draft: str,
     gates: list[GateRequest],
     closure: "ClosureSource",
-    patient_function: str | None,
+    patient_relation: str | None,
     results_catalog: str,
     execute: Execute,
 ) -> CohortFlow:
@@ -188,7 +186,7 @@ def cohort_flow(
     which silently inflates every sibling's decisive count and still sums to a plausible-looking
     partition. A gate that cannot be decomposed correctly is not decomposed.
     """
-    # RUN-EVAL-ID-INPUTS: the evaluation set, named by the route (`evaluation_key.EvaluationKeys`).
+    # RUN-CLIENT-RESULT-SETS: the complete selection's identity, which the closure is checked against.
     suffix = eval_id
     libraries = closure.closure(data_source_id, suffix, root=library, draft=draft)
     if not libraries:
@@ -196,22 +194,20 @@ def cohort_flow(
             f"no compiled libraries for data source {data_source_id!r} at evaluation {suffix} — "
             f"the measure has not been run against this data source and measurement period")
 
-    # Every relation any gate mentions, resolved through the compiler's own record of what it emitted
-    # (`pipeline_defines`), never by re-deriving a table name from a define name.
-    wanted: dict[tuple[str, str], RelationRef | None] = {}
+    # Every relation any gate mentions, resolved through the selection's own record of what the compiler emitted,
+    # never by re-deriving a table name from a define name.
+    wanted: dict[tuple[str, str], PinnedRelation | None] = {}
     for gate in gates:
         for lib, name in [(gate.stage_library, gate.stage), *gate.criteria]:
-            wanted.setdefault((lib, name), locate(libraries, lib, name, results_catalog))
+            wanted.setdefault((lib, name), locate(libraries, lib, name))
         if gate.base and gate.base_library:
-            wanted.setdefault((gate.base_library, gate.base),
-                              locate(libraries, gate.base_library, gate.base, results_catalog))
+            wanted.setdefault((gate.base_library, gate.base), locate(libraries, gate.base_library, gate.base))
 
     refs = [r for r in wanted.values() if r is not None]
-    columns = relation_columns(results_catalog, refs, execute=execute) if refs else {}
+    columns = relation_columns(results_catalog, refs) if refs else {}
 
-    def resolved(key: tuple[str, str]) -> RelationRef | None:
-        ref = wanted.get(key)
-        return ref if ref is not None and ref in columns else None
+    def resolved(key: tuple[str, str]) -> PinnedRelation | None:
+        return wanted.get(key)
 
     usable: list[GateRequest] = []
     omitted: list[str] = []
@@ -225,7 +221,7 @@ def cohort_flow(
         needs_binding = not (gate.base and gate.base_library)
         if (gate.criteria
                 and all(resolved(k) is not None for k in needed)
-                and not (needs_binding and not patient_function)):
+                and not (needs_binding and not patient_relation)):
             usable.append(gate)
         else:
             omitted.append(gate.stage)
@@ -234,7 +230,7 @@ def cohort_flow(
     if usable:
         ctes, cte_of = _subject_ctes(usable, resolved, columns, suffix)
         if any(not (g.base and g.base_library) for g in usable):
-            ctes.insert(0, _evaluated_cte(patient_function))
+            ctes.insert(0, _evaluated_cte(patient_relation))
         sql = _crosstab(usable, cte_of, ctes)
         rows = execute(sql) or []
         built = _read_rows(usable, rows)
@@ -251,15 +247,14 @@ def cohort_flow(
 EVALUATED = "s_all"
 
 
-def _evaluated_cte(patient_function: str | None) -> str:
-    """The evaluated cohort, from the bound Patient retrieve (`BIND-RETRIEVE-UDF`).
+def _evaluated_cte(patient_relation: str | None) -> str:
+    """The evaluated cohort, from the environment's Patient view (`BIND-PUBLISHED-VIEW`).
 
-    THE DATA SOURCE IS THE POPULATION. The call passes no argument: a retrieve's rows depend only on its
-    arguments and its data source (`EMIT-ROOT-INDEPENDENT`), and a measure's population is chosen by
-    choosing its data source (`DATA-CONFORMANCE-MEASURE-SELECT`).
+    THE ENVIRONMENT'S DATA IS THE POPULATION: a retrieve's rows depend only on its request and the data it is bound to
+    (`EMIT-ROOT-INDEPENDENT`), and a measure's population is chosen by choosing its environment (`CLIENT-ENVIRONMENT`).
     """
     return (f"{EVALUATED} AS (SELECT DISTINCT {SUBJECT_ID} "
-            f"FROM {patient_function}())")
+            f"FROM {patient_relation})")
 
 
 def _caveat(omitted: list[str]) -> str | None:
@@ -280,7 +275,7 @@ def _caveat(omitted: list[str]) -> str | None:
 def _subject_ctes(
     gates: list[GateRequest],
     resolved,
-    columns: dict[RelationRef, dict[str, str]],
+    columns: dict[PinnedRelation, dict[str, str]],
     eval_id: str,
 ) -> tuple[list[str], dict[tuple[str, str], str]]:
     """One CTE per DISTINCT relation, collapsing it to the subjects who met it.

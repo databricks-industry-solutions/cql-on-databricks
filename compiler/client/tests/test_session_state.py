@@ -1,14 +1,10 @@
-"""CLIENT-SESSION-STATE, CLIENT-SESSION-MOUNT — the session record, and the rules ``mount`` applies before it
-touches Spark. Stdlib unittest with a fake session; the mount itself runs against Spark in the live check.
-"""
-import os
-import tempfile
+"""CLIENT-SESSION-STATE, CLIENT-SESSION-RESET — the session record. Stdlib unittest with a fake session."""
 import unittest
 from unittest import mock
 
-from cql_databricks.compiler.mount import mount
+from cql_databricks.compiler.relations import VIEW_PREFIX
 from cql_databricks.compiler.session_libraries import register_cell, session_provider
-from cql_databricks.compiler.session_state import SessionRecord
+from cql_databricks.compiler.session_state import SessionRecord, reset
 
 COMMON = "library Common version '1.0.0'\ndefine \"X\": 1\n"
 
@@ -38,10 +34,9 @@ class _SessionSpark:
     def createDataFrame(self, rows, schema):
         return _Frame(self, rows)
 
-
-class _Model:
-    def resource_schema(self, fhir_type=None):
-        return {"Patient": object(), "Condition": object()} if fhir_type is None else object()
+    def sql(self, statement):
+        assert statement == "SHOW VIEWS IN global_temp"
+        return mock.Mock(collect=lambda: [{"viewName": name, "isTemporary": True} for name in self.views])
 
 
 class RecordTests(unittest.TestCase):
@@ -65,42 +60,24 @@ class RecordTests(unittest.TestCase):
         spark = _SessionSpark()
         record = SessionRecord(spark)
         self.assertEqual(record.version(), 0)
-        record.set_mount({"types": {"Patient": "retrieve_Patient__cqlmount"}})
+        record.set_scope('define "Y": 2')
         register_cell(COMMON, spark=spark)
         self.assertEqual(record.version(), 2)
-        self.assertEqual(record.mount()["types"], {"Patient": "retrieve_Patient__cqlmount"})
         record.drop()
         record.drop()
-        self.assertIsNone(record.mount())
+        self.assertEqual(record.scope(), "")
         self.assertEqual(session_provider(spark=spark).declared(), [])
 
-
-class MountRuleTests(unittest.TestCase):
-    """The string rules: never a guess, and every failure before anything is registered."""
-
-    def test_a_fhir_string_without_a_slash_is_not_a_path(self):
-        with self.assertRaisesRegex(ValueError, r"not a path.*write \./data"):
-            mount(_SessionSpark(), "data", client=_Model())
-
-    def test_a_dict_table_name_must_have_three_parts(self):
-        with self.assertRaisesRegex(ValueError, "catalog.schema.table"):
-            mount(_SessionSpark(), {"Patient": "silver.patient"}, client=_Model())
-
-    def test_an_unmodeled_file_in_the_folder_fails_naming_it(self):
-        with tempfile.TemporaryDirectory() as d:
-            for name in ("Patient.ndjson", "Widget.ndjson"):
-                open(os.path.join(d, name), "w").close()
-            with self.assertRaisesRegex(ValueError, "Widget, which the compiler does not model"):
-                mount(_SessionSpark(), d, client=_Model())
-
-    def test_an_empty_folder_fails(self):
-        with tempfile.TemporaryDirectory() as d:
-            with self.assertRaisesRegex(ValueError, "no <Type>.ndjson"):
-                mount(_SessionSpark(), d, client=_Model())
-
-    def test_something_else_is_refused(self):
-        with self.assertRaisesRegex(TypeError, "cannot mount int"):
-            mount(_SessionSpark(), 42, client=_Model())
+    def test_reset_drops_the_relation_views_and_the_cells_and_nothing_else(self):
+        """CLIENT-SESSION-RESET — the client's own temporary views and the record; a user's view is left alone."""
+        spark = _SessionSpark()
+        register_cell(COMMON, spark=spark)
+        spark.views[VIEW_PREFIX + "abc"] = []
+        spark.views["users_own_view"] = []
+        reset(spark)
+        reset(spark)
+        self.assertEqual(set(spark.views), {"users_own_view"})
+        self.assertEqual(session_provider(spark=spark).declared(), [])
 
 
 if __name__ == "__main__":

@@ -48,12 +48,14 @@ Query the two tables with SQL or a dashboard. For a computed step's profile, row
 Set in `databricks.local.yml`:
 
 - `designer_catalog`: the catalog holding the `designer` schema. Defaults to `uc_catalog`.
-- `run_log_readers_group`: the group that gets `SELECT` on both tables. `scripts/deploy/deploy.sh` refuses to
-  deploy while it is empty.
+- `run_log_readers_group`: the group that gets `SELECT` on the `designer` schema, so on both tables and any later one
+  there. `scripts/deploy/deploy.sh` refuses to deploy while it is empty.
 
-The bundle creates the `designer` schema. `scripts/deploy/deploy.sh` then runs `scripts/deploy/provision-run-log.py`,
-which creates both tables with `CREATE TABLE IF NOT EXISTS`, fails if their columns differ from the
-definition, and grants `MODIFY` to the Designer App's service principal and `SELECT` to the readers group.
+The bundle creates the `designer` schema with its grants: `USE SCHEMA` and `MODIFY` to the Designer App's service
+principal, `USE SCHEMA` and `SELECT` to the readers group. They are the schema's whole grant list, so a grant made on
+it by hand is revoked by the next deploy. `scripts/deploy/deploy.sh` then runs `scripts/deploy/provision-run-log.py`,
+which creates both tables with `CREATE TABLE IF NOT EXISTS`, fails if their columns differ from the definition, and
+grants both `USE CATALOG` on `designer_catalog`, which the bundle doesn't hold.
 
 The App only inserts. It writes in the background, so logging never delays a run. A failed write is logged
 at ERROR with the run ID (`DEC-RUN-LOG-FAILURE`).

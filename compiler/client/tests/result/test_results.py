@@ -7,6 +7,7 @@ import pytest
 
 from cql_databricks.data_bindings import ResolverError, WarehouseSession
 from cql_databricks.result import results
+from cql_databricks.result._catalog_runtime import CurrentArtifact
 
 
 class _Connection:
@@ -41,7 +42,7 @@ class _Connection:
 
 def test_counts_read_typed_rows_from_the_session():
     """SPEC-METRIC — the counting query's BIGINTs arrive as ints, not the JSON strings of the old API."""
-    ref = ("c.s", "t")
+    ref = results.PinnedRelation(CurrentArtifact(table=("c", "s", "t")), "e", lambda _artifact: True)
     rows = [(results._label(ref), 3, None, 0)]
     execute = WarehouseSession(lambda: _Connection(rows)).rows
     assert results.count_relations(execute, {ref: {"__subject_id": "string"}}, eval_id="e") == {ref: (3, None)}

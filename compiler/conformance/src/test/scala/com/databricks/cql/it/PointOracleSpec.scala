@@ -8,18 +8,18 @@ import org.scalatestplus.junit.JUnitRunner
 
 import java.io.File
 
-/** RUN-POINT-CQF, `DEC-SAME-ANSWER` — the evaluator's point engine gives the conformance oracle's answers.
+/** `DEC-SAME-ANSWER` — the evaluator's point engine gives the conformance oracle's answers.
   *
   * Each corpus measure's test patients and value sets ([[Corpus.measureDefs]]), evaluated two ways: the oracle
-  * (`GroundTruthRunner`, with the 2026 measurement period passed as a run-time parameter) and `CqfEvaluator` as
-  * the point App calls it (the closure as CQL, each patient's own resources, the 2026 period as canonical
+  * (`GroundTruthRunner`, with the 2026 measurement period passed as a run-time parameter) and `CqfEvaluator`
+  * (the closure as CQL, each patient's own resources, the 2026 period as canonical
   * inclusive bounds). Every population of every patient must be equal. No Spark: both sides are the CQF
   * engine, so this runs offline. */
 @RunWith(classOf[JUnitRunner])
 class PointOracleSpec extends AnyFunSuite {
 
   Corpus.measureDefs.foreach { m =>
-    test(s"RUN-POINT-CQF: ${m.library}'s populations equal the oracle's for every test patient (DEC-SAME-ANSWER)") {
+    test(s"${m.library}'s populations equal the oracle's for every test patient (DEC-SAME-ANSWER)") {
       def lines(f: File): Seq[String] = Paths.read(f).linesIterator.filter(_.trim.nonEmpty).toSeq
       val resources = m.resourceTypes.map(t => t -> lines(new File(m.dataDir, s"$t.ndjson"))).toMap
       val rootCql = Paths.read(Paths.cql(m.library))

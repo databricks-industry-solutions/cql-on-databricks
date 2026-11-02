@@ -1,8 +1,8 @@
-"""Guarded LIVE test of BIND-PUBLISH: publish a data source from two synthetic tables, then read it back.
+"""Guarded LIVE test of BIND-PUBLISH: plan an environment's data views over two synthetic tables, and read them.
 
 On serverless through Databricks Connect, as the caller. It creates a scratch schema in the deployment's
-catalog, writes a synthetic Patient and Condition table into it, publishes that schema as a data source with
-``publish_data_source``, checks the tag and calls each ``retrieve_<Type>``, then drops the schema. The
+catalog, writes a synthetic Patient and Condition table into it, plans the environment's data views over them with
+``publish_data_source``, queries each view's body without creating it, then drops the schema. The
 model's schema comes from the deployed compiler App (`CLIENT-RESOURCE-SCHEMA`).
 
 SKIPS unless the live prerequisites are present, so it is safe in an otherwise offline run. ``scripts/test.sh
@@ -53,32 +53,26 @@ def scratch(spark):
         spark.sql(f"DROP SCHEMA IF EXISTS {target} CASCADE")
 
 
-def test_a_published_source_is_tagged_and_each_function_returns_its_table(spark, scratch):
+def test_a_publish_plan_reshapes_each_table_to_the_contract(spark, scratch):
+    """BIND-PUBLISH, BIND-RESHAPE: the plan for an environment's data views over two tables. It is reviewed, not
+    run: running it replaces the environment's own ``data`` views, so each view's body is queried instead."""
     from cql_databricks.compiler import CqlClient, publish_data_source
     from cql_databricks.compiler.reshape import ERROR
 
     catalog, schema = scratch
     client = CqlClient.builder().endpoint(ENDPOINT).auth_bearer(TOKEN).build()
-    name = schema  # unique per run, so no other data source in scope shares it
-    plan = publish_data_source(
-        spark, f"{catalog}.{schema}", name=name, description="BIND-PUBLISH live test", client=client,
-        fhir={"Patient": f"{catalog}.{schema}.patient", "Condition": f"{catalog}.{schema}.condition"})
+    fhir = {"Patient": f"{catalog}.{schema}.patient", "Condition": f"{catalog}.{schema}.condition"}
+    plan = publish_data_source(spark, catalog, client=client, fhir=fhir)
     assert [i for i in plan.issues if i.severity == ERROR] == []
+    assert plan.views == {"Condition": f"{catalog}.data.condition", "Patient": f"{catalog}.data.patient"}
+    bodies = {}
+    for statement in plan.statements:
+        head, body = statement.split(" AS ", 1)
+        assert head.startswith("CREATE OR REPLACE VIEW ")
+        bodies[head.rsplit(".", 1)[1].strip("`")] = body
 
-    layout = plan.run()
-    assert sorted(layout.bindings) == ["Condition", "Patient"]
-
-    tags = spark.sql(
-        "SELECT tag_value FROM system.information_schema.schema_tags "
-        "WHERE catalog_name = :catalog AND schema_name = :schema AND tag_name = 'cql_databricks_data_source'",
-        args={"catalog": catalog, "schema": schema}).collect()
-    assert [r["tag_value"] for r in tags] == [name]
-
-    patients = spark.sql(f"SELECT `__subject_id`, `__resource`.`gender` AS gender, "
-                         f"`__resource`.`__resource_type` AS t FROM `{catalog}`.`{schema}`.`retrieve_Patient`()"
-                         ).collect()
-    assert sorted((r["__subject_id"], r["gender"], r["t"]) for r in patients) == [
-        ("pub-p1", "female", "Patient"), ("pub-p2", "male", "Patient")]
-    conditions = spark.sql(f"SELECT `__subject_id`, `__resource`.`id` AS id "
-                           f"FROM `{catalog}`.`{schema}`.`retrieve_Condition`()").collect()
+    patients = spark.sql(f"SELECT `__subject_id`, `__resource`.`gender` AS gender "
+                         f"FROM ({bodies['patient']})").collect()
+    assert sorted((r["__subject_id"], r["gender"]) for r in patients) == [("pub-p1", "female"), ("pub-p2", "male")]
+    conditions = spark.sql(f"SELECT `__subject_id`, `__resource`.`id` AS id FROM ({bodies['condition']})").collect()
     assert [(r["__subject_id"], r["id"]) for r in conditions] == [("pub-p1", "pub-c1")]

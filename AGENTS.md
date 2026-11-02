@@ -52,6 +52,8 @@ Instructions for any AI coding agent working in this repository.
 
 ## Tests
 
+- New functionality ships with its tests in the same change: every new function, route, tool, option or deploy
+  step has a test that exercises it and cites its requirement ID.
 - Run the tests that cover your change before saying it works. Say which ones you ran.
 - Semantic compiler changes need a conformance test, not only a unit test.
 - A compiler gap, when found, gets a conformance test with its fix: the smallest CQL that causes and checks it,
@@ -59,7 +61,7 @@ Instructions for any AI coding agent working in this repository.
 
 ## Specs and citations
 
-- Requirement IDs (`LANG-3VL`, `PIPE-STATE-LAYER`) are the source of truth. Cite the ID in the
+- Requirement IDs (`LANG-3VL`, `PIPE-DURABLE-IDENTITY`) are the source of truth. Cite the ID in the
   docstring of code that implements it, and in tests (`PROC-CITE-REQ`).
 - Every ID is a meaningful mnemonic, `<TYPE>-<SLUG>`, never a bare number (`PROC-DESCRIPTIVE-ID`).
   This applies to requirements, plan steps, phases, workstreams, decisions, options and tasks.
@@ -75,8 +77,8 @@ Instructions for any AI coding agent working in this repository.
 - A requirement says what is true now, in full (`PROC-CURRENT-DEFINITION`). When it changes, rewrite it
   as one current definition. No "Added", "Amended" or "Built" notes, no dates, and nothing about what it
   used to say. History lives in git.
-- A requirement that stops being true is marked RESOLVED or SUPERSEDED in place, with the reason and what
-  replaces it, but no date. Never delete it: old code that cites the ID must still lead somewhere.
+- A requirement that stops being true is deleted from its registry, in the same change that removes every
+  citation of it. Search the whole repository for the ID first; none may remain. Git keeps its history.
 - For CQL semantics, cite the HL7 CQL spec clause in a code comment.
 - Docs say what is true now. History lives in git. A durable design rationale goes in `docs/decisions/`.
 

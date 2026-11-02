@@ -10,9 +10,10 @@ import json
 import sys
 from hashlib import sha256
 
-#: Granted on the private catalog. MANAGE is inherited by every schema and table and deletes objects
-#: the principal does not own; the USE privileges reach every user's schema.
-MAINTENANCE_PRIVILEGES = ("USE_CATALOG", "USE_SCHEMA", "MANAGE")
+#: Granted on the default environment's catalog before the bundle deploy. Its ``USE SCHEMA`` and ``MANAGE`` on the
+#: environment's ``draft_results`` (`RUN-CLIENT-DRAFT-RESULTS`) are granted once the schema exists, by the deploy's
+#: environment step (`shipped_sources.environment.grant_statements`).
+MAINTENANCE_PRIVILEGES = ("USE_CATALOG",)
 
 #: The role a Job's run-as needs on its service principal. Creating a principal grants its creator only
 #: `roles/servicePrincipal.manager`, and `bundle deploy` then fails with 403 PERMISSION_DENIED.
@@ -48,7 +49,7 @@ def _grant_deployer_run_as(workspace, application_id: str) -> None:
 def provision_maintenance_principal(workspace, *, catalog: str, warehouse: str) -> str:
     """RUN-CLIENT-MAINTENANCE — create or reuse the Job's dedicated identity, then grant it.
 
-    The display name carries a hash of this workspace and private catalog, so retries reuse it.
+    The display name carries a hash of this workspace and the environment's catalog, so retries reuse it.
     Workspace SCIM does not keep externalId (observed 2026-10-10: it came back empty and a retry
     created a duplicate), so the name is the lookup key.
     It has no secret: a Job run-as needs none, so no credential can leak. The deploying user gets
@@ -58,7 +59,7 @@ def provision_maintenance_principal(workspace, *, catalog: str, warehouse: str) 
     from databricks.sdk.service.catalog import PermissionsChange, Privilege
     from databricks.sdk.service.iam import AccessControlRequest, PermissionLevel
 
-    _text(catalog, "private catalog")
+    _text(catalog, "environment catalog")
     _text(warehouse, "warehouse")
     installation = sha256((workspace.config.host.rstrip("/") + "\n" + catalog.casefold()).encode()).hexdigest()
     name = "cql-databricks-designer-maintenance-" + installation[:12]
@@ -95,27 +96,22 @@ def main(argv: list[str]) -> None:
             raise SystemExit(f"!!! {name} must be set in databricks.local.yml")
         return value
 
-    catalog = required("designer_results_catalog")
+    # DEPLOY-DEFAULT-ENVIRONMENT — the maintenance Job expires the default environment's draft_results.
+    catalog = required("uc_catalog")
     warehouse = required("warehouse_id")
-    # A single-catalog deployment is allowed: per-user schemas, not the catalog, separate private results.
-    if catalog.casefold() == required("uc_catalog").casefold():
-        print(f"==> NOTE: Designer results share catalog '{catalog}' with the product's data; MANAGE covers all of it.",
-              file=sys.stderr)
-        # DEPLOY-APP-GRANTS — in a shared catalog the Apps are granted per schema (grant-app-access.sh).
-        print("==> NOTE: the Apps see only the schemas that exist at deploy time. After loading a new schema, redeploy"
-              " or run scripts/deploy/grant-app-access.sh.", file=sys.stderr)
     try:
         principal = provision_maintenance_principal(WorkspaceClient(profile=profile), catalog=catalog,
                                                     warehouse=warehouse)
     except Exception as error:
         privileges = ", ".join(name.replace("_", " ") for name in MAINTENANCE_PRIVILEGES)
         raise SystemExit(f"!!! maintenance principal setup failed: {error}\n"
-                         f"!!! The catalog must exist (created by an administrator); creating the principal needs"
+                         f"!!! The catalog must exist; creating the principal needs"
                          f" workspace admin, giving yourself the Service Principal: User role on it needs its"
                          f" Manager role, and granting needs catalog OWNERSHIP or MANAGE:\n"
                          f"!!!   GRANT {privileges} ON CATALOG `{catalog}` TO `<principal>`;") from error
     print(f"==> maintenance principal {principal}: {', '.join(MAINTENANCE_PRIVILEGES)} on catalog {catalog}; "
-          f"CAN_USE on warehouse {warehouse}; you hold {RUN_AS_ROLE} on it. No Designer user grants were changed.",
+          f"CAN_USE on warehouse {warehouse}; you hold {RUN_AS_ROLE} on it. MANAGE on {catalog}.draft_results "
+          f"follows at the environment step.",
           file=sys.stderr)
     print(principal)
 

@@ -124,9 +124,8 @@ The server reads the measure's published `Measure` resource from tagged knowledg
 The resource covers the Overview only. It has no field for a single define, so Concepts and Rules come from
 CQL tags or have no prose.
 
-A library with no tags and no Measure resource shows no prose. Generated narration, cached per user,
-was removed (`APP-NARRATIVE-OVERLAY`, superseded), and so were the hand-written instances that once stood
-in for it (`SPEC-STATIC-OVERLAY`, superseded).
+A library with no tags and no Measure resource shows no prose. The page shows no generated narration: the
+assistant explains a measure in its own drawer (`DOC-EXPLAIN-REMOVE`).
 
 ### Precedence
 
@@ -135,13 +134,12 @@ CQL tag, then FHIR resource, field by field. The losing text is dropped, not kep
 ## Narrative devices (`SPEC-NARRATIVE-DEVICES`)
 
 The forms a narrated answer takes. They come from how published measure specifications are commonly
-written, such as AHRQ Quality Indicators. A checkable device turns a claim into something a test can compare with the
-ELM.
+written. A checkable device turns a claim into something a test can compare with the ELM.
 
 | Device | What it is | Checkable |
 |---|---|---|
 | Fixed frame | Every criterion answers the same questions in the same order. | yes |
-| Include / Exclude blocks | Two lists, never one mixed paragraph. The AHRQ form. Polarity is `SPEC-POLARITY`. | yes |
+| Include / Exclude blocks | Two lists, never one mixed paragraph. Published measure specifications use this form. Polarity is `SPEC-POLARITY`. | yes |
 | Named set reference | Name the value set, don't list its codes inline. Codes live in the Appendix. | yes |
 | Code table | code, display, system, one row each. | yes, against the ELM literal |
 | Anchored timing | Every date says what it is anchored to. | partly |
@@ -186,8 +184,6 @@ is dropped. That reading is not built.
 |---|---|
 | `SPEC-NARRATIVE-TAGS` | this document |
 | `SPEC-MEASURE-METADATA` | "The measure's FHIR resource" |
-| `APP-NARRATIVE-OVERLAY` | Superseded by `DOC-EXPLAIN-REMOVE` |
-| `SPEC-STATIC-OVERLAY` | Superseded by `APP-NARRATIVE-OVERLAY` |
 | `DOC-EXPLAIN-REMOVE` | "Provenance" |
 | `SPEC-NARRATIVE-DEVICES` | "Narrative devices" |
 | `SPEC-COMMENT-NARRATION` | "Free-text comments" |

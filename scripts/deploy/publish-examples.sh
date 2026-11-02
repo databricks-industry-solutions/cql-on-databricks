@@ -117,16 +117,16 @@ for f in "$src"/*.png; do
     ${profile_args[@]+"${profile_args[@]}"}
 done
 
-# The content directories (SVC-EXAMPLE-KNOWLEDGE): the CQL measures and FHIR data
-# notebook 03 mounts, and notebook 01 points `library_path` at. They have to land BESIDE the notebooks,
+# The content directories (SVC-EXAMPLE-KNOWLEDGE): the CQL measures notebook 01 points `library_path` at, and
+# the FHIR data and value sets notebook 07 writes to a Volume. They have to land BESIDE the notebooks,
 # because both notebooks derive the path from their own notebook location rather than from a configured
 # root — the same reason the masthead above cannot live anywhere central.
 #
 # `import-dir` walks the tree, so each directory's structure is preserved. A `.cql` / `.ndjson` / `.json`
 # file has no notebook header, so it imports as a workspace FILE and stays byte-identical — which is what
 # makes it readable with a plain open() from a notebook via /Workspace.
-for d in measures data; do
-  [ -d "$src/$d" ] || { echo "!!! missing content directory $src/$d — notebook 03 cannot run without it"; exit 1; }
+for d in measures data valuesets; do
+  [ -d "$src/$d" ] || { echo "!!! missing content directory $src/$d — the notebooks cannot run without it"; exit 1; }
   echo "==> publishing content -> $shared_root/$d"
   databricks workspace import-dir "$src/$d" "$shared_root/$d" --overwrite \
     ${profile_args[@]+"${profile_args[@]}"}

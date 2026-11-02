@@ -51,9 +51,8 @@ def cache_root() -> Path:
 
 
 def repo_root() -> Path:
-    """The monorepo root, found by its marker rather than a parent count: this package has moved
-    (``synth/`` → ``content/synthesizer/`` at CARVE-CONTENT, → ``loader/synthesizer/`` at SPLIT-CONTENT), and a count
-    was already one level short."""
+    """The monorepo root, found by its marker rather than a parent count: the package has sat at several depths
+    (`CARVE-CONTENT`, `SPLIT-CONTENT`), and a fixed count is easy to get one level short."""
     for root in Path(__file__).resolve().parents:
         if (root / "settings.gradle").is_file():
             return root

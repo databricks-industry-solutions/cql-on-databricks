@@ -1,7 +1,7 @@
-// PHASE-S2/S5 / APP-DATA-REQS — the data-requirements ANALYSIS behind the Data requirements view.
+// APP-DATA-REQS — the data-requirements ANALYSIS behind the Data requirements view.
 //
-// GOAL: the real analysis comes from the engine's retrieve/`RetrieveHints` surface (DATA-RETRIEVE-VIEW,
-// the compiler area) via the OSS `cql-databricks` `describe` call (browser → BFF → Compiler Service).
+// GOAL: the real analysis comes from the engine's retrieve/`RetrieveHints` surface (the compiler area)
+// via the OSS `cql-databricks` `describe` call (browser → BFF → Compiler Service).
 // That surface reports, per retrieve, the STATICALLY-DETERMINED pushdown predicates the optimizer knows
 // at compile time: terminology semi-joins (`valueSets`), single-code membership (`codes`), arbitrary
 // column predicates (`columnPredicates` — date-range / period windows), and the projected columns
@@ -17,7 +17,7 @@
 
 import { parseDefinitions } from "./logic.ts";
 
-/** A single pushdownable predicate on a retrieve — mirrors a `RetrieveHints` entry (DATA-RETRIEVE-VIEW). */
+/** A single pushdownable predicate on a retrieve — mirrors a `RetrieveHints` entry. */
 export interface Predicate {
   /** valueset = terminology semi-join · code = single-code membership · date = period/date-range window
    *  · column = any other resource-rooted column predicate. */

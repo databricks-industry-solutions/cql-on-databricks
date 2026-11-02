@@ -28,8 +28,7 @@ class SqlRetrieveBarrierSpec extends AnyFunSuite {
 
   private def env(mode: Config.RetrieveMode, minReuse: Int = 2): SqlEvalEnv =
     SqlEvalEnv(Context.Patient,
-      Config.defaults.copy(materializeRetrieves = mode, materializeRetrieveMinReuse = minReuse),
-      terminology = true)
+      Config.defaults.copy(materializeRetrieves = mode, materializeRetrieveMinReuse = minReuse)).describing
 
   private val twoConsumers = library(Seq(diabetes),
     define("DiabetesA", vsRetrieve()),
@@ -41,7 +40,7 @@ class SqlRetrieveBarrierSpec extends AnyFunSuite {
     val out = SqlRender.render(off.script)
     assert(!out.contains("read_condition_"))
     // The mount call is still inlined at BOTH use sites, with the membership re-applied above it.
-    assert(out.split("retrieve_Condition", -1).length - 1 == 2)
+    assert(out.split("__describe.condition", -1).length - 1 == 2)
   }
 
   test("all: a filtered read becomes its own CACHE TABLE and every consumer READS it") {
@@ -54,7 +53,7 @@ class SqlRetrieveBarrierSpec extends AnyFunSuite {
     assert(out.contains(s"CACHE TABLE $obj AS"))
     assert(out.indexOf(s"CACHE TABLE $obj AS") < out.indexOf("DiabetesA"))
     // The mount is called exactly ONCE now — inside the read object, not at each use site.
-    assert(out.split("retrieve_Condition", -1).length - 1 == 1)
+    assert(out.split("__describe.condition", -1).length - 1 == 1)
     // ...and each consumer reads the object instead.
     assert(out.split(s"FROM $obj", -1).length - 1 == 2)
   }
@@ -96,7 +95,7 @@ class SqlRetrieveBarrierSpec extends AnyFunSuite {
     val bare = library(Nil, define("AllConditions", Retrieve(Condition, None, None, None, None, None)))
     val on = SqlFrameLowering.lower(bare, env(Config.RetrieveMode.All))
     assert(on.materializedReads.isEmpty)
-    assert(SqlRender.render(on.script).contains("retrieve_Condition"))
+    assert(SqlRender.render(on.script).contains("__describe.condition"))
   }
 
   test("the decision report names each read barrier with a read- reason term") {

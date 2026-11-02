@@ -2,6 +2,8 @@
 shared resolution: the closure from the corpus, the root against every include, each include against its own."""
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from typing import Any
 
 from fastapi import FastAPI
@@ -45,7 +47,8 @@ class _Compiler:
 
 def _client(compiler: _Compiler, libraries: list[Library]) -> TestClient:
     app = FastAPI()
-    app.include_router(compile_routes.router(compiler=compiler, content=_Content(libraries)))
+    contents = SimpleNamespace(get=lambda name: _Content(libraries))
+    app.include_router(compile_routes.router(compiler=compiler, contents=contents))
     return TestClient(app)
 
 
@@ -64,7 +67,7 @@ def test_the_root_sees_its_closure_and_each_include_only_its_own() -> None:
 def test_an_include_not_found_is_a_diagnostic() -> None:
     body = _client(_Compiler(), ALL[:2]).post("/api/translate", json={"cql": ROOT}).json()
     assert body["ok"] is False
-    assert body["diagnostics"] == ['Included library "Base" version 1.0.0 is not in any tagged knowledge source.']
+    assert body["diagnostics"] == ["Included library \"Base\" version 1.0.0 is not in the environment's knowledge."]
 
 
 def test_an_include_the_compiler_cannot_reach_is_that_includes_diagnostic() -> None:
@@ -85,3 +88,29 @@ def test_explicit_includes_skip_resolution() -> None:
     body = _client(compiler, []).post("/api/translate", json={"cql": ROOT, "includes": [MID, BASE]}).json()
     assert body["ok"] is True
     assert compiler.calls == [("Root", ["Mid", "Base"])]
+
+
+class _ModeledTypes:
+    """The one compiler call the modeled-types route makes. ``types=None`` is a compiler that cannot answer."""
+
+    def __init__(self, types: list[str] | None) -> None:
+        self.types = types
+
+    def list_modeled_types(self) -> list[str]:
+        if self.types is None:
+            raise CompilerError("compiler unreachable listing modeled types")
+        return self.types
+
+
+def test_modeled_types_are_the_engines_resource_types() -> None:
+    """SVC-RESOURCE-SCHEMA — the editor offers the types the engine models, and nothing else rides along."""
+    body = _client(_ModeledTypes(["Encounter", "Patient"]), []).get("/api/modeled-types").json()
+    assert body == {"types": ["Encounter", "Patient"]}
+
+
+def test_modeled_types_fail_loud_with_the_compilers_message_rather_than_an_empty_list() -> None:
+    """SVC-RESOURCE-SCHEMA — an empty list would read as "the engine models nothing", so the failure is an
+    error status carrying the compiler's own message."""
+    response = _client(_ModeledTypes(None), []).get("/api/modeled-types")
+    assert response.status_code == 502
+    assert response.json() == {"error": "compiler unreachable listing modeled types"}

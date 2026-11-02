@@ -3,7 +3,7 @@ import type { ReferenceSet } from "./measures/specRetrieves.ts";
 // SVC-PROTOCOL — the CQL on Databricks app backend's /api wire types the SPA consumes.
 //
 // The backend (Python/FastAPI, SVC-APP-TOPOLOGY) owns the contract; the SPA consumes these hand-mirrored
-// types. Kept small and frontend-only (the former packages/api-client is retired with the Node BFF).
+// types. Kept small and frontend-only.
 
 /** One library from the root's include closure, compiled (APP-SPEC-MODEL). Present only when the
  *  request set `includeElm` — the Define lens needs its includes compiled, not merely resolved. */
@@ -48,7 +48,8 @@ export interface ResultSetAddress {
   targets: string[];
   computed_since: string | null;
   calculation?: {
-    data_source: string;
+    /** CLIENT-ENVIRONMENT — the environment the calculation ran in. */
+    environment: string;
     runtime_catalog: string;
     runtime_schema: string;
     library?: string;
@@ -96,26 +97,19 @@ export interface WarehouseList {
   warehouses: WarehouseRecord[];
 }
 
-/** DATA-SOURCE-UC-TAG — a Data Source (the Compute picker). Hand-mirrors
- *  `cql_databricks/compiler/data_source.DataSource.to_dict()`. A data source is a UC schema tagged
- *  `cql_databricks_data_source = <name>` (`DEC-DATA-SOURCE-UC-TAG`); the compiler checks its layout and
- *  reads its bindings out of it. Read-only: a source is declared by tagging its schema, not by a record
- *  this App stores. `id` is the tag's value, and so is `name`. */
-export interface DataSourceRecord {
-  id: string;
+/** DOC-ENVIRONMENT-PICKER — an environment the picker offers (`GET /api/environments`). Hand-mirrors
+ *  `routes/environments.py`'s record. An environment is a Unity Catalog catalog tagged
+ *  `cql_databricks_environment = <name>` (`CLIENT-ENVIRONMENT`); read-only here, declared by tagging the catalog.
+ *  `name` is the tag's value and the environment's identifier on every request. */
+export interface EnvironmentRecord {
   name: string;
-  /** DATA-SOURCE-DESCRIPTION — one sentence about the DATA: the schema's own comment. Absent when the
-   *  schema has none; the pickers then show no subtitle rather than assembling one out of the record's
-   *  other fields. */
-  description?: string;
   catalog: string;
-  schema: string;
-  /** BIND-RETRIEVE-UDF — one entry per FHIR type, the `retrieve_<Type>` UDTF found in the schema. */
-  dataBindings: Record<string, { function: string }>;
-  /** DATA-CHANGE-LOG — the schema's `change_data_log` relation (`data_type`, `updated_at`), when it has
-   *  one. Absent means the source makes no claim about its data, which is what stops it being
-   *  scheduled (`RUN-SCHEDULE-CURRENCY`). */
-  changeDataLog?: string;
+  /** The layout version the catalog says it follows. */
+  version: string;
+  /** True on the one environment a run with nothing picked uses. */
+  default: boolean;
+  /** One sentence about the environment: the catalog's comment. Absent when it has none. */
+  description?: string;
 }
 
 /** RUN-PROGRESS-TASKS — one definition of the run's closure, as `/api/run-stream` reports it.
@@ -139,14 +133,12 @@ export interface RunStageResults {
 /** SVC-RUN-STAGE — a progress event from the streaming `/api/run-stream` SSE endpoint.
  *  The frontend shows the current stage instead of a generic "computing…" indicator.
  *
- *  **THE STAGES ARE THE ONES THE RUN ROUTE ACTUALLY SENDS**, and that is the whole point of this
- *  comment. The retired in-process runner (`run.py:run_streaming`, unreferenced) emitted
- *  `binding` / `bind:*` / `plan` / `collecting` and a `done` frame carrying a whole `result`; the live
- *  route emits `compiling`, `profile`, `executing` and a `done` frame carrying `results` + `status`.
- *  Typing the retired vocabulary here is what let both bugs stand: the final result was read from a
- *  key nothing sends (so every successful run reported "stream ended unexpectedly"), and the progress
- *  bands were spent on phases that never arrive (`RUN-PROGRESS-TASKS`). A stage this union does not
- *  name is a backend that has moved on, and it must fail to compile rather than silently score 0. */
+ *  **THE STAGES ARE THE ONES THE RUN ROUTE ACTUALLY SENDS**, and that is the whole point of this comment. The run
+ *  route sends `compiling`, `profile`, `executing` and a `done` frame carrying `results` + `status`. Typing any other
+ *  vocabulary here would let both bugs stand: a final result read from a key nothing sends (so every successful run
+ *  reports "stream ended unexpectedly"), and progress bands spent on phases that never arrive (`RUN-PROGRESS-TASKS`).
+ *  A stage this union does not name is a backend that has moved on, and it must fail to compile rather than silently
+ *  score 0. */
 export interface RunStage {
   resultSet?: ResultSetAddress;
   stage: "connecting" | "compiling" | "profile" | "executing" | "done" | "error";
@@ -163,17 +155,16 @@ export interface RunStage {
   total_ms?: number;
   /** Error message (stage=error). */
   error?: string;
-  /** The run's identity (stage=done). `draft` is RUN-ADDRESS-BY-LIBRARY's key. */
-  identity?: { library: string; version: string; dataSource: string; draft: string };
+  /** The run's identity (stage=done). `draft` labels its complete selection (RUN-CLIENT-RESULT-SETS). */
+  identity?: { library: string; version: string; environment: string; draft: string };
   /** RUN-CLIENT-REQUEST-REOPEN — per-output reuse decisions (stage=done). */
   outcomes?: RunOutcome[];
 }
 
 /** DESIGNER-SDP-NAV — the merged LibraryGraph from the engine's `/describe` endpoint.
- *  Hand-mirrors the engine's `LibraryGraph` (cql-databricks providers.py). The frontend merges this
- *  with the local CQL source scan (node classification + leaf nodes) to build the hybrid graph.
- *  Nothing fetches one for a Data Source any more: that read a source's library manifest, which left
- *  with the `data_sources` table (`DATA-SOURCE-UC-TAG`). */
+ *  Hand-mirrors the engine's `LibraryGraph` (cql-databricks providers.py). It is an optional input to the
+ *  reachability walk (`specModel.ts`); the nav's graph is built from the ELM (`elmGraph.ts`), and nothing
+ *  in the SPA fetches a describe result today. */
 export interface DescribeResult {
   defines: string[];
   dependencies: Record<string, string[]>;
@@ -188,17 +179,17 @@ export interface DescribeResult {
 
 /** DESIGNER-DEFINE-STATUS — how a define's result stands, where a reader is shown it.
  *
- *  **Nothing feeds this live any more, and that is a consequence rather than an oversight.** It came
- *  from the SDP pipeline's event log, which said which of a pipeline's defines were computing; a
+ *  **Nothing feeds this live, and that is a consequence rather than an oversight.** It comes
+ *  from the SDP pipeline's event log, which says which of a pipeline's defines are computing; a
  *  barrier task has no event log and IS one define, so the per-define feed and the per-task feed
- *  collapsed into one — `RunTaskStatus` above (`RUN-PROGRESS-TASKS`). Reconnecting the nav's dots
+ *  collapse into one — `RunTaskStatus` above (`RUN-PROGRESS-TASKS`). Reconnecting the nav's dots
  *  means mapping a task key back to a define, which nothing does yet. */
 export type DefineStatusValue = "unknown" | "stale" | "computing" | "fresh" | "error";
 
 /** PIPE-PRE-COMPUTED — one define's counts from `/api/results`, at the two grains `SPEC-METRIC` names.
  *
  *  `subjects` is how many distinct subjects MET the define — not how many rows its relation holds, which
- *  is what the retired `rowCount` reported (57,565,315,157 for one measured exclusion whose true subject
+ *  is what a row count reports (57,565,315,157 for one measured exclusion whose true subject
  *  count is 146). `elements` is the per-element grain and is ABSENT wherever there is none to report. */
 export interface DefineResultEntry {
   name: string;
@@ -208,12 +199,12 @@ export interface DefineResultEntry {
   status: string;
 }
 
-/** PIPE-PRE-COMPUTED — pre-computed results for a (library, version, data_source).
+/** PIPE-PRE-COMPUTED — pre-computed results for a (library, version, environment).
  *  Returned by `GET /api/results`.
  *
  *  NO FUNNEL ON THE WIRE (`SPEC-ATTRITION`). It is derived from these counts by `funnelFromCounts()`,
- *  the one funnel builder; the server used to send a second, `COUNT(*)`-based one, which put two
- *  answers to "what did this measure score" on one page. */
+ *  the one funnel builder. A second, `COUNT(*)`-based funnel on the wire would put two answers to
+ *  "what did this measure score" on one page. */
 export interface PreComputedResults {
   schema: string;
   libraryName: string;
@@ -224,13 +215,6 @@ export interface PreComputedResults {
   defines: DefineResultEntry[];
 }
 
-
-/** PIPE-PER-LIBRARY — library identity returned from the orchestrator run path. */
-export interface LibraryIdentity {
-  library: string;
-  version: string;
-  dataSource: string;
-}
 
 // ── APP-DATA-PROFILE — one define's data profile (`insights/model.py`) ─────────────────────────
 //
@@ -344,7 +328,7 @@ export interface DefineProfile {
   generated: string;
   /** Why the payload is what it is — rendered next to the provenance mark. */
   caveat?: string;
-  /** APP-NO-UI-MOCK — the blocks on THIS payload that are fabricated. Everything not named here was
+  /** APP-NO-UI-MOCK — the blocks on THIS payload that are fabricated. Everything not named here is
    *  read from the evaluation. Per-block because a payload with a real value profile and an invented
    *  temporal spread cannot be described by one word: `run` would strip the mark off the invented bars,
    *  `sample` would put a false warning on real figures. */
@@ -355,6 +339,8 @@ export interface DefineProfile {
   /** SPEC-TERMINOLOGY-EXTRACT — DERIVED, never sampled: a `GROUP BY` over the define's own result
    *  relation. Absent for a define that returns no resources (a boolean define has no record to read). */
   terminology?: TerminologySection[];
+  /** SPEC-TERMINOLOGY-EXTRACT — why `terminology` is absent: the warehouse would not return the codes. */
+  terminologyError?: string;
   temporal?: ProfileTemporalBin[];
   strata?: ProfileStratum[];
 }

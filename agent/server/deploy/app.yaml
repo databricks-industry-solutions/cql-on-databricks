@@ -9,10 +9,9 @@
 # on the deployed `name:` and nowhere else (ACC-BRAND-NAMING). The staged payload is `agent/server/build/app`.
 #
 # The env below is substituted by the same staging pass as the other Apps' (scripts/deploy/stage-app.sh) — the
-# tools read the results catalog and the warehouse. No Lakebase: data sources are tagged schemas
-# (DATA-SOURCE-UC-TAG). It compiles nothing, but it does call the compiler: the data-source layout check
-# maps each schema's retrieve functions back to FHIR types through the compiler's modeled types
-# (BIND-DATA-SOURCE-LAYOUT), so it names the compiler App and holds CAN_USE on it.
+# tools read the results catalog and the warehouse. No Lakebase: environments are tagged catalogs
+# (CLIENT-ENVIRONMENT). It calls the compiler to translate and compile the CQL its tools run, so it names the
+# compiler App and holds CAN_USE on it.
 
 command:
   - "python"
@@ -23,7 +22,7 @@ env:
   # No PORT here: the App injects DATABRICKS_APP_PORT. `mcp_app.main()` binds PORT on 0.0.0.0.
 
   # The compiler App, by NAME (APP-PER-FEATURE): `valueFrom` an `app` resource resolves to its name, and
-  # config.py reads its URL from the Apps API. Read for the modeled FHIR types only.
+  # config.py reads its URL from the Apps API.
   - name: "CQL_COMPILER_APP"
     valueFrom: "compiler"
 
@@ -31,13 +30,9 @@ env:
   - name: "CQL_APP_TARGET"
     value: "dev"
 
-  # UC catalog = the product (SVC-CATALOG-LAYOUT, PIPE-DEPLOY-CATALOG-VARS).
+  # UC catalog = the product (SVC-CATALOG-LAYOUT).
   - name: "UC_CATALOG"
     value: "__UC_CATALOG__"
-
-  # CLIENT-DISCOVERY-SCOPE — the ordered catalog scopes discovery reads (the client's own session setting).
-  - name: "CQL_DATABRICKS_CATALOG_SCOPES"
-    value: "__CQL_DATABRICKS_CATALOG_SCOPES__"
 
   # The serverless SQL warehouse every tool reads through.
   - name: "WAREHOUSE_ID"
@@ -47,8 +42,3 @@ env:
   # knowledge views. Inline runs (run_cql, compare_cql) and value-set lookups read it.
   - name: "CQL_RUNTIME_CATALOG"
     value: "__CQL_RUNTIME_CATALOG__"
-
-  # AGENT-SAVED-RESULTS, RUN-CLIENT-PRIVATE-PROVISIONING — the catalog of the per-user result schemas.
-  # find_results reads the caller's own schema there first. The agent never creates one.
-  - name: "CQL_DESIGNER_RESULTS_CATALOG"
-    value: "__CQL_DESIGNER_RESULTS_CATALOG__"

@@ -1,4 +1,4 @@
-// PHASE-S2 / APP-DIAGNOSTICS — turn the compiler's raw diagnostics into clinical, plain-language
+// APP-DIAGNOSTICS — turn the compiler's raw diagnostics into clinical, plain-language
 // messages, and run the live validation loop against the engine.
 //
 // APP-DIAGNOSTICS: validation is on-demand via the Compiler Service (browser → BFF /api/translate →
@@ -9,6 +9,7 @@
 // clearly for a clinical author.
 
 import type { TranslateResult } from "../wire.ts";
+import { currentEnvironment } from "../environment.ts";
 
 export interface ClinicalDiagnostic {
   /** The plain-language message shown to the author. */
@@ -56,8 +57,10 @@ export async function translate(
   const res = await fetch("/api/translate", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    // RUN-ADDRESS-LOCATION — includes resolve at the open library's location first.
-    body: JSON.stringify({ cql, includes, include_elm: opts.includeElm ?? false, location: opts.location ?? null }),
+    // RUN-ADDRESS-LOCATION, DOC-ENVIRONMENT-PICKER — includes resolve at the open library's location first, then in
+    // the picked environment's knowledge.
+    body: JSON.stringify({ cql, includes, include_elm: opts.includeElm ?? false, location: opts.location ?? null,
+                           environment: currentEnvironment() }),
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");

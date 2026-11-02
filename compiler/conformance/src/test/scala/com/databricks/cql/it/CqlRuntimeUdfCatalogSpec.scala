@@ -29,9 +29,9 @@ final class CqlRuntimeUdfCatalogSpec extends AnyFunSuite {
       s"catalog=${CqlRuntimeUdfs.catalog.keySet}")
   }
 
-  // ---- cql_variant_valid schema-conformance semantics (EMIT-SQL-VARIANT-CHOICE, pure — no Spark session) ----
+  // ---- cql_variant_valid schema-conformance semantics (pure — no Spark session) ----
 
-  test("cql_variant_valid: a sparse variant payload conforms to the FHIR-model schema (EMIT-SQL-VARIANT-CHOICE)") {
+  test("cql_variant_valid: a sparse variant payload conforms to the FHIR-model schema") {
     // A het-Choice payload: ServiceRequest/MedicationRequest carry `authoredOn` (a dateTime → STRING);
     // the Procedure arm carries `performedPeriod` (a Period struct). schema_of_variant infers OBJECT<…> with
     // fields SORTED and `end` (a SQL keyword) back-tick-quoted; VOID appears for a null field.
@@ -62,7 +62,7 @@ final class CqlRuntimeUdfCatalogSpec extends AnyFunSuite {
     assert(!CqlOps.variantValid(null, expected))
   }
 
-  test("cql_variant_valid executes over Connect with schema_of_variant (EMIT-SQL-VARIANT-CHOICE)") {
+  test("cql_variant_valid executes over Connect with schema_of_variant") {
     val spark = SparkConnect.session()
     val r = spark.sql(
       "SELECT cql_variant_valid(schema_of_variant(to_variant_object(named_struct('authoredOn', '2026-01-01'))), " +

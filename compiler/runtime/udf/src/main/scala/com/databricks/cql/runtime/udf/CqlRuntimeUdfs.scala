@@ -20,8 +20,8 @@ import com.databricks.cql.runtime.eval.{CqlOps, CqlQuantity}
   * and end-to-end by the corpus SQL differential.
   *
   * Heterogeneous-Choice navigation is NOT in this catalog: it lowers NATIVELY (demand-projected top-level
-  * slots per union branch, `EMIT-SQL-FLAT-CHOICE`) — Photon-eligible and bounded in analysis — so the former
-  * `cql_choice_nav_*` UDFs are RETIRED.
+  * slots per union branch, `EMIT-SQL-FLAT-CHOICE`) — Photon-eligible and bounded in analysis — so no
+  * `cql_choice_nav_*` UDF exists.
   *
   * ==No-capture recipe (the hard rules the spike, UdfFeasibilitySpec, established)==
   *  1. Every UDF is an object-held `val` (a [[UserDefinedFunction]] built by `functions.udf`), so the
@@ -72,8 +72,8 @@ object CqlRuntimeUdfs {
     finally in.close()
   }
 
-  // ------------------------------------------ the temporal-operator catalog (EMIT-SQL-TEMPORAL-UDF opaque)
-  // Each collapses a repeated CQL TEMPORAL OPERATOR (the ~530 CASE/named_struct towers per CMS statement)
+  // ------------------------------------------ the temporal-operator catalog (EMIT-SQL-TEMPORAL-UDF-OPAQUE opaque)
+  // Each collapses a repeated CQL TEMPORAL OPERATOR (the ~530 CASE/named_struct towers per measure statement)
   // to ONE opaque JVM call whose body is the matching `CqlOps` function. Scalar params
   // (inf/precLen/rank/minus/high/op/unit) are always compile-time literals; the count `n` of cql_date_add
   // may be a runtime column (boxed Integer, null -> null).
@@ -105,7 +105,7 @@ object CqlRuntimeUdfs {
 
   // ------------------------------------------------------- variant schema-validation (general QA aid)
   // A JSON-FREE, UC-safe conformance check that a VARIANT payload matches an expected model schema — a
-  // general aid usable on any VARIANT (e.g. the retrieve UDTF's `parameters` map, BIND-EXPLICIT-PARAMS). The
+  // general aid usable on any VARIANT (e.g. the retrieve UDTF's `parameters` map). The
   // SQL arg is the built-in `schema_of_variant(v)` (a STRING — no raw VARIANT/Spark type crosses into the
   // sandbox-safe handler, and no `to_json` round trip), compared against the model DDL. Usage:
   // `cql_variant_valid(schema_of_variant(v), '<expectedDdl>')`.

@@ -1,4 +1,4 @@
-// PHASE-S1 — vitest setup: jest-dom matchers for component tests (PROC-TDD, SPA layer).
+// vitest setup: jest-dom matchers for component tests (PROC-TDD, SPA layer).
 import { beforeEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
@@ -9,11 +9,9 @@ import { clear as clearDataCache } from "../data-cache.ts";
 // The cache is process-global by design: one tab, one user, one cache, invalidated by the server's
 // revision rather than by a clock. In a test file that is one cache shared by every case, so a case
 // that stubs `fetch` differently reads the previous case's entry and never reaches the branch it was
-// written for. Three files hit this within an hour of the cache landing — `fetchDefinitions`' error
-// case read the success case's index, `fetchModeledTypes` read a cached fallback, and SettingsScreen's
-// rows came back empty — which is a sign it belongs HERE rather than in each file's `beforeEach`. A
-// per-file reset is a thing every future test file has to remember, and forgetting it produces a
-// passing test that asserts the wrong thing.
+// written for (`fetchDefinitions`' error case reads the success case's index, for one). It belongs HERE
+// rather than in each file's `beforeEach`: a per-file reset is a thing every future test file has to
+// remember, and forgetting it produces a passing test that asserts the wrong thing.
 beforeEach(() => clearDataCache());
 
 // jsdom implements no layout, so it ships no `scrollIntoView`. Several surfaces keep the thing they just

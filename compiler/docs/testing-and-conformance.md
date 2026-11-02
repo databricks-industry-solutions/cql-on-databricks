@@ -76,9 +76,6 @@ The golden files are in `src/test/resources/golden/<fixture>/`. Today there are 
 `-Dcqldatabricks.blessPlans=true` writes the new artifact to the dump directory, never to `src/`. Review it
 and move it into the golden directory by hand.
 
-The structural cost budget (`CONF-PERF-BUDGET`) is off: its baselines were removed. The code and the bless
-path remain.
-
 ## Declared deviations — `CONF-REF-DEVIATION`
 
 The reference is the oracle. A difference from it is allowed only when declared on the fixture with a

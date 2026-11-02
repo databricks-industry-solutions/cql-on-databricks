@@ -12,7 +12,7 @@ import com.databricks.cql.ir._
   * Period spans two instants, so the scan box is only the `overlaps` SUPERSET of `during` (`E ⊆ MP ⟹
   * E ∩ MP ≠ ∅`); the precise containment still runs downstream and removes the slack. Because the
   * pre-filter is a pure superset, the plan produces identical results with the rule on or off — that
-  * is exactly what the optimized-vs-unoptimized self-diff proves (CONF-GATE-SELFDIFF).
+  * is exactly what the optimized-vs-unoptimized self-diff proves.
   *
   * Why a YEAR window of raw STRINGS (not a `timestamp` cast): FHIR dates are stored as zero-padded ISO
   * strings, whose lexicographic order IS chronological, so a string `>=`/`<` prunes directly on the

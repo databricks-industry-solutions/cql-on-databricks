@@ -10,20 +10,23 @@ from threading import Event
 import pytest
 
 from cql_databricks.result._catalog_completion import (
-    Completion, CompletionWriter, FORMAT, TAGS, TAG_COMPUTED_AT, TAG_FINGERPRINT, TAG_FORMAT, TAG_STATE, discover,
-    discover_in_sources, result_table_name,
+    Completion, CompletionWriter, FORMAT, TAGS, TAG_COMPUTED_AT, TAG_FINGERPRINT, TAG_FORMAT, TAG_STATE,
+    result_table_name, writer_digest,
 )
+
+OWNER = "synthetic-user"
+W = writer_digest(OWNER)
 
 
 def completion(index=1):
     fingerprint = f"{index:016x}" * 4
-    return Completion(table=("synthetic_catalog", "results", result_table_name("Synthetic", "Output", fingerprint)),
+    return Completion(table=("synthetic_catalog", "results", result_table_name("Synthetic", "Output", fingerprint, W)),
                       fingerprint=fingerprint, computed_at=datetime(2026, 1, 1, tzinfo=timezone.utc))
 
 
-def rows(item, tags=None):
+def rows(item, tags=None, owner=OWNER):
     return [dict(table_catalog=item.table[0], table_schema=item.table[1], table_name=item.table[2],
-                 tag_name=key, tag_value=value) for key, value in (item.tags() if tags is None else tags).items()]
+                 table_owner=owner, tag_name=key, tag_value=value) for key, value in (item.tags() if tags is None else tags).items()]
 
 
 def test_explicit_timestamp_round_trips_without_catalog_update_time():
@@ -68,52 +71,15 @@ def test_malformed_success_is_not_silently_reused_or_recomputed():
         replace(item, fingerprint="a-workspace-job-id")
 
 
-def test_one_lookup_distinguishes_completed_pending_untagged_and_missing():
-    """RUN-CLIENT-CATALOG-CHECKPOINTS — bulk discovery has no manifest, DESCRIBE or result scan."""
-    complete, pending, untagged, missing = (completion(index) for index in range(1, 5))
-    calls = []
-    def run(sql, params):
-        calls.append((sql, params))
-        return rows(complete) + rows(pending, pending.tags() | {TAG_STATE: "pending"}) + rows(untagged, {None: None})
-    found = discover(run, complete.table[:2], {item.fingerprint: item.table[2]
-                                               for item in (complete, pending, untagged, missing)})
-    assert len(calls) == 1
-    assert found[complete.fingerprint].completion == complete
-    assert found[pending.fingerprint].completion is None
-    assert found[untagged.fingerprint].completion is None
-    assert missing.fingerprint not in found
-    sql, params = calls[0]
-    assert "LEFT JOIN" in sql and "information_schema`.`table_tags" in sql
-    assert params["schema"] == "results"
-    assert json.loads(params["tables"]) == [item.table[2] for item in (complete, pending, untagged, missing)]
-    assert not any(word in sql for word in ("DESCRIBE", "COUNT", "LAST_ALTERED", "cql_completed_results"))
-
-
-def test_lookup_rejects_foreign_and_duplicate_metadata():
-    """RUN-CLIENT-CATALOG-CHECKPOINTS — local integrity checks need no extra warehouse calls."""
-    item = completion()
-    with pytest.raises(ValueError, match="unrequested"):
-        discover(lambda *args: rows(completion(2)), item.table[:2], {item.fingerprint: item.table[2]})
-    with pytest.raises(ValueError, match="duplicate"):
-        discover(lambda *args: rows(item) + rows(item), item.table[:2], {item.fingerprint: item.table[2]})
-    assert discover(lambda *args: pytest.fail("empty lookup issued SQL"), item.table[:2], {}) == {}
-
-
-def test_table_names_read_as_library_and_define():
-    """RUN-CLIENT-TABLE-NAMES — no product prefix; library, define and fingerprint digits only."""
+def test_table_names_read_as_library_define_fingerprint_and_writer():
+    """RUN-CLIENT-TABLE-NAMES — no product prefix; library, define, fingerprint digits and the writer's digest."""
     fingerprint = "0123456789abcdef" * 4
-    name = result_table_name("ExampleMeasure", "Initial Population", fingerprint)
-    assert name == "examplemeasure_initial_population_0123456789abcdef"
+    name = result_table_name("ExampleMeasure", "Initial Population", fingerprint, W)
+    assert name == f"examplemeasure_initial_population_0123456789abcdef_{W}"
     assert not name.startswith("cql")
-    assert len(result_table_name("L" * 300, "D" * 300, fingerprint)) == 80 + 1 + 120 + 1 + 16
+    assert len(result_table_name("L" * 300, "D" * 300, fingerprint, W)) == 80 + 1 + 120 + 1 + 16 + 1 + 8
     with pytest.raises(ValueError, match="no characters"):
-        result_table_name("Synthetic", "???", fingerprint)
-    with pytest.raises(ValueError, match="does not match its fingerprint"):
-        discover(lambda *args: pytest.fail("issued SQL"), ("c", "s"), {fingerprint: "synthetic_output_" + "f" * 16})
-    other = "0123456789abcdef" + "f" * 48
-    with pytest.raises(ValueError, match="one result table name"):
-        discover(lambda *args: pytest.fail("issued SQL"), ("c", "s"),
-                 {fingerprint: name, other: result_table_name("ExampleMeasure", "Initial Population", other)})
+        result_table_name("Synthetic", "???", fingerprint, W)
 
 
 def test_invalidation_is_synchronous_and_does_not_advance_success_timestamp():
@@ -197,36 +163,3 @@ def test_foreground_error_keeps_background_failure_visible(caplog):
             release.set()
             raise ValueError("synthetic data failure")
     assert "synthetic background failure" in caplog.text
-
-
-def scoped_rows(item, tags=None):
-    return [dict(catalog_name=item.table[0], schema_name=item.table[1], table_name=item.table[2],
-                 tag_name=key, tag_value=value) for key, value in (item.tags() if tags is None else tags).items()]
-
-
-def test_scopes_are_searched_by_table_name_in_one_statement():
-    """CLIENT-DISCOVERY-SCOPE, RUN-CLIENT-RESULT-IDENTITY — another scope holds a calculation under its own name."""
-    first = replace(completion(), table=("catalog_a", "shared", completion().table[2]))
-    second = replace(completion(), table=("catalog_b", "shared", completion().table[2]))
-    pending = replace(completion(2), table=("catalog_a", "shared", completion(2).table[2]))
-    calls = []
-    def run(sql, params):
-        calls.append((sql, params))
-        return scoped_rows(second) + scoped_rows(first) + scoped_rows(pending, pending.tags() | {TAG_STATE: "pending"})
-    sources = [("catalog_a", "shared"), ("catalog_b", "shared")]
-    found = discover_in_sources(run, sources, [first.table[2], pending.table[2]])
-    assert found == {first.table[2]: [first, second]}
-    assert len(calls) == 1
-    sql, params = calls[0]
-    assert sql.count("UNION ALL") == 1 and "table_name IN" in sql
-    assert "owner" not in sql and "cql_publisher" not in sql and "cql_calculation" not in sql
-    assert json.loads(params["tables"]) == sorted([first.table[2], pending.table[2]])
-
-
-def test_scope_lookup_rejects_tables_it_did_not_ask_for():
-    """CLIENT-DISCOVERY-SCOPE — a lookup that returns another scope's or another name's table fails loud."""
-    item = replace(completion(), table=("catalog_a", "shared", completion().table[2]))
-    outside = replace(item, table=("catalog_a", "other", item.table[2]))
-    with pytest.raises(ValueError, match="outside the requested scopes"):
-        discover_in_sources(lambda *args: scoped_rows(outside), [item.table[:2]], [item.table[2]])
-    assert discover_in_sources(lambda *args: pytest.fail("issued SQL"), [item.table[:2]], []) == {}

@@ -44,7 +44,7 @@ This step is not optional. Human review is what makes the result worth trusting.
 
 ## 4. Run both and compare
 
-Call `compare_cql` with `baseline_cql`, the edited `cql`, the data source and the period. It
+Call `compare_cql` with `baseline_cql`, the edited `cql` and the period. It
 recomputes both versions from the data as it is now, so every difference comes from the edit alone.
 
 Report:

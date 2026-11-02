@@ -3,14 +3,13 @@
 // group per library — the measure's own among them — each holding its populations and ordinary defines
 // in one list.
 //
-// The nav used to split them: `Definitions` for the root, `Included` for everything else. The
-// distinction was real (other people's libraries, versioned separately) but not STRUCTURAL, and the
-// reader paid for it in depth — the root's defines sat one level shallower than an include's for no
+// The nav does not split them into `Definitions` for the root and `Included` for everything else. That
+// distinction is real (other people's libraries, versioned separately) but not STRUCTURAL, and a split
+// would cost the reader depth: the root's defines would sit one level shallower than an include's for no
 // difference in how either is reached. What the root keeps is FIRST PLACE, which is the true part.
 //
-// The tab strip, the filter and the tree now belong to the pane shell and the Flow tab
-// (APP-MEASURE-FLOW), so what was the "view tabs" block here lives in `flowNav.test.tsx`. These
-// mount the real `NavPaneBody` rather than `DefineNav` alone, because after the split the Outline is
+// The tab strip, the filter and the tree belong to the pane shell. These mount the real `NavPaneBody`
+// rather than `DefineNav` alone, because the Outline is
 // only correct in combination with the row kit and the filter the shell owns.
 //
 // Real ELM, from the same Compiler Service fixture `specModel.test.tsx` uses — the nav renders the
@@ -23,8 +22,8 @@ import { metricSet, renderNavPane } from "./__fixtures__/navHarness.tsx";
 /** The row labels inside ONE library's group, in render order.
  *
  *  One helper for every library, which is the point of the restructure: the root is reached by the same
- *  query as an include, because it is the same shape of thing in the DOM. There were two helpers when
- *  there were two sections, and the root's needed no library name because it had none to match. */
+ *  query as an include, because it is the same shape of thing in the DOM. The root needs no library name of
+ *  its own, because it has none to match. */
 function libraryRows(container: HTMLElement, library: string): string[] {
   const head = [...container.querySelectorAll("button.mw-collapsible")]
     .find((b) => b.textContent?.trim().startsWith(`${library} ·`));
@@ -47,7 +46,7 @@ describe("the Outline Libraries grouping (APP-SPEC-MODEL)", () => {
     const { container } = renderNavPane();
     const rows = libraryRows(container, "Demo");
     // Populations LEAD in eCQM reporting order — not the Sort facet's order. Topological sort put
-    // Initial Population last, which is how the nav and the page came to disagree about where the
+    // Initial Population last, which would make the nav and the page disagree about where the
     // measure starts.
     expect(rows.slice(0, 3)).toEqual(["Initial Population", "Denominator", "Numerator"]);
     // …and the library's own non-population defines are in the SAME list, not a sibling group.
@@ -63,9 +62,9 @@ describe("the Outline Libraries grouping (APP-SPEC-MODEL)", () => {
   });
 
   it("lists the order the MODEL is in, and never re-sorts it (SPEC-SHARED-ORDER)", () => {
-    // The bug: the nav sorted its own copy — opening on `topo` — while the page rendered declaration
-    // order, so the nav's Nth row was not the page's Nth section, and no setting could reconcile them
-    // because declaration order was not one of the nav's options.
+    // The failure this guards against: the nav sorts its own copy — opening on `topo` — while the page renders
+    // declaration order, so the nav's Nth row is not the page's Nth section, and no setting can reconcile them
+    // because declaration order is not one of the nav's options.
     //
     // The `sort` prop is the CONTROL's current value, for the popover's checkmark. It must not be a
     // second place the sorting happens: here the nav is told "az" but handed a model in declaration
@@ -98,7 +97,7 @@ describe("the Outline Libraries grouping (APP-SPEC-MODEL)", () => {
   });
 
   it("scales a population's bar to its share of every evaluated subject", () => {
-    // SPEC-POPULATION-CASCADE (amended 2026-10-29) — a population is counted as written, so its base is
+    // SPEC-POPULATION-CASCADE — a population is counted as written, so its base is
     // the evaluated total: 560 of 1,000 is 56%. A share of the Denominator would mix two definitions'
     // subjects; the cascade belongs to the score (RUN-CLIENT-MEASURE-SCORE).
     const { container } = renderNavPane({ metrics: metricSet() });
@@ -119,9 +118,9 @@ describe("the Outline Libraries grouping (APP-SPEC-MODEL)", () => {
   });
 
   it("reaches BOTH halves of Data requirements — the reads, and the parameters", () => {
-    // SPEC-DATA-REQUIREMENTS — Parameters moved into that section on the page, and nothing here listed
-    // it: the count was computed for this pane and dropped, so the only route to the subsection was
-    // scrolling past every read group. A row, not a group — a parameter table has nothing to open.
+    // SPEC-DATA-REQUIREMENTS — Parameters belong in that section on the page, and this pane lists them too: a
+    // count computed for the pane and dropped would leave scrolling past every read group as the only route to
+    // the subsection. A row, not a group — a parameter table has nothing to open.
     const { container, anchored } = renderNavPane({ appendix: { parameters: 1 } });
     const group = [...container.querySelectorAll("button.mw-collapsible")]
       .find((b) => b.textContent?.trim().startsWith("Data requirements"));
@@ -134,8 +133,8 @@ describe("the Outline Libraries grouping (APP-SPEC-MODEL)", () => {
 
   it("keeps the Data requirements group when the parameters are all it has left", () => {
     // The group's condition is the SECTION's: a measure whose reads were all eliminated still declares
-    // parameters, and the page renders the section for them alone. Gating on the reads dropped the group
-    // and took the only route to the parameters with it.
+    // parameters, and the page renders the section for them alone. Gating on the reads would drop the group
+    // and take the only route to the parameters with it.
     const { container } = renderNavPane({ appendix: { dataRequirements: [], parameters: 2 } });
     const group = [...container.querySelectorAll("button.mw-collapsible")]
       .find((b) => b.textContent?.trim().startsWith("Data requirements"));

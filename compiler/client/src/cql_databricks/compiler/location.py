@@ -1,14 +1,15 @@
-"""RUN-ADDRESS-LOCATION — where a library is read from: a tagged knowledge store or a folder.
+"""RUN-ADDRESS-LOCATION — where a library is read from: a knowledge schema of an environment, or a folder.
 
 A library's address is ``(location, name, version)``. The location decides where the library itself is read
 and where its includes resolve first:
 
-- ``store:<catalog>.<schema>`` — a schema tagged ``cql_databricks_knowledge``. Includes resolve from that store
-  first, then the other tagged stores in scope order (`CLIENT-DISCOVERY-SCOPE`).
+- ``store:<catalog>.<schema>`` — a knowledge schema (`DATA-ENVIRONMENT-LAYOUT`). The library is read from it, and
+  its includes resolve from it first, then from the environment's knowledge.
 - ``folder:<path>`` — a folder of CQL, laid out as a measure package is (`cql/<Name>-<version>.cql`) or flat.
-  Includes resolve from the folder first, sibling-first, then tagged knowledge (`CLIENT-KNOWLEDGE-INCLUDES`).
+  Includes resolve from the folder first, sibling-first, then from the environment's knowledge
+  (`CLIENT-KNOWLEDGE-INCLUDES`).
 
-No location means the whole of tagged knowledge, in scope order — what every address meant before locations.
+No location means the environment's knowledge, for the root and its includes alike.
 """
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ Kind = Literal["store", "folder"]
 
 @dataclass(frozen=True)
 class Location:
-    """A tagged knowledge store or a folder. ``str()`` is the wire form, ``parse`` reads it back."""
+    """A knowledge store or a folder. ``str()`` is the wire form, ``parse`` reads it back."""
     kind: Kind
     path: str
 

@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
-# Create (or reuse) the maintenance service principal and grant it authority over the private catalog
-# (RUN-CLIENT-MAINTENANCE).
-#
-# The private catalog is a PLATFORM PREREQUISITE (RUN-CLIENT-PRIVATE-PROVISIONING): an administrator creates
-# it and grants Designer users USE CATALOG and CREATE SCHEMA. Deployment never creates it and grants users
-# nothing on it. Its one identity and grant is the dedicated principal the daily
-# cql-databricks-designer-maintenance Job runs as, which drops expired results in every user's schema:
-#   USE_CATALOG, USE_SCHEMA   reach every user's schema
-#   MANAGE                    inherited by every schema and table; deletes objects it does not own
-# plus CAN_USE on the configured warehouse, which the Job's SQL runs on. The principal has no secret.
+# Create (or reuse) the maintenance service principal and grant it USE CATALOG on the default environment's catalog,
+# uc_catalog (RUN-CLIENT-MAINTENANCE). The daily cql-databricks-designer-maintenance Job runs as it and drops expired
+# results in the environment's draft_results, on which the deploy's environment step grants it USE SCHEMA and MANAGE
+# once the schema exists (DEPLOY-DEFAULT-ENVIRONMENT). It also gets CAN_USE on the configured warehouse, which the
+# Job's SQL runs on. The principal has no secret.
 #
 # Idempotent: the principal is found by its hashed display name and grants are additive. Creating a service
 # principal needs workspace admin; granting needs OWNERSHIP of the catalog (or MANAGE). A missing catalog

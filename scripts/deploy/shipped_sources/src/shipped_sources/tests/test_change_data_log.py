@@ -1,8 +1,6 @@
 """DATA-CHANGE-LOG — the exemplar change log this repository's own sources ship.
 
-The digest reader that consumed the log for the evaluator App's run fingerprint retired with the App
-(EVALUATOR-REMOVE); what stays is the contract's shape and the exemplar DDL the loaders and the conformance
-provisioner run.
+This covers the contract's shape and the exemplar DDL the loaders and the conformance provisioner run.
 """
 from __future__ import annotations
 
@@ -50,9 +48,3 @@ def test_an_empty_exemplar_fails_loud():
     creating one is a mistake to refuse rather than to deploy (`CORE-NO-SILENT-MISLOWER`)."""
     with pytest.raises(ValueError, match="no tables"):
         change_data_log_ddl("v", {})
-
-
-def test_the_conventional_name_is_beside_the_mounts():
-    """PROC-DRY — the lander creates the view and the compiler's layout check finds it; one definition."""
-    from shipped_sources.sources import change_data_log_fqn
-    assert change_data_log_fqn("acme", "example_patients") == f"acme.example_patients.{CHANGE_DATA_LOG_NAME}"

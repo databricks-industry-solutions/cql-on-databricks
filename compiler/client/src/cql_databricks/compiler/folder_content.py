@@ -1,6 +1,6 @@
 """RUN-ADDRESS-LOCATION, DOC-OPEN-SAVE — what a folder location holds, read the way a measure package lays it out.
 
-An eCQI measure package keeps each library's CQL in ``cql/<Name>-<version>.cql`` and its FHIR resources in
+A measure package keeps each library's CQL in ``cql/<Name>-<version>.cql`` and its FHIR resources in
 ``resources/``: ``measure-<Name>-<version>.json`` and ``library-<Name>-<version>.json``, each also as ``.xml``, plus a
 bundle of all of them and an HTML rendering at the top. A folder location mirrors that layout. Its libraries are
 whatever [[FileLibraryProvider]] finds (the client's folder rules); its ``Measure`` is the JSON resource naming the

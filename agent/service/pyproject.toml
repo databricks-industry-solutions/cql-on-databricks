@@ -15,7 +15,7 @@ requires-python = ">=3.10"
 license = { text = "Databricks License" }
 authors = [{ name = "Databricks, Inc." }]
 dependencies = [
-    # RESULT-INTO-CLIENT, DATA-BINDINGS — result selections, scoring, the knowledge corpus and inline runs,
+    # RESULT-INTO-CLIENT — result selections, scoring, the knowledge corpus and inline runs,
     # read through the client rather than its internals.
     "cql-databricks",
 ]

@@ -2,11 +2,9 @@
 // READING and COMPUTING a living clinical specification. ONE top bar (DESIGNER-TOP-BAR) + the
 // structure nav on the left + the document + the data inspector on the right.
 //
-// ONE SURFACE (APP-ONE-SURFACE, 2026-08-06). There were three lenses — Define, Validate, Analyze —
-// and a shared spine they were arranged around. Both are withdrawn. Validate's content moved to a Data
-// Readiness module, which was itself removed (DESIGNER-ONE-MODULE, 2026-10-03). Analyze is dropped — its funnel is the document's own `ReportedResult` and its trend
-// needed run history nothing accumulates. With one destination the lens bar has nothing to switch, and
-// the spine had nothing left to span.
+// ONE SURFACE (APP-ONE-SURFACE). There is one destination, the document, so there are no lenses and no
+// shared spine. Validate's readiness content is not part of the Designer (DESIGNER-ONE-MODULE), and Analyze's
+// funnel is the document's own `ReportedResult`; its trend needed run history nothing accumulates.
 //
 // The spec reads STATIC by default; selecting a Data Source (APP-LIVING-MEASURE) gates the run
 // (SVC-RUN-EVAL) that streams the funnel and counts into the document. The registry provides the
@@ -16,14 +14,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { Definition } from "../catalog.ts";
-import { cqlSha256, fetchDefinitions, fetchLibrarySource, fetchStoreAccess, fetchSpecification, fetchDataRequirements, saveLibrary,
+import { fetchDefinitions, fetchLibrarySource, fetchSpecification, fetchDataRequirements, saveLibrary,
   type DataRequirement, type SpecificationOverlay } from "../library-client.ts";
 import { useRevision } from "../use-revision.ts";
-import { runMeasureStreaming, fetchDataSources, fetchWarehouses, reopenResults, type RunTrigger } from "../run-client.ts";
+import { runMeasureStreaming, fetchEnvironments, fetchWarehouses, reopenResults, type RunTrigger } from "../run-client.ts";
+import { currentEnvironment, setCurrentEnvironment } from "../environment.ts";
 import { translate } from "../authoring/diagnostics.ts";
 import { CqlCode } from "../authoring/cqlHighlight.tsx";
 import { parseElmDefines, type ElmLibraryInfo } from "../authoring/elmDefines.ts";
-import type { DataSourceRecord, RunResult, RunStage, TranslateResult, WarehouseRecord } from "../wire.ts";
+import type { EnvironmentRecord, RunResult, RunStage, TranslateResult, WarehouseRecord } from "../wire.ts";
 import { MeasureNarrative } from "./MeasureNarrative.tsx";
 import { TopBar, type TopBarChrome } from "./TopBar.tsx";
 import { Navigator } from "./Navigator.tsx";
@@ -38,7 +37,10 @@ import { useSpecLens } from "./specLens.ts";
 import type { AssistantSelection } from "../assistant-client.ts";
 import { buildFlow, buildFlowRequest } from "./specFlow.ts";
 import { useSelectionDerivations } from "./selection-derivations.ts";
-import { Sparkle, EditCql, Save } from "../icons.tsx";
+import { Sparkle, EditCql } from "../icons.tsx";
+import { useAutoSave, writeLabel, writeTitle } from "./autoSave.ts";
+import { withInclude } from "./includeLibrary.ts";
+import { PublishForm } from "./PublishForm.tsx";
 import { ErrorBanner } from "./ErrorBanner.tsx";
 import type { NavScope } from "./ScopeNav.tsx";
 import { DefineEditContext, DefineEditor, LazyCqlEditor, type DefineEdit } from "./defineEdit.tsx";
@@ -66,7 +68,9 @@ type InPlace = { key: string; base: string; start: number; end: number; text: st
 // Persist the Compute menu selections across page reloads via localStorage.
 const STORAGE_KEY = "cql-databricks:compute";
 // APP-COMPUTE-TARGET — `warehouseId` is the chosen SQL warehouse; null or absent means the deployment's.
-interface StoredCompute { mode?: ExecMode; compute?: ComputeTarget; sourceId?: string | null; updateMode?: UpdateMode;
+// DOC-ENVIRONMENT-PICKER — `computing` is whether the picked environment computes (None when false); the
+// environment itself is kept by `environment.ts`, which every knowledge read uses.
+interface StoredCompute { mode?: ExecMode; compute?: ComputeTarget; computing?: boolean; updateMode?: UpdateMode;
   periodYear?: number; warehouseId?: string | null; }
 function loadCompute(): StoredCompute {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); } catch { return {}; }
@@ -75,15 +79,15 @@ function saveCompute(s: StoredCompute) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch { /* quota / private mode */ }
 }
 
-/** Derive the active lens from the second URL segment (e.g. /measures/validate → "validate"). */
+/** Derive the active view from the second URL segment (e.g. /measures/validate → "validate"). */
 function viewFromPath(pathname: string): MeasureView | null {
   const seg = pathname.split("/").filter(Boolean)[1] ?? "";
   if (VALID_VIEWS.has(seg as MeasureView)) return seg as MeasureView;
   return null; // no explicit view in URL — use default
 }
 
-/** Scroll the Specification lens to a criterion selected in the left-pane nav (APP-NAV-FILTER).
- *  Selection is by NAME across the lenses, while spec anchors are library-qualified (APP-SPEC-MODEL),
+/** Scroll the Specification to a criterion selected in the left-pane nav (APP-NAV-FILTER).
+ *  Selection is by NAME across the views, while spec anchors are library-qualified (APP-SPEC-MODEL),
  *  so resolve through the cell's `data-crit-name`. */
 function scrollToCrit(name: string) {
   const el = document.querySelector<HTMLElement>(`[data-crit-name="${CSS.escape(name)}"]`);
@@ -111,7 +115,7 @@ function pickDefault(defs: Definition[]): string {
 export function MeasureWorkspace({ chrome, deepLink }: {
   /** DESIGNER-TOP-BAR — the shared bar's invariants (module · theme · tour · palette), owned by Root. */
   chrome: TopBarChrome;
-  /** APP-TOUR — a Product Tour "Show me" opens the workspace on an example at a given lens/mode. */
+  /** APP-TOUR — a Product Tour "Show me" opens the workspace on an example at a given view/mode. */
   deepLink?: DeepLink;
 }) {
   const location = useLocation();
@@ -119,21 +123,21 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   const [definitions, setDefinitions] = useState<Definition[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  // APP-URL-ROUTING — `?open=` IS the open artifact. There is no second copy: `selectedId` used to
-  // be a useState synced with the URL in BOTH directions — a raw `replaceState` wrote one way, an
-  // effect wrote the other — and the raw write is what react-router never sees. Any navigation built
-  // after it from the router's stale search (as `setView` was) resurrected the previous `?open=`, and
-  // the sync effect then dutifully adopted it: open a measure, watch the URL flicker, land back on
-  // the artifact you just left. State with two writers and a reconciler is three chances to disagree;
-  // a derivation is none.
+  // APP-URL-ROUTING — `?open=` IS the open artifact. There is no second copy: `selectedId` is derived
+  // from the URL and never held in state. A state copy synced with the URL in BOTH directions would
+  // need a raw `replaceState` write one way and an effect the other, and the raw write is what
+  // react-router never sees. Any navigation built from the router's stale search then resurrects the
+  // previous `?open=`, and the sync effect adopts it: open a measure, watch the URL flicker, land back
+  // on the artifact you just left. State with two writers and a reconciler is three chances to
+  // disagree; a derivation is none.
   const urlOpen = new URLSearchParams(location.search).get("open");
   const selectedId = urlOpen ?? "";
   // RUN-ADDRESS-LOCATION, DOC-OPEN-SAVE — `?at=` is the location the catalog lists: one tagged store or one folder.
-  // Absent, it lists all of tagged knowledge, as before locations. Opening a measure from a folder IS setting this
+  // Absent, it lists all of tagged knowledge. Opening a measure from a folder IS setting this
   // to the folder, so it lives in the URL beside `?open=` and a pasted address reopens the same copy.
   const openAt = new URLSearchParams(location.search).get("at");
 
-  // APP-URL-ROUTING — derive lens from URL path; push changes to history.
+  // APP-URL-ROUTING — derive the view from URL path; push changes to history.
   const urlView = viewFromPath(location.pathname);
   const view: MeasureView = deepLink?.lens ?? urlView ?? "define";
 
@@ -158,7 +162,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     if (selectedId) localStorage.setItem(LAST_MEASURE_KEY, selectedId);
   }, [selectedId]);
 
-  // APP-LOGIC-VIEW / APP-URL-ROUTING — the criterion selected across the nav ↔ Define lens.
+  // APP-LOGIC-VIEW / APP-URL-ROUTING — the criterion selected across the nav ↔ Define view.
   //
   // The URL IS the state (`?crit=`), not a copy of it. A reader who has scrolled to `Denominator
   // Exclusions` and pastes the address bar to a colleague has to land them there, and Back has to undo
@@ -172,13 +176,12 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // outside — a pasted address, Back, Forward — and has to move the page, not merely tint a row.
   const selfSelected = useRef<string | null>(selectedToken);
   // APP-URL-ROUTING — the ONE writer for the workspace's ENTIRE URL: the query state (`open`,
-  // `crit`, `nav`) and, when the gesture changes it, the lens path. It takes a PATCH rather than a
+  // `crit`, `nav`) and, when the gesture changes it, the view path. It takes a PATCH rather than a
   // single param because a gesture that changes several has to land as ONE history entry — two
   // `navigate` calls in one tick both build from the search as it stood before either committed, so
   // the second silently drops the first's write (and Back would undo half a move even if it didn't).
-  // That drop is exactly how the Open menu came to bounce back to the previous measure while a raw
-  // `replaceState` was a second writer; there is no second writer now, and nothing here may call
-  // `navigate` on its own.
+  // That drop is how a second writer, such as a raw `replaceState`, makes the Open menu bounce back to
+  // the previous measure. There is no second writer, and nothing here may call `navigate` on its own.
   //
   // Built from `window.location`, not the router's copy: a push updates `window.location`
   // synchronously while `useLocation` waits for the router's commit, so this is the one read that is
@@ -198,9 +201,9 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     setParams({ crit: name });
   }, [setParams]);
   // DESIGNER-TOP-BAR / APP-URL-ROUTING — open an artifact: ONE history write carrying the id, the
-  // cleared criterion (the old selection names a define the new artifact does not have — and clearing
+  // cleared criterion (the selection in place may name a define the new artifact does not have — and clearing
   // it AT THE WRITE is what lets Back keep the criterion of the entry it returns to), and, when the
-  // gesture implies one, the lens. Everything per-artifact — the workspace state, the last-opened
+  // gesture implies one, the view. Everything per-artifact — the workspace state, the last-opened
   // record, the dependency reset — follows from the URL this writes.
   const openArtifact = useCallback((id: string, opts: { replace?: boolean; view?: MeasureView } = {},
                                     at?: string | null) => {
@@ -211,16 +214,16 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // SPEC-NAV-COMPOSITION — which arrangement the left pane is in. It lives in the URL for the same
   // reason `?crit=` does: a pasted address has to reproduce what the sender was looking at.
   //
-  // `?pop=` is GONE with the Flow tab that owned it. Composition draws every population at once, so
-  // there is no root to address; an old link carrying one is simply ignored.
+  // `?pop=` is not read. Composition draws every population at once, so there is no root to
+  // address; a link carrying one is simply ignored.
   const navTab = useMemo(
     () => parseNavTab(new URLSearchParams(location.search).get("nav")), [location.search]);
-  // APP-EXEC-MODE — the two OFFLINE states: `static` reads the spec, `deck` computes the synthetic Test
-  // Deck client-side. Real-backend targets come from the Data Source registry (`selectedSourceId`) below.
+  // APP-EXEC-MODE — the OFFLINE state: `static` reads the spec. The real targets are the environments
+  // (`runEnvironment`) below.
   // Restore from localStorage so the last selection survives a page reload.
   const stored = useRef(loadCompute());
   const [mode, setMode] = useState<ExecMode>(deepLink?.mode ?? stored.current.mode ?? "static");
-  // APP-COMPUTE-TARGET — the stored literal of the retired runtime axis; the warehouse is the choice now.
+  // APP-COMPUTE-TARGET — a fixed literal; the warehouse is the choice that varies.
   const compute: ComputeTarget = "serverless";
   // APP-COMPUTE-TARGET — the SQL warehouse a run and every result read use, remembered per user. null
   // is the deployment's WAREHOUSE_ID. A chosen warehouse the user cannot use fails; nothing falls back.
@@ -233,13 +236,15 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // period or warehouse changes that find no results; it does not detect source-data changes, which
   // need Recompute everything. A stored `paused` or a missing value is Manual (`storedUpdateMode`).
   const [updateMode, setUpdateMode] = useState<UpdateMode>(storedUpdateMode(stored.current.updateMode));
-  // DATA-SOURCE-REGISTRY — the data sources the picker offers (Live + Conformance) and the selected one. A
-  // selected registry source overrides the ExecMode data source and runs via `data_source_id`; the backend
-  // resolves the bind. API-driven
-  // (APP-NO-UI-MOCK); a source selection still "computes" the document.
-  const [sources, setSources] = useState<DataSourceRecord[]>([]);
-  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(stored.current.sourceId ?? null);
-  const computed = selectedSourceId !== null;
+  // DOC-ENVIRONMENT-PICKER — the environments the picker offers and the one the Designer runs in: the picked one,
+  // else the default once the list is read. `runEnvironment` is it while it computes, and null for None.
+  // API-driven (APP-NO-UI-MOCK).
+  const [environments, setEnvironments] = useState<EnvironmentRecord[]>([]);
+  const [environmentError, setEnvironmentError] = useState<string | null>(null);
+  const [environment, setEnvironment] = useState<string | null>(currentEnvironment());
+  const [computing, setComputing] = useState<boolean>(stored.current.computing ?? false);
+  const runEnvironment = computing ? environment : null;
+  const computed = runEnvironment !== null;
   // PIPE-MEASUREMENT-PERIOD — the selected measurement period year, dialled in the toolbar's parameter
   // bar (DESIGNER-TOP-BAR); the selected year is passed to compile_pipeline as "Measurement Period" so the
   // SQL is baked with the correct period literals. Sticky with the rest of the compute selection:
@@ -257,14 +262,14 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // as a literal at each of the two call sites — an object rebuilt every render is a new identity every
   // render, which would re-run the lens context's memo continuously, and two literals are two places for
   // the period to be forgotten from.
-  // RUN-ADDRESS-BY-LIBRARY — `draft` is the key the last run's CQL was given when it is not the published
-  // version; every figure on the page then reads that draft's results, never the version's.
+  // RUN-CLIENT-RESULT-SETS — `draft` labels the last run's complete selection; every figure on the page reads that
+  // selection's results.
   const draft = run?.draft || undefined;
   const profileScope = useMemo<ProfileScope | null>(() => (
-    selectedSourceId && draft && run?.resultSet
-      ? { dataSourceId: selectedSourceId, periodStart, periodEnd, draft, resultSet: run.resultSet,
+    runEnvironment && draft && run?.resultSet
+      ? { environment: runEnvironment, periodStart, periodEnd, draft, resultSet: run.resultSet,
           warehouseId: chosenWarehouse } : null
-  ), [selectedSourceId, periodStart, periodEnd, draft, run?.resultSet, chosenWarehouse]);
+  ), [runEnvironment, periodStart, periodEnd, draft, run?.resultSet, chosenWarehouse]);
   // APP-EXEC-PARAMS — the execution parameters this run is compiled with. The measurement period is
   // the only one the app has a source for today; the rest belong to the measure package the compiler
   // emits (a measure declares its own parameters), so they join this list when that data is wired — the
@@ -272,18 +277,26 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   const execParams = useMemo(() => [periodParam(periodYear, setPeriodYear)], [periodYear]);
   const token = useRef(0);
   const busy = useRef(false);
-  useEffect(() => { fetchDataSources().then(setSources).catch(() => {}); }, []);
+  useEffect(() => {
+    fetchEnvironments().then((list) => {
+      setEnvironments(list); setEnvironmentError(null);
+      // DOC-ENVIRONMENT-PICKER — the default is preselected; a picked environment missing from the list is not kept.
+      setEnvironment((picked) => (list.some((e) => e.name === picked) ? picked
+        : list.find((e) => e.default)?.name ?? null));
+    }).catch((e) => setEnvironmentError(e instanceof Error ? e.message : String(e)));
+  }, []);
+  useEffect(() => { setCurrentEnvironment(environment); }, [environment]);
   useEffect(() => {
     fetchWarehouses().then((list) => {
       setWarehouses(list.warehouses); setDefaultWarehouseId(list.default); setWarehouseError(null);
     }).catch((e) => setWarehouseError(e instanceof Error ? e.message : String(e)));
   }, []);
   // Persist every change so the next page load restores the last selection.
-  useEffect(() => { saveCompute({ mode, compute, sourceId: selectedSourceId, updateMode, periodYear, warehouseId }); },
-    [mode, compute, selectedSourceId, updateMode, periodYear, warehouseId]);
+  useEffect(() => { saveCompute({ mode, compute, computing, updateMode, periodYear, warehouseId }); },
+    [mode, compute, computing, updateMode, periodYear, warehouseId]);
 
   // APP-TOUR — apply a deep-link when it changes (a "Show me" while the workspace is already
-  // mounted). The artifact and the lens land as ONE write — two would race (`setParams`).
+  // mounted). The artifact and the view land as ONE write — two would race (`setParams`).
   useEffect(() => {
     if (!deepLink) return;
     if (deepLink.openId) openArtifact(deepLink.openId, { replace: true, view: deepLink.lens });
@@ -295,10 +308,10 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // Only override the selected id when there is no current selection or it is absent from the new
   // definitions (stale/removed); an explicit user or deep-link selection always wins.
   //
-  // KNOWLEDGE-FAIL-LOUD — a failed fetch is NOT an empty catalogue. The backend used to answer 200
-  // with [] when Lakebase was unreachable and this pane called that "No measures found", sending
-  // the reader to Settings to fix a configuration that was never wrong. The error is now surfaced
-  // on the FIRST failure (retries continue underneath) so a real outage reads as an outage.
+  // KNOWLEDGE-FAIL-LOUD — a failed fetch is NOT an empty catalogue. An empty list from an unreachable
+  // store would read as "No measures found" and send the reader to Settings to fix a configuration
+  // that is not wrong. The error is surfaced on the FIRST failure (retries continue underneath) so a
+  // real outage reads as an outage.
   const [loadError, setLoadError] = useState<string | null>(null);
   // DOC-OPEN-SAVE — bumped when New or Save As creates a library, so the catalog lists it.
   const [catalogGen, setCatalogGen] = useState(0);
@@ -336,24 +349,12 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   const libLocation = definition?.location ?? null;
   // DOC-CQL-EDIT — which library a compile belongs to, so one library's last good compile never renders another's.
   const libKey = `${libLocation ?? ""}\0${definition?.id ?? ""}`;
-  // DOC-EDITABLE-IN-SCOPE — whether the user can write the store the library lives in, asked as they open it. A
-  // folder is not asked. `writable` is null while the answer is out, and when the check itself failed (`error`).
-  const [access, setAccess] = useState<{ location: string; writable: boolean | null; reason: string | null;
-                                         error: string | null } | null>(null);
-  useEffect(() => {
-    if (!libLocation?.startsWith("store:")) { setAccess(null); return; }
-    const location = libLocation;
-    let live = true;
-    setAccess({ location, writable: null, reason: null, error: null });
-    fetchStoreAccess(location)
-      .then((a) => { if (live) setAccess({ location, ...a, error: null }); })
-      .catch((e) => { if (live) setAccess({ location, writable: null, reason: null,
-                                            error: e instanceof Error ? e.message : String(e) }); });
-    return () => { live = false; };
-  }, [libLocation]);
-  const [dismissedAccess, setDismissedAccess] = useState<typeof access>(null);
-  const readOnly = access?.writable === false ? access.reason ?? "You cannot write this store." : null;
-  const checkingAccess = access !== null && access.writable === null && access.error === null;
+  // DOC-EDITABLE-IN-SCOPE — a library from a tagged store is published and read-only here; it is edited as a copy in
+  // a folder (Save As). Nothing is asked first: a folder write is the user's own, and Databricks refuses one they
+  // cannot make.
+  const readOnly = libLocation?.startsWith("store:")
+    ? "Published in a tagged store, which the Designer does not edit. Save a copy to a workspace folder to change it."
+    : null;
 
   // PERF-DISCOVER-LIGHTWEIGHT — the discover endpoint omits CQL source; lazy-load it
   // from /api/libraries/{name}/{version}/source when a definition is selected. While the
@@ -362,6 +363,10 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   const [loadedSource, setLoadedSource] = useState<string | null>(null);
   const [sourceLoading, setSourceLoading] = useState(false);
   const [sourceError, setSourceError] = useState<string | null>(null);
+  // DOC-AUTO-SAVE — how many times the open library was read again, after a write was refused because its copy
+  // changed elsewhere. Each reading is a new start for the writes (`Opened.key`).
+  const [reads, setReads] = useState(0);
+  useEffect(() => { setReads(0); }, [definition?.id, libLocation]);
   useEffect(() => {
     if (!definition) { setLoadedSource(null); setSourceError(null); return; }
     if (definition.source !== undefined && definition.source.trim() !== "") {
@@ -381,7 +386,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
       .finally(() => { if (live) setSourceLoading(false); });
     return () => { live = false; };
   }, [definition?.id, libLocation]); // eslint-disable-line react-hooks/exhaustive-deps
-  // DOC-CQL-EDIT — `edited` is the CQL as edited and not yet saved, or null. Everything below reads the DEBOUNCED edit, so the
+  // DOC-CQL-EDIT — `edited` is the CQL as edited, or null while it is as opened. Everything below reads the DEBOUNCED edit, so the
   // document recompiles a beat after typing stops rather than on every key.
   const [edited, setEdited] = useState<string | null>(null);
   const [editedSource, setEditedSource] = useState<string | null>(null);
@@ -390,44 +395,35 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     const t = setTimeout(() => setEditedSource(edited), 700);
     return () => clearTimeout(t);
   }, [edited]);
-  // DOC-OPEN-SAVE — the digest of the CQL as opened, which a save compares with what is there now.
-  const [baseSha, setBaseSha] = useState<string | null>(null);
-  useEffect(() => {
-    setEdited(null);
-    if (loadedSource === null) { setBaseSha(null); return; }
-    let live = true;
-    void cqlSha256(loadedSource).then((d) => { if (live) setBaseSha(d); });
-    return () => { live = false; };
-  }, [loadedSource]);
-  const dirty = edited !== null && edited !== loadedSource;
+  useEffect(() => { setEdited(null); }, [loadedSource]);
   // Source is empty while loading or on error — never use a generated stub.
   const source = editedSource ?? loadedSource ?? "";
 
-  // DATA-SOURCE-BIND / SVC-RUN-EVAL — run against a selected registry data source by its id; the backend
-  // resolves the bind origin (a Live source binds its retrieve UDTFs). One path for both.
+  // DOC-ENVIRONMENT-PICKER / SVC-RUN-EVAL — run in the picked environment, by its name; the backend binds its
+  // published views.
   // RUN-CLIENT-REQUEST-REOPEN — the calculation whose results were last looked up or shown, so a finished
   // run is not followed by a redundant reopen of what it just returned.
-  const scopeKey = `${libLocation ?? ""}\0${definition?.id ?? ""}\0${source}\0${selectedSourceId ?? ""}\0${periodStart}\0${periodEnd}\0${warehouseId ?? ""}\0${updateMode}`;
+  const scopeKey = `${libLocation ?? ""}\0${definition?.id ?? ""}\0${source}\0${runEnvironment ?? ""}\0${periodStart}\0${periodEnd}\0${warehouseId ?? ""}\0${updateMode}`;
   const currentKey = useRef(scopeKey);
   currentKey.current = scopeKey;
   const lookedUp = useRef<string | null>(null);
   // APP-UPDATE-MODE — "Calculation changed since last run": the last results shown were for this measure,
-  // data source and period, but other CQL. `shownNow` is this render's calculation, read through a ref so
+  // environment and period, but other CQL. `shownNow` is this render's calculation, read through a ref so
   // the memoized callbacks below never record a stale one.
-  type Shown = { id: string; sourceId: string; period: string; source: string };
+  type Shown = { id: string; environment: string; period: string; source: string };
   const shownNow = useRef<Shown | null>(null);
-  shownNow.current = definition && selectedSourceId
-    ? { id: definition.id, sourceId: selectedSourceId, period: `${periodStart}/${periodEnd}`, source } : null;
+  shownNow.current = definition && runEnvironment
+    ? { id: definition.id, environment: runEnvironment, period: `${periodStart}/${periodEnd}`, source } : null;
   const shownFor = useRef<Shown | null>(null);
   // APP-RUN-LOG — each caller names its action; Refresh recomputes, Automatic computes only what is missing.
-  const doRunSource = useCallback((src: string, sourceId: string, trigger: RunTrigger) => {
+  const doRunSource = useCallback((src: string, inEnvironment: string, trigger: RunTrigger) => {
     const recompute = trigger === "refresh";
     if (!src.trim() || busy.current) return;
     busy.current = true;
     const my = ++token.current;
     setRunStage({ stage: "connecting", message: "Starting…" });
     setRunError(null);
-    runMeasureStreaming(src, { dataSourceId: sourceId, periodStart, periodEnd, recompute, trigger,
+    runMeasureStreaming(src, { environment: inEnvironment, periodStart, periodEnd, recompute, trigger,
                                warehouseId: chosenWarehouse, location: libLocation }, (stage) => {
       if (my !== token.current) return;
       setRunStage(stage);
@@ -452,21 +448,21 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     ++token.current;
     setRun(null);
     setRunError(null);
-  }, [source, selectedSourceId, periodStart, periodEnd, definition?.id, warehouseId, libLocation]);
+  }, [source, runEnvironment, periodStart, periodEnd, definition?.id, warehouseId, libLocation]);
 
   const [lookup, setLookup] = useState<"checking" | "not-computed" | "changed" | null>(null);
 
   // RUN-CLIENT-REQUEST-REOPEN — opening a measure, or changing its CQL, data source, period or warehouse,
   // opens the user's own results for exactly that calculation, read-only. It never computes. Results
-  // are always private: there is no published-results lookup (RUN-CLIENT-PUBLISHED, amended 2026-10-10).
+  // are always private: there is no published-results lookup (RUN-CLIENT-PUBLISHED).
   // A miss is "Not computed"; in Automatic it then runs Compute missing, in Manual it does not.
   useEffect(() => {
-    if (!definition || !selectedSourceId || !source) { setLookup(null); lookedUp.current = null; return; }
+    if (!definition || !runEnvironment || !source) { setLookup(null); lookedUp.current = null; return; }
     if (running || busy.current || lookedUp.current === scopeKey) return;
     lookedUp.current = scopeKey;
     const my = ++token.current;
     setLookup("checking");
-    reopenResults(source, { dataSourceId: selectedSourceId, periodStart, periodEnd, warehouseId: chosenWarehouse,
+    reopenResults(source, { environment: runEnvironment, periodStart, periodEnd, warehouseId: chosenWarehouse,
                             location: libLocation })
       .then((r) => {
         if (my !== token.current) return;
@@ -475,9 +471,9 @@ export function MeasureWorkspace({ chrome, deepLink }: {
           return;
         }
         const prev = shownFor.current;
-        setLookup(prev && prev.id === definition.id && prev.sourceId === selectedSourceId
+        setLookup(prev && prev.id === definition.id && prev.environment === runEnvironment
           && prev.period === `${periodStart}/${periodEnd}` && prev.source !== source ? "changed" : "not-computed");
-        if (updateMode === "live") doRunSource(source, selectedSourceId, "automatic");
+        if (updateMode === "live") doRunSource(source, runEnvironment, "automatic");
       })
       .catch((e) => {
         if (my !== token.current) return;
@@ -488,7 +484,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
 
   // APP-UPDATE-MODE — why the page shows what it shows; never a bare "Idle".
   const tasks = runStage?.tasks ?? [];
-  const runStatus: RunStatus = !selectedSourceId ? { kind: "no-source" }
+  const runStatus: RunStatus = !runEnvironment ? { kind: "no-environment", error: environmentError ?? undefined }
     : running ? (tasks.length
       ? { kind: "running", total: tasks.length,
           done: tasks.filter((t) => ["completed", "skipped", "failed"].includes(t.status)).length }
@@ -510,7 +506,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     setRun(null);
     setCompiling(true);
     let current = true;
-    // APP-SPEC-MODEL — compile the include closure too: the Define lens derives its whole model
+    // APP-SPEC-MODEL — compile the include closure too: the Define view derives its whole model
     // from ELM, so the includes must arrive compiled, not merely resolved.
     const settle = (result: TranslateResult) => {
       if (!current) return;
@@ -558,24 +554,24 @@ export function MeasureWorkspace({ chrome, deepLink }: {
 
   // APP-CQL-AUTHORITATIVE — the authoritative define catalog from the compiler's ELM output.
   // This replaces regex-based CQL parsing as the source of truth for what defines exist; consumers
-  // (MeasureNarrative, DefineNav) use this when available, falling back to CQL scan only offline.
+  // (MeasureNarrative, DefineNav) read it, and show "Waiting for source" until it exists.
   const elmInfo = useMemo(() => (trans?.ok && trans.elm ? parseElmDefines(trans.elm) : null), [trans]);
 
-  // APP-LOGIC-VIEW — selecting in the NAV scrolls the Define lens to the criterion and keeps it
+  // APP-LOGIC-VIEW — selecting in the NAV scrolls the Define view to the criterion and keeps it
   // selected; selecting IN the spec just toggles selection (no scroll — you're already there).
   // Selecting from the NAV — and, since SPEC-REF-LENS, following a reference inside the document —
   // scrolls to the section that renders the define. Highlighting it in the nav and leaving the reader
   // where they were is not "following a link".
   //
-  // APP-MEASURE-FLOW — EVERY nav selection scrolls through the landing effect below, not from
+  // EVERY nav selection scrolls through the landing effect below, not from
   // here. Selection lives in the URL (`setSelected` → `navigate`), and a router update does not
   // commit in the click's own flush — so a scroll launched from this handler, on any frame timer,
   // RACES the commit that renders the selection and the reveals that expand what holds it
-  // (`MeasureNarrative`): it measured the pre-expansion page, and the expansion then moved its
+  // (`MeasureNarrative`): it measures the page before the expansion, and the expansion then moves its
   // destination out from under the smooth scroll. Clearing the stamp `setSelected` just wrote makes
   // the landing effect treat the token's arrival as something that must MOVE the page — and that
   // effect runs after the commit it is keyed on, so it always measures the expanded page. This is
-  // also what makes the pane lens-invariant for free: a row clicked under the CQL lens lands the
+  // also what makes the pane view-invariant for free: a row clicked under the CQL view lands the
   // same way, once the Specification has mounted — one scroll path, not two.
   //
   // RE-SELECTING the selected criterion is the one case with no commit to wait for: the URL is the
@@ -589,18 +585,16 @@ export function MeasureWorkspace({ chrome, deepLink }: {
       return;
     }
     selfSelected.current = null;
-    // The criterion and, from another lens, the lens itself: ONE write (`setParams`) — as two they
+    // The criterion and, from another view, the view itself: ONE write (`setParams`) — as two they
     // would race and Back would undo half the move.
     setParams({ crit: token }, { view: view !== "define" ? "define" : undefined });
   }, [dep, selectedToken, view, setParams]);
 
-  // APP-URL-ROUTING — land the reader on a document HEADING from the nav, from any lens.
+  // APP-URL-ROUTING — land the reader on a document HEADING from the nav, from any view.
   //
-  // Replaces five ad-hoc `getElementById(...).scrollIntoView(...)` call sites in `DefineNav` (Overview
-  // anchors, Terminology's two rows, the notices rows and a read group's resource) plus the
-  // `onScrollToSection` prop that was plumbed three levels and never called. All five broke the same
-  // way once the pane outlived the Define lens: the heading only exists while the Specification is
-  // mounted, so the scroll has to wait for it.
+  // The nav's anchor targets come through here: Overview anchors, Terminology's two rows, the notices
+  // rows and a read group's resource. The heading only exists while the Specification is mounted, so
+  // the scroll has to wait for it when the pane is on another view.
   const pendingAnchor = useRef<string | null>(null);
   const landOnAnchor = useCallback((domId: string) => {
     if (dep) setDep(null);
@@ -623,7 +617,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // auto-kick-off effect will immediately start a fresh run after this clears.
   useEffect(() => {
     setRun(null); setRunError(null);
-  }, [source, selectedSourceId]);
+  }, [source, runEnvironment]);
 
 
   // APP-SPEC-MODEL — the include closure arrives COMPILED on the translate result, so there are no
@@ -651,18 +645,29 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // column is empty. Some ingested copies genuinely lack it (one version of a helper library may ship
   // the resource while another does not), so this must degrade rather than fail.
   const [dataReqs, setDataReqs] = useState<Map<string, DataRequirement[]>>(new Map());
+  // KNOWLEDGE-FAIL-LOUD — a library whose read failed is named by its reason, never shown as reading nothing.
+  const [dataReqsError, setDataReqsError] = useState<string | null>(null);
   useEffect(() => {
     const libraries = elmInfo ? [elmInfo.name, ...compiledIncludes.ok.map((i) => i.info.name)] : [];
-    if (libraries.length === 0) { setDataReqs(new Map()); return; }
+    if (libraries.length === 0) { setDataReqs(new Map()); setDataReqsError(null); return; }
     let live = true;
     const versionOf = (name: string) =>
       name === elmInfo?.name ? elmInfo.version
         : compiledIncludes.ok.find((i) => i.info.name === name)?.info.version ?? "";
+    // Each library settles on its own: one failed read must not discard the others' rows.
     void Promise.all(libraries.map(async (name) => {
       const version = versionOf(name);
-      if (!version) return [name, [] as DataRequirement[]] as const;
-      return [name, await fetchDataRequirements(name, version, libLocation).catch(() => [])] as const;
-    })).then((pairs) => { if (live) setDataReqs(new Map(pairs)); });
+      if (!version) return { name, requirements: [] as DataRequirement[], error: null };
+      try {
+        return { name, requirements: await fetchDataRequirements(name, version, libLocation), error: null };
+      } catch (e) {
+        return { name, requirements: [] as DataRequirement[], error: e instanceof Error ? e.message : String(e) };
+      }
+    })).then((settled) => {
+      if (!live) return;
+      setDataReqs(new Map(settled.map((r) => [r.name, r.requirements] as const)));
+      setDataReqsError(settled.map((r) => r.error).find((e) => e !== null) ?? null);
+    });
     return () => { live = false; };
   }, [elmInfo, compiledIncludes, libLocation]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -672,7 +677,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     [trans],
   );
 
-  // The ONE model of what this specification contains. Built once here and handed to BOTH Define-lens
+  // The ONE model of what this specification contains. Built once here and handed to BOTH Define-view
   // surfaces, so the left nav and the Specification page can never disagree about which entries exist,
   // how overloads collapse, what is eliminated, or WHAT ORDER THEY COME IN. "Show eliminated defines"
   // and the catalogue's order are properties of the document (not of one pane), so their state lives
@@ -748,15 +753,13 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     // Only a DEFINE is a node the tools can address — a retrieve scopes the inspector but is not a
     // `NodeAddress`, so sending one would prefill an argument no tool could use.
     define: selected?.kind === "define" ? selected.name : undefined,
-    dataSourceId: selectedSourceId ?? undefined,
     periodStart, periodEnd,
     // The LABELS — what the screen calls those identifiers. Not tool arguments; the assistant writes
-    // with them so it does not say `HypertensionBPControl` and `synthetic-population-small` at a
-    // clinician who calls them something else. Resolved here because this is where both are already
+    // with them so it does not say `HypertensionBPControl` at a clinician who calls it something else. Resolved here because this is where both are already
     // known — the alternative is the assistant spending a tool round-trip on what is on the screen.
     measureTitle: definition?.title ?? undefined,
-    dataSourceName: sources.find((s) => s.id === selectedSourceId)?.name ?? undefined,
-  }), [definition, selected, selectedSourceId, periodStart, periodEnd, sources, run?.resultSet]);
+    environmentName: environment ?? undefined,
+  }), [definition, selected, environment, periodStart, periodEnd, run?.resultSet]);
 
   const specDoc = useMemo(
     () => (specModel ? buildSpecDocument(specModel, elmByLibrary, overlay) : null),
@@ -767,7 +770,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // ELIMINATION EXTENDS TO READS by construction: a define nothing reaches contributes no data
   // requirement, which is what keeps a helper library's hundreds of published rows out of a short table.
   //
-  // THE READS ARE THE SERVER'S ANSWER now (`SPEC-EXPLAIN-INPUTS`): `referenceSets` rides back on the
+  // THE READS ARE THE SERVER'S ANSWER (`SPEC-EXPLAIN-INPUTS`): `referenceSets` rides back on the
   // same `/api/translate` response as the ELM, so the model this renders and the reads resolved into it
   // describe one compilation. What happens here is the INVERSION into per-read-with-call-sites plus the
   // `mustSupport` join, neither of which is a fact about the CQL.
@@ -806,9 +809,9 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // RUN-CLIENT-RESULT-SETS — every figure on the document arrives together from these exact pins.
   const resultLibrary = definition?.name, resultVersion = definition?.version;
   const derivations = useSelectionDerivations(
-    resultLibrary && resultVersion && selectedSourceId && draft && run?.resultSet ? {
+    resultLibrary && resultVersion && runEnvironment && draft && run?.resultSet ? {
       library: resultLibrary, version: resultVersion,
-      scope: { dataSourceId: selectedSourceId, periodStart, periodEnd, draft, resultSet: run.resultSet,
+      scope: { environment: runEnvironment, periodStart, periodEnd, draft, resultSet: run.resultSet,
                warehouseId: chosenWarehouse },
       defines: metricDefines, reads: readRequest, gates: flowGates, scoring: overlay?.scoring ?? null,
     } : null);
@@ -834,7 +837,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     // SHOW ELIMINATED reveals everything the document holds back — and terminology is held back for
     // TWO different reasons, only one of which is elimination. A value set referenced only by an
     // unreachable define is hidden by reachability. One a helper library DECLARES and nothing references
-    // — its define reads a Patient element, not the value set — was never hidden by a reachability rule.
+    // — its define reads a Patient element, not the value set — is never hidden by a reachability rule.
     //
     // Filtering on reference alone made the toggle reveal the first kind and not the second, which
     // reads as the toggle being broken: the reader asked to see what was hidden and something stayed
@@ -901,7 +904,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     };
   }, [specDoc, retrieves, namedTerminology, overlay]);
 
-  // APP-URL-ROUTING / APP-MEASURE-FLOW — land the reader on a criterion: one arriving in the
+  // APP-URL-ROUTING — land the reader on a criterion: one arriving in the
   // URL from outside (a pasted address, Back), or one the nav selected (`selectFromNav` clears the
   // stamp so this fires). Placed after `specDoc` because it is the document's existence that decides
   // whether the section is in the DOM yet: a pasted address resolves only once the compile and the
@@ -918,7 +921,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     return () => cancelAnimationFrame(frame);
   }, [selectedToken, view, specDoc]);
 
-  // The same gate for a HEADING queued by `landOnAnchor` from another lens — one frame after the
+  // The same gate for a HEADING queued by `landOnAnchor` from another view — one frame after the
   // Specification mounts, or the query runs against an article that is not there yet.
   useEffect(() => {
     if (view !== "define" || !specDoc || !pendingAnchor.current) return;
@@ -934,48 +937,42 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     setView("cql");
   }
 
-  // DOC-OPEN-SAVE — save the edited CQL where it was opened, as the signed-in user. A save that would leave a
-  // package's XML copies or HTML out of date names them and waits for the reader to agree; one over a library
-  // changed since it was opened, or of CQL that does not compile, writes nothing and says why.
-  const [saving, setSaving] = useState(false);
-  const [saveProblem, setSaveProblem] = useState<{ message: string; detail?: string[] } | null>(null);
-  const [stalePrompt, setStalePrompt] = useState<string[] | null>(null);
-  useEffect(() => { setSaveProblem(null); setStalePrompt(null); }, [definition?.id, libLocation]);
-  const save = useCallback(async (deleteStale?: string[]) => {
-    if (!definition || edited === null || saving || readOnly) return;
-    const cql = edited;
-    setSaving(true);
-    setSaveProblem(null);
-    try {
-      const out = await saveLibrary({ location: definition.location, name: definition.name,
-                                      version: definition.version, cql, baseSha256: baseSha, deleteStale });
-      if (out.kind === "saved") { setStalePrompt(null); setLoadedSource(cql); }
-      else if (out.kind === "stale") setStalePrompt(out.paths);
-      else if (out.kind === "invalid") setSaveProblem({ message: "Not saved: the CQL does not compile.", detail: out.diagnostics });
-      else if (out.kind === "conflict") setSaveProblem({ message: `Not saved: ${out.error}. Reopen it to see what is there now.` });
-      else setSaveProblem({ message: `Not saved: ${out.error}` });
-    } catch (e) {
-      setSaveProblem({ message: `Not saved: ${e instanceof Error ? e.message : String(e)}` });
-    } finally {
-      setSaving(false);
-    }
-  }, [definition, edited, baseSha, saving, readOnly]);
+  // DOC-AUTO-SAVE — every edit is written where the library was opened, as the signed-in user, a beat after typing
+  // stops, compiled or not. A read-only library is never written.
+  const opened = useMemo(() => definition && loadedSource !== null ? {
+    key: `${libKey}\0${reads}`, location: definition.location, name: definition.name, version: definition.version,
+    cql: loadedSource,
+  } : null, [definition, libKey, reads, loadedSource]);
+  const autoSave = useAutoSave({ opened, edited, enabled: !readOnly, save: saveLibrary });
+  const writeState = autoSave.state;
+  const unwritten = autoSave.unwritten;
+  const [dismissedWrite, setDismissedWrite] = useState<typeof writeState | null>(null);
+  // Read the library again after its copy changed elsewhere. The edit held here is discarded and the copy is loaded again.
+  const reread = useCallback(() => {
+    if (!definition) return;
+    const { name, version, location } = definition;
+    fetchLibrarySource(name, version, location)
+      .then((s) => { setEdited(null); setLoadedSource(s); setReads((n) => n + 1); setSourceError(null); })
+      .catch((e) => setSourceError(`Failed to load source: ${e instanceof Error ? e.message : e}`));
+  }, [definition]);
+  // Cmd/Ctrl+S writes at once, rather than when typing stops.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); if (dirty) void save(); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); autoSave.flush(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [dirty, save]);
-  // Leaving the page with an unsaved edit asks first; so does opening another library (`leaveEdit`).
+  }, [autoSave.flush]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Leaving the page while the latest edit is not written asks first; so does opening another library (`leaveEdit`).
   useEffect(() => {
-    if (!dirty) return;
+    if (!unwritten) return;
     const onLeave = (e: BeforeUnloadEvent) => { e.preventDefault(); };
     window.addEventListener("beforeunload", onLeave);
     return () => window.removeEventListener("beforeunload", onLeave);
-  }, [dirty]);
+  }, [unwritten]);
   const leaveEdit = useCallback(
-    () => !dirty || window.confirm("This library has unsaved changes. Discard them?"), [dirty]);
+    () => !unwritten || window.confirm("This library's latest edit is not saved. Leave it and lose the edit?"),
+    [unwritten]);
   // DOC-SCOPE-OPEN — the open scope is the location the catalog lists (`?at=`); its libraries are the catalog.
   const navScope = useMemo<NavScope | null>(() => (openAt && definition ? {
     at: openAt, libraries: definitions, openId: definition.id,
@@ -985,19 +982,45 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // first, as opening another does; Save As takes the CQL as edited into the copy.
   const [fileForm, setFileForm] = useState<NewTarget | null>(null);
   useEffect(() => { setFileForm(null); }, [definition?.id, libLocation]);
-  // A new library opens in the CQL view, to be written; a copy opens where its original was read.
+  // DOC-INCLUDE-NEW — "Include a library…" puts the new library's `include` where the compiler placed the open
+  // library's last include or using, so it runs only on an editable library whose CQL as edited is compiled as it
+  // stands, with no define open in place (that editor would write its own text back over the include).
+  const includeElm = latest?.result.ok && latest.result.elm && latest.source === (edited ?? loadedSource)
+    ? latest.result.elm : null;
+  const includeBlocked = readOnly
+    ?? (inPlace ? "Close the define you are editing first."
+        : includeElm ? null : "The CQL as edited must compile first: the include goes after its last include.");
+  // DOC-PUBLISH — Publish reads the library from its folder, so it waits until the latest edit is written there.
+  const publishBlocked = readOnly
+    ?? (unwritten ? "Wait until the latest edit is saved: Publish reads the library from its folder." : null);
+  const [publishing, setPublishing] = useState(false);
+  useEffect(() => { setPublishing(false); }, [definition?.id, libLocation]);
+  const [includeProblem, setIncludeProblem] = useState<string | null>(null);
+  useEffect(() => { setIncludeProblem(null); }, [definition?.id, libLocation]);
+  // A new library opens in the CQL view, to be written; a copy opens where its original was read; a library made to
+  // be included stays unopened, and the open library gains its `include`, written as any edit is (`DOC-AUTO-SAVE`).
   const created = useCallback((id: string, at: string) => {
-    const view = fileForm?.kind === "new" ? "cql" : "define";
+    const form = fileForm;
     setFileForm(null);
-    setEdited(null);
     setCatalogGen((g) => g + 1);
-    openArtifact(id, { view }, at);
-  }, [fileForm, openArtifact]);
+    if (form?.kind === "include") {
+      const [name = "", version = ""] = id.split("@");
+      const current = edited ?? loadedSource;
+      const out = includeElm && current !== null ? withInclude(current, includeElm, name, version)
+        : { refused: "The CQL changed while the library was being created." };
+      if ("cql" in out) setEdited(out.cql);
+      else setIncludeProblem(`${name} ${version} was created in ${at.replace(/^folder:/, "")} but not included: `
+                             + `${out.refused} Add the include by hand.`);
+      return;
+    }
+    setEdited(null);
+    openArtifact(id, { view: form?.kind === "new" ? "cql" : "define" }, at);
+  }, [fileForm, openArtifact, edited, loadedSource, includeElm]);
   const editorTheme: "light" | "dark" = themeAttr(chrome.theme)
     ?? (typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 
   // DOC-CQL-EDIT — a define edited in place. Its text replaces `[start, end)` of the draft it opened on, so
-  // the edit splices into the ONE draft the whole-library editor and Save also read.
+  // the edit splices into the ONE text the whole-library editor also edits and every write sends (`DOC-AUTO-SAVE`).
   const draftCql = edited ?? loadedSource ?? "";
   // The draft has not compiled yet: typing has not settled, or the compile of what settled is in flight.
   const pending = compiling || edited !== null && edited !== editedSource || latest?.source !== source;
@@ -1006,9 +1029,10 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // The define last closed, so it can reopen on its own text while the draft is still exactly what it left —
   // the one way back into a define closed while it did not compile, when no span on the page is current.
   const [lastInPlace, setLastInPlace] = useState<InPlace | null>(null);
-  // Another library, view or dependency closes it. A save does not: it stores exactly the draft this edit made.
-  useEffect(() => { setInPlace(null); }, [libKey, view, dep]);
-  useEffect(() => { setLastInPlace(null); }, [libKey]);
+  // Another library, view or dependency closes it, and so does reading the library again: its text is not the
+  // one the define was opened on. A write does not: it writes exactly the text this edit made.
+  useEffect(() => { setInPlace(null); }, [libKey, view, dep, reads]);
+  useEffect(() => { setLastInPlace(null); }, [libKey, reads]);
   const inPlaceRef = useRef(inPlace);
   inPlaceRef.current = inPlace;
   const closeInPlace = useCallback(() => {
@@ -1026,10 +1050,9 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   const defineEdit = useMemo<DefineEdit>(() => ({
     openKey: inPlace?.key ?? null,
     // The library being read; an include is a reference, edited where it lives.
-    // DOC-EDITABLE-IN-SCOPE — and only where the user can write it: a store they cannot write offers no Edit.
+    // DOC-EDITABLE-IN-SCOPE — and only in a folder: a published library from a store offers no Edit.
     offers: (entry) => !dep && !readOnly && entry.library === specModel?.root,
     blocked: (entry) => {
-      if (checkingAccess) return "Checking whether you can write this store…";
       if (entry.variants.length !== 1) return "A function with overloads is edited in the whole-library editor.";
       if (!entry.variants[0]!.span) return "The compiler gave no source position for this define.";
       if (resumes(entry)) return null;
@@ -1050,7 +1073,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
         status={pending ? "Compiling…" : broken ? `${broken.result.diagnostics.length} problem${broken.result.diagnostics.length === 1 ? "" : "s"}` : "Compiles"}
         problems={broken?.result.diagnostics ?? []} />
     ),
-  }), [inPlace, lastInPlace, dep, readOnly, checkingAccess, specModel, pending, page, draftCql, broken, changeInPlace,
+  }), [inPlace, lastInPlace, dep, readOnly, specModel, pending, page, draftCql, broken, changeInPlace,
       closeInPlace, editorTheme]);
 
   // Content to render in the body — the chrome and toolbar render unconditionally.
@@ -1089,15 +1112,15 @@ export function MeasureWorkspace({ chrome, deepLink }: {
             is also the File surface, Navigator); the CENTRE carries the execution context passed below;
             the right end holds the app's own toggles, which this screen does not supply.
 
-            APP-ONE-SURFACE — the lens bar that used to fill the centre is GONE rather than emptied.
+            APP-ONE-SURFACE — the centre holds no view bar at all.
             With Validate in its own module and Analyze withdrawn there is one destination, and a switcher
             between one place and itself is chrome a reader pays a glance for and gets nothing back from.
             Execution sits in the middle of the bar; the compute pill is on the right beside controls
             touched once a session. */}
         {/* APP-ASSISTANT — `moduleTools` is the drawer's door. A toggle, so it shows its state
-            (`aria-pressed`), which is the same argument that took tour/Settings/appearance out of the
-            account menu. `Sparkle` because that is the assistant mark the retired inspector tab already
-            used, and a reader should meet one mark for one thing. Rendered only with a measure open:
+            (`aria-pressed`): the same argument that keeps tour/Settings/appearance out of the
+            account menu. `Sparkle` because that is the assistant mark, and a reader should meet one mark
+            for one thing. Rendered only with a measure open:
             the assistant's scope is the measure, and a door onto an empty room is not a door. */}
         <TopBar {...chrome}
           moduleTools={definition && (<>
@@ -1107,18 +1130,13 @@ export function MeasureWorkspace({ chrome, deepLink }: {
               onClick={() => { setDep(null); setView(view === "cql" ? "define" : "cql"); }}>
               <EditCql size={16} aria-hidden="true" />
             </button>
-            {/* DOC-OPEN-SAVE — save where it was opened: its folder or its tagged store. */}
-            <button className="mw-save-btn" disabled={!dirty || saving || !!readOnly} onClick={() => void save()}
-              title={readOnly ?? (dirty ? `Save to ${definition.location.replace(/^(store|folder):/, "")} (⌘S)` : "No unsaved changes")}>
-              <Save size={14} aria-hidden="true" />{saving ? "Saving…" : dirty ? "Save" : "Saved"}
-            </button>
             <button className="mw-icon-btn" aria-pressed={askOpen}
               aria-label="Assistant" title="Ask about this measure"
               onClick={toggleAssistant}>
               <Sparkle size={16} aria-hidden="true" />
             </button>
           </>)}
-          crumb={definition && (
+          crumb={definition && (<>
             <Navigator definition={definition} definitions={definitions}
               onOpenDefinition={(id) => { if (leaveEdit()) openArtifact(id, { view: "define" }); }}
               dep={dep} onBack={() => { setDep(null); setView("define"); }}
@@ -1129,13 +1147,22 @@ export function MeasureWorkspace({ chrome, deepLink }: {
                 if (id) openArtifact(id, { view: "define" }, at);
                 else setParams({ at, open: null, crit: null });
               }}
+              includeBlocked={includeBlocked}
+              publishBlocked={publishBlocked}
               onFileAction={(action) => {
                 if (action.kind === "new") { if (leaveEdit()) setFileForm(action); }
+                else if (action.kind === "include") { if (!includeBlocked) setFileForm(action); }
+                else if (action.kind === "publish") { if (!publishBlocked) setPublishing(true); }
                 else if (loadedSource !== null) setFileForm({ kind: "saveAs", definition, cql: edited ?? loadedSource });
               }} />
-          )}
+            {/* DOC-AUTO-SAVE — whether the latest edit is written where the library was opened, or why not. */}
+            <span className={"mw-save-state " + writeState.kind} role="status"
+              title={readOnly ?? writeTitle(writeState, definition.location)}>
+              {readOnly ? "Read-only" : writeLabel(writeState)}
+            </span>
+          </>)}
           context={definition && <>
-            {/* DESIGNER-SPACE-CONTEXT — show the active Data Source name when the measure belongs to one. */}
+            {/* Show the active Data Source name when the measure belongs to one. */}
             {/* APP-EXEC-PARAMS — the execution parameters, dialled in the bar. They scope every count,
                 rate and funnel on the page, and a value a reader changes while reading is right here. */}
             <ExecParamBar params={execParams} />
@@ -1158,21 +1185,21 @@ export function MeasureWorkspace({ chrome, deepLink }: {
                   ) : runStatusText(runStatus)}
                 </span>
               }
-              sources={sources} selectedSourceId={selectedSourceId}
+              environments={environments} environment={runEnvironment}
               warehouses={warehouses} defaultWarehouseId={defaultWarehouseId} warehouseId={warehouseId}
               warehouseError={warehouseError}
               updateMode={updateMode}
-              onModeChange={() => { setSelectedSourceId(null); setMode("static"); }}
-              onSourceChange={setSelectedSourceId}
+              onModeChange={() => { setComputing(false); setMode("static"); }}
+              onEnvironmentChange={(name) => { setEnvironment(name); setComputing(true); }}
               onWarehouseChange={(id) => setWarehouseId(id === defaultWarehouseId ? null : id)}
               onUpdateModeChange={setUpdateMode}
-              runDisabled={running || compiling || !source || !selectedSourceId}
-              onRefresh={() => { if (selectedSourceId) doRunSource(source, selectedSourceId, "refresh"); }} />
+              runDisabled={running || compiling || !source || !runEnvironment}
+              onRefresh={() => { if (runEnvironment) doRunSource(source, runEnvironment, "refresh"); }} />
           </>} />
 
         {/* DOC-OPEN-SAVE — New from the empty state; with a library open, the form renders with the banners below. */}
         {fileForm && !definition && (
-          <NewLibraryForm key={fileForm.kind === "new" ? fileForm.what : "saveAs"} target={fileForm} at={openAt}
+          <NewLibraryForm key={fileForm.kind === "new" ? fileForm.what : fileForm.kind} target={fileForm} at={openAt}
             onCancel={() => setFileForm(null)} onCreated={created} />
         )}
         {/* Loading / empty body — shown while definitions load or when none exist. */}
@@ -1191,28 +1218,33 @@ export function MeasureWorkspace({ chrome, deepLink }: {
                                        : "The CQL does not compile."}
               detail={broken.result.diagnostics.join("\n")} collapsible onDismiss={() => setDismissedCompile(broken)} />
           )}
-          {/* DOC-EDITABLE-IN-SCOPE — the access check itself failed. The library stays editable: the save is the
-              user's own write, so Databricks still refuses one they cannot make. */}
-          {access?.error && access !== dismissedAccess && (
-            <ErrorBanner message={`${access.error} The library is editable; a save you cannot make will be refused.`}
-              onDismiss={() => setDismissedAccess(access)} />
+          {/* DOC-AUTO-SAVE — why the latest edit was not written. A changed copy stops the writes until it is read
+              again; any other refusal is retried on the next edit. */}
+          {writeState.kind === "conflict" && (
+            <div className="mw-save-stale" role="alertdialog" aria-label="Not saved: the library changed elsewhere">
+              <p>Not saved: {writeState.error}. Saving has stopped for this library. Reload it to see what is there
+                now; your edit since the last save is lost.</p>
+              <div className="ac"><button className="go" onClick={reread}>Reload</button></div>
+            </div>
           )}
-          {/* DOC-OPEN-SAVE — why a save wrote nothing, or what it would leave out of date. */}
-          {saveProblem && (
-            <ErrorBanner message={saveProblem.message} detail={saveProblem.detail?.join("\n")}
-              onDismiss={() => setSaveProblem(null)} />
+          {writeState.kind === "refused" && writeState !== dismissedWrite && (
+            <ErrorBanner message={`Not saved: ${writeState.error}`} onDismiss={() => setDismissedWrite(writeState)} />
           )}
+          {/* DOC-INCLUDE-NEW — the library was made but its include could not be placed. */}
+          {includeProblem && <ErrorBanner message={includeProblem} onDismiss={() => setIncludeProblem(null)} />}
+          {publishing && <PublishForm definition={definition} environmentName={environment}
+                                         onClose={() => setPublishing(false)} />}
           {fileForm && (
-            <NewLibraryForm key={fileForm.kind === "new" ? fileForm.what : "saveAs"} target={fileForm} at={openAt}
+            <NewLibraryForm key={fileForm.kind === "new" ? fileForm.what : fileForm.kind} target={fileForm} at={openAt}
               onCancel={() => setFileForm(null)} onCreated={created} />
           )}
-          {stalePrompt && (
+          {writeState.kind === "stale" && (
             <div className="mw-save-stale" role="alertdialog" aria-label="Files this save would leave out of date">
-              <p>Saving would leave these copies out of date. They can't be regenerated here. Delete them and save?</p>
-              <ul>{stalePrompt.map((p) => <li key={p}><code>{p}</code></li>)}</ul>
+              <p>Saving would leave these copies out of date. They can't be regenerated here, so nothing is saved
+                until you agree to delete them.</p>
+              <ul>{writeState.paths.map((p) => <li key={p}><code>{p}</code></li>)}</ul>
               <div className="ac">
-                <button onClick={() => setStalePrompt(null)}>Cancel</button>
-                <button className="go" disabled={saving} onClick={() => void save(stalePrompt)}>Delete and save</button>
+                <button className="go" onClick={autoSave.agreeStale}>Delete them and save</button>
               </div>
             </div>
           )}
@@ -1240,9 +1272,16 @@ export function MeasureWorkspace({ chrome, deepLink }: {
 
             <main className="mw-doc">
               <div className={"mw-doc-inner" + (!dep && view === "define" ? " read" : "")}>
-                {/* DOC-EDITABLE-IN-SCOPE — a store the user cannot write opens read-only, and says why. */}
+                {/* DOC-EDITABLE-IN-SCOPE — a published library opens read-only, says why, and offers the copy to edit. */}
                 {readOnly && !dep && (
-                  <div className="mw-dep-ribbon mw-readonly"><span className="ro">read-only</span><span>{readOnly}</span></div>
+                  <div className="mw-dep-ribbon mw-readonly"><span className="ro">read-only</span><span>{readOnly}</span>
+                    {loadedSource !== null && (
+                      <button className="mw-readonly-copy"
+                        onClick={() => setFileForm({ kind: "saveAs", definition, cql: edited ?? loadedSource })}>
+                        Save a copy…
+                      </button>
+                    )}
+                  </div>
                 )}
                 {dep ? (
                   <>
@@ -1270,7 +1309,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
                       results={computed ? (run?.results ?? null) : null}
                       spec={visibleSpec} elmInfo={elmInfo}
                       overlay={overlay} doc={specDoc}
-                      retrieves={retrieves} namedTerminology={namedTerminology}
+                      retrieves={retrieves} dataRequirementsError={dataReqsError} namedTerminology={namedTerminology}
                       parameters={citableParams(execParams)}
                       /* SPEC-REF-LENS — the same scope the inspector pane resolves, so a define popped from
                          a sentence and the same define pinned in the pane profile one evaluation. */
@@ -1291,7 +1330,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
                       <div className="mw-cqledit-body">
                         <React.Suspense fallback={<div className="mw-empty"><span className="mw-spin" /> Loading the editor…</div>}>
                           <LazyCqlEditor value={edited ?? loadedSource ?? ""} onChange={setEdited} theme={editorTheme}
-                            readOnly={!!readOnly || checkingAccess} />
+                            readOnly={!!readOnly} />
                         </React.Suspense>
                       </div>
                       {latest && !latest.result.ok && latest.result.diagnostics.length > 0 && (

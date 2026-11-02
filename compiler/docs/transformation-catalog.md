@@ -47,13 +47,13 @@ through every stage, see [pipeline-walkthrough.md](pipeline-walkthrough.md).
 20. Typed-slot dispatch (`LANG-CHOICE-RESOURCE`): bare `value[x]` and `extension(url).value` read the
     slot for the declared type. A heterogeneous choice can range over whole resources.
 21. Lineage (`DATA-EXPORT`): carry `__resource_id` and `__resource_type`.
-22. Code cardinality (`BIND-RETRIEVE-UDF`): read from the model whether a code element is single or a
+22. Code cardinality: read from the model whether a code element is single or a
     list, and lower membership to match.
 23. Static type tests (`LANG-CHOICE-MODEL`): resolve `as` and `is` on `value[x]` against the model and
     fold the resulting literal tests, so no dead branch reaches the SQL.
 24. Conditional as union over relations (`ARCH-COND-UNION`): a list-valued conditional with
     relation-valued branches lowers to `UNION ALL` of filtered branches, with no boxing.
-25. Value-set membership (`LANG-TERMINOLOGY`, `BIND-TERMINOLOGY-TABLE`): `in ValueSet(…)` is a semi-join
+25. Value-set membership (`LANG-TERMINOLOGY`, `DATA-ENVIRONMENT-LAYOUT`): `in ValueSet(…)` is a semi-join
     against the value-set table.
 26. `with` and `without` (`LANG-QUERY-WITH`): a semi-join or anti-join filtered by `cqlTrue(such that)`.
 27. `return distinct` (`LANG-QUERY-RETURN`): dedupe with equality semantics.

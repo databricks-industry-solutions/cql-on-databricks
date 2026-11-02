@@ -1,8 +1,7 @@
 """The E2E driver's SQL-substrate flow (scripts/e2e_run.py, PIPE-RUNTIME-COMPILE) — pyspark-free.
 
 The live gate (RuntimeCompileE2ESpec) needs a Connect server + pyspask; this unit test covers the driver's
-LOGIC with fakes: the mount script runs FIRST (the runtime contract), then the compiled SQL statements, then
-the per-(subject, define) result is assembled. No pyspark import fires (the SQL path never touches it).
+LOGIC with fakes: the compiled SQL statements run, then the per-(subject, define) result is assembled. No pyspark import fires (the SQL path never touches it).
 """
 import os
 import sys
@@ -47,16 +46,6 @@ class _FakeProvider(CompileProvider):
         return self._result
 
 
-_MOUNTS = (
-    "-- retrieve mounts (comment header)\n"
-    "-- retrieve_X\n"
-    "DROP TABLE IF EXISTS `retrieve_X`;\n"
-    "CREATE TABLE `retrieve_X` (\n"
-    "  `__subject_id` STRING\n"
-    ");\n"
-)
-
-
 class RunE2eSqlTests(unittest.TestCase):
     def _run(self, spark):
         provider = _FakeProvider(SqlCompileResult(
@@ -64,32 +53,19 @@ class RunE2eSqlTests(unittest.TestCase):
                                      "CREATE OR REPLACE TEMP VIEW Numerator AS SELECT 1")],
             target="Numerator", defines=["Numerator"]))
         return e2e_run.run_e2e(spark, provider, elm="{}", targets=["Numerator"],
-                               context="Unfiltered", mounts_sql=_MOUNTS, conf={})
+                               context="Unfiltered", conf={})
 
-    def test_mounts_run_first_then_script_then_select(self):
+    def test_the_script_runs_then_the_target_select(self):
         spark = _FakeSpark(rows=[{"__subject_id": "*", "Numerator": 2}])
-        out = self._run(spark)
-        # The mount statements ran (comments stripped), then the compiled view, then the target SELECT.
-        self.assertIn("DROP TABLE IF EXISTS `retrieve_X`", spark.calls)
-        self.assertTrue(any(c.startswith("CREATE TABLE `retrieve_X`") for c in spark.calls))
-        self.assertIn("CREATE OR REPLACE TEMP VIEW Numerator AS SELECT 1", spark.calls)
-        self.assertEqual(spark.calls[-1], "SELECT * FROM `Numerator`")
-        # The mounts precede the compiled statement.
-        self.assertLess(spark.calls.index("DROP TABLE IF EXISTS `retrieve_X`"),
-                        spark.calls.index("CREATE OR REPLACE TEMP VIEW Numerator AS SELECT 1"))
+        self._run(spark)
+        self.assertEqual(spark.calls, ["CREATE OR REPLACE TEMP VIEW Numerator AS SELECT 1",
+                                       "SELECT * FROM `Numerator`"])
 
     def test_result_assembled_by_subject_and_define(self):
         spark = _FakeSpark(rows=[{"__subject_id": "p1", "Numerator": True},
                                  {"__subject_id": "p2", "Numerator": False}])
         out = self._run(spark)
         self.assertEqual(out, {"p1": {"Numerator": True}, "p2": {"Numerator": False}})
-
-    def test_run_mounts_splits_and_drops_comments(self):
-        spark = _FakeSpark(rows=[])
-        e2e_run._run_mounts(spark, _MOUNTS)
-        # exactly the two statements, no comment-only chunks
-        self.assertEqual(len(spark.calls), 2)
-        self.assertNotIn("--", "".join(spark.calls))
 
 
 if __name__ == "__main__":

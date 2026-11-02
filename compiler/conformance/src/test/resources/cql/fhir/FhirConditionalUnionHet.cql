@@ -1,6 +1,6 @@
 library FhirConditionalUnionHet version '1.0.0'
 
-// ARCH-COND-UNION Phase B — HETEROGENEOUS list-valued `if`/`case`: the branches return DIFFERENT
+// ARCH-COND-UNION — HETEROGENEOUS list-valued `if`/`case`: the branches return DIFFERENT
 // element types. The cqframework translator types `if C then List<A> else List<B>` as a scalar
 // Choice<List<A>, List<B>> (each branch wrapped in `As(query, choiceTypes = [List<A>, List<B>])`).
 // The union rewrite keeps each branch Relation-encoded and TAGS its elements with the active Choice

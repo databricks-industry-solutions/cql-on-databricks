@@ -16,7 +16,7 @@ export function CompositionNav({ roots, narrowed, rows }: {
   /** One tree per population, already built and pruned by `specComposition.ts`. */
   roots: CompositionRoot[];
   /** True when a filter is narrowing the tree — see `pruneComposition`: survivors re-hang under their
-   *  nearest surviving ancestor, so the depth on screen is no longer the real depth and the pane has to
+   *  nearest surviving ancestor, so the depth on screen is not the real depth and the pane has to
    *  say so rather than let the shape be read at face value. */
   narrowed: boolean;
   rows: NavRowKit;

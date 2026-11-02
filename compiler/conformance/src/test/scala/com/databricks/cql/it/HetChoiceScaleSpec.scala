@@ -79,7 +79,6 @@ final class HetChoiceScaleSpec extends AnyFunSuite {
   private def exprsOfStmt(s: SqlStmt): Seq[SqlExpr] = s match {
     case SqlStmt.CreateView(_, r)  => exprsOfRel(r)
     case SqlStmt.CacheTable(_, r)  => exprsOfRel(r)
-    case _: SqlStmt.CreateFunction => Nil
   }
 
   /** Every `Field` (GetStructField) subexpression, as its rendered text — DISTINCT count == the set
@@ -114,7 +113,7 @@ final class HetChoiceScaleSpec extends AnyFunSuite {
     val lib = Pipeline().normalize(translated.elmJson.getOrElse(
       throw new IllegalArgumentException(s"CQL translation produced errors: ${translated.errors.mkString("; ")}")))
     val optimized = Optimize.run(lib, config)
-    SqlFrameLowering.lower(optimized, SqlEvalEnv(Context.Patient, config, terminology = false)).script.statements
+    SqlFrameLowering.lower(optimized, SqlEvalEnv(Context.Patient, config).describing).script.statements
   }
 
   if (enabled) test("het-Choice analysis-driver curve: distinct nested extractions vs N navs") {

@@ -1,8 +1,8 @@
-"""SVC-MCP-TOOLS, SVC-TOOL-ADDRESS, SVC-TOOL-FRESHNESS — the assistant's five tools.
+"""SVC-MCP-TOOLS — the assistant's five tools.
 
 These pin the properties an EXTERNAL caller depends on, which is the whole reason the surface exists
-(`agent/README.md`): that where an output is stored is the evaluator's answer, never the
-agent's derivation (`DEC-EVALUATOR-OPAQUE`), that `get_output` answers with a handle instead of rows, that `query_data` is a read, and that
+(`agent/README.md`): that where an output is stored is the complete selection's answer, never the
+agent's derivation (`RUN-CLIENT-RESULT-SETS`), that `get_output` answers with a handle instead of rows, that `query_data` is a read, and that
 `get_freshness` reports evidence and refuses to render a verdict.
 
 The warehouse is a fake — the tools take it as a seam precisely so their contract is testable without
@@ -13,8 +13,7 @@ from __future__ import annotations
 import pytest
 
 from cql_databricks.agent.service import (
-    NodeAddress, ReadOnlyViolation, get_freshness, get_output,
-    list_data_sources, list_tables, query_data)
+    NodeAddress, ReadOnlyViolation, get_freshness, get_output, list_tables, query_data)
 from cql_databricks.result import ResultsUnavailable
 from agent.service.tests.durable_fixture import RESULT_SET, reference
 
@@ -22,9 +21,9 @@ CATALOG = "acme_results"
 
 ADDRESS = NodeAddress(
     library="HypertensionBPControl", version="1.0.0", define="Initial Population",
-    data_source_id="acme-prod", period_start="2026-01-01", period_end="2026-12-31")
+    environment="acme-prod", period_start="2026-01-01", period_end="2026-12-31")
 
-#: What the evaluator answers for ADDRESS (`DEC-EVALUATOR-OPAQUE`): the stored table and the set's filter.
+#: The selected output for ADDRESS (`RUN-CLIENT-RESULT-SETS`): its pinned table and recorded columns.
 REFERENCE = reference()
 
 
@@ -47,20 +46,18 @@ class FakeWarehouse:
 
 
 # ---------------------------------------------------------------------------
-# DEC-EVALUATOR-OPAQUE — the evaluator says where an output is; the agent never derives it
+# RUN-CLIENT-RESULT-SETS — the selection says where an output is; the agent never derives it
 # ---------------------------------------------------------------------------
 
 class TestReference:
     def test_the_address_names_the_scope_and_nothing_about_storage(self):
-        # Until 2026-10-05 the address derived the table and the `__eval_id`; when the evaluator's id gained
-        # terms the agent could not see (RUN-EVAL-ID-INPUTS), every new row was silently missed.
         assert not any(hasattr(ADDRESS, attr) for attr in ("eval_id", "table", "schema", "handle", "deployment"))
 
-    def test_the_handle_is_the_references_relation_without_the_evaluators_columns(self):
+    def test_the_handle_is_the_selected_outputs_relation(self):
         out = get_output(ADDRESS, REFERENCE, warehouse=FakeWarehouse({"COUNT(*)": [[0]]}))
         assert out.handle == REFERENCE.relation()
-        assert "VERSION AS OF" not in out.handle and "__eval_id" not in out.handle
-        # The evaluator's key is dropped; the compiler's own columns stay (ad-hoc `cql()` returns them too).
+        assert "VERSION AS OF" not in out.handle
+        # The compiler's own columns stay (ad-hoc `cql()` returns them too).
         assert [c.name for c in out.shape.columns] == ["__subject_id", "__val"]
 
     def test_an_unselected_output_fails_without_queries(self):
@@ -108,7 +105,7 @@ class TestGetOutput:
             get_output(ADDRESS, REFERENCE, warehouse=FakeWarehouse())
 
     def test_never_refreshes(self):
-        # SVC-TOOL-FRESHNESS: recomputing is a write, and writes are proposals. A read tool that
+        # Recomputing is a write, and writes are proposals. A read tool that
         # helpfully recomputed would be a second execution path nobody asked for.
         w = self._warehouse()
         get_output(ADDRESS, REFERENCE, warehouse=w)
@@ -163,7 +160,7 @@ class TestQueryData:
 
 class TestGetFreshness:
     def test_reports_successful_completion_not_table_or_source_change_time(self):
-        """RUN-CLIENT-REFRESH-RESUME — explicit replacement for the legacy freshness payload."""
+        """RUN-CLIENT-REFRESH-RESUME — successful completion is the evidence, not table or source change time."""
         evidence = get_freshness(ADDRESS, REFERENCE).to_dict()
         assert evidence == {"format": "cql-completion-v1", "handle": REFERENCE.relation(),
                             "exists": True, "computedAt": "2026-01-01T00:00:00+00:00",
@@ -180,44 +177,3 @@ class TestDiscovery:
             return ["Synthetic.Output", "Synthetic.Base"]
         assert list_tables(computed, RESULT_SET) == ["Synthetic.Base", "Synthetic.Output"]
         assert asked == [RESULT_SET]
-
-
-class TestListDataSources:
-    """SVC-MCP-TOOLS — the tool that makes the other three callable.
-
-    `list_tables`, `get_output` and `get_freshness` all REQUIRE `data_source_id`, and until this
-    existed nothing produced one — so a caller without the Designer's UI had three tools it could read about
-    and not use. It survived because the in-product drawer always had an id to hand from the compute
-    pill, which is exactly the blindness the two-clients premise is supposed to prevent.
-    """
-
-    def _source(self, **over):
-        from types import SimpleNamespace
-        return SimpleNamespace(**{
-            "id": "example-patients", "name": "Example Patients",
-            "description": "Fabricated patient data for development",
-            "change_data_log": "cat.sch.change_log", **over})
-
-    def test_it_yields_an_id_every_other_tool_will_accept(self):
-        [source] = list_data_sources(lister=lambda: [self._source()])
-        assert source["id"] == "example-patients"
-        assert source["name"] == "Example Patients"
-
-    def test_it_carries_what_the_data_IS_so_a_figure_can_be_qualified(self):
-        # DATA-SOURCE-DESCRIPTION — whose records, what period, real or fabricated. It is how an agent
-        # tells a synthetic development source from a live one BEFORE quoting a number at somebody.
-        [source] = list_data_sources(lister=lambda: [self._source()])
-        assert source["description"] == "Fabricated patient data for development"
-
-    def test_a_source_nobody_described_says_nothing_rather_than_inventing_one(self):
-        # Never synthesized from the record's own fields: a sentence assembled from catalog/schema
-        # describes the REGISTRY, not the data.
-        [source] = list_data_sources(lister=lambda: [self._source(description=None)])
-        assert "description" not in source
-
-    def test_source_discovery_does_not_claim_to_track_changes(self):
-        [source] = list_data_sources(lister=lambda: [self._source()])
-        assert "declaresChange" not in source
-
-    def test_an_empty_registry_is_an_answer_not_an_error(self):
-        assert list_data_sources(lister=lambda: []) == []

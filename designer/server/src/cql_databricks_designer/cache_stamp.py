@@ -217,8 +217,8 @@ class CacheStamp:
         """
         try:
             # A reader may also return plain values (a generation counter, another App's revision).
-            # They were once passed to `asdict`, which raised, so the stamp moved on every read and no
-            # cacheable GET was ever answered 304 (found 2026-10-03, APP-PER-FEATURE).
+            # They are not passed to `asdict`, which raises: the stamp would move on every read and no
+            # cacheable GET would be answered 304 (APP-PER-FEATURE).
             rows = sorted(
                 json.dumps(dataclasses.asdict(row) if dataclasses.is_dataclass(row) else row,
                            sort_keys=True, default=str)

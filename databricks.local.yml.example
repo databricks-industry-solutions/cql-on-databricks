@@ -22,22 +22,24 @@ targets:
       host: https://<your-workspace>.cloud.databricks.com
       profile: <profile-name>
     variables:
-      # SVC-CATALOG-LAYOUT — must exist. The deploy creates the `runtime` schema and Volume in it, and the
-      # deployer must own the catalog or hold MANAGE on it (the deploy grants the Apps on it). Required: there
-      # is no default.
+      # SVC-CATALOG-LAYOUT, DEPLOY-DEFAULT-ENVIRONMENT — must exist. The deploy creates the `runtime` schema and
+      # Volume in it and builds the default environment there (its schemas, the example measures and patients, its
+      # tags), and the deployer must own the catalog or hold MANAGE on it. Required: there is no default.
       uc_catalog: "<catalog>"
       # SVC-RUNTIME-UDF-UC — a SERVERLESS SQL warehouse. Required by scripts/deploy/deploy.sh.
       warehouse_id: "<serverless-warehouse-id>"
-      # RUN-CLIENT-PRIVATE-PROVISIONING — the Designer's per-user result schemas live here. Created by a
-      # platform administrator, who grants Designer users USE CATALOG and CREATE SCHEMA on it. Deployment
-      # does not create it. May equal uc_catalog for a single-catalog deployment. Required: there is no default.
-      designer_results_catalog: "<results-catalog>"
-      # CLIENT-DISCOVERY-SCOPE — the ordered, comma-separated catalogs or catalog.schemas the Apps discover data
-      # sources, knowledge and terminology in; an earlier scope wins a name. Required by scripts/deploy/deploy.sh.
-      catalog_scopes: "<catalog>"
-      # APP-PER-FEATURE — account group granted CAN_USE on the Apps.
+      # APP-PER-FEATURE, DEPLOY-DEFAULT-ENVIRONMENT — account group granted CAN_USE on the Apps, and read access to
+      # the default environment with CREATE TABLE on its draft_results.
       # Required by scripts/deploy/deploy.sh; local runs do not read it.
       app_users_group: "<account-group>"
+      # DEPLOY-AGENT-SKILLS — the WORKSPACE group that reads the workspace skills folder (e.g. the workspace's `users`).
+      workspace_users_group: "<workspace-group>"
+      # DEPLOY-PROJECT-ADMINS — optional: the project's admins besides the deployer (emails, service principal
+      # application IDs or groups). Every deploy makes them workspace admins; they may tag environments.
+      # admins: ["<admin-email>"]
+      # DEPLOY-ENVIRONMENT-TAG-POLICIES — optional, true by default: false leaves the environment tags ungoverned, for an
+      # account with no room for three more tag policies.
+      # govern_environment_tags: false
       # DOC-OPEN-SAVE — the base of the canonical URL of every library and measure created in the Designer:
       # <base>/Library/<Name>. Defaults to http://example.org/fhir, the examples' base. Set your own before
       # anyone creates a library: the URL is an identity a library keeps.
@@ -73,7 +75,5 @@ targets:
   #   variables:
   #     uc_catalog: "<staging-catalog>"
   #     warehouse_id: "<staging-warehouse-id>"
-  #     designer_results_catalog: "<staging-results-catalog>"
-  #     catalog_scopes: "<staging-catalog>"
   #     app_users_group: "<account-group>"
   #     run_log_readers_group: "<operators-group>"

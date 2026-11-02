@@ -1,6 +1,6 @@
 """SVC-MCP-TRANSPORT, AGENT-TOOL-REGISTRY — the standalone MCP App, against the real `create_mcp_app`.
 
-The standalone App is the agent's own since APP-PER-FEATURE: it serves the agent's tools and not the
+The standalone App is the agent's own (APP-PER-FEATURE): it serves the agent's tools and not the
 Designer's `get_specification`.
 """
 from __future__ import annotations
@@ -10,8 +10,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 #: What the standalone App publishes: the agent's data tools, its research tools and the skill pair
-#: (APP-PER-FEATURE, SVC-MCP-TOOLS amended 2026-10-29).
-EXPECTED_TOOLS = {"list_data_sources", "list_tables", "get_output", "query_data",
+#: (APP-PER-FEATURE, SVC-MCP-TOOLS).
+EXPECTED_TOOLS = {"list_tables", "get_output", "query_data",
                   "get_freshness", "list_skills", "get_skill",
                   "list_definitions", "get_definition", "list_value_sets", "value_sets_with_code",
                   "find_results", "get_population_summary", "check_cql", "run_cql", "compare_cql"}

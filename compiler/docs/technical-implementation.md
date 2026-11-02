@@ -83,7 +83,6 @@ safe to run concurrently.
 | `emit.object_prefix` | empty | Prefix for emitted session object names (`EMIT-SQL-OBJECT-PREFIX`) |
 | `lower.grain_first` | `false` | Keep list defines at relation grain |
 | `optimize.conditional_union` | `false` | Lower list-valued conditionals as `UNION ALL` without boxing |
-| `data.fhir_max_nesting_level` | `5` | Nesting cap for the FHIR schema ([data-model.md](data-model.md)) |
 | `verifiers.enabled` | `true` | Run the verifier checkpoints between passes |
 
 `Config.scala` lists the rest (`lower.*`, `bind.gap_lenient`, `debug.dump_dir`).

@@ -5,7 +5,7 @@ result, like any other define. HL7 CQF Measures makes each population a subset o
 leaves that to the evaluator, so a measure's CQL does not say it: a Numerator written as "HbA1c > 9% or
 missing" is true for every patient without diabetes too. The score is where that rule belongs, and this
 module is its one owner: the Designer, the agent and a notebook score a measure here, so their scores
-agree (`SPEC-POPULATION-CASCADE`, amended 2026-10-29).
+agree (`SPEC-POPULATION-CASCADE`).
 
 **THE SCORING TYPE IS DECLARED, NOT INFERRED** (`SPEC-SCORING-METHODOLOGY`). It comes from
 ``Measure.scoring`` (:func:`parse_scoring`) or from the caller. The population names of a proportion and
@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..relation import SUBJECT_ID, met_expr, value_column
-from ..results import Execute, RelationRef, relation_columns, result_relation
+from ..results import Execute, PinnedRelation, relation_columns, result_relation
 from .evaluation import ClosureSource, MetricsUnavailable, locate
 from .metrics import cohort_count_sql
 from .model import PROVENANCE_RUN
@@ -184,14 +184,13 @@ def selection_score(*, library: str, data_source_id: str, eval_id: str, draft: s
     The populations are the root library's."""
     declared = list(declared)
     libraries = closure.closure(data_source_id, eval_id, root=library, draft=draft)
-    located: dict[str, RelationRef] = {}
+    located: dict[str, PinnedRelation] = {}
     for name in POPULATIONS & set(declared):
-        ref = locate(libraries, library, name, results_catalog)
+        ref = locate(libraries, library, name)
         if ref is not None:
             located[name] = ref
-    columns = relation_columns(results_catalog, located.values(), execute=execute)
-    subjects = {name: subjects_sql(result_relation(ref, eval_id), columns[ref])
-                for name, ref in located.items() if ref in columns}
+    columns = relation_columns(results_catalog, located.values())
+    subjects = {name: subjects_sql(result_relation(ref, eval_id), columns[ref]) for name, ref in located.items()}
     return measure_score(scoring=scoring, declared=declared, subjects=subjects, execute=execute)
 
 

@@ -4,14 +4,14 @@
 // WHY THIS FILE EXISTS. The pane carries two arrangements of one specification — the Outline
 // (`DefineNav.tsx`) and the Composition (`CompositionNav.tsx`) — and `specComposition.ts` states
 // the invariant they share: "the rows ARE the Outline's rows, so a define looks and selects the same in
-// both arrangements and the two cannot drift into two row styles for one model." While both arrangements
-// were closures in a single component that held for free. Split across two files it would have lasted
-// until the first divergent edit, so the renderers moved here and both files call the same ones.
+// both arrangements and the two cannot drift into two row styles for one model." Both arrangements
+// are closures in a single component, which holds for free. Split across two files, it would last only until
+// the first divergent edit, so the renderers live here and both files call the same ones.
 //
 // It is a KIT, not a component: `buildNavRowKit` returns the three render functions bound to the graph,
 // the selection and the metrics, and a caller holds it in a `useMemo`. That is the shape `CompositionPane`
-// already used — it received `renderEntry` / `renderRetrieve` / `renderCollapsible` as props — lifted one
-// level so the pane shell owns them rather than one of the two tabs.
+// already uses: it receives `renderEntry` / `renderRetrieve` / `renderCollapsible` as props, and the pane shell owns
+// them rather than one of the two tabs.
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { closureOf, dependentsOf, type LogicGraph, type LogicNode } from "../authoring/logicGraph.ts";
@@ -40,7 +40,7 @@ export function chipClass(t: SpecEntryKind): string {
   return t === "population" ? "pop" : t === "function" ? "fn" : "def";
 }
 
-/** APP-MEASURE-FLOW — open a collapsed group at the moment it COMES to hold the selection.
+/** Open a collapsed group at the moment it COMES to hold the selection.
  *
  *  The failure this fixes: the pane tints a selected row and never reveals it, so a selection made in
  *  the document, from a pasted `?crit=` link or by Back landed inside a closed group and the reader saw
@@ -57,15 +57,15 @@ export function useRevealOnSelect(holdsSelection: boolean, open: () => void) {
   }, [holdsSelection, open]);
 }
 
-/** Options a row renderer accepts. `rooted` is the Flow tab's spine marker (APP-MEASURE-FLOW): the
- *  population the tree below is currently hanging from. It is deliberately NOT the same thing as
+/** Options a row renderer accepts. `rooted` marks the population the tree below is currently hanging
+ *  from. It is deliberately NOT the same thing as
  *  `active` — a reader roots on a population and then selects a define inside it, at which point the two
  *  land on different rows and the pane has to show both.
  *
- *  `onActivate` overrides what the row's click DOES, never what it looks like. The Flow spine needs one
- *  click to re-root AND select, which is two URL params written together; everywhere else the default
- *  (select this define) is right. It is an override rather than a second renderer because a spine row
- *  and an Outline row must stay one row style — see this file's header. */
+ *  `onActivate` overrides what the row's click DOES, never what it looks like. A row that must re-root
+ *  AND select in one click needs two URL params written together; everywhere else the default
+ *  (select this define) is right. It is an override rather than a second renderer because a Composition
+ *  row and an Outline row must stay one row style — see this file's header. */
 export interface RowOpts { key?: string; repeat?: boolean; rooted?: boolean; onActivate?: () => void }
 
 export interface NavRowKit {
@@ -116,9 +116,9 @@ export function buildNavRowKit({ graph, selected, onSelect, metrics, doc, define
   // nav row comes to say 8,204 beside a heading saying 8,207.
   //
   // The share is a DATA BAR BEHIND THE FIGURE, right-aligned and growing leftwards from it — the table
-  // idiom, where the bar and the number it scales are one cell. It was a hairline on the row's bottom
-  // edge first and that was wrong in a way worth recording: a full-width rule under a label reads as an
-  // UNDERLINE, so every row looked like a link and the longest bars looked like the selected row. Behind
+  // idiom, where the bar and the number it scales are one cell. A hairline on the row's bottom
+  // edge would be wrong in a way worth recording: a full-width rule under a label reads as an
+  // UNDERLINE, so every row would look like a link and the longest bars would look like the selected row. Behind
   // the number, the mark cannot be read as anything but a magnitude. It still costs no layout — the bar
   // is absolute within the figure's own box, so the gutter chip stays under its heading's first letter
   // (`APP-NAV-DEPTH`).
@@ -175,8 +175,8 @@ export function buildNavRowKit({ graph, selected, onSelect, metrics, doc, define
 
   // SPEC-NAV-COMPOSITION — a COLLAPSIBLE row: the twisty expands, the rest of the row selects. A
   // population is both a section of the tree (it collapses) and a define (it selects), and one target
-  // cannot mean both — the version that did meant collapsing a population also moved the document, and
-  // the version that switched on selection state made what a click does depend on what is already
+  // cannot mean both — a version where collapsing a population also moved the document would be wrong, and
+  // a version that switched on selection state would make what a click does depend on what is already
   // selected. Two targets, each one click, each meaning fixed by WHERE it lands: the tree-view
   // convention. The row is a `div` so the two buttons are siblings rather than nested (which is invalid
   // and unclickable); `.mw-node`'s hover, active wash and selection bar are class-based, so they hold.

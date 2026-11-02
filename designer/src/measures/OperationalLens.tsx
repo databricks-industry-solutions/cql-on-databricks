@@ -1,6 +1,6 @@
-// APP-LENSES / APP-MEASURE-DETAIL — the Operational lens: the OPERATE/RUN face of the living
+// APP-MEASURE-DETAIL — the Operational lens: the OPERATE/RUN face of the living
 // document, a responsive FLEX tile grid focused on operations — scheduling, data freshness, data
-// requirements & gaps (APP-DATA-REQS / APP-DATA-GAPS), run context, and the last result.
+// requirements & gaps (APP-DATA-REQS), run context, and the last result.
 // Results-analytics live in the Analytical lens; this lens answers "is it running, on fresh data,
 // on schedule?". Tiles compute when the doc is computed (APP-EXEC-MODE).
 
@@ -12,10 +12,9 @@ import type { Funnel, PatientRow } from "./model.ts";
 
 /** Format a RunStage for inline display, sentence-cased for this lens (SVC-RUN-STAGE).
  *
- *  Delegates to `stageLabel` rather than keeping a second stage vocabulary. The copy that used to live
- *  here still named the retired in-process runner's phases (`binding`, `collecting`, per-statement
- *  `Materializing …`) long after the SDP route stopped sending them — two switches over one union is
- *  how one of them goes stale unnoticed. */
+ *  Delegates to `stageLabel` rather than keeping a second stage vocabulary: a copy here would name phases
+ *  (`binding`, `collecting`, per-statement `Materializing …`) that the SDP route never sends, and two
+ *  switches over one union is how one of them goes stale unnoticed. */
 function stageText(s: RunStage | null | undefined): string {
   const label = stageLabel(s ?? null);
   return label.charAt(0).toUpperCase() + label.slice(1);
@@ -82,7 +81,7 @@ export function OperationalLens({ source, counts, funnel, live, running, runStag
         </div>
       </section>
 
-      {/* Data requirements & gaps (APP-DATA-REQS / APP-DATA-GAPS). */}
+      {/* Data requirements & gaps (APP-DATA-REQS). */}
       <section className="mw-tile span2">
         <div className="mw-tile-head"><span className="mw-ctag vs">Data</span><span className="mw-cname">Requirements &amp; gaps</span>
           <div className="right"><span className="mw-out-badge"><b className="tnum">{retrieves.length}</b> resources · <b className="tnum">{valueSets.length}</b> value sets</span></div></div>
@@ -122,7 +121,7 @@ function freshDate(i: number): string {
   const days = [1, 2, 1, 3, 2, 4][i % 6]!;
   return `2026-07-${String(18 - days).padStart(2, "0")}`;
 }
-/** Deterministic synthetic data-gap percentage per resource (concept; real gaps are APP-DATA-GAPS). */
+/** Deterministic synthetic data-gap percentage per resource (a stand-in for real gap data). */
 function gapPct(type: string): number {
   let h = 0; for (const c of type) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return [0, 0, 4, 11][h % 4]!;

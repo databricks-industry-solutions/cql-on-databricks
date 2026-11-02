@@ -1,4 +1,4 @@
-"""Compile providers + credential providers (PHASE-10, BUILD-CLIENT / BUILD-COMPILE-SERVICE).
+"""Compile providers + credential providers (BUILD-CLIENT / BUILD-COMPILE-SERVICE).
 
 How the client REACHES the compiler and how it AUTHENTICATES are two orthogonal, pluggable seams:
 
@@ -17,21 +17,13 @@ import abc
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from . import config
 from .libraries import LibrarySource
+from cql_databricks.resolvers.interfaces import CallSite, ValueSetRef
 
 log = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class LibraryInput:
-    """One root library of a `PIPE-MULTI-LIB` request: the root as ELM JSON plus its include closure as
-    ELM JSON strings. The service links every root into one merged plan and deduplicates the libraries
-    they share, so a shared define is computed once."""
-    elm: str
-    deps: Sequence[str] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -59,11 +51,6 @@ class CompileRequest:
     grain_first: bool = False
     cql: Optional[str] = None
     parameters: Mapping[str, str] = field(default_factory=dict)
-    # BIND-MANIFEST: the retrieve binding table — per-FHIR-type map to the SQL UDTF that retrieves it
-    # (``fhirType -> {"function": ..., "catalog"?: ...}``, BIND-RETRIEVE-UDF). An entry without a
-    # ``function`` is ignored server-side; an unmapped type falls back to the convention
-    # ``retrieve_<Type>``. Empty (the default) → every type is convention-bound.
-    sources: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
     # BUILD-COMPILE-LINK: the ROOT's include CLOSURE, resolved by the caller (`BUILD-LIBRARY-PROVIDER`).
     # The service resolves NOTHING — it merges what it is handed — so a multi-library eCQM is only
     # compilable when this carries every dependency, FHIRHelpers included. Each entry ships as ELM when it has
@@ -71,17 +58,8 @@ class CompileRequest:
     deps: Sequence["LibrarySource"] = ()
     # EMIT-SQL-OBJECT-PREFIX: session-object namespace. Empty (the default) emits BARE names.
     object_prefix: Optional[str] = None
-    # BIND-TERMINOLOGY-TABLE / EMIT-UDF-QUALIFY: the fully-qualified value-set expansion table and the
-    # schema qualifying emitted `cql_*` UDF calls. Both ride in `sources` on the wire (`valuesets.table`
-    # / `udfs.schema`) rather than in `overrides` — that is where the service reads them.
-    terminology_table: Optional[str] = None
+    # EMIT-UDF-QUALIFY: the schema qualifying emitted `cql_*` UDF calls, sent as `runtime.schema`.
     udf_schema: Optional[str] = None
-    # PIPE-MULTI-LIB: several roots in one request. When set the service ignores ``elm``/``cql``/``deps``,
-    # links every root, and qualifies each root define as ``{libId}__{define}`` in the recipe's ``target``.
-    libraries: Sequence[LibraryInput] = ()
-    # PIPE-EVAL-SCOPED-READ: the evaluation set a pipeline plan writes; its recipes then read only that
-    # evaluation's rows of each published sibling (`RUN-RESULTS-BY-EVAL`). Unset: bare reads.
-    eval_id: Optional[str] = None
     # BUILD-CLIENT-SESSION-PARAMETERS: values set for the whole session. The service applies the ones the
     # library declares, beneath ``parameters``, and leaves the rest, so one session period binds every
     # measure that declares one and no library that does not.
@@ -89,49 +67,35 @@ class CompileRequest:
     durable: bool = False
     # SVC-COMPILE-BATCH: service-owned period typing and binding validation, no preparation HTTP calls.
     measurement_period: tuple[str, str] | None = None
-    data_source: Mapping | None = None
+    # BIND-CALL-SITE: one field per role. ``data`` and ``terminology`` each carry a ``rule``, a ``sites`` map from
+    # call-site id to relation, or both, with the ``identity`` of the resolver that answered; ``deps`` is sent as
+    # ``knowledge``. Unset, nothing is bound: CQL that retrieves nothing compiles, and a retrieve or a membership
+    # fails at the compiler, naming its site.
+    data: Mapping[str, Any] | None = None
+    terminology: Mapping[str, Any] = field(default_factory=dict)
 
     def to_json(self) -> dict:
+        """BIND-CALL-SITE: the request with one field per role."""
         return {
             "elm": self.elm,
             "cql": self.cql,
             "target": self.target,
-            # sorted for a deterministic request body
             "boundaries": sorted(self.boundaries) if self.boundaries is not None else None,
             "context": self.context,
             "overrides": dict(self.overrides),
             "grainFirst": self.grain_first,
-            # sorted for a deterministic request body
             "parameters": {k: self.parameters[k] for k in sorted(self.parameters)},
-            # Every optional key below is OMITTED when unset, so the body a caller sends today is
-            # byte-identical to the pre-existing one and an older host never sees a key it must ignore
-            # (`BUILD-CLIENT-COMPAT`).
-            **({"deps": [self._dep_entry(d, root_is_cql=bool(self.cql)) for d in self.deps]}
+            **({"data": _json_copy(self.data)} if self.data is not None else {}),
+            **({"terminology": _json_copy(self.terminology)} if self.terminology else {}),
+            **({"knowledge": [self._dep_entry(d, root_is_cql=bool(self.cql)) for d in self.deps]}
                if self.deps else {}),
+            **({"runtime": {"schema": self.udf_schema}} if self.udf_schema else {}),
             **({"objectPrefix": self.object_prefix} if self.object_prefix else {}),
-            **({"evalId": self.eval_id} if self.eval_id else {}),
             **({"durable": True} if self.durable else {}),
             **({"measurementPeriod": list(self.measurement_period)} if self.measurement_period else {}),
-            **({"dataSource": dict(self.data_source)} if self.data_source is not None else {}),
             **({"sessionParameters": {k: self.session_parameters[k] for k in sorted(self.session_parameters)}}
                if self.session_parameters else {}),
-            **({"sources": self._sources_json()} if self._sources_json() else {}),
-            **({"libraries": [{"elm": lib.elm, "deps": list(lib.deps)} for lib in self.libraries]}
-               if self.libraries else {}),
         }
-
-    def _sources_json(self) -> dict:
-        """The `BIND-MANIFEST` retrieve bindings plus the two reserved non-type entries the service reads
-        out of the same object: ``valuesets.table`` (`BIND-TERMINOLOGY-TABLE`) and ``udfs.schema``
-        (`EMIT-UDF-QUALIFY`). Only entries that carry a function are emitted; keys are sorted for a
-        deterministic body."""
-        out = {t: self._source_entry(self.sources[t]) for t in sorted(self.sources)
-               if self.sources[t].get("function")}
-        if self.terminology_table:
-            out["valuesets"] = {"table": self.terminology_table}
-        if self.udf_schema:
-            out["udfs"] = {"schema": self.udf_schema}
-        return out
 
     @staticmethod
     def _dep_entry(dep: "LibrarySource", *, root_is_cql: bool):
@@ -148,13 +112,6 @@ class CompileRequest:
         if dep.elm and not prefer_cql:
             return dep.elm
         return {"cql": dep.cql, "name": dep.name, **({"version": dep.version} if dep.version else {})}
-
-    @staticmethod
-    def _source_entry(entry: Mapping[str, str]) -> dict:
-        out = {"function": entry["function"]}
-        if entry.get("catalog"):
-            out["catalog"] = entry["catalog"]
-        return out
 
 
 #: EMIT-SQL-VALUE-COLUMN — the payload column EVERY define result carries, whatever its row shape
@@ -237,7 +194,9 @@ def _durable_identity(raw: Optional[dict]) -> Optional["DurableIdentity"]:
         raise CompileError(f"the compiler service returned durable identity format {raw.get('format')!r} without a "
                            "fingerprint; deploy a compiler service from the same release as this client")
     return DurableIdentity(format=raw["format"], fingerprint=raw["fingerprint"], reusable=raw["reusable"],
-                           parameters=raw.get("parameters", {}))
+                           parameters=raw.get("parameters", {}),
+                           value_sets=tuple(ValueSetRef(id=v["id"], version=v.get("version"))
+                                            for v in raw.get("valueSets", ())))
 
 
 def _read_coordinates(raw: Optional[dict]) -> Optional["ReadCoordinates"]:
@@ -299,13 +258,16 @@ class ReadCoordinates:
 class DurableIdentity:
     """RUN-CLIENT-RESULT-IDENTITY — compiler-issued identity; absent on non-opt-in plans.
 
-    ``fingerprint`` is the result's whole identity: the identity format, the emitted SQL, the parameter values
-    it uses, its upstream fingerprints and the bound data source's address (`DEC-RESULT-IDENTITY`)."""
+    ``fingerprint`` is the compiler's part of the result's identity: the identity format, the emitted SQL, the
+    parameter values it uses, its upstream fingerprints and the identities of the resolvers bound
+    (`DEC-RESULT-IDENTITY`). ``value_sets`` are the value sets the recipe's define, or any define it reads, uses; the
+    client completes the fingerprint with a digest of their codes (`CLIENT-RESOLVER-IDENTITY`)."""
 
     format: str
     fingerprint: str
     reusable: bool
     parameters: Mapping[str, dict] = field(default_factory=dict)
+    value_sets: Tuple["ValueSetRef", ...] = ()
 
 
 @dataclass(frozen=True)
@@ -403,6 +365,11 @@ class LibraryGraph:
     # EMIT-DESCRIBE-RETRIEVE-TYPES: every resource type the library retrieves, sorted; empty for data-free
     # CQL. ``None`` when the service does not report it, which a caller choosing data must refuse.
     retrieve_types: Optional[List[str]] = None
+    # BIND-CALL-SITE: every call site the compiled SQL binds, with its id and context, which a resolver that binds
+    # per site answers. ``None`` when the service does not report them.
+    sites: Optional[Tuple["CallSite", ...]] = None
+    # BIND-CALL-SITE: every value set the linked library declares.
+    value_sets: Tuple["ValueSetRef", ...] = ()
 
     def kind_of(self, define: str) -> str:
         """The row shape of ``define`` (:data:`SCALAR` | :data:`RELATION`), defaulting to :data:`SCALAR`
@@ -582,7 +549,7 @@ class CompileProvider(abc.ABC):
 
 
 class _JsonProvider(CompileProvider):
-    """SVC-COMPILER-UC — one protocol decoder for HTTP and UC transports; no compiler logic."""
+    """One protocol decoder for the HTTP transport; no compiler logic."""
 
     def _post(self, path: str, request: "CompileRequest | dict") -> dict:
         raise NotImplementedError
@@ -599,8 +566,7 @@ class _JsonProvider(CompileProvider):
 
     def compile_pipeline(self, request: CompileRequest) -> PipelinePlan:
         body = self._post("/compile-pipeline", request)
-        if ((request.measurement_period is not None or request.data_source is not None)
-                and body.get("batchProtocol") != "cql-batch-v1"):
+        if request.measurement_period is not None and body.get("batchProtocol") != "cql-batch-v1":
             raise CompileError("Compiler does not support cql-batch-v1; deploy the bundled compiler before this client")
         return PipelinePlan(datasets=[
             DatasetRecipe(
@@ -679,7 +645,9 @@ class _JsonProvider(CompileProvider):
             retrieve_demand={k: list(v) for k, v in body.get("retrieveDemand", {}).items()},
             define_kinds={k: str(v) for k, v in body.get("defineKinds", {}).items()},
             value_column=body.get("valueColumn", VALUE_COLUMN),
-            retrieve_types=(sorted(body["retrieveTypes"]) if body.get("retrieveTypes") is not None else None))
+            retrieve_types=(sorted(body["retrieveTypes"]) if body.get("retrieveTypes") is not None else None),
+            sites=(tuple(CallSite.from_dict(r) for r in body["sites"]) if body.get("sites") is not None else None),
+            value_sets=tuple(ValueSetRef(id=v["id"], version=v.get("version")) for v in body.get("valueSets", ())))
 
 
 class RemoteProvider(_JsonProvider):
@@ -714,7 +682,7 @@ class RemoteProvider(_JsonProvider):
 @dataclass(frozen=True, kw_only=True)
 class ResourceSchema:
     """One FHIR type's ``__resource`` struct in the compiler's model (`CLIENT-RESOURCE-SCHEMA`): the struct a
-    ``retrieve_<Type>`` returns (`BIND-CONTRACT`), as a PySpark ``StructType`` and as DDL text.
+    retrieve of that type returns (`BIND-CONTRACT`), as a PySpark ``StructType`` and as DDL text.
     ``patient_context`` is whether the type is in the Patient compartment, which decides its ``__subject_id``
     (`DATA-SUBJECT-KEY`)."""
     fhir_type: str
@@ -728,6 +696,15 @@ def _struct_type(schema_json: Mapping):
     from pyspark.sql.types import StructType  # lazy: the client imports without PySpark
 
     return StructType.fromJson(dict(schema_json))
+
+
+def _json_copy(value):
+    """A deep copy of a JSON-shaped value with every mapping's keys sorted, for a deterministic request body."""
+    if isinstance(value, Mapping):
+        return {k: _json_copy(value[k]) for k in sorted(value)}
+    if isinstance(value, (list, tuple)):
+        return [_json_copy(v) for v in value]
+    return value
 
 
 class CompileError(RuntimeError):

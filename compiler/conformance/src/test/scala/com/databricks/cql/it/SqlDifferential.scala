@@ -1,17 +1,17 @@
 package com.databricks.cql.it
 
-import com.databricks.cql.env.{Config, Context}
+import com.databricks.cql.env.{Config, Context, DataBinding, RetrieveRelation, TerminologyBinding}
 import com.databricks.cql.error.UnsupportedNode
 import com.databricks.cql.harness.GroundTruthRunner
 import com.databricks.cql.ir.{Library, Retrieve}
 import com.databricks.cql.lower.ThreadCpu
-import com.databricks.cql.passes.{Optimize, RetrieveDemand, TypeEncoding}
+import com.databricks.cql.passes.{Optimize, ParameterScope, RetrieveDemand, TypeEncoding}
 import com.databricks.cql.retrieve.RetrieveHints
 import com.databricks.cql.runtime.ExplainCapture
 import com.databricks.cql.service.{CompileService, PipelinePlan}
 import com.databricks.cql.spark.SystemColumns
 import com.databricks.cql.transpiler.emit.{SqlNames, SqlRender}
-import com.databricks.cql.transpiler.lower.{SqlEvalEnv, SqlFrameLowering}
+import com.databricks.cql.transpiler.lower.{CallSite, SqlEvalEnv, SqlFrameLowering}
 import org.apache.spark.sql.{DataFrame, SparkSession, functions => F}
 import org.scalatest.Assertions._
 
@@ -121,23 +121,35 @@ object SqlDifferential {
     sb.toString
   }
 
-  /** The FHIR resource types the (optimized) library retrieves — the mounts the script references. */
-  private def retrievedTypes(lib: Library): Set[String] =
-    lib.statements.collect { case e: com.databricks.cql.ir.ExpressionDef => e }
-      .flatMap(_.expression.collect { case r: Retrieve => localName(r.dataType) }).toSet
+  /** The schema of the data rule: Spark's global temporary views, `global_temp.<type>` (`BIND-CALL-SITE`). The
+    * suite runs its cases one after another in one session, so each case replaces the views. */
+  private val RuleSchema = "global_temp"
 
-  /** The mounts the script references: the retrieved types plus the context resource type when the context
-    * is subject-grouped (the context base frame reads it too). */
-  private def mountedTypes(c: Differential.Case, optimized: Library): Set[String] =
-    retrievedTypes(optimized) ++ (if (c.context.hasSubjectGrouping) Set(c.context.name) else Set.empty)
-
-  /** Register the `retrieve_<Type>` views and the single `valuesets` expansion table the SQL script reads,
-    * from the case's injected sample-data adapters (the SQL analog of the runtime mounting them before the
-    * script runs). Every value set lands in ONE keyed `(valueset_id, system, code)` view (BIND-TERMINOLOGY-TABLE),
-    * matching `SqlEvalEnv.valueSetMount`'s `WHERE valueset_id = '<id>'` select. */
-  private def mount(spark: SparkSession, c: Differential.Case, optimized: Library, env: SqlEvalEnv): Unit = {
-    val types = mountedTypes(c, optimized)
-    // EMIT-SQL-RETRIEVE-DEMAND-BOUND (opt-in `-Dcqldatabricks.demandMount=true`): mount each retrieve view
+  /** BIND-CALL-SITE, BIND-RELATION: bind `c`'s data and value sets the way a client's resolvers do, and return
+    * the env to lower with. A first lowering records every call site the SQL makes (`SqlEvalEnv.callSites`).
+    *
+    * Data is bound by BOTH paths, so a case fails if either is wrong. The rule maps every type to
+    * `global_temp.<type>`: for the context type that view holds its rows, for every other type it is an EMPTY
+    * decoy. Every other retrieve site is bound through the map to a view of its own holding its type's rows. So a
+    * site that reads the rule instead of its map entry reads nothing, and a site bound to another site's view
+    * reads another type. The rows are the case's injected sample data (the SAME `DataProvider` the reference
+    * reads), a correct superset the plan re-filters above the relation (BIND-CAPABILITY).
+    *
+    * Terminology is TWO layers by rule (`CLIENT-RESOLVER-OVERLAY`). The value sets are sorted by id. An
+    * even-indexed set's expansion is in the first layer, and the second layer holds, under its id, every code of
+    * every value set. An odd-indexed set is only in the second layer. So reading a set from anything but the
+    * first layer that holds it changes the answer. */
+  private[it] def providerEnv(spark: SparkSession, c: Differential.Case, optimized: Library,
+                              base: SqlEvalEnv): SqlEvalEnv = {
+    // BIND-RETRIEVE-REQUEST: the parameter scope is read off the library before parameters are inlined, as the
+    // compile service does, and every case checks that a retrieve's request carries what its define uses.
+    val loaded = Differential.loadedLibrary(c)
+    val scoped = base.copy(defineParameters = ParameterScope.of(loaded))
+    val probe = scoped.describing.copy(callSites = mutable.LinkedHashMap.empty)
+    SqlFrameLowering.lower(optimized, probe)
+    val sites = probe.callSites.values.filter(_.kind == CallSite.Retrieve).toSeq
+    sites.foreach(site => checkParameters(loaded, site))
+    // EMIT-SQL-RETRIEVE-DEMAND-BOUND (opt-in `-Dcqldatabricks.demandMount=true`): mount each retrieve
     // narrowed to the compiler's DEMAND for that type (read DIRECTLY downstream — no reconstruction), so the
     // scanned `__resource` is bounded by demand, not resource width. The CONTEXT type stays full (its base
     // frame navigates it outside RetrieveDemand's define-walk); a `Full` demand keeps the whole body.
@@ -152,49 +164,80 @@ object SqlDifferential {
         case Some(RetrieveDemand.Narrow(fields)) => RetrieveHints(project = Some(fields))
         case _                                   => RetrieveHints.none
       }
-    // BIND-RETRIEVE-UDF: the runtime binds a SQL UDTF `retrieve_<Type>(<8 explicit args>)` (the sole
-    // mount contract — the bare-view mount was retired). This conformance UDTF IGNORES all eight arguments
-    // and returns the whole mount — the un-pruned but correct SUPERSET the plan re-filters above the call
-    // (BIND-CAPABILITY).
-    c.data.foreach { dp =>
-      types.foreach(rt => registerRetrieveUdtf(spark, env.retrieveMountName(rt), dp.retrieve(rt, hintsFor(rt))))
-    }
-    c.terminology.foreach { tp =>
-      val expansions = optimized.valueSets.map(vs =>
-        tp.expand(vs.id).withColumn(env.valueSetKeyColumn, F.lit(vs.id))
-          .select(env.valueSetKeyColumn, "system", "code"))
-      expansions.reduceOption(_ unionByName _)
-        .foreach(_.createOrReplaceTempView(env.valueSetsMountName))
-    }
+    val data: DataBinding = c.data.map { dp =>
+      val types = sites.map(_.request("fhirType").str).distinct
+      val frames = types.map(rt => rt -> dp.retrieve(rt, hintsFor(rt))).toMap
+      frames.foreach { case (rt, df) =>
+        (if (rt == c.context.name) df else df.limit(0)).createOrReplaceGlobalTempView(rt.toLowerCase)
+      }
+      val bySite = sites.filterNot(_.request("fhirType").str == c.context.name).map { site =>
+        val view = s"__site_${site.id}"
+        frames(site.request("fhirType").str).createOrReplaceTempView(view)
+        site.id -> RetrieveRelation(view, Some("conformance"))
+      }.toMap
+      DataBinding(Some(DataBinding.Rule(RuleSchema, Some("conformance"))), bySite)
+    }.getOrElse(DataBinding(None, Map.empty))
+    val layers: Seq[RetrieveRelation] = c.terminology.map { tp =>
+      val key = base.valueSetKeyColumn
+      val sets = optimized.valueSets.map(_.id).distinct.sorted
+      val expansions = sets.map(id => id -> tp.expand(id).select("system", "code"))
+      val everyCode = expansions.map(_._2).reduceOption(_ unionByName _)
+      def keyed(id: String, df: DataFrame) = df.withColumn(key, F.lit(id)).select(key, "system", "code")
+      val first = expansions.zipWithIndex.collect { case ((id, df), i) if i % 2 == 0 => keyed(id, df) }
+      val second = expansions.zipWithIndex.map {
+        case ((id, df), i) => if (i % 2 == 0) keyed(id, everyCode.get) else keyed(id, df)
+      }
+      val names = Seq("valuesets", "valuesets__base")
+      Seq(first, second).zip(names).foreach { case (parts, name) =>
+        parts.reduceOption(_ unionByName _).getOrElse(spark.sql(
+          s"SELECT CAST(NULL AS STRING) AS $key, CAST(NULL AS STRING) AS system, CAST(NULL AS STRING) AS code " +
+            "WHERE false")).createOrReplaceTempView(name)
+      }
+      names.map(n => RetrieveRelation(n, Some("conformance-terminology")))
+    }.getOrElse(Nil)
+    scoped.copy(data = Some(data), terminologyBinding = Some(TerminologyBinding(Some(layers), Map.empty)),
+      callSites = mutable.LinkedHashMap.empty)
   }
 
-  /** BIND-RETRIEVE-UDF: register (or replace) the retrieve SQL UDTF over `df` (the
-    * `(__subject_id, __resource)` mount) — the conformance/runtime peer of the client's session mount
-    * (`mount`, CLIENT-SESSION-MOUNT). The parameter list comes from the SINGLE source of truth
-    * ([[SqlEvalEnv.retrieveParamsDdl]], BIND-EXPLICIT-PARAMS), so this mount can never drift from what the
-    * emitter CALLS. The function IGNORES all eight arguments and returns the whole mount, so it is a
-    * correct un-pruned SUPERSET the plan re-filters above the call (BIND-CAPABILITY). */
-  private def registerRetrieveUdtf(spark: SparkSession, fn: String, df: DataFrame): Unit = {
-    val src = fn + "__src"
-    df.createOrReplaceTempView(src)
-    val returns = SparkFhirData.mountReturnsDDL(df.schema)
-    spark.sql(s"CREATE OR REPLACE TEMPORARY FUNCTION `$fn`(${SqlEvalEnv.retrieveParamsDdl}) " +
-      s"RETURNS TABLE ($returns) RETURN SELECT * FROM `$src`")
-  }
-
-  /** The self-contained MOUNT SQL a fixture's SQL script needs at runtime (EMIT-SQL-EXECUTE): the
-    * `retrieve_<Type>` views + the single `valuesets` expansion, built from the case's injected sample-data
-    * adapters as portable inline-`VALUES` TEMPORARY VIEWS (no NDJSON paths). Handed to the Python client by
-    * the runtime-compile E2E ([[RuntimeCompileE2ESpec]]) to mount in its own session before running the
-    * compiled script (the runtime contract). Uses the TEMP-VIEW mount form (not the managed-table
-    * `.mounts.sql` dump) so a fresh client session mounts idempotently with no `spark-warehouse` collision. */
-  def mountsSqlFor(c: Differential.Case, optimized: Library, env: SqlEvalEnv): String = {
-    val retrieveMounts = c.data.collect { case sfd: SparkFhirData =>
-      sfd.mountsSqlTempViews(mountedTypes(c, optimized), env.retrieveMountName) }.getOrElse("")
-    val valueSetMounts = c.terminology.collect { case stp: SparkTerminology =>
-      stp.valueSetMountsSqlTempView(optimized.valueSets.map(_.id), env.valueSetsMountName, env.valueSetKeyColumn)
-    }.getOrElse("")
-    retrieveMounts + valueSetMounts
+  /** BIND-RETRIEVE-REQUEST: a retrieve site in a define whose closure uses a parameter with a constant interval
+    * or scalar default carries that parameter in its request's `parameters`, under the name the site's own
+    * library gives it. Checked independently of [[ParameterScope]]: by walking the loaded library's references. */
+  private def checkParameters(loaded: Library, site: CallSite): Unit = site.define.foreach { define =>
+    val owner = site.library.get
+    val name = loaded.statements.collectFirst {
+      case d: com.databricks.cql.ir.ExpressionDef
+        if { val o = loaded.ownerOf(d.name); (o.library, o.version, o.name) == (owner._1, owner._2, define) } => d.name
+    }.getOrElse(fail(s"site ${site.id}: no define $define in ${owner._1}"))
+    val bodies: Map[String, com.databricks.cql.ir.Expr] = loaded.statements.collect {
+      case d: com.databricks.cql.ir.ExpressionDef => d.name -> d.expression
+      case f: com.databricks.cql.ir.FunctionDef => f.name -> f.body
+    }.toMap
+    def walk(n: String, seen: Set[String]): Set[String] =
+      if (seen(n)) Set.empty
+      else bodies.get(n).toSet.flatMap { (e: com.databricks.cql.ir.Expr) =>
+        e.collect { case p: com.databricks.cql.ir.ParameterRef => p.name }.toSet ++
+          e.collect { case r: com.databricks.cql.ir.ExpressionRef => r.name
+                      case f: com.databricks.cql.ir.FunctionRef => f.name }.toSet.flatMap((m: String) => walk(m, seen + n))
+      }
+    // A constant default: an interval with both bounds, or a scalar, referencing nothing.
+    val literal = loaded.parameters.filter(_.default.exists { d =>
+      val constant = d.collect {
+        case _: com.databricks.cql.ir.ParameterRef | _: com.databricks.cql.ir.ExpressionRef |
+             _: com.databricks.cql.ir.FunctionRef | _: com.databricks.cql.ir.Retrieve => ()
+      }.isEmpty
+      constant && (d match {
+        case com.databricks.cql.ir.IntervalExpr(Some(_), Some(_), _, _) => true
+        case _: com.databricks.cql.ir.IntervalExpr => false
+        case _ => true
+      })
+    }).map(_.name).toSet
+    val used = walk(name, Set.empty).filter(literal)
+    val carried = site.request("parameters").obj.keySet.toSet
+    used.foreach { p =>
+      assert(carried.exists(k => k == p || p.endsWith("." + k) || k.endsWith("." + p)),
+        s"retrieve site ${site.id} in $define uses parameter '$p' but its request carries ${carried.mkString(", ")} " +
+          "(BIND-RETRIEVE-REQUEST)")
+    }
   }
 
   /** Collect the SQL-path per-(subject, define) results off the executed views — the SQL twin of
@@ -254,7 +297,11 @@ object SqlDifferential {
     val lib     = Differential.buildLibrary(c)
     val config  = Differential.evalConfig(c.library)
     val optimized = Optimize.run(lib, config)
-    val env = SqlEvalEnv(c.context, config, terminology = c.terminology.isDefined)
+    val env = SqlEvalEnv(c.context, config)
+    // BIND-CALL-SITE: binding registers the relations, so it runs on the server; it is timed with the
+    // lowering it feeds, and its retrieve probe is a second, discarded lowering.
+    var boundEnv: SqlEvalEnv = env
+    def bound(): SqlEvalEnv = { boundEnv = providerEnv(spark, c, optimized, env); boundEnv }
 
     // SQL-PATH TIMING (CONF-PERF-TIME, the SQL twin of [[Differential]]'s four-bucket `Timing.record`).
     // The SQL back end has NO incidental server round-trips during lowering (it emits text, Spark-free),
@@ -272,7 +319,7 @@ object SqlDifferential {
     // cover it yet) rather than failing, so the matrix separates "not ported" from "ported but wrong".
     val cpuT0 = ThreadCpu.nanos()
     val lowered =
-      try SqlFrameLowering.lower(optimized, env)
+      try SqlFrameLowering.lower(optimized, bound())
       catch {
         // The SQL size gate (a within-define inlining blowup) is exactly when a dump is most useful — but
         // it throws INSIDE `lower`, so `run` would cancel before ever writing artifacts. Re-lower with the
@@ -280,7 +327,7 @@ object SqlDifferential {
         // (`diagnostics.txt`, `SqlRender.sizeOf` — never materializes the giant string) + a size-capped
         // `.sql` (oversized statements elided), THEN re-throw the original gate so the fixture still cancels.
         case e: UnsupportedNode if e.elmType == "SqlScript" =>
-          dumpSizeBlocked(c, optimized, env, e); cancel(s"[${c.library}] SQL lowering not yet supported: ${e.getMessage}")
+          dumpSizeBlocked(c, optimized, boundEnv, e); cancel(s"[${c.library}] SQL lowering not yet supported: ${e.getMessage}")
         case e: UnsupportedNode => cancel(s"[${c.library}] SQL lowering not yet supported: ${e.getMessage}")
       }
     val cpuT1 = ThreadCpu.nanos()
@@ -298,25 +345,13 @@ object SqlDifferential {
       // ~127 MB statement would then OOM the dump, so elide the oversized ones — sizes stay in diagnostics).
       writeArtifact(dir, c.library, "sql", renderScriptSafe(lowered))
       // Write the per-statement SIZE breakdown BEFORE execution (sizes only, no timing) so the diagnostic
-      // survives even if a later statement stalls — the report is no longer end-of-run-only. The
+      // survives even if a later statement stalls — the report is written before the run, not only at its end. The
       // post-execution write (below) overwrites it with runtimes once the run completes.
       writeArtifact(dir, c.library, "diagnostics.txt", diagnosticsReport(c.library, lowered, None))
-      // The standalone mount script (EMIT-SQL-EXECUTE): the `retrieve_<Type>` AND `valueset_<id>` mounts
-      // the `.sql` references, inlined as self-contained tables (DATA-RETRIEVE-VIEW, DATA-TERMINOLOGY-ADAPTER,
-      // BIND-CONTRACT) — so the dump runs without this harness. A test/debug artifact from the DATA/
-      // TERMINOLOGY adapters, NOT the transpiler (ARCH-PURITY).
-      c.data.collect { case sfd: SparkFhirData =>
-        val retrieveMounts = sfd.mountsSql(mountedTypes(c, optimized), env.retrieveMountName)
-        val valueSetMounts = c.terminology.collect { case stp: SparkTerminology =>
-          stp.valueSetMountsSql(optimized.valueSets.map(_.id), env.valueSetsMountName, env.valueSetKeyColumn)
-        }.getOrElse("")
-        writeArtifact(dir, c.library, "mounts.sql", retrieveMounts + valueSetMounts)
-      }
     }
 
     // runtime — ALL real server execution: mount the views, register/execute each statement, and collect.
     val runtimeT0 = System.nanoTime()
-    mount(spark, c, optimized, env)
     // The Connect session is memoized across fixtures, so a barrier (`CACHE TABLE`, not "OR REPLACE")
     // would collide with a same-named object from an earlier fixture. Drop each object first so the run
     // is idempotent (best-effort; a no-op for a first-seen name). Views already use CREATE OR REPLACE.
@@ -349,7 +384,7 @@ object SqlDifferential {
 
     // EVERY emitted define is diffed, not just the population roots (`CONF-GATE-MEASURE`).
     //
-    // This used to prune to `c.link.roots` — the 4-5 population defines — which left the bulk of a
+    // Pruning to `c.link.roots` (the 4-5 population defines) left the bulk of a
     // measure's logic uncompared: 19 of 23 defines in one measure of the time, 16 of 21 in another. An intermediate define could
     // be arbitrarily wrong and the gate stayed green unless the error happened to flip a POPULATION outcome
     // for some patient in the sample. That is how a mis-lowered dependency-library define shipped and
@@ -360,7 +395,7 @@ object SqlDifferential {
     // reference side, so a qualified name could not be looked up. `GroundTruthRunner.evaluateAcross` now
     // requests each library's own defines from that library and re-qualifies the results, so the whole
     // closure is comparable. `c.link.roots` still drives PRUNING at compile time (production-faithful);
-    // it no longer narrows what gets diffed.
+    // it does not narrow what gets diffed.
     val allNames = lowered.names
     val depIds = c.link.map(_.deps.map(_.id).toSet).getOrElse(Set.empty)
     // Split `{depId}.{name}` back to its owning library; anything unqualified belongs to the root.
@@ -434,9 +469,8 @@ object SqlDifferential {
     val lib       = Differential.buildLibrary(c)
     val config    = Differential.evalConfig(c.library)
     val optimized = Optimize.run(lib, config)
-    val env       = SqlEvalEnv(c.context, config, terminology = c.terminology.isDefined)
+    val env       = providerEnv(spark, c, optimized, SqlEvalEnv(c.context, config))
     val lowered   = SqlFrameLowering.lower(optimized, env)
-    mount(spark, c, optimized, env)
     // Drop each object first (idempotent across fixtures in the memoized session; a barrier CACHE TABLE
     // is not "OR REPLACE"), then register/execute — mirroring [[run]].
     lowered.script.statements.foreach { s =>
@@ -458,8 +492,8 @@ object SqlDifferential {
     val config    = Differential.evalConfig(c.library)
     val optimized = Optimize.run(lib, config)
     val dsCtx     = SqlNames.DatasetNameContext(lib.id, lib.version.getOrElse(""))
-    val env       = SqlEvalEnv(c.context, config, terminology = c.terminology.isDefined,
-      cutSiblings = Some(mutable.Set.empty[String]), datasetNameCtx = Some(dsCtx))
+    val env       = SqlEvalEnv(c.context, config,
+      cutSiblings = Some(mutable.Set.empty[String]), datasetNameCtx = Some(dsCtx)).describing
     CompileService.cutPlan(SqlFrameLowering.lower(optimized, env),
       lib.id, lib.version.getOrElse(""), dsCtx = dsCtx)
   }
@@ -471,20 +505,17 @@ object SqlDifferential {
     * cross-dataset DAG cut driven in-JVM (the SDP node-body contract). Returns the per-(subject, define) map
     * off the produced objects — which must EQUAL the fully re-inlined [[engineResults]] (`CORE-NO-SILENT-MISLOWER`:
     * the cut is a structure change, not a semantic one). Single-factor per call (shared-session name reuse). */
-  def pipelineResults(spark: SparkSession, c: Differential.Case,
-                      evalId: Option[String] = None,
-                      scopeReads: Boolean = true): Map[String, Map[String, ujson.Value]] = {
+  def pipelineResults(spark: SparkSession, c: Differential.Case): Map[String, Map[String, ujson.Value]] = {
     Differential.onlyFilter(c.library)
     val lib       = Differential.buildLibrary(c)
     val config    = Differential.evalConfig(c.library)
     val optimized = Optimize.run(lib, config)
     val dsCtx     = SqlNames.DatasetNameContext(lib.id, lib.version.getOrElse(""))
-    val env       = SqlEvalEnv(c.context, config, terminology = c.terminology.isDefined,
-      cutSiblings = Some(mutable.Set.empty[String]), datasetNameCtx = Some(dsCtx),
-      publishedEvalId = evalId.filter(_ => scopeReads))
+    val env       = providerEnv(spark, c, optimized, SqlEvalEnv(c.context, config,
+      cutSiblings = Some(mutable.Set.empty[String]),
+      datasetNameCtx = Some(dsCtx)))
     val lowered   = SqlFrameLowering.lower(optimized, env)
     val plan      = CompileService.cutPlan(lowered, dsCtx = dsCtx)
-    mount(spark, c, optimized, env)
     def drop(name: String): Unit = {
       val q = "`" + name.replace("`", "``") + "`"
       try spark.sql(s"DROP VIEW IF EXISTS $q") catch { case _: Throwable => () }
@@ -497,18 +528,7 @@ object SqlDifferential {
       drop(r.name)
       val qn = "`" + r.name.replace("`", "``") + "`"
       val qt = "`" + r.target.replace("`", "``") + "`"
-      evalId match {
-        // RUN-RESULTS-BY-EVAL: publish as the results store holds it — keyed by `__eval_id`, beside a
-        // DECOY evaluation that gives EVERY subject this dataset's rows, so a read that does not keep
-        // only its own evaluation changes the answer (an exact copy would be invisible to `exists`).
-        case Some(id) =>
-          val rows = spark.table(qt)
-          val subjects = spark.table("__frame_base").select(SystemColumns.SubjectId).distinct()
-          val decoy = rows.drop(SystemColumns.SubjectId).crossJoin(subjects)
-            .withColumn(SystemColumns.EvalId, F.lit("decoy000"))
-          rows.withColumn(SystemColumns.EvalId, F.lit(id)).unionByName(decoy).createOrReplaceTempView(r.name)
-        case None => spark.sql(s"CREATE OR REPLACE TEMP VIEW $qn AS SELECT * FROM $qt")
-      }
+      spark.sql(s"CREATE OR REPLACE TEMP VIEW $qn AS SELECT * FROM $qt")
     }
     // Collect off the LOCAL objects the recipes produced — a dependent define's object was computed from
     // its sibling's PUBLISHED dataset (the cut path), so this is the cut result.
@@ -525,7 +545,7 @@ object SqlDifferential {
   def runGenerated(spark: SparkSession, lib: Library, context: Context): Map[String, Map[String, ujson.Value]] = {
     val config    = Config.defaults
     val optimized = Optimize.run(lib, config)
-    val env       = SqlEvalEnv(context, config, terminology = false)
+    val env       = SqlEvalEnv(context, config)
     val lowered   = SqlFrameLowering.lower(optimized, env)
     lowered.script.statements.foreach { s =>
       val q = "`" + s.name.replace("`", "``") + "`"
@@ -546,14 +566,14 @@ object SqlDifferential {
     val lib       = Differential.buildLibrary(c)
     val config    = Differential.evalConfig(c.library)
     val optimized = Optimize.run(lib, config)
-    val env       = SqlEvalEnv(c.context, config, terminology = c.terminology.isDefined)
+    val env       = providerEnv(spark, c, optimized,
+      SqlEvalEnv(c.context, config))
 
     val lowerT0 = System.nanoTime()
     val lowered = SqlFrameLowering.lower(optimized, env)
     val lowerMs = (System.nanoTime() - lowerT0) / 1e6
 
     val runT0 = System.nanoTime()
-    mount(spark, c, optimized, env)
     lowered.script.statements.foreach { s =>
       val q = "`" + s.name.replace("`", "``") + "`"
       try spark.sql(s"DROP VIEW IF EXISTS $q") catch { case _: Throwable => () }

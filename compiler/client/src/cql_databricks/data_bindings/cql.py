@@ -1,7 +1,4 @@
-"""CONTENT-RESOLVER — the few facts read off CQL text: header identity, includes, value sets, retrieves.
-
-Moved unchanged from the retired ``cql_databricks_knowledge.knowledge_query`` and
-``scripts/knowledge_sync.py`` (``KNOWLEDGE-LAKE-DIRECT``: the derivations relocate, they do not change).
+"""The few facts read off CQL text: header identity, includes, value sets, retrieves.
 """
 from __future__ import annotations
 

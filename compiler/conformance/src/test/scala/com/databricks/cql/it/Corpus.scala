@@ -12,9 +12,7 @@ import java.io.File
   * spec-faithfulness gate runs over (PROC-DRY): engine vs the Java reference on the OPTIMIZED plan
   * (CONF-GATE-MEASURE, [[SqlDifferentialSpec]]). Measures are DISCOVERED, never listed: every directory under
   * `data/measures/` with an `answer-key.json` is a measure, and adding one gates it with no code change
-  * (CONF-MEASURE-DISCOVERY). (The former
-  * optimizer-faithfulness self-diff, CONF-GATE-SELFDIFF, was retired 2026-07 — its coverage folded
-  * into the reference gate, which runs the optimized path.)
+  * (CONF-MEASURE-DISCOVERY). The reference gate runs the optimized path.
   *
   * Each [[Entry]] carries a human label (with the requirement ids it exercises) and a THUNK that
   * builds the [[Differential.Case]] — deferred so `SparkConnect.session()` / file reads only happen
@@ -203,6 +201,7 @@ object Corpus {
     scalar("SingletonSource", "SingletonSource: a single-valued query source binds the scalar (no posexplode/collect_list); a failing where -> null (LANG-QUERY)"),
     scalar("Intervals", "Intervals: interval construction + Allen-relation algebra diff clean (LANG-INTERVAL)"),
     scalar("IntervalUnbounded", "IntervalUnbounded: null interval bound reads as a +/-inf sentinel in the Allen algebra (LANG-INTERVAL)"),
+    scalar("DecimalStep", "DecimalStep: Predecessor, Successor and HighBoundary over Decimal apply the 10^-8 step in the 8th decimal place (EXEC-SQL-DECIMAL-STEP)"),
     scalar("IntervalOpenClosed", "IntervalOpenClosed: open bounds normalize to closed via discrete successor/predecessor (LANG-INTERVAL)"),
     scalar("SetUnion", "SetUnion: list union has set semantics (dedup by identity), not UNION ALL (LANG-LIST)"),
     scalar("AggregateFold", "AggregateFold: query aggregate is a left fold -> Spark aggregate HOF (LANG-QUERY-AGGREGATE)"),
@@ -240,6 +239,9 @@ object Corpus {
     fhir("FhirListDefineVsFilter", withTerminology = true, "FhirListDefineVsFilter: value-set membership folds per-consumer over a Relation define source (ARCH-PUSHDOWN/LANG-TERMINOLOGY/DATA-SKIP-UNFILTERED)"),
     fhir("FhirExistsCompound", withTerminology = true, "FhirExistsCompound: a compound where with a membership conjunct inside exists lowers via the general path and self-diffs clean (ARCH-PUSHDOWN/LANG-TERMINOLOGY)"),
     fhir("FhirDisjunctiveMembership", withTerminology = true, "FhirDisjunctiveMembership: a value-set membership BURIED in an `or` (not a top-level conjunct) is lifted to a per-row boolean flag column and referenced by the residual predicate — the `reasonCode in \"VS\" or …` shape and the SQL-backend InValueSet blocker (EXEC-SELFDIFF/LANG-TERMINOLOGY)"),
+    fhir("FhirRetrieveRelation", withTerminology = true, "FhirRetrieveRelation: each retrieve reads the relation bound to its call site, the map's entry over the rule (BIND-RELATION/BIND-CALL-SITE)"),
+    fhir("FhirRetrieveParameters", withTerminology = false, "FhirRetrieveParameters: a retrieve's request carries the constant parameters its define uses, read before parameters are inlined (BIND-RETRIEVE-REQUEST)"),
+    fhir("FhirTerminologyLayers", withTerminology = true, "FhirTerminologyLayers: a value set is read from the first terminology relation that holds it (BIND-CALL-SITE/CLIENT-RESOLVER-OVERLAY)"),
     fhir("FhirDatePushdown", withTerminology = false, "FhirDatePushdown: date-range pushdown over a FHIR date-typed property (ToDate) folds at Date precision and self-diffs clean (ARCH-PUSHDOWN/LANG-INTERVAL)"),
     fhir("FhirDateArithmetic", withTerminology = false, "FhirDateArithmetic: minimal isolation of a measure's temporal-arithmetic tower (birthDate + years / end-of-interval boundary) — the make_interval/date_format tower diffs clean (LANG-INTERVAL/ARCH-TEMPORAL-CSE)"),
     fhir("FhirPeriodWhere", withTerminology = false, "FhirPeriodWhere: a FHIR Period property in a temporal where (ToInterval -> Allen during) diffs clean (LANG-INTERVAL)"),
@@ -265,7 +267,8 @@ object Corpus {
     fhir("FhirReferenceFollowValue", withTerminology = false, "FhirReferenceFollowValue: a `singleton from ([Encounter] E where E.id = <ref>)` read for its VALUE (a followed resource's field navigated in a return/where) lowers as a correlated projecting LEFT JOIN — the value cousin of the with-join; an `encounterFor().class.code` shape isolated to a plain-field follow (LANG-REFERENCE-FOLLOW)"),
     fhir("FhirScalarDefInWhere", withTerminology = false, "FhirScalarDefInWhere: a RELATION query whose `where` references a per-subject SCALAR sibling define (`where \"ObsCount\" >= 2`) LEFT-joins that define's per-subject view and resolves the reference to its value column — the `… same day as \"Most Recent Day\"` shape (LANG-QUERY-WHERE over a define DAG)"),
     fhir("FhirFluentSingletonQuery", withTerminology = false, "FhirFluentSingletonQuery: a fluent function whose SINGLETON-resource param body is a QUERY, called on an outer query alias — the inner query's source is an AliasRef to the outer singleton alias; combined's scope-aware `typeOf` augmentation types it as a singleton source (not a list `transform`), a medication-request period helper's shape (LANG-CHOICE-MODEL)"),
-    fhir("FhirNestedChoiceValue", withTerminology = false, "FhirNestedChoiceValue: a value[x] choice reached through a `let`/nav CHAIN (`comp.value as Quantity` where `comp` = `singleton from R.component`) has no alias root — rewriteNestedChoiceValueX resolves the base type via the query scope and dispatches to the `valueQuantity` slot; a medication-request period helper's nested-value[x] shape within the nesting cap (LANG-CHOICE-MODEL)"),
+    fhir("FhirDeepNavigation", withTerminology = false, "FhirDeepNavigation: navigation the old depth cap dropped — a value in an extension nested inside a resource extension, a dose bound five levels down, and a read through the Identifier.assigner cut (DATA-MODEL-SCHEMA/DATA-MODEL-CUTS)"),
+    fhir("FhirNestedChoiceValue", withTerminology = false, "FhirNestedChoiceValue: a value[x] choice reached through a `let`/nav CHAIN (`comp.value as Quantity` where `comp` = `singleton from R.component`) has no alias root — rewriteNestedChoiceValueX resolves the base type via the query scope and dispatches to the `valueQuantity` slot; the nested-value[x] shape of a medication-request period helper (LANG-CHOICE-MODEL)"),
     fhir("FhirNestedQuantityValue", withTerminology = false, "FhirNestedQuantityValue: `( comp.value as Quantity ).value` (comp a let off R.component) — scope-aware body typing + `.value` reading a System.Quantity's numeric FIELD + `as Quantity` normalizing an already-quantity slot to {value,unit}; a medication-request period helper's `dose.value`/`quantity.value` shape (LANG-CHOICE-MODEL/LANG-QUANTITY)"),
     fhir("FhirCorrelatedExistsDisjunction", withTerminology = false, "FhirCorrelatedExistsDisjunction: a correlated `exists` in a DISJUNCTIVE where whose inner where repeats a value[x] Case referencing the inner alias; the outer CSE/hoist must not cross into the exists's alias scope (LANG-QUERY-WHERE)"),
     fhir("FhirPartialPrecision", withTerminology = false, "FhirPartialPrecision: a PARTIAL FHIR date compares at its own per-row precision; year vs day dates flip membership by the window's precision (LANG-INTERVAL)"),

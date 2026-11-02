@@ -2,8 +2,7 @@
 
 The Test Deck is the OFFLINE compute mode (APP-EXEC-MODE): a deterministic, plausible eCQM funnel over
 the population defines a measure declares, so the funnel / Patient Lens / charts are demoable with NO
-live-data connection. It used to be generated CLIENT-side (`src/measures/model.ts` `sampleRun`), embedding
-synthetic data under `src/`; per APP-NO-UI-MOCK the SPA fabricates no data, so the generator lives here
+live-data connection. The SPA fabricates no data (APP-NO-UI-MOCK), so the generator lives here
 and the deck is API-served (`POST /api/sample-run`). "Offline" = no live-data/Spark connection — the BFF
 serves it with no compiler and no session; it is deterministic (a fixed seed) and clearly SYNTHETIC (subject
 ids are `deck-NNN`), never presented as real data.

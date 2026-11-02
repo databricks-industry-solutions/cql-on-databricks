@@ -1,14 +1,13 @@
-"""CONTENT-RESOLVER, KNOWLEDGE-LAKE-DIRECT — the knowledge corpus, read direct from the tagged tables.
+"""KNOWLEDGE-LAKE-DIRECT — the knowledge corpus, read direct from the environment's tables.
 
 One batch load per knowledge source holds every library (identity, CQL, data requirements) and the
 measure → library edges in memory. Include closure, discovery and source lookups then run over that
 list in Python, which is what they always did; only the read moved, from a Lakebase mirror kept fresh by
 a sync job to the Lakehouse tables themselves.
 
-**The derivations relocate, they do not change** (`CONTENT-NO-DERIVED-COLUMNS`): base64-decoding the CQL
-attachment, parsing the CQL header, and exploding ``Measure.library`` into edges happen here, at load,
-exactly as the retired sync did them. All VARIANT navigation uses ``variant_get``, never the ``:`` path
-operator, which is Databricks-only and fails to parse on OSS Spark.
+**The derivations do not change** (`CONTENT-NO-DERIVED-COLUMNS`): base64-decoding the CQL
+attachment, parsing the CQL header, and exploding ``Measure.library`` into edges happen here, at load.
+All VARIANT navigation uses ``variant_get``, never the ``:`` path operator, which is Databricks-only and fails to parse on OSS Spark.
 
 **Measure resources load lazily** (`KNOWLEDGE-CORPUS-REFRESH`): the whole ``Measure`` is the corpus's
 largest payload and a page touches one at a time, so it is a point read when asked for, cached here.
@@ -94,7 +93,7 @@ class ResolvedClosure:
 
 
 class Corpus:
-    """Every library from every tagged knowledge source, in memory."""
+    """Every library from every knowledge schema, in memory."""
 
     def __init__(self, run: SqlRunner, sources: list[TaggedSchema], libraries: list[Library]) -> None:
         self._run = run
@@ -106,7 +105,7 @@ class Corpus:
         by_name: dict[str, list[Library]] = {}
         for lib in libraries:
             by_name.setdefault(lib.name, []).append(lib)
-        # CLIENT-DISCOVERY-SCOPE — by name, the earliest scope holding the name wins; newest version within it.
+        # By name, the earliest scope holding the name wins; newest version within it.
         earliest_then_newest = functools.cmp_to_key(lambda a, b: (a.knowledge.position - b.knowledge.position)
                                                     or compare_versions(b.version, a.version))
         self._by_name = {n: sorted(ls, key=earliest_then_newest) for n, ls in by_name.items()}
@@ -117,14 +116,14 @@ class Corpus:
 
     def library(self, name: str, version: str | None = None) -> Library | None:
         """By exact (name, version), earliest scope first; or, when ``version`` is None, the newest version of
-        ``name`` in the earliest scope that holds it (CLIENT-DISCOVERY-SCOPE)."""
+        ``name`` in the earliest scope that holds it."""
         if version is not None:
             return self._exact.get((name, version))
         candidates = self._by_name.get(name)
         return candidates[0] if candidates else None
 
     def library_in(self, store: tuple[str, str], name: str, version: str | None = None) -> Library | None:
-        """RUN-ADDRESS-LOCATION — ``name`` (exact ``version``, else its newest) from the one tagged store
+        """RUN-ADDRESS-LOCATION — ``name`` (exact ``version``, else its newest) from the one knowledge store
         ``(catalog, schema)``, or ``None`` when that store does not hold it."""
         held = [lib for lib in self._by_name.get(name, ())
                 if (lib.knowledge.catalog, lib.knowledge.schema) == store
@@ -152,7 +151,7 @@ class Corpus:
     def resolve_closure(self, source: str, *, prefer: tuple[str, str] | None = None) -> ResolvedClosure:
         """The transitive ``include`` closure of ``source``: dependencies before dependents, each name
         once. An include that pins a version matches only that version; an unpinned one takes the newest by
-        name (CLIENT-DISCOVERY-SCOPE). Includes with no match are surfaced as unresolved.
+        name. Includes with no match are surfaced as unresolved.
 
         ``prefer`` is a store ``(catalog, schema)`` whose own copy of an include wins over every other store's
         (RUN-ADDRESS-LOCATION); an include it lacks resolves from the rest in scope order."""
@@ -183,7 +182,7 @@ class Corpus:
     def measure_resource(self, name: str, version: str, *,
                          store: tuple[str, str] | None = None) -> dict[str, Any] | None:
         """SPEC-MEASURE-METADATA — the whole FHIR ``Measure`` whose root library is ``name@version``, from the
-        one tagged ``store`` when given (RUN-ADDRESS-LOCATION).
+        one knowledge ``store`` when given (RUN-ADDRESS-LOCATION).
 
         None for an ordinary library: most libraries are not a measure root, and that is not an error.
         A point read the first time, then cached for the life of this corpus.
@@ -203,16 +202,20 @@ class Corpus:
         return resource
 
 
-def load_corpus(run: SqlRunner, sources: list[TaggedSchema]) -> Corpus:
-    """Read every tagged knowledge source in ``sources`` order; the first copy of a (url, version) wins.
+def load_corpus(run: SqlRunner, sources: list[TaggedSchema], *, check: bool = True) -> Corpus:
+    """Read the libraries and measures of every knowledge schema in ``sources``, in order; the first copy of a
+    (url, version) wins.
 
-    Each source's layout is checked first, and a source that does not match fails the load: a corpus
-    missing one source's libraries would resolve includes wrongly with nothing to say so.
+    With ``check`` (the default), each schema's layout is checked first, and a schema that does not match fails the
+    load: a corpus missing one schema's libraries would resolve includes wrongly with nothing to say so. The
+    environment's own published views are loaded with ``check=False`` (`BIND-PUBLISHED-VIEW`): a missing view fails
+    the read that needs it.
     """
     libraries: list[Library] = []
     seen: set[tuple[str, str]] = set()
     for knowledge in sources:
-        check_layout(run, knowledge, KNOWLEDGE)
+        if check:
+            check_layout(run, knowledge, KNOWLEDGE)
         roots: dict[str, dict[str, Any]] = {}
         for edge in run(_MEASURES.format(table=knowledge.table("measure"))):
             if edge.get("library_url"):

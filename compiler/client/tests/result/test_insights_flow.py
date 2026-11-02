@@ -18,9 +18,8 @@ THE FAILURES THESE EXIST FOR, in the order they would hurt most:
 4. **SUBJECT IDS REACHING THE BROWSER.** The PHI boundary of section 10.2, asserted by walking the
    payload — the one property no reviewer can check by reading.
 
-Fixtures use mock synthetic measure data (ExampleMeasure): the state layer's real naming — a root
-measure's defines recorded bare, a dependency's library-prefixed — and a library whose defines are
-compiled but whose MVs do not exist.
+Fixtures use mock synthetic measure data (ExampleMeasure), described as one complete selection: a dependency's
+define, and a library compiled but with no relation materialized.
 """
 from __future__ import annotations
 
@@ -30,9 +29,8 @@ from unittest.mock import patch
 import pytest
 
 from cql_databricks.result.insights.evaluation import MetricsUnavailable
-from cql_databricks.result.insights.evaluation import StateClosure
 from cql_databricks.result.insights.flow import GateRequest, cohort_flow
-from cql_databricks.result.address import evaluation_version
+from closure_fixture import CATALOG, DATA_SOURCE, SELECTION_ID, FixedClosure, library, pinned
 
 
 def _warehouse(warehouse_id, sql):
@@ -45,78 +43,43 @@ def _execute(warehouse_id="wh-1"):
     return lambda sql: _warehouse(warehouse_id, sql)
 
 
-CATALOG = "acme_results"
-DATA_SOURCE = "conformance"
 PERIOD = ("2022-01-01", "2022-12-31")
-SUFFIX = evaluation_version(DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1])
 
-MEASURE_SCHEMA = f"{CATALOG}.examplemeasure_1_0_0"
-DEPENDENCY_SCHEMA = f"{CATALOG}.exampledependency_1_0_0"
+MEASURE_SCHEMA = "examplemeasure_1_0_0"
+DEPENDENCY_SCHEMA = "exampledependency_1_0_0"
 
-
-class _Row:
-    def __init__(self, id_: str, name: str, version: str) -> None:
-        self.id, self.library_name, self.library_version = id_, name, version
-
-
-class _Define:
-    def __init__(self, define_name: str, mv_name: str) -> None:
-        self.define_name, self.mv_name = define_name, mv_name
-
-
-class _State:
-    def __init__(self) -> None:
-        self._libraries = [
-            _Row("lib-measure", "ExampleMeasure", f"1.0.0_{SUFFIX}"),
-            _Row("lib-dep", "ExampleDependency", f"1.0.0_{SUFFIX}"),
-            # Compiled, but its MVs were never materialized (observed live).
-            _Row("lib-unmaterialized", "ExampleUnmaterialized", f"1.0.0_{SUFFIX}"),
-        ]
-        self._defines = {
-            "lib-measure": [
-                _Define("Initial_Population", "initial_population"),
-                _Define("Denominator", "denominator"),
-                _Define("Numerator", "numerator"),
-                _Define("Example_Criterion_A", "example_criterion_a"),
-                _Define("Example_Criterion_B", "example_criterion_b"),
-                _Define("Denominator_Exclusions", "denominator_exclusions"),
-                _Define("Example_Exclusion_A", "example_exclusion_a"),
-                _Define("Example_Exclusion_B", "example_exclusion_b"),
-            ],
-            # A dependency's defines are recorded LIBRARY-PREFIXED.
-            "lib-dep": [_Define("ExampleDependency_Example_Encounters",
-                                "exampledependency_example_encounters")],
-            "lib-unmaterialized": [_Define("ExampleUnmaterialized_Example_Unrun",
-                                    "exampleunmaterialized_example_unrun")],
-        }
-
-    def list_libraries(self, data_source_id: str):
-        return list(self._libraries) if data_source_id == DATA_SOURCE else []
-
-    def list_defines(self, library_id: str):
-        return list(self._defines.get(library_id, []))
-
-
-PATIENT_FN = "acme.conformance.retrieve_Patient"
+PATIENT_VIEW = "acme.data.patient"
 MEASURE = "ExampleMeasure"
 DEPENDENCY = "ExampleDependency"
 UNMATERIALIZED = "ExampleUnmaterialized"
 
-#: Only the relations that EXIST. The unmaterialized MV is absent, mirroring the live schema. A boolean define
-#: carries its own value column; a list-valued one carries `__ordinal` + `__val`.
-COLUMNS = {
-    (MEASURE_SCHEMA, "initial_population"): {"__subject_id": "STRING", "Initial_Population": "BOOLEAN"},
-    (MEASURE_SCHEMA, "denominator"): {"__subject_id": "STRING", "Denominator": "BOOLEAN"},
-    (MEASURE_SCHEMA, "numerator"): {"__subject_id": "STRING", "Numerator": "BOOLEAN"},
-    (MEASURE_SCHEMA, "example_criterion_a"): {"__subject_id": "STRING", "Example_Criterion_A": "BOOLEAN"},
-    (MEASURE_SCHEMA, "example_criterion_b"): {"__subject_id": "STRING", "Example_Criterion_B": "BOOLEAN"},
-    (MEASURE_SCHEMA, "denominator_exclusions"): {"__subject_id": "STRING",
-                                                "Denominator_Exclusions": "BOOLEAN"},
-    (MEASURE_SCHEMA, "example_exclusion_a"): {"__subject_id": "STRING", "Example_Exclusion_A": "BOOLEAN"},
-    (MEASURE_SCHEMA, "example_exclusion_b"): {"__subject_id": "STRING", "Example_Exclusion_B": "BOOLEAN"},
-    (DEPENDENCY_SCHEMA, "exampledependency_example_encounters"): {
-        "__subject_id": "STRING", "__ordinal": "STRING", "__val": "STRUCT"},
-}
+#: The relations the selection holds. A boolean define carries its own value column; a list-valued one carries
+#: `__ordinal` + `__val`. The unmaterialized library holds none.
+INITIAL = pinned(MEASURE_SCHEMA, "initial_population", {"__subject_id": "STRING", "Initial_Population": "BOOLEAN"})
+DENOMINATOR = pinned(MEASURE_SCHEMA, "denominator", {"__subject_id": "STRING", "Denominator": "BOOLEAN"})
+NUMERATOR = pinned(MEASURE_SCHEMA, "numerator", {"__subject_id": "STRING", "Numerator": "BOOLEAN"})
+CRITERION_A = pinned(MEASURE_SCHEMA, "example_criterion_a",
+                     {"__subject_id": "STRING", "Example_Criterion_A": "BOOLEAN"})
+CRITERION_B = pinned(MEASURE_SCHEMA, "example_criterion_b",
+                     {"__subject_id": "STRING", "Example_Criterion_B": "BOOLEAN"})
+DENOMINATOR_EXCLUSIONS = pinned(MEASURE_SCHEMA, "denominator_exclusions",
+                                {"__subject_id": "STRING", "Denominator_Exclusions": "BOOLEAN"})
+EXCLUSION_A = pinned(MEASURE_SCHEMA, "example_exclusion_a", {"__subject_id": "STRING", "Example_Exclusion_A": "BOOLEAN"})
+EXCLUSION_B = pinned(MEASURE_SCHEMA, "example_exclusion_b", {"__subject_id": "STRING", "Example_Exclusion_B": "BOOLEAN"})
+ENCOUNTERS = pinned(DEPENDENCY_SCHEMA, "exampledependency_example_encounters",
+                    {"__subject_id": "STRING", "__ordinal": "STRING", "__val": "STRUCT"})
+
+CLOSURE = FixedClosure({
+    MEASURE: library(MEASURE, "1.0.0", {
+        "Initial Population": INITIAL, "Denominator": DENOMINATOR, "Numerator": NUMERATOR,
+        "Example Criterion A": CRITERION_A, "Example Criterion B": CRITERION_B,
+        "Denominator Exclusions": DENOMINATOR_EXCLUSIONS,
+        "Example Exclusion A": EXCLUSION_A, "Example Exclusion B": EXCLUSION_B,
+    }),
+    DEPENDENCY: library(DEPENDENCY, "1.0.0", {"Example Encounters": ENCOUNTERS}),
+    # Compiled, but its relations were never materialized (observed live): no entry for its define.
+    UNMATERIALIZED: library(UNMATERIALIZED, "1.0.0", {}),
+})
 
 #: The Initial Population gate: three sibling criteria, entered from nothing (the stage bounds itself).
 ENTRY_GATE = GateRequest(
@@ -157,27 +120,25 @@ ENTRY_ROWS = _rows_for(
 def _build(rows=None, gates=None, **overrides):
     kwargs = dict(
         library=MEASURE, version="1.0.0",
-        data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
+        data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SELECTION_ID, draft="",
         gates=gates if gates is not None else [ENTRY_GATE],
-        closure=StateClosure(_State()), patient_function=PATIENT_FN,
+        closure=CLOSURE, patient_relation=PATIENT_VIEW,
         results_catalog=CATALOG, execute=_execute(),
     )
     kwargs.update(overrides)
-    with patch("cql_databricks.result.insights.flow.relation_columns", return_value=COLUMNS), \
-         patch(f"{__name__}._warehouse",
+    with patch(f"{__name__}._warehouse",
                return_value=rows if rows is not None else ENTRY_ROWS):
         return cohort_flow(**kwargs)
 
 
 def _captured_sql(gates=None) -> str:
-    with patch("cql_databricks.result.insights.flow.relation_columns", return_value=COLUMNS), \
-         patch(f"{__name__}._warehouse",
+    with patch(f"{__name__}._warehouse",
                return_value=ENTRY_ROWS) as execute:
         cohort_flow(
             library=MEASURE, version="1.0.0",
-            data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
+            data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SELECTION_ID, draft="",
             gates=gates if gates is not None else [ENTRY_GATE],
-            closure=StateClosure(_State()), patient_function=PATIENT_FN,
+            closure=CLOSURE, patient_relation=PATIENT_VIEW,
             results_catalog=CATALOG, execute=_execute())
     execute.assert_called_once()
     return execute.call_args.args[1]
@@ -216,13 +177,12 @@ def test_membership_uses_the_shared_typed_predicate():
 def test_one_statement_for_every_gate_however_many_there_are():
     # A count per gate would be several points in time as well as several round trips, and figures a
     # minute apart can contradict each other (the argument `count_relations` already makes).
-    with patch("cql_databricks.result.insights.flow.relation_columns", return_value=COLUMNS), \
-         patch(f"{__name__}._warehouse",
+    with patch(f"{__name__}._warehouse",
                return_value=ENTRY_ROWS) as execute:
         cohort_flow(
             library=MEASURE, version="1.0.0", data_source_id=DATA_SOURCE,
-            period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
-            gates=[ENTRY_GATE, EXCLUSION_GATE], closure=StateClosure(_State()), patient_function=PATIENT_FN,
+            period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SELECTION_ID, draft="",
+            gates=[ENTRY_GATE, EXCLUSION_GATE], closure=CLOSURE, patient_relation=PATIENT_VIEW,
             results_catalog=CATALOG, execute=_execute())
     execute.assert_called_once()
 
@@ -231,15 +191,7 @@ def test_a_relation_used_by_two_gates_is_readned_once():
     # `Initial Population` is the entry gate's stage AND the exclusion gate's base. Two CTEs for it
     # would scan the same table twice inside one statement.
     sql = _captured_sql(gates=[ENTRY_GATE, EXCLUSION_GATE])
-    assert sql.count("FROM " + MEASURE_SCHEMA + ".`initial_population`") == 1
-
-
-def test_every_relation_is_read_for_this_evaluation_set_only():
-    """RUN-RESULTS-BY-EVAL — a table holds every evaluation set; the flow reads one, without the key."""
-    sql = _captured_sql(gates=[ENTRY_GATE, EXCLUSION_GATE])
-    relations = sql.count(f"FROM {CATALOG}.")  # every results-store read, any library
-    assert relations and sql.count(f"WHERE `__eval_id` = '{SUFFIX}'") == relations
-    assert sql.count("* EXCEPT (`__eval_id`)") == relations
+    assert sql.count("(SELECT * FROM `acme_results`.`examplemeasure_1_0_0`.`initial_population`)") == 1
 
 
 # ── APP-DECISIVE-COUNT — the partition is the whole argument ──────────────────────────────────
@@ -383,7 +335,6 @@ def test_the_wire_omits_absent_fields_rather_than_carrying_nulls():
         "library": DEPENDENCY, "define": "Example Encounters", "decisive": 52_090, "anyCause": 71_415}
 
 
-
 # ── the entering cohort, which is where a gate silently reports nobody failing ────────────────────
 
 def test_a_base_less_gate_enters_from_the_EVALUATED_cohort_not_the_stage_itself():
@@ -394,7 +345,7 @@ def test_a_base_less_gate_enters_from_the_EVALUATED_cohort_not_the_stage_itself(
     # would have rendered a confident set of zeroes, and every fixture with hand-written counts would
     # have kept agreeing with itself.
     sql = _captured_sql(gates=[ENTRY_GATE])
-    assert f"FROM {PATIENT_FN}(" in sql
+    assert f"FROM {PATIENT_VIEW})" in sql
     assert "s_all AS (SELECT DISTINCT __subject_id" in sql
     # The entering cohort of g_0 is the evaluated set; the stage is joined only to answer `reached`.
     g0 = re.search(r"g_0 AS \((.*?)\),\nk_0", sql, re.S).group(1)
@@ -406,28 +357,28 @@ def test_a_gate_WITH_a_base_enters_from_that_population_and_needs_no_binding():
     sql = _captured_sql(gates=[EXCLUSION_GATE])
     # Resolve the CTE names by what they SCAN rather than by their index — the numbering is an
     # implementation detail and asserting on it makes the test a copy of the code.
-    cte_for = dict(re.findall(r"(s_\d+) AS \(SELECT DISTINCT.*?FROM \S+\.`(\w+)`", sql))
+    cte_for = dict(re.findall(r"(s_\d+) AS \(SELECT DISTINCT.*?FROM \(SELECT \* FROM \S+\.`(\w+)`\)", sql))
     entering = next(n for n, t in cte_for.items() if t == "initial_population")
     stage = next(n for n, t in cte_for.items() if t == "denominator_exclusions")
 
     g0 = re.search(r"g_0 AS \((.*?)\),\nk_0", sql, re.S).group(1)
     assert f"FROM {entering} b" in g0          # the declared base is the entering cohort
     assert f"LEFT JOIN {stage} st" in g0       # the stage is joined only to answer `reached`
-    assert PATIENT_FN not in sql               # nothing needed the evaluated cohort
+    assert PATIENT_VIEW not in sql               # nothing needed the evaluated cohort
 
 
 def test_the_binding_call_names_no_measure():
-    # EMIT-ROOT-INDEPENDENT, DATA-CONFORMANCE-MEASURE-SELECT — the data source is the population, so the
+    # EMIT-ROOT-INDEPENDENT — the data source is the population, so the
     # evaluated cohort is the bound Patient retrieve called with no argument.
     sql = _captured_sql(gates=[ENTRY_GATE])
-    assert f"FROM {PATIENT_FN}())" in sql
+    assert f"FROM {PATIENT_VIEW})" in sql
     assert "library" not in sql
 
 
 def test_a_base_less_gate_is_omitted_when_the_source_has_no_patient_binding():
     # With no binding there is no cohort for those subjects to have departed FROM, so the figure cannot
     # be stated — the same reason an unlocatable criterion omits a gate.
-    flow = _build(rows=[], gates=[ENTRY_GATE], patient_function=None)
+    flow = _build(rows=[], gates=[ENTRY_GATE], patient_relation=None)
     assert flow.gates == []
     assert flow.omitted == ["Initial Population"]
 
@@ -435,5 +386,5 @@ def test_a_base_less_gate_is_omitted_when_the_source_has_no_patient_binding():
 def test_a_based_gate_still_works_without_a_patient_binding():
     rows = _rows_for(0, entered=42_318, reached=3_904, passed=38_414, multiple=392,
                      criteria=[(1_486, 1_204), (902, 861)])
-    flow = _build(rows=rows, gates=[EXCLUSION_GATE], patient_function=None)
+    flow = _build(rows=rows, gates=[EXCLUSION_GATE], patient_relation=None)
     assert [g.stage for g in flow.gates] == ["Denominator Exclusions"]

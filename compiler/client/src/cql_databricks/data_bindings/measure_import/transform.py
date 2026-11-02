@@ -1,4 +1,4 @@
-"""Shape FHIR Measure and Library resources into Lakehouse rows (CONTENT-FHIR-IG).
+"""Shape FHIR Measure and Library resources into Lakehouse rows.
 
 **The Lakehouse stores the resource, its identity, and its provenance — nothing else**
 (``CONTENT-NO-DERIVED-COLUMNS``).  Everything computable from the resource — decoded CQL/ELM, the
@@ -13,7 +13,7 @@ silently dropped.
 Table shapes produced here:
 * ``measure`` — one row per (url, version): the FHIR Measure resource
 * ``library`` — one row per (url, version): the FHIR Library resource
-* ``valueset`` — tall ``(valueset_id, system, code)`` matching BIND-TERMINOLOGY-TABLE (rows built by
+* ``valueset`` — tall ``(valueset_id, system, code)`` matching DATA-ENVIRONMENT-LAYOUT (rows built by
   ``measures.py``)
 """
 from __future__ import annotations
@@ -58,8 +58,8 @@ class LibraryRow:
 @dataclass
 class ValueSetExpansionRow:
     """One code in a ValueSet expansion — the runtime ``valueset`` table contract
-    (``valueset_id, system, code``, BIND-TERMINOLOGY-TABLE)."""
-    valueset_id: str           # full canonical URL (BIND-TERMINOLOGY-TABLE key)
+    (``valueset_id, system, code``, DATA-ENVIRONMENT-LAYOUT)."""
+    valueset_id: str           # full canonical URL (the valueset key)
     system: str
     code: str
     display: str | None
@@ -109,7 +109,7 @@ def transform_resources(resources: list[dict[str, Any]], *,
                         source_lineage: str) -> TransformResult:
     """Shape a list of FHIR resources into Lakehouse rows.
 
-    Filters to CQL-based content only (``CONTENT-FHIR-IG``): Measure resources that reference a
+    Filters to CQL-based content only: Measure resources that reference a
     Library, and Library resources that carry CQL or ELM content attachments.
     """
     now = datetime.now(timezone.utc).isoformat()

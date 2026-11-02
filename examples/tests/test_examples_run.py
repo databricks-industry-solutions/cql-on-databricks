@@ -6,7 +6,7 @@ submits it as a one-time job run on SERVERLESS compute, waits, and asserts resul
 deliberate: it validates the notebooks as they live in source, which is what keeps them up to date
 (BUILD-CLIENT, SVC-RUN-EVAL).
 
-SCOPE — this is the SMOKE, not the oracle (SVC-EXAMPLE-NOTEBOOKS, 2026-08-09). The notebooks are
+SCOPE — this is the SMOKE, not the oracle (SVC-EXAMPLE-NOTEBOOKS). The notebooks are
 narrative-led: each cell's expected result is stated in the markdown above it, not asserted in code. So a
 green run proves every compile and every query in every module succeeded against a fresh deployment — it
 does NOT prove the values were right. Value-level correctness is owned by the engine's conformance corpus
@@ -24,6 +24,8 @@ SKIPS automatically unless the live prerequisites are present, so it is safe in 
   - env CQL_DATABRICKS_ARTIFACT_VOLUME=/Volumes/<uc_catalog>/runtime/artifacts — the deployed runtime Volume.
     Each notebook's `%pip` cell names it as a placeholder, which this test fills in as
     `scripts/deploy/publish-examples.sh` does (SVC-EXAMPLE-NOTEBOOKS). Required when live: the test fails without it.
+  - env CQL_DATABRICKS_TEST_VOLUME=/Volumes/<catalog>/<schema>/<volume>/<folder> — a Volume folder the caller can
+    write, which notebook 07 writes its test files to (`CLIENT-SESSION-RESOLVERS`). Required when live for 07.
 The workspace must be DEPLOYED (scripts/deploy/deploy.sh): the client wheels in the runtime Volume, the cql_*
 UC functions registered, and the Compiler Service App running (SVC-RUNTIME-UDF-UC, SVC-PACKAGING).
 Run:  CQL_DATABRICKS_LIVE=1 DATABRICKS_CONFIG_PROFILE=<profile> \
@@ -40,8 +42,6 @@ import re
 import pytest
 
 # This test lives INSIDE the examples it runs (examples/tests/), so the notebooks are its parent.
-# It used to sit in a top-level examples/tests/ and reach sideways into the client package -- a path
-# that broke silently in the merge and pointed at a directory that did not exist.
 EXAMPLES_DIR = pathlib.Path(__file__).resolve().parents[1]
 # `00_start_here` is the index page (SVC-EXAMPLE-INDEX): one markdown cell, no code, so there is nothing
 # to submit and no `ok` payload to assert. It is excluded by name rather than by "has no code cells" —
@@ -52,11 +52,11 @@ INDEX_NOTEBOOK = "00_start_here.py"
 NOTEBOOKS = sorted(p.name for p in [*EXAMPLES_DIR.glob("*.py"), *EXAMPLES_DIR.glob("*.ipynb")]
                    if p.name != INDEX_NOTEBOOK)
 
-# The content directories the notebooks mount (SVC-EXAMPLE-KNOWLEDGE). Notebooks 01 and 03 derive their
+# The content directories the notebooks read (SVC-EXAMPLE-KNOWLEDGE). The notebooks derive their
 # paths from their OWN notebook location, so they must be staged BESIDE them in the temp folder — exactly
 # as `scripts/deploy/publish-examples.sh` lands them beside the notebooks in /Shared. Staging the .py files alone
 # would fail 03 at its first cell, which is the correct failure but a useless test.
-CONTENT_DIRS = ("measures", "data")
+CONTENT_DIRS = ("measures", "data", "valuesets")
 
 # Serverless notebook environment version. "4" = DBR 17.3, matching the repo's pin (see databricks.yml).
 SERVERLESS_CLIENT = "4"
@@ -112,6 +112,15 @@ def _client_wheel(ws, volume: str) -> str:
     return f"{volume}/wheels/{names[0]}"
 
 
+def _parameters(nb: str) -> dict[str, str] | None:
+    """A notebook's widgets: notebook 07 writes its test files to the Volume folder the caller names."""
+    if nb != "07_test_files_in_a_volume.py":
+        return None
+    folder = os.environ.get("CQL_DATABRICKS_TEST_VOLUME", "").strip()
+    assert folder, "set CQL_DATABRICKS_TEST_VOLUME=/Volumes/<catalog>/<schema>/<volume>/<folder> (a folder you can write)"
+    return {"volume": folder}
+
+
 @pytest.mark.parametrize("nb", NOTEBOOKS)
 def test_example_notebook_runs(ws, dest_dir, nb):
     from databricks.sdk.service import compute, jobs, workspace
@@ -138,7 +147,8 @@ def test_example_notebook_runs(ws, dest_dir, nb):
             format=workspace.ImportFormat.SOURCE,
             language=workspace.Language.PYTHON,
             overwrite=True)
-        task = jobs.SubmitTask(task_key="run", notebook_task=jobs.NotebookTask(notebook_path=wpath),
+        task = jobs.SubmitTask(task_key="run", notebook_task=jobs.NotebookTask(notebook_path=wpath,
+                                                                               base_parameters=_parameters(nb)),
                                environment_key="default")
         environments = [jobs.JobEnvironment(
             environment_key="default",

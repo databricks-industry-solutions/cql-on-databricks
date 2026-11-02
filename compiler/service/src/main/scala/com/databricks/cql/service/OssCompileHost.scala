@@ -170,7 +170,10 @@ final class OssCompileHost(service: CompileService, port: Int = 0) {
           "defineKinds"         -> ujson.Obj.from(g.defineKinds.toSeq.sortBy(_._1).map { case (k, v) => k -> ujson.Str(v) }),
           "valueColumn"         -> g.valueColumn,
           // EMIT-DESCRIBE-RETRIEVE-TYPES: every retrieved type, so a caller binds exactly the data a run needs.
-          "retrieveTypes"       -> ujson.Arr.from(g.retrieveTypes))
+          "retrieveTypes"       -> ujson.Arr.from(g.retrieveTypes),
+          // BIND-CALL-SITE: every call site with its id and context.
+          "sites"               -> ujson.Arr.from(g.sites.map(_.describeJson)),
+          "valueSets"           -> ujson.Arr.from(g.valueSets.map { case (id, v) => ujson.Obj("id" -> id, "version" -> v.map(ujson.Str(_)).getOrElse(ujson.Null)) }))
         respond(ex, 200, ujson.write(out))
       }
     } catch {

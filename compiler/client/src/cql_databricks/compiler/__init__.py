@@ -9,17 +9,20 @@ test path: the conformance suite's end-to-end lane drives it against a local com
     from cql_databricks.compiler import CqlClient
     client = (CqlClient.builder()
               .endpoint("http://localhost:8080").auth_bearer(token)
-              .library_source("cql/").data_catalog("fhir").spark(spark).build())
+              .library_source("cql/").spark(spark).data_binder(binder).build())
     q = (client.cql("cql/HypertensionBPControl.cql")
               .with_measurement_period("2026-01-01", "2026-12-31"))
     q.dag()                # the neutral LibraryGraph
     q.exec("Initial Population")    # -> lazy DataFrame (single target)
     q.exec()               # -> {Initial Population: DataFrame, ...} (the default set)
 
+``binder`` is a :class:`~.resolver_binder.ResolverBinder` over the run's resolvers (`BIND-CALL-SITE`); without one,
+only CQL that retrieves nothing compiles.
+
 **The Databricks layer** makes that zero-config on a workspace (`SVC-ZERO-CONFIG-NOTEBOOK`): it resolves
 the Compiler Service App endpoint from the App registry, authenticates with the ambient identity by
-serverless-to-App OAuth token exchange, finds each run's data source by its Unity Catalog tag
-(`CLIENT-EXEC-DISCOVERY`), and discovers the UDF schema from ``information_schema``. So a notebook names no
+serverless-to-App OAuth token exchange, finds each run's environment by its Unity Catalog tag
+(`CLIENT-ENVIRONMENT-RESOLVER`), and discovers the UDF schema from ``information_schema``. So a notebook names no
 endpoint, no token, and no catalog::
 
     from cql_databricks.compiler import cql
@@ -56,13 +59,15 @@ from .library import Library, load_library, measurement_period_bounds, measureme
 # The Databricks layer (`SVC-DISCOVERY-PLUGIN`, `SVC-ZERO-CONFIG-NOTEBOOK`). `cql` here SHADOWS the core
 # binder deliberately: on a workspace, zero-config is the correct default, and it still honors an explicit
 # `client=` / `endpoint=` so nothing is taken away.
-from .zeroconfig import connect, cql, resolve_libraries, translate
+from .zeroconfig import connect, cql, publish_library, resolve_libraries, translate, use_resolvers
 from .provider import make_provider
 from .session_libraries import register_cell
-# CLIENT-SESSION-MOUNT / CLIENT-SESSION-RESET / BIND-RESHAPE: session data, and raw FHIR JSON as a source.
-from .mount import mount, reset
+# CLIENT-SESSION-RESET / BIND-RESHAPE: a clean session, and raw FHIR JSON as a source.
+from .session_state import reset
 from .reshape import FhirJson
-# BIND-PUBLISH: a tagged data source from tables.
+# CLIENT-PUBLISH: a folder library into an environment's knowledge store.
+from .library_publish import PublishFailed, PublishRefused, PublishSummary, publish_folder_library
+# BIND-PUBLISH: an environment's published data views over tables.
 from .publish import PublishPlan, publish_data_source
 from .providers import (
     RELATION,
@@ -77,7 +82,6 @@ from .providers import (
     DatasetRecipe,
     DefineShape,
     LibraryGraph,
-    LibraryInput,
     NoAuth,
     OAuth2TokenExchange,
     PipelinePlan,
@@ -96,7 +100,7 @@ __all__ = [
     "CqlClient", "CqlClientBuilder", "CqlQuery",
     "cql", "cql_explicit", "describe", "compile_pipeline", "load_library", "Library",
     # SVC-ZERO-CONFIG-NOTEBOOK: the Databricks surface.
-    "connect", "resolve_libraries", "translate", "make_provider", "register_cell",
+    "connect", "use_resolvers", "publish_library", "resolve_libraries", "translate", "make_provider", "register_cell",
     "measurement_period_bounds",
     "measurement_period_literal",
     # BUILD-LIBRARY-PROVIDER: the library SOURCE seam. Implement `LibraryProvider` and inject it with
@@ -104,10 +108,12 @@ __all__ = [
     # entry-point group and select it by `.library_provider_kind(name)`.
     "LibraryProvider", "FileLibraryProvider", "LibraryRef", "LibrarySource",
     "LibraryResolutionError", "LAYOUTS", "includes_of",
-    # CLIENT-SESSION-MOUNT, CLIENT-SESSION-RESET, BIND-RESHAPE: FHIR data on the session, with no catalog writes.
-    "mount", "reset", "FhirJson",
-    # BIND-PUBLISH: write a tagged data source from tables, for review or to run.
+    # CLIENT-SESSION-RESET, BIND-RESHAPE: a clean session, and raw FHIR JSON as a source.
+    "reset", "FhirJson",
+    # BIND-PUBLISH: write an environment's published data views over tables, for review or to run.
     "publish_data_source", "PublishPlan",
+    "publish_folder_library", "PublishSummary", "PublishRefused", "PublishFailed",
+    # CLIENT-RESOLVERS, CLIENT-PACKAGE-SPLIT: the resolvers and the environments are `cql_databricks.resolvers`.
     "CompileProvider", "RemoteProvider", "CompileRequest", "CompileError",
     "SqlCompileResult", "SqlStatement",
     # CLIENT-RESOURCE-SCHEMA: the model's `__resource` struct per FHIR type (`CqlClient.resource_schema`).

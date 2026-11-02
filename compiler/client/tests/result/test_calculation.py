@@ -1,11 +1,14 @@
-"""RUN-CLIENT-MIGRATION — shared preparation without legacy result or change-log reads."""
+"""RUN-CLIENT-MIGRATION, BIND-PUBLISHED-VIEW, CLIENT-RESOLVER-IDENTITY — shared preparation in an environment,
+without legacy result or change-log reads."""
 from __future__ import annotations
 
 from dataclasses import replace
 
 import pytest
 
+from cql_databricks.resolvers.environment import Environment, EnvironmentResolver
 from cql_databricks.compiler.providers import PipelinePlan
+from cql_databricks.resolvers.interfaces import ValueSetRef
 from cql_databricks.data_bindings import Corpus, Library, TaggedSchema
 from cql_databricks.result.calculation import prepare_calculation
 from test_durable_plan import plan
@@ -24,13 +27,19 @@ class Content:
                      for name, source in (("Synthetic", ROOT), ("Helper", INCLUDE))]
         return Corpus(lambda *args: [], [schema], libraries)
 
-    def data_source_schemas(self):
-        return [TaggedSchema("synthetic", "population", "synthetic", "source")]
+    generation = 1
+
+    def identity(self):
+        return "synthetic.knowledge"
+
+
+ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="2")
 
 
 class Compiler:
     def __init__(self):
         self.requests = []
+        self.described = []
         self.translations = []
         compiled = plan()
         self.plan = PipelinePlan([replace(compiled.datasets[0], library="Helper"), compiled.datasets[1]],
@@ -38,6 +47,12 @@ class Compiler:
 
     def resource_types(self):
         raise AssertionError("SVC-COMPILE-BATCH must not fetch resource types separately")
+
+    def resource_schemas(self, types):
+        raise AssertionError("SVC-COMPILE-BATCH: a table relation needs no reshape")
+
+    def describe(self, request):
+        raise AssertionError("BIND-CALL-SITE: an environment binds by rule, so a run asks no describe")
 
     def translate_result(self, source, includes):
         raise AssertionError("SVC-COMPILE-BATCH must not translate libraries separately")
@@ -48,17 +63,18 @@ class Compiler:
 
 
 def run(statement, params=None):
-    assert "information_schema.routines" in statement
-    return [{"routine_name": "retrieve_patient"}]
+    raise AssertionError(f"BIND-PUBLISHED-VIEW: a run in an environment reads no catalog, but sent {statement}")
 
 
 def prepare(compiler, **changes):
-    return prepare_calculation(**(dict(content=Content(), run=run, compiler=compiler, cql=ROOT,
-        data_source="population", runtime_catalog="synthetic_runtime", period=("2026-01-01", "2026-12-31")) | changes))
+    runner = changes.get("run", run)
+    resolvers = EnvironmentResolver(runner).resolvers(ENVIRONMENT)
+    return prepare_calculation(**(dict(content=Content(), run=run, compiler=compiler, cql=ROOT, resolvers=resolvers,
+        runtime_catalog="synthetic_runtime", period=("2026-01-01", "2026-12-31")) | changes))
 
 
 def test_preparation_binds_actual_addresses_typed_period_and_include_closure_once():
-    """RUN-CLIENT-IDENTITY — compiler contracts supply targets and identity; no SQL string patches."""
+    """RUN-CLIENT-RESULT-IDENTITY — compiler contracts supply targets and identity; no SQL string patches."""
     compiler = Compiler()
     prepared = prepare(compiler)
     request = compiler.requests[0]
@@ -66,15 +82,22 @@ def test_preparation_binds_actual_addresses_typed_period_and_include_closure_onc
     assert request.cql == ROOT and request.elm == ""
     assert request.parameters == {}
     assert request.measurement_period == ("2026-01-01", "2026-12-31")
-    assert request.data_source == {"catalog": "synthetic", "schema": "source", "routines": ["retrieve_patient"]}
-    assert request.terminology_table == "synthetic_runtime.runtime.valuesets"
+    # BIND-PUBLISHED-VIEW: the environment's data and knowledge views, by rule, with their identities.
+    assert request.data == {"rule": {"schema": "synthetic.data", "identity": "synthetic.data"}}
+    assert request.terminology == {"rule": [{"table": "synthetic.knowledge.valueset",
+                                              "identity": "synthetic.knowledge"}]}
     assert request.udf_schema == "synthetic_runtime.runtime"
     assert len(request.deps) == 1 and request.deps[0].name == "Helper"
     assert request.deps[0].cql == INCLUDE and not request.deps[0].elm
     assert compiler.translations == []
     assert prepared.targets == ("Helper.Base", "Synthetic.Output")
     assert prepared.compile_pipeline(durable=True) is compiler.plan
-    assert len(compiler.requests) == 1
+    # SVC-COMPILE-BATCH: one compile and no describe; no value set, so no digest query.
+    assert len(compiler.requests) == 1 and compiler.described == []
+    # RUN-CLIENT-DRAFT-RESULTS: CQL text is never the environment's own content.
+    assert prepared.identities == {"data": "synthetic.data", "terminology": "synthetic.knowledge",
+                                   "knowledge": "cql"}
+    assert prepared.request["environment"] == "synthetic-population" and "data_source" not in prepared.request
 
 
 def test_explicit_targets_are_qualified_by_compiler_origin():
@@ -101,12 +124,44 @@ def test_unsupported_compiler_contract_fails_during_preparation():
         prepare(compiler)
 
 
-def test_permission_denial_is_not_a_source_or_result_miss():
-    """SEC-OBO — caller SQL authorization remains a loud failure."""
-    def denied(*args):
-        raise PermissionError("synthetic source denied")
-    with pytest.raises(PermissionError, match="synthetic source denied"):
-        prepare(Compiler(), run=denied)
+def test_a_value_set_used_completes_the_fingerprint_in_one_query():
+    """CLIENT-RESOLVER-IDENTITY — the codes of the value sets a recipe uses are digested into its fingerprint, and a
+    changed expansion changes it."""
+    def compiled_with_value_set():
+        compiler = Compiler()
+        first = compiler.plan.datasets[0]
+        compiler.plan.datasets[0] = replace(first, durable=replace(first.durable,
+                                                                   value_sets=(ValueSetRef(id="urn:vs:a"),)))
+        return compiler
+
+    def digesting(digest):
+        def runner(statement, params=None):
+            assert "sha2(" in statement and "`synthetic`.`knowledge`.`valueset`" in statement
+            return [{"layer": 0, "valueset_id": "urn:vs:a", "digest": digest}]
+        return runner
+
+    compiler = compiled_with_value_set()
+    original = compiler.plan.datasets[0].durable.fingerprint
+    one = prepare(compiler, run=digesting("1" * 64)).plan.datasets[0].durable.fingerprint
+    two = prepare(compiled_with_value_set(), run=digesting("2" * 64)).plan.datasets[0].durable.fingerprint
+    assert len({original, one, two}) == 3
+    assert prepare(compiled_with_value_set(), run=digesting("1" * 64)).plan.datasets[0].durable.fingerprint == one
+    untouched = prepare(compiled_with_value_set(), run=digesting("1" * 64)).plan.datasets[1].durable.fingerprint
+    assert untouched == compiler.plan.datasets[1].durable.fingerprint
+
+
+def test_a_library_by_name_records_the_knowledge_it_came_from():
+    """RUN-CLIENT-DRAFT-RESULTS — an official store takes a library by name from the environment's knowledge, and
+    nothing from a folder."""
+    official = EnvironmentResolver(run).official_store(ENVIRONMENT)
+    by_name = prepare(Compiler(), cql=None, library="Synthetic", version="1")
+    assert by_name.identities["knowledge"] == "synthetic.knowledge"
+    official.admit(by_name)
+    # CQL text read with a folder's includes, as the Designer runs a folder library.
+    folder = prepare(Compiler(), location="folder:/Workspace/m", files=_FolderFiles())
+    assert folder.identities["knowledge"] == "cql"
+    with pytest.raises(PermissionError, match="knowledge is cql"):
+        official.admit(folder)
 
 
 class _FolderFiles:

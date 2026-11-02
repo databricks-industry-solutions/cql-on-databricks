@@ -6,9 +6,22 @@ import pytest
 from cql_databricks.data_bindings.measure_import.knowledge_merge import SINGLE_ROW, knowledge_merge_sql
 from cql_databricks.data_bindings.measure_import.load import (
     _KNOWLEDGE_TABLE_DDL,
+    DeltaFeaturesError,
     StaleKnowledgeTableError,
     _assert_variant_schema,
+    _enable_delta_features,
 )
+
+
+class _SqlSpark:
+    """Records the SQL a table is sent. ``fail`` makes the table refuse it, as a table that is not Delta does."""
+    def __init__(self, fail=None):
+        self.statements, self._fail = [], fail
+
+    def sql(self, text):
+        self.statements.append(text)
+        if self._fail:
+            raise RuntimeError(self._fail)
 
 
 class _FakeField:
@@ -97,51 +110,30 @@ def test_one_merge_serves_a_staged_view_and_a_single_parameterized_row():
     assert ":resource_json" in row
 
 
-def test_a_save_replaces_a_row_only_while_it_is_unchanged():
-    """DOC-OPEN-SAVE — the guard is on the MATCHED branch, so a row changed since it was read updates nothing."""
-    assert "resource_sha256" not in knowledge_merge_sql("k.m.library", "stg")
-    guarded = knowledge_merge_sql("k.m.library", SINGLE_ROW, unchanged_digest=True)
-    assert "WHEN MATCHED AND sha2(to_json(target.`resource`), 256) = :resource_sha256 THEN UPDATE" in guarded
+def test_a_version_already_there_is_replaced():
+    """DEC-PUBLISH-IMMUTABLE — the import and publishing both replace a published (url, version)."""
+    row = knowledge_merge_sql("k.m.library", SINGLE_ROW)
+    assert "WHEN MATCHED THEN UPDATE" in row and "WHEN NOT MATCHED THEN INSERT" in row
 
 
-def test_a_new_library_in_a_store_never_replaces_a_row():
-    """DOC-OPEN-SAVE — insert-only has no MATCHED branch, so a (url, version) already there writes nothing."""
-    created = knowledge_merge_sql("k.m.library", SINGLE_ROW, insert_only=True)
-    assert "WHEN MATCHED" not in created and "WHEN NOT MATCHED THEN INSERT" in created
-    with pytest.raises(ValueError):
-        knowledge_merge_sql("k.m.library", SINGLE_ROW, insert_only=True, unchanged_digest=True)
+# ── Delta features on a new table ────────────────────────────────────────────
+
+def test_a_new_table_gets_the_delta_features_its_merge_reads():
+    """CONTENT-INCREMENTAL — the incremental merge reads row tracking and the change feed."""
+    spark = _SqlSpark()
+    _enable_delta_features(spark, "acme.quality_measures.valueset")
+    [sql] = spark.statements
+    assert sql.startswith("ALTER TABLE acme.quality_measures.valueset SET TBLPROPERTIES (")
+    for prop in ("'delta.enableRowTracking' = 'true'", "'delta.enableChangeDataFeed' = 'true'",
+                 "'delta.enableDeletionVectors' = 'true'"):
+        assert prop in sql
 
 
-# --- CONTENT-IMPORT-TARGET-TAG ---------------------------------------------------------------------
-
-class _RecordingSpark:
-    def __init__(self):
-        self.statements = []
-
-    def sql(self, statement):
-        self.statements.append(statement)
-
-
-def test_tag_loaded_declares_both_schemas_for_the_resolver():
-    from cql_databricks.data_bindings.measure_import.load import tag_loaded
-    spark = _RecordingSpark()
-    tag_loaded(spark, catalog="main", knowledge=("quality_measures", "my-measures"),
-               terminology=("terminology", "terminology"))
-    assert spark.statements == [
-        "ALTER SCHEMA `main`.`quality_measures` SET TAGS ('cql_databricks_knowledge' = 'my-measures')",
-        "ALTER SCHEMA `main`.`terminology` SET TAGS ('cql_databricks_terminology' = 'terminology')",
-    ]
-
-
-def test_tag_loaded_skips_a_target_given_as_none():
-    from cql_databricks.data_bindings.measure_import.load import tag_loaded
-    spark = _RecordingSpark()
-    tag_loaded(spark, catalog="main", knowledge=None, terminology=("terminology", "terminology"))
-    assert len(spark.statements) == 1 and "terminology" in spark.statements[0]
-
-
-def test_tagging_without_a_catalog_is_an_error_not_a_silent_skip():
-    import pytest
-    from cql_databricks.data_bindings.measure_import.load import tag_loaded
-    with pytest.raises(ValueError, match="Unity Catalog"):
-        tag_loaded(_RecordingSpark(), catalog=None, knowledge=("quality_measures", "my-measures"), terminology=None)
+def test_a_table_that_refuses_the_delta_features_fails_loudly():
+    """CORE-NO-SILENT-MISLOWER — a table without the features is an error that names it, not a debug line."""
+    spark = _SqlSpark(fail="[DELTA_NOT_A_DELTA_TABLE] not a Delta table")
+    with pytest.raises(DeltaFeaturesError) as excinfo:
+        _enable_delta_features(spark, "acme.quality_measures.valueset")
+    message = str(excinfo.value)
+    assert "acme.quality_measures.valueset" in message
+    assert "DELTA_NOT_A_DELTA_TABLE" in message

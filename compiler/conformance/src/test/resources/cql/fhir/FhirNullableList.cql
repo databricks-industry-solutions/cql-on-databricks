@@ -6,7 +6,7 @@ library FhirNullableList version '1.0.0'
 // from row presence, null-ness from a one-bit `(__subject_id, __is_null)` sidecar derived from the
 // condition (the realized escape hatch reserved by LANG-LIST-NULL). The grain-first conditional-union
 // path builds the sidecar and renders null at the boundary; the boxed `when/otherwise` baseline carries
-// a null array cell. Both must agree element-for-element (CONF-GATE-SELFDIFF on/off) AND match the Java
+// a null array cell. Both must agree element-for-element (on/off) AND match the Java
 // reference (CONF-GATE-MEASURE) — the tripwire against a silent null→empty regression.
 //
 // With the shared FHIR data this exercises ALL THREE states:

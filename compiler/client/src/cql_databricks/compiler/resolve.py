@@ -1,14 +1,12 @@
 """BUILD-RESOLVE-COMPILE, `DEC-STATELESS-SERVICES` — resolve a library for a compile, once, the same way for every caller.
 
-Every caller that compiles or evaluates a library from tagged content needs the same three answers, centralized here:
+Every caller that compiles or evaluates a library from an environment's knowledge needs the same two answers, centralized here:
 
-- **the closure** (:func:`resolve`) — the root from tagged knowledge (``library``, ``version``) or as CQL text, and
+- **the closure** (:func:`resolve`) — the root from the environment's knowledge (``library``, ``version``) or as CQL text, and
   its includes from the knowledge corpus (``Corpus.resolve_closure``): compile order, includes matched only by name,
   and includes not found. A ``location`` (RUN-ADDRESS-LOCATION) narrows where the root is read and where includes
-  resolve first: one tagged store, or a folder read through a ``LibraryFiles``. A caller that cannot continue with gaps calls :meth:`Resolution.require_complete`; one that
+  resolve first: one knowledge store, or a folder read through a ``LibraryFiles``. A caller that cannot continue with gaps calls :meth:`Resolution.require_complete`; one that
   shows them (the Designer's editor) reads :meth:`Resolution.unresolved_messages`.
-- **the data source** (:func:`resolve_data_source`) — named by its tag value (``cql_databricks_data_source =
-  <name>``, `DEC-DATA-SOURCE-UC-TAG`), its bindings read with the data-source layout check (`BIND-DATA-SOURCE-LAYOUT`).
 - **the ELM** (:func:`translate_root`, :func:`translate_includes`) — the root against every include, and each include
   against its own transitive includes only (PERF-CLOSURE-TRANSLATE). Every library is returned with its diagnostics;
   none is skipped.
@@ -25,10 +23,9 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from cql_databricks.data_bindings import (ContentResolver, IncludeRef, LibraryId, ResolvedLibrary, SqlRunner,
-                                          parse_identity, parse_includes)
+from cql_databricks.data_bindings import (ContentResolver, IncludeRef, LibraryId, ResolvedLibrary, parse_identity,
+                                          parse_includes)
 
-from .data_source import DataSourceLayout, check_layout, read_routines
 from .libraries import FileLibraryProvider, LibraryFiles, LibraryRef, LibraryResolutionError, LibrarySource, includes_of
 from .location import Location
 
@@ -48,14 +45,14 @@ class Resolution:
     source: str
     includes: tuple[ResolvedLibrary, ...]
     unresolved: tuple[IncludeRef, ...]
-    #: RUN-ADDRESS-LOCATION — where the root was read and its includes resolved first; None is all of tagged knowledge.
+    #: RUN-ADDRESS-LOCATION — where the root was read and its includes resolved first; None is the environment's knowledge.
     location: Location | None = None
 
     @property
     def _where(self) -> str:
         if self.location is not None and self.location.kind == "folder":
-            return f"the folder {self.location.path} or any tagged knowledge source"
-        return "any tagged knowledge source"
+            return f"the folder {self.location.path} or the environment's knowledge"
+        return "the environment's knowledge"
 
     @property
     def include_sources(self) -> list[str]:
@@ -84,9 +81,9 @@ def resolve(content: ContentResolver, *, library: str | None = None, version: st
             files: LibraryFiles | None = None) -> Resolution:
     """The closure of ``library`` (``version``, else its newest), or of ``cql`` as given.
 
-    With no ``location`` the root comes from tagged knowledge and so do its includes. A store location reads the root
+    With no ``location`` the root comes from the environment's knowledge and so do its includes. A store location reads the root
     from that store and prefers its copy of each include; a folder location reads through ``files`` and resolves
-    includes from the folder first, sibling-first, then tagged knowledge (RUN-ADDRESS-LOCATION).
+    includes from the folder first, sibling-first, then the environment's knowledge (RUN-ADDRESS-LOCATION).
 
     CQL with no ``library`` header resolves too, with an empty name: an editor validates such text."""
     if (library is None) == (cql is None):
@@ -102,8 +99,8 @@ def resolve(content: ContentResolver, *, library: str | None = None, version: st
     else:
         found = corpus.library_in(store, library, version) if store else corpus.library(library, version)
         if found is None:
-            raise ResolutionError(f"{library} {version or '(newest)'} is not in "
-                                  f"{f'the store {where.path}' if store else 'any tagged knowledge source'}")
+            held = f"the store {where.path}" if store else "the environment's knowledge"
+            raise ResolutionError(f"{library} {version or '(newest)'} is not in {held}")
         name, root_version, source = found.name, found.version, found.source
     closure = corpus.resolve_closure(source, prefer=store)
     return Resolution(name=name, version=root_version, source=source, includes=tuple(closure.includes),
@@ -164,42 +161,6 @@ def _dependencies_first(sources: list[LibrarySource]) -> list[LibrarySource]:
     for src in sources:
         visit(src)
     return out
-
-
-def is_published(content: ContentResolver, cql: str, library: str, version: str) -> bool:
-    """RUN-ADDRESS-BY-LIBRARY, `DEC-PUBLISHED-TEST` — ``cql`` is the corpus's ``library@version`` exactly, line endings
-    aside; ``False`` for anything else, including a library or version the corpus does not hold. Only CQL that is the
-    published version may be read as, or write, its results; anything else is a draft (`DEC-DRAFT-ADDRESS`)."""
-    if not (library and version):
-        return False
-    published = content.corpus().library(library, version)
-    return published is not None and _lines(published.source) == _lines(cql)
-
-
-def _lines(text: str) -> str:
-    return text.replace("\r\n", "\n").replace("\r", "\n")
-
-
-def resolve_data_source(content: ContentResolver, run: SqlRunner, name: str,
-                        modeled_types: Iterable[str], *, include_change_logs: bool = True) -> DataSourceLayout:
-    """The bindings of the data source tagged ``name``. Fails naming the tagged names when there is none."""
-    schema = _data_source_schema(content, name)
-    return check_layout(run, schema.catalog, schema.schema, modeled_types, include_change_logs=include_change_logs)
-
-
-def resolve_data_source_routines(content: ContentResolver, run: SqlRunner, name: str) -> dict:
-    """SVC-COMPILE-BATCH — ship caller-visible catalog metadata with the CQL closure in one request."""
-    schema = _data_source_schema(content, name)
-    return {"catalog": schema.catalog, "schema": schema.schema,
-            "routines": read_routines(run, schema.catalog, schema.schema)}
-
-
-def _data_source_schema(content: ContentResolver, name: str):
-    tagged = {s.name: s for s in content.data_source_schemas()}
-    if name not in tagged:
-        raise ResolutionError(f"no data source is tagged {name!r} in catalog scopes "
-                              f"{', '.join(str(s) for s in content.scopes)}; known: {', '.join(sorted(tagged)) or 'none'}")
-    return tagged[name]
 
 
 @dataclass(frozen=True)

@@ -4,20 +4,21 @@
 (``scripts/deploy/provision-examples.py``). Nothing here reads the compiler's conformance corpus, which is a
 separate, independent copy.
 
-What it reads, and where each part lands in ``<catalog>``:
+What it reads, and where each part lands in the stores of the environment in ``<catalog>``
+(``DATA-ENVIRONMENT-LAYOUT``, ``DEPLOY-DEFAULT-ENVIRONMENT``):
 
 - ``examples/measures/<Library>.cql`` — every CQL library, as a FHIR ``Library`` resource (the CQL as a
-  ``text/cql`` attachment) in ``example_measures.library``.
+  ``text/cql`` attachment) in ``knowledge_store.library``.
 - ``examples/measures/<Library>.measure.json`` — the authored FHIR ``Measure`` resource of each example measure,
-  in ``example_measures.measure``. A library is a measure in the catalog only when a ``Measure`` references it
+  in ``knowledge_store.measure``. A library is a measure in the catalog only when a ``Measure`` references it
   (``CONTENT-MEASURE-LIBRARY-LINK``), so each one names its library's canonical URL.
 - ``examples/valuesets/*.ndjson`` — value-set expansion rows ``{valueset_id, system, code, display}``, in
-  ``example_measures.valueset``. Every value set a library declares must have codes here.
-- ``examples/data/<Type>.ndjson`` — the synthetic population small, landed as the data source
-  ``synthetic-population-small`` (``DATA-SYNTH-SMALL``, ``population.land``).
+  ``knowledge_store.valueset``. Every value set a library declares must have codes here.
+- ``examples/data/<Type>.ndjson`` — the synthetic population small (``DATA-SYNTH-SMALL``), in ``data_store``
+  (``population.land``).
 
-``example_measures`` is tagged as both a knowledge and a terminology source (``CONTENT-IMPORT-TARGET-TAG``), so
-the Designer catalog and ``cql(library=...)`` find the measures by name.
+The environment's published views select the stores, so the Designer catalog and ``cql(library=...)`` find the
+measures by name (``BIND-PUBLISHED-VIEW``).
 """
 from __future__ import annotations
 
@@ -27,20 +28,9 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from .population import PopulationSource
-from .sources import SYNTHETIC_SMALL_DESCRIPTION, SYNTHETIC_SMALL_SCHEMA, SYNTHETIC_SMALL_SOURCE_ID
 from cql_databricks.data_bindings.measure_import.transform import _CQL_HEADER_RE
 
 log = logging.getLogger("shipped_sources.examples")
-
-#: The schema the sample knowledge and terminology land in, and the tag values that name them.
-EXAMPLE_MEASURES_SCHEMA = "example_measures"
-EXAMPLE_KNOWLEDGE_NAME = "example-measures"
-EXAMPLE_TERMINOLOGY_NAME = "example-measures"
-
-#: DATA-SYNTH-SMALL — the patients the example measures run over (`sources`).
-SYNTHETIC_SMALL = PopulationSource(source_id=SYNTHETIC_SMALL_SOURCE_ID, schema=SYNTHETIC_SMALL_SCHEMA,
-                                   description=SYNTHETIC_SMALL_DESCRIPTION)
 
 #: The canonical base of every sample resource.
 CANONICAL_BASE = "http://example.org/fhir"
@@ -116,20 +106,24 @@ def read_examples(examples: Path) -> ExampleContent:
     return ExampleContent(resources=libraries + measures, codes=codes, patients=patients)
 
 
-def load_examples(spark, *, catalog: str, examples: Path, valid_from: str, valid_to: str) -> dict[str, int]:
-    """Write ``examples/`` into ``catalog`` (see the module docstring) and tag it. Returns row counts.
-
-    The measures go through the one import path (``measures.import_measures``, ``CONTENT-IMPORT-MEASURES``)."""
+def import_example_measures(spark, *, catalog: str, examples: Path) -> dict[str, int]:
+    """CONTENT-IMPORT-MEASURES — the example measures and their value sets into the stores of the environment in
+    ``catalog``, through the one import path. Returns row counts."""
     from cql_databricks.data_bindings.measure_import import import_measures
+
+    content = read_examples(examples)
+    return dict(import_measures(spark, content.resources, codes=content.codes, catalog=catalog,
+                                source=SOURCE_PACKAGE, lineage=SOURCE_LINEAGE).rows)
+
+
+def load_examples(spark, *, catalog: str, examples: Path, valid_from: str, valid_to: str) -> dict[str, int]:
+    """Write ``examples/`` into the stores of the environment in ``catalog`` (see the module docstring), and its
+    patients' data views. Returns row counts."""
     from .population import land
 
     content = read_examples(examples)
-    counts = dict(import_measures(spark, content.resources, codes=content.codes, catalog=catalog,
-                                  schema=EXAMPLE_MEASURES_SCHEMA, source=SOURCE_PACKAGE, lineage=SOURCE_LINEAGE,
-                                  knowledge_name=EXAMPLE_KNOWLEDGE_NAME,
-                                  terminology_name=EXAMPLE_TERMINOLOGY_NAME).rows)
+    counts = import_example_measures(spark, catalog=catalog, examples=examples)
     raw = {fhir_type: spark.createDataFrame([(line,) for line in lines], "value STRING")
            for fhir_type, lines in content.patients.items()}
-    counts.update(land(spark, catalog=catalog, source=SYNTHETIC_SMALL, raw_by_type=raw,
-                       valid_from=valid_from, valid_to=valid_to))
+    counts.update(land(spark, catalog=catalog, raw_by_type=raw, valid_from=valid_from, valid_to=valid_to))
     return counts

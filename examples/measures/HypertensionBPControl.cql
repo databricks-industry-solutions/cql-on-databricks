@@ -1,7 +1,7 @@
 /*
 @description: Adults 18 to 85 with hypertension whose most recent blood pressure in the measurement period is
   below 140/90 mmHg.
-@intent: An example proportion measure, written for this repository, in the shape CMS uses for FHIR quality
+@intent: An example proportion measure, written for this repository, in the shape of published FHIR quality
   measures: an initial population, a denominator, exclusions and a numerator.
 @scope: QI-Core 6.0.0. A hypertension diagnosis that starts on or before June 30 of the measurement period, and
   a qualifying outpatient visit in the period.

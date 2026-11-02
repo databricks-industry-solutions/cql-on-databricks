@@ -10,9 +10,9 @@
 # MAGIC **Read it without running it.** The markdown above every cell says exactly what that cell should
 # MAGIC print. Run All and compare.
 # MAGIC
-# MAGIC Sections 1–8 are **data-free** — nothing is mounted, and every define resolves to CQL's `Unfiltered`
+# MAGIC Sections 1–8 are **data-free** — no data is read, and every define resolves to CQL's `Unfiltered`
 # MAGIC context, so `__subject_id` is the `'*'` seed and the single row is the answer.
-# MAGIC Section 9 mounts a handful of FHIR resources, and sections 10–11 need them.
+# MAGIC Section 9 brings a handful of FHIR resources, and sections 10–11 need them.
 # MAGIC
 # MAGIC **Runs on serverless — no cluster to attach.** Just **Run All**. If `%%cql` is unfamiliar, start with
 # MAGIC notebook 1.
@@ -333,12 +333,12 @@ reset(spark)
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## 9. Mount a handful of FHIR resources
-# MAGIC The last two sections need data. The engine lowers every `[Resource]` retrieve to a call on a
-# MAGIC **table-valued function** `retrieve_<Type>(…)` — the one mount contract — over
-# MAGIC a source carrying two columns: `__subject_id` (the context key) and `__resource` (the resource body
-# MAGIC as one struct). In a real deployment those functions are precreated Unity Catalog objects over your
-# MAGIC own governed tables; here `mount` registers them on this session and they hold eleven rows.
+# MAGIC ## 9. Bring a handful of FHIR resources
+# MAGIC The last two sections need data. The engine reads every `[Resource]` retrieve from a relation with two
+# MAGIC columns: `__subject_id` (the context key) and `__resource` (the resource body as one struct). In a real
+# MAGIC deployment that relation is a view in your environment's `data` schema, over your own governed tables.
+# MAGIC Here it is eleven rows in DataFrames, handed to this notebook's cells with `use_resolvers`: every later
+# MAGIC `%%cql` cell reads its data and value sets through the resolvers it names, and nothing else changes.
 # MAGIC
 # MAGIC The resources are plain **FHIR JSON**, one per row, of mixed types: `FhirJson` reads each row's
 # MAGIC `resourceType` and parses it against the compiler's FHIR model. That is not cosmetic: an absent
@@ -356,10 +356,11 @@ reset(spark)
 # MAGIC …plus a one-row value-set expansion table: the Diabetes value set contains exactly SNOMED
 # MAGIC 44054006.
 # MAGIC
-# MAGIC **Expected output:** `mounted: ['Condition', 'Encounter', 'Observation', 'Patient']`.
+# MAGIC **Expected output:** `types: ['Condition', 'Encounter', 'Observation', 'Patient']`.
 
 # COMMAND ----------
-from cql_databricks.compiler import FhirJson, mount
+from cql_databricks.compiler import FhirJson, use_resolvers
+from cql_databricks.resolvers import DataFrameDataResolver, DataFrameTerminologyResolver
 
 RESOURCES = [
     '{"resourceType":"Patient","id":"p1","birthDate":"1990-05-01"}',
@@ -384,9 +385,12 @@ RESOURCES = [
 VALUESETS = spark.createDataFrame([("urn:cql_databricks:vs:diabetes", "http://snomed.info/sct", "44054006")],
                                   "valueset_id STRING, system STRING, code STRING")
 
-fhir = spark.createDataFrame([(r,) for r in RESOURCES], "resource STRING")
-mounted = mount(spark, FhirJson(fhir, column="resource"), valuesets=VALUESETS)
-print("mounted:", sorted(mounted))
+# Each type's rows, parsed against the compiler's FHIR model.
+fhir = FhirJson(spark.createDataFrame([(r,) for r in RESOURCES], "resource STRING"), column="resource")
+types = fhir.found_types(spark)
+use_resolvers(data=DataFrameDataResolver({t: fhir.to_df(spark, t) for t in types}, name="tour"),
+              terminology=DataFrameTerminologyResolver(VALUESETS, name="tour"))
+print("types:", types)
 
 # COMMAND ----------
 # MAGIC %md

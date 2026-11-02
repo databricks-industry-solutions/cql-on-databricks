@@ -1,4 +1,4 @@
-"""``cql()`` — the runtime-compiled CQL query surface for Spark (PHASE-10, BUILD-CLIENT).
+"""``cql()`` — the runtime-compiled CQL query surface for Spark (BUILD-CLIENT).
 
 ``cql(source)`` (or ``client.cql(source)``) binds a CQL library — a raw CQL / ELM STRING, a packaged
 ``resource`` path, or a :class:`~.library.Library` — and returns a lazy :class:`CqlQuery` HANDLE. The handle
@@ -15,19 +15,25 @@ DataFrame whose native ``.explain()`` gives the Spark plan.
 """
 from __future__ import annotations
 
+import logging
+import uuid
+from dataclasses import replace
 from typing import Dict, Iterable, List, Optional
 
 from . import config
 from .binding import bound_request
+from .libraries import identity_of
 from .library import Library
 from .providers import CompileError, CompileRequest, LibraryGraph, PipelinePlan, SqlCompileResult
+
+log = logging.getLogger(__name__)
 
 
 def cql(source=None, *, resource: Optional[str] = None, cql: Optional[str] = None,
         elm: Optional[str] = None, library: Optional[str] = None, context: Optional[str] = None,
         data_model: Optional[str] = None, spark=None, client=None,
         endpoint: Optional[str] = None, engine: Optional[str] = None,
-        data_source: Optional[str] = None, recompute: Optional[bool] = None) -> "CqlQuery":
+        recompute: Optional[bool] = None) -> "CqlQuery":
     """Bind ``source`` and return a lazy :class:`CqlQuery` handle (`PIPE-RUNTIME-COMPILE`), peer to how
     ``spark.sql`` names a query — except selection of WHICH defines to evaluate happens terminally in
     ``exec(*targets)``, not here.
@@ -45,17 +51,16 @@ def cql(source=None, *, resource: Optional[str] = None, cql: Optional[str] = Non
     SEPARATE kwarg, never an overload of the ``source`` string: the string classification (path / ELM / raw
     CQL) is frozen (`BUILD-CLIENT-COMPAT`), so a bare name would otherwise be raw CQL forever.
 
-    ``engine``, ``data_source`` and ``recompute`` are the explicit tier of the session's settings
-    (EVALUATOR-CLIENT-EVALUATE, `DEC-ENGINE-SESSION-OPTIONS`); a session sets them once and omits them here."""
+    ``engine`` and ``recompute`` are the explicit tier of the session's settings
+    (`DEC-ENGINE-SESSION-OPTIONS`); a session sets them once and omits them here."""
     needs_bind = isinstance(source, str) or source is None or resource or cql or elm or library
     if needs_bind:
         c = client if client is not None else _lazy_client(spark=spark, endpoint=endpoint)
         return c.cql(source, resource=resource, cql=cql, elm=elm, library=library, context=context,
-                     data_model=data_model, spark=spark, engine=engine, data_source=data_source,
-                     recompute=recompute)
+                     data_model=data_model, spark=spark, engine=engine, recompute=recompute)
     # An already-bound library value object (or a duck-typed one): wrap it directly, no client needed.
-    if engine is not None or data_source is not None or recompute is not None:
-        raise TypeError("engine/data_source/recompute apply to a source STRING; bind them on the library instead")
+    if engine is not None or recompute is not None:
+        raise TypeError("engine/recompute apply to a source STRING; bind them on the library instead")
     if context is not None or data_model is not None:
         raise TypeError("context/data_model apply to a source STRING; bind them on the library instead")
     return CqlQuery(source, spark=spark)
@@ -133,7 +138,7 @@ class CqlQuery:
                          grain_first: bool = False, durable: bool = False) -> PipelinePlan:
         """The compile-once :class:`~.providers.PipelinePlan` (`PIPE-SQL-DAG-REUSE`) — one dataset recipe per
         materialized define. What the reference SDP turns into ``@dp.materialized_view`` bodies."""
-        return _pipeline(self._lib, lambda: self.describe().retrieve_types, boundaries=boundaries,
+        return _pipeline(self._lib, boundaries=boundaries,
                          grain_first=grain_first, durable=durable)
 
     # -- terminal execution ----------------------------------------------------------------------
@@ -150,9 +155,13 @@ class CqlQuery:
         Each frame is independently ``.explain()``-able — the way to view a materialized BARRIER's plan.
 
         ``boundaries`` selects the compiler's RUNTIME cost-free mode; ``persist_as`` (single named target
-        only, `BUILD-META`) also writes ``CREATE TABLE <persist_as> AS SELECT * FROM <target>``. The runtime
-        must provide the ``retrieve_<Type>`` functions the plan references: the library's binder chooses
-        them (`CLIENT-EXEC-DISCOVERY`), else they are the bare convention names."""
+        only, `BUILD-META`) also writes ``CREATE TABLE <persist_as> AS SELECT * FROM <target>``. The plan reads
+        each retrieve through the data resolver the run binds (`BIND-CALL-SITE`): an environment's published view,
+        or a relation the caller supplies. The runtime must provide those relations.
+
+        CLIENT-QUERY-REUSE — with a result resolver (an environment's, from :func:`~.zeroconfig.connect`), CQL that
+        declares a library, a reusable data resolver and no ``recompute``, a target's frame reads its kept result
+        where one matches, and only the defines not found are compiled to views; ``boundaries`` is then refused."""
         single = len(targets) == 1                    # the CALL shape, not the resolved set's size
         session = getattr(self._lib, "fragment_defines", None) is not None
         if session and not targets:
@@ -170,6 +179,16 @@ class CqlQuery:
             raise ValueError("nothing to evaluate: the library has no defines")
         sp = self._spark or _active_spark()
         _ship_udf_catalog(sp, self._lib)
+        reusing = self._reusing()
+        if reusing is not None:
+            if boundaries is not None:
+                raise TypeError("boundaries choose the compiled script's barriers, and this query reads kept results "
+                                "through the durable plan (CLIENT-QUERY-REUSE): run it with recompute=True to "
+                                "compile it with boundaries")
+            if persist_as is not None and not single:
+                raise TypeError("persist_as is only valid when exec() names exactly one target")
+            frames = self._exec_reusing(sp, *reusing, tset, persist_as)
+            return frames[tset[0]] if single else frames
         if single and not session:
             result = self._compile(tset[0], boundaries)
             _run_statements(sp, result)
@@ -187,8 +206,46 @@ class CqlQuery:
             return _select(sp, _object_for(tset[0], result), persist_as)
         return {t: _select(sp, _object_for(t, result), None) for t in tset}
 
+    def _reusing(self):
+        """CLIENT-QUERY-REUSE — ``(result resolver, library name)`` when this run reads kept results, else None: the
+        library declares a name (kept results are named by it, `RUN-CLIENT-TABLE-NAMES`), the run is not a recompute,
+        and the binder has a result resolver over a reusable data resolver (`CLIENT-RESOLVER-IDENTITY`)."""
+        lib = self._lib
+        if getattr(lib, "recompute", False):
+            return None
+        cql_text = getattr(lib, "cql", None)
+        name, _ = identity_of(cql_text) if cql_text else identity_of(getattr(lib, "elm", "") or "", elm=True)
+        binder = getattr(lib, "binder", None)
+        if not name or getattr(binder, "results", None) is None or not binder.reusable:
+            return None
+        return binder.results, name
+
+    def _exec_reusing(self, spark, results, library: str, targets: List[str], persist_as: Optional[str]) -> dict:
+        """CLIENT-QUERY-REUSE — the durable plan, every planned define's kept result found in one lookup through
+        ``results``, and a temporary view for each define not found, under a prefix of this run's own
+        (`EMIT-SQL-OBJECT-PREFIX`), so a frame from an earlier run keeps reading what it read. Each target's frame reads
+        its kept result's table or its view."""
+        from cql_databricks.resolvers.value_set_digest import complete_fingerprints
+        from cql_databricks.result._durable_plan import PreparedPlan
+        from cql_databricks.result.inline import reuse_plan
+
+        binder = self._lib.binder
+        # RUN-CLIENT-RESULT-IDENTITY: no object prefix, which would change the emitted SQL and so every fingerprint.
+        request = bound_request(self._lib, replace(_request(self._lib, durable=True), object_prefix=None),
+                                durable=True)
+        plan = PreparedPlan(complete_fingerprints(self._lib.provider.compile_pipeline(request),
+                                                  binder.last.terminology_tables, binder.run))
+        reuse = reuse_plan(plan, results, f"cql_{uuid.uuid4().hex[:12]}", library=library, targets=tuple(targets))
+        for _, sql in reuse.statements:
+            spark.sql(sql)
+        for define in targets:
+            if define in reuse.reused:
+                log.info("%s: read from the kept result %s", define, reuse.relations[define])
+        return {t: _select_relation(spark, reuse.relations[t] if t in reuse.reused else _quote(reuse.relations[t]),
+                                    persist_as) for t in targets}
+
     def _exec_on(self, engine: str, targets: List[str], *, boundaries, persist_as) -> dict:
-        """EVALUATOR-CLIENT-EVALUATE — run on another engine (`engines.engine_for`). It compiles and keeps its
+        """Run on another engine (`engines.engine_for`). It compiles and keeps its
         own results, so the local compile knobs do not apply to it and are refused rather than ignored."""
         from .engines import EngineRequest, engine_for
 
@@ -200,7 +257,7 @@ class CqlQuery:
             raise ValueError(f"the {engine!r} engine runs CQL text, and this query was bound from ELM; bind it "
                              f"from CQL (a source string, a .cql resource, or library= with CQL on the path)")
         request = EngineRequest(
-            cql=source, targets=list(targets), data_source=getattr(self._lib, "data_source", None),
+            cql=source, targets=list(targets),
             measurement_period=getattr(self._lib, "measurement_period", None),
             recompute=bool(getattr(self._lib, "recompute", False)),
             settings=dict(getattr(self._lib, "settings", None) or {}), spark=self._spark or _active_spark())
@@ -211,22 +268,22 @@ class CqlQuery:
         return {t: frames[t] for t in targets} if targets else frames
 
     def with_recompute(self, recompute: bool = True) -> "CqlQuery":
-        """RUN-RECOMPUTE-OVERRIDE — on an engine that keeps results, run every define this query names even
-        where its stored rows are current (returns a NEW handle). The local engine keeps nothing."""
+        """RUN-RECOMPUTE-OVERRIDE — run every define this query names even where a kept result matches (returns a
+        NEW handle): on an engine that keeps results, its stored rows; on the local engine, the kept results it would
+        read (`CLIENT-QUERY-REUSE`)."""
         from dataclasses import replace
         return CqlQuery(replace(self._lib, recompute=recompute), self._spark)
 
     def _compile(self, target: Optional[str], boundaries: Optional[Iterable[str]]) -> SqlCompileResult:
-        # CLIENT-SESSION-MOUNT: a binder whose choice can change (a new mount) keys the cache by its generation,
-        # so a query compiled before the change recompiles against the new functions.
+        # CLIENT-RESOLVER-IDENTITY: a binder whose choice can change keys the cache by its generation, so a query
+        # compiled before the change recompiles against the new relations.
         generation = getattr(getattr(self._lib, "binder", None), "generation", None)
         key = (target, frozenset(boundaries) if boundaries is not None else None,
                generation() if generation is not None else None)
         cached = self._compile_cache.get(key)
         if cached is None:
-            # CLIENT-EXEC-DISCOVERY: the binder chooses the data, told what this library retrieves.
-            req = bound_request(self._lib, _request(self._lib, target=target, boundaries=boundaries),
-                                lambda: self.describe().retrieve_types)
+            # BIND-CALL-SITE: the binder binds this compile's call sites.
+            req = bound_request(self._lib, _request(self._lib, target=target, boundaries=boundaries))
             cached = self._lib.provider.compile_sql(req)
             self._compile_cache[key] = cached
         return cached
@@ -252,10 +309,8 @@ def _request(lib, *, target: Optional[str] = None, boundaries: Optional[Iterable
         parameters=lib.parameters,
         grain_first=grain_first,
         durable=durable,
-        sources=getattr(lib, "sources", None) or {},
         deps=tuple(getattr(lib, "deps", ()) or ()),
         object_prefix=getattr(lib, "object_prefix", None),
-        terminology_table=getattr(lib, "valueset_table", None),
         udf_schema=getattr(lib, "udf_schema", None),
         session_parameters=getattr(lib, "session_parameters", None) or {})
 
@@ -273,18 +328,19 @@ def _object_for(define: str, result: SqlCompileResult) -> str:
 
     Read from the compiler's PUBLISHED per-define shape (`EMIT-SQL-VALUE-COLUMN`: ``DefineShape.obj``),
     which exists precisely so a consumer never re-derives ``SqlNames.sanitize``. That mapping is
-    deliberately one-way and NOT injective, and it is now prefix-namespaced (`EMIT-SQL-OBJECT-PREFIX`), so
+    deliberately one-way and NOT injective, and it is prefix-namespaced (`EMIT-SQL-OBJECT-PREFIX`), so
     re-deriving it in Python would silently miss both the prefix and any collision the compiler resolved.
 
-    The sanitize fallback applies ONLY when talking to an older compile service that publishes no shapes
-    (`BUILD-CLIENT-COMPAT`); it cannot know about a prefix, so it is used only when the statement names
-    confirm the bare form."""
+    A result without that shape comes from a compiler App older than this client. It is refused, not
+    re-derived (`BUILD-CLIENT-COMPAT`): the App and the client are upgraded together."""
+    if not result.shapes:
+        raise CompileError(
+            "the compile result has no per-define shapes, so it names no object for any define: the compiler "
+            "App is older than this client. Upgrade the compiler App and the cql-databricks client together.")
     shape = result.shape(define)
-    if shape is not None and shape.obj:
-        return shape.obj
-    import re  # pre-shapes service only
-    sanitized = re.sub(r"[^A-Za-z0-9]", "_", define)
-    return sanitized if sanitized in {s.name for s in result.statements} else define
+    if shape is None or not shape.obj:
+        raise CompileError(f"the compile result names no object for define '{define}'")
+    return shape.obj
 
 
 def describe(library: Library, boundaries: Optional[Iterable[str]] = None,
@@ -301,16 +357,15 @@ def compile_pipeline(library: Library, boundaries: Optional[Iterable[str]] = Non
     """Return the library's compile-once :class:`PipelinePlan` (`PIPE-SQL-DAG-REUSE`) via the active
     provider — one dataset recipe per materialized define, cut from a single whole-library lowering. What
     the reference pipeline turns into one ``@dp.materialized_view`` per recipe (no per-node ``cql()``). No
-    Spark session or execution needed (pure compile). The library's binder chooses its data
-    (`CLIENT-EXEC-DISCOVERY`)."""
-    return _pipeline(library, lambda: describe(library).retrieve_types, boundaries=boundaries,
-                     grain_first=grain_first, durable=durable)
+    Spark session or execution needed (pure compile). The library's binder binds its call sites
+    (`BIND-CALL-SITE`)."""
+    return _pipeline(library, boundaries=boundaries, grain_first=grain_first, durable=durable)
 
 
-def _pipeline(library, retrieve_types, *, boundaries, grain_first: bool, durable: bool) -> PipelinePlan:
-    """The one pipeline compile: ``retrieve_types`` is asked only when the library has a binder."""
+def _pipeline(library, *, boundaries, grain_first: bool, durable: bool) -> PipelinePlan:
+    """The one pipeline compile, bound by the library's binder (`BIND-CALL-SITE`)."""
     request = _request(library, boundaries=boundaries, grain_first=grain_first, durable=durable)
-    return library.provider.compile_pipeline(bound_request(library, request, retrieve_types, durable=durable))
+    return library.provider.compile_pipeline(bound_request(library, request, durable=durable))
 
 
 def _lazy_client(*, spark=None, endpoint: Optional[str] = None):
@@ -391,9 +446,17 @@ def _select(spark, target: str, persist_as: Optional[str] = None):
     """A lazy DataFrame over the (identifier-quoted) ``target`` object, so a define name with spaces reads
     correctly. ``persist_as`` (`BUILD-META`) additionally materializes it into a managed table
     ``CREATE TABLE <persist_as> AS SELECT * FROM <target>`` (dotted, each part quoted) and returns that."""
-    quoted = "`" + target.replace("`", "``") + "`"
+    return _select_relation(spark, _quote(target), persist_as)
+
+
+def _quote(identifier: str) -> str:
+    return "`" + identifier.replace("`", "``") + "`"
+
+
+def _select_relation(spark, relation: str, persist_as: Optional[str] = None):
+    """:func:`_select` over ``relation``, already quoted: a view's name or a table's three parts."""
     if persist_as is not None:
-        dest = ".".join("`" + p.replace("`", "``") + "`" for p in persist_as.split("."))
-        spark.sql(f"CREATE TABLE {dest} AS SELECT * FROM {quoted}")
+        dest = ".".join(_quote(p) for p in persist_as.split("."))
+        spark.sql(f"CREATE TABLE {dest} AS SELECT * FROM {relation}")
         return spark.table(persist_as)
-    return spark.sql(f"SELECT * FROM {quoted}")
+    return spark.sql(f"SELECT * FROM {relation}")

@@ -1,6 +1,6 @@
 library FhirVsFunction version '1.0.0'
 
-// PHASE-2 (LANG-FUNCTION-TERMINOLOGY): a value set passed as a FUNCTION ARGUMENT carries its
+// LANG-FUNCTION-TERMINOLOGY: a value set passed as a FUNCTION ARGUMENT carries its
 // resolved terminology handle through inlining. The function tests membership of a retrieved
 // Condition's code against its value-set operand; inlining substitutes the operand with the
 // caller's ValueSetRef, then membership lowers as a broadcast semi-join.

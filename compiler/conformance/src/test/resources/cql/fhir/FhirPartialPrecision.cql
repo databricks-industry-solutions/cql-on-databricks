@@ -1,6 +1,6 @@
 library FhirPartialPrecision version '1.0.0'
 
-// PHASE-7 (LANG-INTERVAL, property-based precision hardening): a PARTIAL FHIR date compares at its
+// LANG-INTERVAL, property-based precision hardening: a PARTIAL FHIR date compares at its
 // own coarser precision, read PER ROW from the value (not the element's nominal type). The data
 // discriminates by precision alone: p4's Condition has recordedDate "2023" (YEAR precision), p5's
 // has "2023-06-15" (DAY precision) — the same calendar year. Against a DAY-precision interval the

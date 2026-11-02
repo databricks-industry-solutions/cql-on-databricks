@@ -5,7 +5,7 @@
 #   designer   designer/server/build/app  — cql_databricks_designer/ + the agent + common (COMMON-LIBRARY)
 #              + the built SPA (dist/)
 #   agent      agent/server/build/app     — cql_databricks.agent + common
-# The client (`cql_databricks.compiler`, `.data_bindings`, `.result`) arrives in the client wheel each App
+# The client (`cql_databricks.compiler`, `.data_bindings`, `.resolvers`, `.result`) arrives in the client wheel each App
 # pip-installs (BINDINGS-INTO-CLIENT, RESULT-INTO-CLIENT), so it is not staged as source.
 # The agent and common are staged INTO the payload, not installed by the App from wheels: the agent's server
 # declares cql-databricks-common, which is not on PyPI, so pip in the App cannot resolve it (found on the first
@@ -101,6 +101,12 @@ echo "==> verify the staged payloads parse under Python 3.11 (SVC-PY311-SYNTAX)"
 command -v python3.11 >/dev/null 2>&1 || {
   echo "!!! python3.11 not found — it is required to verify the staged payloads against the"
   echo "    Databricks Apps runtime (SVC-PY311-SYNTAX). Install it: brew install python@3.11"; exit 1; }
+# The client wheel each App installs from the Volume is built from compiler/client/src, so it is checked too: it is
+# imported at startup like the staged source (observed 2026-11-01: a PEP 701 f-string in resolve.py).
+# The bytecode goes to a scratch directory, never the source tree.
+PYTHONPYCACHEPREFIX="$(mktemp -d)" python3.11 -m compileall -q "$here/compiler/client/src/cql_databricks" || {
+  echo "!!! the client wheel's source does not parse under Python 3.11, which is what the Apps run (SVC-PY311-SYNTAX)."
+  exit 1; }
 for o in "$out_designer" "$out_agent"; do
   python3.11 -m compileall -q "$o"/cql_databricks_* "$o"/cql_databricks || {
     echo "!!! the staged source in $o does not parse under Python 3.11, which is what the App runs."
@@ -118,7 +124,7 @@ if [ -n "$CQL_APP_VERSION" ] && [ -n "$(git -C "$here" status --porcelain 2>/dev
 fi
 export CQL_APP_VERSION
 
-# Substitute placeholder env vars into the STAGED app.yaml (PIPE-DEPLOY-CATALOG-VARS). deploy.sh exports
+# Substitute placeholder env vars into the STAGED app.yaml. deploy.sh exports
 # BUNDLE_VAR_* before calling
 # this script; a var it leaves unset has its env entry DROPPED from the staged descriptor
 # (PIPE-DEPLOY-NO-PLACEHOLDER-ENV) so config.py's own fallback chain is what applies.
@@ -127,16 +133,13 @@ python3 -c '
 import os, re, sys
 p = sys.argv[1]
 s = open(p).read()
-# Catalog + warehouse (PIPE-DEPLOY-CATALOG-VARS) — sourced from BUNDLE_VAR_* exports.
+# Catalog + warehouse — sourced from BUNDLE_VAR_* exports.
 mapping = {
     "__UC_CATALOG__": os.environ.get("BUNDLE_VAR_uc_catalog", ""),
     "__CQL_RUNTIME_CATALOG__": os.environ.get("BUNDLE_VAR_uc_catalog", ""),
-    "__CQL_DESIGNER_RESULTS_CATALOG__": os.environ.get("BUNDLE_VAR_designer_results_catalog", ""),
     # APP-RUN-LOG — the catalog of the shared `designer` schema, and the build the log records.
     "__CQL_DESIGNER_CATALOG__": os.environ.get("BUNDLE_VAR_designer_catalog", ""),
     "__CQL_APP_VERSION__": os.environ.get("CQL_APP_VERSION", ""),
-    # CLIENT-DISCOVERY-SCOPE — where the App discovers data sources, knowledge and terminology.
-    "__CQL_DATABRICKS_CATALOG_SCOPES__": os.environ.get("BUNDLE_VAR_catalog_scopes", ""),
     "__WAREHOUSE_ID__": os.environ.get("BUNDLE_VAR_warehouse_id", ""),
     # APP-ASSISTANT — a NAME, not a resource binding: the FM call runs as the signed-in user
     # (SEC-OBO), so there is no App-side grant for a `valueFrom` to keep in step with.
@@ -149,9 +152,9 @@ for placeholder, val in mapping.items():
         s = s.replace(placeholder, val)
 # PIPE-DEPLOY-NO-PLACEHOLDER-ENV — drop every env entry whose value is STILL a placeholder. An
 # unsubstituted placeholder means the deploy had no value for that var, and the descriptor must then
-# say nothing about it: shipping `value: "__CQL_DESIGNER_RESULTS_CATALOG__"` sets the var to that literal
+# say nothing about it: shipping `value: "__CQL_RUNTIME_CATALOG__"` sets the var to that literal
 # string, which is truthy, so config.py never reaches its fallback and the app queries a catalog
-# named __cql_designer_results_catalog__. Absent is the only encoding of "not configured" the app can read.
+# named __cql_runtime_catalog__. Absent is the only encoding of "not configured" the app can read.
 name_re = re.compile("^  - name: \"[A-Z_0-9]+\"$")
 placeholder_re = re.compile("^    value: \"__[A-Z_0-9]+__\"$")
 lines, kept, dropped, i = s.split("\n"), [], [], 0
@@ -184,7 +187,7 @@ if dropped:
     print("==> " + p + ": dropped unconfigured env vars " + ", ".join(dropped) + " (config.py defaults apply)")
 ' "$y"
 done
-echo "==> app.yaml catalog vars: UC_CATALOG=${BUNDLE_VAR_uc_catalog:-<dropped>} CQL_DESIGNER_RESULTS_CATALOG=${BUNDLE_VAR_designer_results_catalog:-<dropped>} WAREHOUSE_ID=${BUNDLE_VAR_warehouse_id:-<dropped>}"
+echo "==> app.yaml catalog vars: UC_CATALOG=${BUNDLE_VAR_uc_catalog:-<dropped>} WAREHOUSE_ID=${BUNDLE_VAR_warehouse_id:-<dropped>}"
 
 # SVC-PACKAGING — bake the runtime Volume path into the staged requirements.txt, so pip installs the
 # cql-databricks wheel from UC. A Databricks App cannot install it any other way: the package is not on

@@ -1,7 +1,7 @@
 /*
 @description: Adults 18 to 75 with diabetes whose most recent HbA1c in the measurement period is above 9%, has
   no result, or who had no HbA1c test in the period.
-@intent: An example inverse proportion measure, written for this repository, in the shape CMS uses for FHIR quality
+@intent: An example inverse proportion measure, written for this repository, in the shape published FHIR quality measures use
   measures. A missing test counts against the patient, so the numerator is the gap in care.
 @scope: QI-Core 6.0.0. A diabetes diagnosis that overlaps the measurement period, and a qualifying outpatient
   visit in the period.

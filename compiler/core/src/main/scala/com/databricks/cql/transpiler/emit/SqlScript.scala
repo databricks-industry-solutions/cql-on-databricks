@@ -27,12 +27,4 @@ object SqlStmt {
     * that cannot REPLACE-TABLE-AS-SELECT. */
   final case class CacheTable(name: String, rel: SqlRel) extends SqlStmt
 
-  /** `CREATE OR REPLACE TEMPORARY FUNCTION <name>(<p> <ty>, …) RETURNS <ret> RETURN <body>` — a SQL-body
-    * SCALAR function (EMIT-SQL-TEMPORAL-UDF). Emitted at the HEAD of a script (before the views that call
-    * it) to give the partial-precision date towers a readable name. It is a SQL expression function, so
-    * Catalyst INLINES the `body` into each caller's plan at analysis time — the analyzed plan (and thus
-    * results / constant-folding) is unchanged; only the emitted SQL text is smaller. `params` are the
-    * `(name, sqlType)` signature; `body` references each parameter by [[SqlExpr.Col]] of its name. */
-  final case class CreateFunction(name: String, params: Seq[(String, String)], returns: String,
-                                  body: SqlExpr) extends SqlStmt
 }

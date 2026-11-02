@@ -61,7 +61,7 @@ final class MaterializePolicySpec extends AnyFunSuite {
         "the policy gate must run the semantic classifier, not a forced materialize mode")
 
       val optimized = Optimize.run(build(m), cfg)
-      val lowered = SqlFrameLowering.lower(optimized, SqlEvalEnv(Context.Patient, cfg, terminology = true))
+      val lowered = SqlFrameLowering.lower(optimized, SqlEvalEnv(Context.Patient, cfg).describing)
       val bodies = optimized.statements.collect { case d: ExpressionDef => d.name -> d.expression }.toMap
       val staged = lowered.materializedDefines
 
@@ -168,7 +168,7 @@ final class MaterializePolicySpec extends AnyFunSuite {
       val lib = build(m)
       val cfg = config(m.library)
       val catalog = RetrieveCatalog.analyze(Optimize.run(lib, cfg))
-      val g = LibraryDescribe.describe(lib, Context.Patient, hasTerminology = true,
+      val g = LibraryDescribe.describe(lib, Context.Patient,
         overrides = Map.empty, grainFirst = cfg.grainFirst, terminologyVersion = None)
       assert(catalog.retrieves.nonEmpty, "a measure issues scans")
       assert(catalog.valueSets.map(_.id).forall(_.startsWith("http")), "coverage is keyed by canonical URL")

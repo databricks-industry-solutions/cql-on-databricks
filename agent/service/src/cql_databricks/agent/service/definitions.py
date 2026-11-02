@@ -10,7 +10,7 @@ a keyword filter here would be a second, worse matcher in front of the one that 
 **THE CQL IS THE DEFINITION.** ``get_definition`` returns the source as written, so an explanation is of
 the logic that runs (`APP-CQL-AUTHORITATIVE`) and the user can check it (`AGENT-CQL-REVIEW`).
 
-Collaborators are injected, as in ``data.py``: the corpus of tagged knowledge, and a terminology reader.
+Collaborators are injected, as in ``data.py``: the environment's knowledge corpus, and a terminology reader.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from cql_databricks.compiler.location import Location
 from cql_databricks.data_bindings import Corpus, parse_value_set_declarations
 from cql_databricks.result.insights import parse_scoring
 
-#: Supplies the caller's corpus of tagged knowledge (`CLIENT-DISCOVERY-SCOPE`).
+#: Supplies the corpus of the environment's knowledge (`AGENT-DEFAULT-ENVIRONMENT`).
 CorpusSource = Callable[[], Corpus]
 
 #: ``(code, system or None) -> [(valueset_id, system, code), ...]`` from the terminology view.
@@ -31,7 +31,7 @@ CodeLookup = Callable[[str, str | None], list[tuple[str, str, str]]]
 
 
 def list_definitions(*, corpus: CorpusSource) -> list[dict[str, Any]]:
-    """Every library in the caller's knowledge scopes: measures first, then helper libraries."""
+    """AGENT-DEFINITION-DISCOVERY: every library in the environment's knowledge, measures first."""
     entries = []
     for lib in corpus().libraries:
         entry: dict[str, Any] = {"library": lib.name, "version": lib.version, "kind": lib.kind,

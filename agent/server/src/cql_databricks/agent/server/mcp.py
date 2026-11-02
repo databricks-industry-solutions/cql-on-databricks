@@ -14,8 +14,9 @@ rather than by an MCP-level scheme of our own. The kit lists both ``mcp`` and ``
 on ``fastmcp`` alone, which brings the official ``mcp`` SDK with it — two pins that must stay
 mutually compatible is a version puzzle with no upside.
 
-**Collaborators are injected** (`create_mcp`): caller-owned SQL, complete-selection readers,
-source discovery and contributed tools. No latest-output discovery or change-log lookup.
+**Collaborators are injected** (`create_mcp`): caller-owned SQL, complete-selection readers, the research
+collaborators and contributed tools. No latest-output discovery or change-log lookup. Every tool runs in one
+environment, which the wiring picks (`AGENT-DEFAULT-ENVIRONMENT`); no tool takes one as an argument.
 """
 from __future__ import annotations
 
@@ -59,7 +60,6 @@ class Research:
 def create_mcp(*, warehouse: data.Warehouse,
                reference_for: ReferenceLookup,
                computed_for: data.ComputedLookup,
-               data_sources: data.DataSourceLister,
                research: Research,
                contributed: ToolRegistry | None = None) -> FastMCP:
     """The CQL on Databricks MCP server: the data tools over saved results, the research tools (definitions,
@@ -89,20 +89,6 @@ def create_mcp(*, warehouse: data.Warehouse,
         mcp.tool(fn)
 
     @mcp.tool
-    def list_data_sources() -> list[dict[str, Any]]:
-        """The data this measure can be run against — and where every `data_source_id` comes from.
-
-        Result tools require an explicit resultSet locator from Designer or a publishing Job.
-        This source list does not discover completed calculations or grant access to them.
-
-        Each entry carries what the registration recorded about the DATA — whose records, what period,
-        whether it is real or fabricated — so it is also how you tell a synthetic development source
-        from a live one before quoting a figure at somebody. Source changes are not tracked; use an
-        explicit recompute when source data or terminology contents change.
-        """
-        return data.list_data_sources(lister=data_sources)
-
-    @mcp.tool
     def list_tables(result_set: dict) -> list[str]:
         """Compiler-issued output names in one complete result selection. Pass a resultSet locator
         returned by Designer or a publishing Job: destination, session_id and selection_id.
@@ -110,13 +96,13 @@ def create_mcp(*, warehouse: data.Warehouse,
         return data.list_tables(computed_for, result_set)
 
     def output_address(reference):
-        # RUN-CLIENT-RESULT-IDENTITY: the data source is the calculation request's, not the result's identity.
+        # CLIENT-ENVIRONMENT: the environment is the calculation request's, not the result's identity.
         origin = reference.origin
         request = reference.results.request or {}
-        if "data_source" not in request:
-            raise ValueError("the result selection does not name its data source; reopen it from its "
+        if "environment" not in request:
+            raise ValueError("the result selection does not name its environment; reopen it from its "
                              "calculation request")
-        return NodeAddress(origin["library"], origin["version"], origin["define"], request["data_source"])
+        return NodeAddress(origin["library"], origin["version"], origin["define"], request["environment"])
 
     @mcp.tool
     def get_output(result_set: dict, define: str) -> dict[str, Any]:
@@ -129,8 +115,8 @@ def create_mcp(*, warehouse: data.Warehouse,
 
     @mcp.tool
     def query_data(sql: str) -> list[list[Any]]:
-        """Run ONE read against the lakehouse — over a handle from `get_output`, or over a source's
-        own tables.
+        """Run ONE read against the lakehouse — over a handle from `get_output`, or over the data's own
+        views.
 
         This is how you actually answer a question: counts, breakdowns, demographic cuts,
         comparisons across two handles. Reads only — a single statement beginning with SELECT or
@@ -155,7 +141,7 @@ def create_mcp(*, warehouse: data.Warehouse,
 
     @mcp.tool
     def list_definitions() -> list[dict[str, Any]]:
-        """Every definition (CQL library) in your knowledge scopes: library, version, kind (measure or
+        """Every definition (CQL library) in the environment's knowledge: library, version, kind (measure or
         library), title and description. Measures come first.
 
         Match the user's words to a title or description yourself, by meaning, then ASK the user which
@@ -165,16 +151,16 @@ def create_mcp(*, warehouse: data.Warehouse,
     @mcp.tool
     def get_definition(library: str, version: str, location: str | None = None) -> dict[str, Any] | None:
         """One definition's CQL exactly as written, with its title, description and, for a measure, its
-        declared scoring. Null when no such library is in scope.
+        declared scoring. Null when no such library is there.
 
         Explain a criterion from this CQL and quote it, so the user can check your reading. This CQL is
-        also the baseline_cql for an experiment. location is where the library is read: store:<catalog>.<schema> or folder:<path>; omit it for tagged knowledge."""
+        also the baseline_cql for an experiment. location is where the library is read: store:<catalog>.<schema> or folder:<path>; omit it for the environment's knowledge."""
         return definitions.get_definition(library, version, corpus=research.corpus, location=location,
                                           files=research.files() if location else None)
 
     @mcp.tool
     def list_value_sets() -> list[dict[str, Any]]:
-        """Every value set the definitions in scope declare: its URL, the names authors declared it
+        """Every value set the environment's definitions declare: its URL, the names authors declared it
         under, and the libraries (name|version) that use it. Match a clinical concept to the names
         yourself, by meaning. Value sets carry no other title."""
         return definitions.list_value_sets(corpus=research.corpus)
@@ -189,16 +175,16 @@ def create_mcp(*, warehouse: data.Warehouse,
     # -- Saved results (AGENT-SAVED-RESULTS) ------------------------------------------------------
 
     @mcp.tool
-    def find_results(library: str, version: str, data_source: str,
+    def find_results(library: str, version: str,
                      period_start: str | None = None, period_end: str | None = None,
                      location: str | None = None) -> dict[str, Any]:
-        """Whether a calculation of exactly this definition, data source and measurement period was
-        already saved: in your private results, or in a published result schema. NEVER computes.
+        """Whether you already saved a calculation of exactly this definition and measurement period, over
+        the data you are working in: among your draft results, then your published ones. NEVER computes.
 
         When found, it says when it was computed (computedAt) and returns a resultSet locator. Tell the
         user when it was computed and ask whether to reuse it. A miss is found=false with a reason.
-        The period defaults to the current calendar year; dates are YYYY-MM-DD. location is where the library is read: store:<catalog>.<schema> or folder:<path>; omit it for tagged knowledge."""
-        return saved.find_results(library, version, data_source, (period_start, period_end), env=research.saved(),
+        The period defaults to the current calendar year; dates are YYYY-MM-DD. location is where the library is read: store:<catalog>.<schema> or folder:<path>; omit it for the environment's knowledge."""
+        return saved.find_results(library, version, (period_start, period_end), env=research.saved(),
                                   location=location)
 
     @mcp.tool
@@ -216,29 +202,29 @@ def create_mcp(*, warehouse: data.Warehouse,
 
     @mcp.tool
     def check_cql(cql: str, baseline_cql: str | None = None, location: str | None = None) -> dict[str, Any]:
-        """Translate a whole CQL library, with its includes from tagged knowledge, and report every
+        """Translate a whole CQL library, with its includes from the environment's knowledge, and report every
         diagnostic. Runs nothing. With baseline_cql, also returns a unified diff to show the user
         BEFORE you run the CQL. With a location, includes resolve there first: store:<catalog>.<schema> or
         folder:<path>."""
         return experiments.check_cql(cql, baseline_cql, translate=research.translate, location=location)
 
     @mcp.tool
-    def run_cql(cql: str, data_source: str, period_start: str | None = None, period_end: str | None = None,
+    def run_cql(cql: str, period_start: str | None = None, period_end: str | None = None,
                 scoring: str | None = None, defines: list[str] | None = None,
                 baseline_cql: str | None = None, location: str | None = None) -> dict[str, Any]:
-        """Run a whole CQL library inline against a data source, and save nothing.
+        """Run a whole CQL library inline over the data you are working in, and save nothing.
 
         Returns each define's subjects counted as written (the populations by default, or the defines
         you name), the score when a scoring is declared or passed, the exact CQL that ran, and its diff
         against baseline_cql when given. provenance=experiment: never present this as the measure's
         official result. Show the user the CQL, or offer to, before running CQL you wrote. With a location,
         includes resolve there first."""
-        return experiments.run_cql(cql, data_source, (period_start, period_end), scoring=scoring, defines=defines,
+        return experiments.run_cql(cql, (period_start, period_end), scoring=scoring, defines=defines,
                                    inline=research.inline, scoring_for=research.scoring_for,
                                    baseline_cql=baseline_cql, location=location)
 
     @mcp.tool
-    def compare_cql(baseline_cql: str, cql: str, data_source: str, period_start: str | None = None,
+    def compare_cql(baseline_cql: str, cql: str, period_start: str | None = None,
                     period_end: str | None = None, scoring: str | None = None,
                     defines: list[str] | None = None, location: str | None = None) -> dict[str, Any]:
         """Run the original and the edited library inline, both from the data as it is now, and compare
@@ -248,7 +234,7 @@ def create_mcp(*, warehouse: data.Warehouse,
         after with how many subjects entered and left. Every difference comes from the edit alone.
         provenance=experiment. Review the edit with the user before calling this. With a location, includes
         resolve there first."""
-        return experiments.compare_cql(baseline_cql, cql, data_source, (period_start, period_end), scoring=scoring,
+        return experiments.compare_cql(baseline_cql, cql, (period_start, period_end), scoring=scoring,
                                        defines=defines, inline=research.inline, scoring_for=research.scoring_for,
                                        location=location)
 

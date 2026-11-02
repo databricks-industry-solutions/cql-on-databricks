@@ -7,8 +7,8 @@ import org.scalatestplus.junit.JUnitRunner
 
 import java.io.File
 
-/** PHASE-0 exit: "the harness can run a trivial measure through the reference and store
-  * expected results" (CONF-GROUND-TRUTH). The reference is the maintained Java CQL engine
+/** The harness can run a trivial measure through the reference and store expected results
+  * (CONF-GROUND-TRUTH). The reference is the maintained Java CQL engine
   * (engine-jvm), run in-process — no Node. The same authored CQL feeds both the engine's
   * Load (via generated ELM) and this reference (via the same cqframework translator), so
   * neither side can diverge (TECH-ELM-INPUT).

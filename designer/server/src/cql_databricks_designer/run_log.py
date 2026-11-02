@@ -31,7 +31,7 @@ STEPS = "run_steps"
 #: The one definition of each table's columns, in order: the deploy's DDL and the App's inserts read it.
 RUN_COLUMNS: tuple[tuple[str, str], ...] = (
     ("run_id", "STRING"), ("user", "STRING"), ("library", "STRING"), ("version", "STRING"),
-    ("data_source", "STRING"), ("period_start", "DATE"), ("period_end", "DATE"), ("warehouse_id", "STRING"),
+    ("environment", "STRING"), ("period_start", "DATE"), ("period_end", "DATE"), ("warehouse_id", "STRING"),
     ("trigger", "STRING"), ("mode", "STRING"), ("started_at", "TIMESTAMP"), ("ended_at", "TIMESTAMP"),
     ("duration_ms", "BIGINT"), ("compile_ms", "BIGINT"), ("defines_computed", "INT"), ("defines_reused", "INT"),
     ("status", "STRING"), ("error", "STRING"), ("app_version", "STRING"),
@@ -99,10 +99,10 @@ class RunRecorder:
     writes run on other threads at the same time, so "the last statement" would not be the step's.
     """
 
-    def __init__(self, *, context: RunContext, data_source: str | None, period: tuple[str | None, str | None],
+    def __init__(self, *, context: RunContext, environment: str | None, period: tuple[str | None, str | None],
                  trigger: str, mode: str, clock: Callable[[], datetime] = _now) -> None:
         self.run_id = str(uuid4())
-        self._context, self._data_source, self._period = context, data_source, period
+        self._context, self._environment, self._period = context, environment, period
         self._trigger, self._mode, self._clock = trigger, mode, clock
         self._started = clock()
         self._library: str | None = None
@@ -119,8 +119,11 @@ class RunRecorder:
     def step(self, step: StepRecord) -> None:
         self._steps.append(step)
 
-    def compiled(self, library: str, version: str, started: datetime) -> None:
+    def compiled(self, library: str, version: str, started: datetime, environment: str | None = None) -> None:
+        """The compiled library, and the environment it was compiled in (`DOC-ENVIRONMENT-PICKER`)."""
         self._library, self._version = library, version
+        if environment is not None:
+            self._environment = environment
         self._compile_ms = _ms(started, self._clock())
 
     def finish(self, error: str | None) -> RunLogEntry:
@@ -130,7 +133,7 @@ class RunRecorder:
             statements = dict(self._statements)
         done = [s for s in self._steps if s.error is None]
         run = {"run_id": self.run_id, "user": self._context.user, "library": self._library,
-               "version": self._version, "data_source": self._data_source, "period_start": self._period[0],
+               "version": self._version, "environment": self._environment, "period_start": self._period[0],
                "period_end": self._period[1], "warehouse_id": self._context.warehouse_id,
                "trigger": self._trigger, "mode": self._mode, "started_at": _iso(self._started),
                "ended_at": _iso(ended), "duration_ms": _ms(self._started, ended), "compile_ms": self._compile_ms,

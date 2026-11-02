@@ -34,7 +34,7 @@ from agent.server.tests.research_fixture import RESEARCH_TOOLS, fake_research
 #: The five that answer questions ABOUT a measure. This set is the one that must not grow
 #: (`SVC-MCP-TOOLS`): `get_output` is the primitive precisely so that a new question shape is the
 #: agent reasoning over data rather than a sixth entry here.
-DATA_TOOLS = {"get_specification", "list_data_sources", "list_tables", "get_output",
+DATA_TOOLS = {"get_specification", "list_tables", "get_output",
               "query_data", "get_freshness"}
 
 #: The skill pair (`SVC-MCP-SKILLS`). Counted separately because they are a different KIND of thing —
@@ -43,14 +43,6 @@ DATA_TOOLS = {"get_specification", "list_data_sources", "list_tables", "get_outp
 SKILL_TOOLS = {"list_skills", "get_skill"}
 
 EXPECTED_TOOLS = DATA_TOOLS | RESEARCH_TOOLS | SKILL_TOOLS
-
-
-#: A registered Data Source, as `list_data_sources` reads one. A `SimpleNamespace` rather than the real
-#: dataclass because the tool touches four attributes and the seam exists precisely so a test need not
-#: build a registry (`docs/coding-standards.md`, the storage-seam pattern).
-SOURCE = SimpleNamespace(id="example-patients", name="Example Patients",
-                         description="Fabricated patient data for development",
-                         change_data_log="cat.sch.change_log")
 
 
 def _contributed() -> ToolRegistry:
@@ -72,7 +64,6 @@ def server():
     return create_mcp(
         warehouse=lambda sql: None,
         reference_for=lambda address: None, computed_for=lambda *scope: None,
-        data_sources=lambda: [SOURCE],
         research=fake_research(),
         contributed=_contributed(),
     )
@@ -84,7 +75,7 @@ class TestContributedTools:
     def test_without_a_contribution_the_specification_tool_is_absent(self):
         bare = create_mcp(warehouse=lambda sql: None,
                           reference_for=lambda *args: None, computed_for=lambda *scope: [],
-                          data_sources=lambda: [], research=fake_research())
+                          research=fake_research())
         assert "get_specification" not in _tools(bare)
 
     def test_a_contributed_tool_leads_the_list(self, server):
@@ -115,8 +106,8 @@ class TestPublishedSurface:
         assert set(_tools(server)) == EXPECTED_TOOLS
 
     def test_the_question_answering_surface_is_still_five(self, server):
-        # The load-bearing half. `SVC-MCP-SKILLS` added two tools that answer nothing about a
-        # measure, and the research tools (SVC-MCP-TOOLS, amended 2026-10-29) are a named group of
+        # The load-bearing half. `SVC-MCP-SKILLS` adds two tools that answer nothing about a
+        # measure, and the research tools (SVC-MCP-TOOLS) are a named group of
         # their own; neither may let a new question shape arrive among the data tools.
         assert set(_tools(server)) - SKILL_TOOLS - RESEARCH_TOOLS == DATA_TOOLS
 
@@ -198,12 +189,12 @@ class TestSkillSurface:
         instructions = server.instructions.lower()
         assert "your derivation" in instructions          # SVC-ANSWER-PROVENANCE
         assert "one complete selection" in instructions  # RUN-CLIENT-RESULT-SETS
-        assert "evidence, not a verdict" in instructions  # SVC-TOOL-FRESHNESS
+        assert "evidence, not a verdict" in instructions
         assert "nothing you do is saved" in instructions  # SVC-MCP-TOOLS, KNOWLEDGE-FAIL-LOUD
         assert "review cql with the user" in instructions # AGENT-CQL-REVIEW
 
     def test_the_readonly_rule_bounds_the_STORE_and_not_the_subject(self, server):
-        """SPEC-EXPLAIN-AGAIN — re-explaining is generation, and generation is what this is for.
+        """Re-explaining is generation, and generation is what this is for.
 
         The read-only rule bounds the STORE, not the SUBJECT — a distinction that matters because
         the Designer's Explain control sends re-explanation requests. The contract is asserted

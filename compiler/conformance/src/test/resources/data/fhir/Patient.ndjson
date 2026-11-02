@@ -1,5 +1,5 @@
-{"resourceType":"Patient","id":"p1","gender":"female","birthDate":"1980-05-01"}
-{"resourceType":"Patient","id":"p2","gender":"male","birthDate":"1975-11-20"}
+{"resourceType":"Patient","id":"p1","gender":"female","birthDate":"1980-05-01","extension":[{"url":"http://example.org/fhir/StructureDefinition/race","extension":[{"url":"category","valueCoding":{"system":"http://example.org/fhir/CodeSystem/race","code":"R1"}},{"url":"category","valueCoding":{"system":"http://example.org/fhir/CodeSystem/race","code":"R2"}},{"url":"text","valueString":"Example race R1 and R2"}]}],"identifier":[{"system":"http://example.org/fhir/mrn","value":"MRN-1","assigner":{"display":"Example Hospital","identifier":{"value":"ORG-1"}}}]}
+{"resourceType":"Patient","id":"p2","gender":"male","birthDate":"1975-11-20","extension":[{"url":"http://example.org/fhir/StructureDefinition/race","extension":[{"url":"category","valueCoding":{"system":"http://example.org/fhir/CodeSystem/race","code":"R3"}}]},{"url":"http://example.org/fhir/StructureDefinition/other","valueString":"not race"}]}
 {"resourceType":"Patient","id":"p3","gender":"female","birthDate":"1990-02-14"}
 {"resourceType":"Patient","id":"p4","gender":"male"}
 {"resourceType":"Patient","id":"p5","gender":"female"}

@@ -46,10 +46,9 @@ def test_config_applies_cleanly_and_yields_an_enabled_info_logger() -> None:
     """
     logging.config.dictConfig(log_config())
     # ONE ASSERTION PER PACKAGE, and that is the point of the loop rather than a single spot-check.
-    # Module loggers are named from `__name__`, so SPLIT-PACKAGES gave the code four logging roots where
-    # it had one. A config naming only the old root leaves the other three at the default WARNING: every
-    # INFO record goes nowhere and nothing reports that it did. This caught exactly that regression when
-    # `results.query` moved to another package, and it is what will catch the next package.
+    # Module loggers are named from `__name__`, so the code has four logging roots. A config naming only one
+    # root leaves the other three at the default WARNING: every INFO record goes nowhere and nothing reports that it did. This catches a logger left out of the list,
+    # including one for a module that moves to another package.
     for package in ("cql_databricks_designer", "cql_databricks.result",
                     "cql_databricks.data_bindings", "cql_databricks_common", "cql_databricks.agent"):
         assert logging.getLogger(f"{package}.some.module").isEnabledFor(logging.INFO), \

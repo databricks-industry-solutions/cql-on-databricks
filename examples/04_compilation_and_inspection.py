@@ -10,7 +10,7 @@
 # MAGIC
 # MAGIC All three are read off **one measure, the example measure notebook 3 runs** — and no row of clinical data
 # MAGIC is read anywhere in this notebook. The physical plan needs the data *contract* rather than the data, so
-# MAGIC the retrieve functions are mounted as **typed stubs** and the plan is printed, never run.
+# MAGIC each retrieve reads a **typed stub** and the plan is printed, never run.
 # MAGIC
 # MAGIC **Runs on serverless — no cluster to attach.** Just **Run All**.
 
@@ -123,34 +123,31 @@ print(json.dumps(encounters["expression"], indent=2)[:600], "...")
 # MAGIC %md
 # MAGIC ## 3. The Spark physical plan (`explain`) — of this measure
 # MAGIC Under all of it, the compiled SQL is ordinary Spark, and the measure's OWN plan is readable without
-# MAGIC data: a plan needs the data **contract**, not the rows. So the retrieve functions are mounted as
-# MAGIC **typed stubs** — the same `retrieve_<Type>(<8 args>)` contract notebook 3 mounts, over the struct
-# MAGIC the compiler's FHIR model defines (`client.resource_schema(type)`), with a single all-null row behind
-# MAGIC each one instead of a clinical record.
+# MAGIC data: a plan needs the data **contract**, not the rows. So each retrieve reads a **typed stub**: a
+# MAGIC DataFrame on the contract every data view returns, `(__subject_id, __resource)`, its `__resource` the struct
+# MAGIC the compiler's FHIR model defines (`client.resource_schema(type)`), with a single all-null row instead of a
+# MAGIC clinical record. A `DataFrameDataResolver` hands them to a second client; value sets still come from the
+# MAGIC environment's `knowledge.valueset` view.
 # MAGIC
 # MAGIC One row rather than none, because an empty relation is something the optimizer is entitled to fold
 # MAGIC away — the plan would collapse to nothing and prove nothing. The row is a **plan placeholder** and is
 # MAGIC never read: `explain` plans, it does not execute.
 # MAGIC
-# MAGIC **Expected output:** the stubbed functions for each type the measure reads — the hypertension measure reads
-# MAGIC Patient, Encounter, Condition (for hypertension and other diagnoses), Observation (for blood pressure readings),
-# MAGIC and Procedure (for dialysis/transplant).
+# MAGIC **Expected output:** the stubbed types — the hypertension measure reads Patient, Encounter, Condition (for
+# MAGIC hypertension and other diagnoses), Observation (for blood pressure readings), and Procedure (for
+# MAGIC dialysis/transplant).
 # MAGIC ```
-# MAGIC Condition    -> retrieve_Condition__cqlmount
-# MAGIC Encounter    -> retrieve_Encounter__cqlmount
-# MAGIC Observation  -> retrieve_Observation__cqlmount
-# MAGIC Patient      -> retrieve_Patient__cqlmount
-# MAGIC Procedure    -> retrieve_Procedure__cqlmount
+# MAGIC stubs: ['Condition', 'Coverage', 'Encounter', 'Observation', 'Patient', 'Procedure']
 # MAGIC ```
 
 # COMMAND ----------
 from pyspark.sql.types import StringType, StructField, StructType
 
-from cql_databricks.compiler import mount
+from cql_databricks.resolvers import DataFrameDataResolver
 
 
 def stub(fhir_type):
-    """The (__subject_id, __resource) mount contract with a plan placeholder behind it: one all-null row
+    """The (__subject_id, __resource) contract with a plan placeholder behind it: one all-null row
     carrying the compiler's struct for the type. Read from the model, never inferred: there are no rows to
     infer a schema from, which is the sharpest version of why the contract is written down."""
     contract = StructType([StructField("__subject_id", StringType()),
@@ -158,11 +155,9 @@ def stub(fhir_type):
     return spark.createDataFrame([(None, None)], contract)
 
 
-# The example measure filters on value sets, so no expansion table is mounted for this plan — the compile
-# produces the complete closure regardless, reading the stub schemas.
-mounted = mount(spark, {t: stub(t) for t in ("Condition", "Coverage", "Encounter", "Observation", "Patient", "Procedure")})
-for t, fn in sorted(mounted.items()):
-    print(f"{t:12} -> {fn}")
+STUBS = {t: stub(t) for t in ("Condition", "Coverage", "Encounter", "Observation", "Patient", "Procedure")}
+planned = connect(spark, library_path=str(MEASURES), data=DataFrameDataResolver(STUBS, name="stubs"))
+print("stubs:", sorted(STUBS))
 
 # COMMAND ----------
 # MAGIC %md
@@ -180,7 +175,8 @@ for t, fn in sorted(mounted.items()):
 # MAGIC and nothing your existing Spark tooling cannot read.
 
 # COMMAND ----------
-pops = q.exec()   # no targets -> the populations, one lazy frame each
+planned_q = planned.cql(library="HypertensionBPControl").with_measurement_period("2026-01-01", "2026-12-31")
+pops = planned_q.exec()   # no targets -> the populations, one lazy frame each
 pops["Initial Population"].explain(mode="formatted")
 
 # COMMAND ----------

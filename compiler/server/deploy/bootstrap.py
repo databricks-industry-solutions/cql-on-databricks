@@ -6,13 +6,13 @@ OWN jars (compiler / -service, the accelerator jar) are all < 10 MB, so they shi
 source alongside every other small dependency. Only THREE jars exceed 10 MB — and all three are PUBLIC
 Maven artifacts (icu4j, spark-connect-client-jvm, scala-compiler). Plus a portable Temurin JRE (linux-x64).
 
-Where those oversized artifacts come from (SVC-PACKAGING, REVISED): the deploy stages them into the
-runtime UC Volume (`scripts/deploy/deploy.sh`), and this launcher pulls them FROM THE VOLUME via the Databricks
-SDK — authenticated as the ambient App identity, authorized by the App's `uc_securable` READ_VOLUME grant
-(databricks.yml). That removes the public-internet egress dependency at cold start. If the volume path is
-unset or a read fails (e.g. local run, missing grant), it FALLS BACK to the public URLs — same behavior as
-before — so the App always boots. Then `exec` the JVM with a classpath of the app-source lib/ PLUS the
-fetched jars. Spark-free at runtime (EXEC-SQL-BACKEND): compiles CQL/ELM -> SQL text, holds no SparkSession.
+Where those oversized artifacts come from (SVC-PACKAGING): the deploy stages them into the runtime UC Volume
+(`scripts/deploy/deploy.sh`), and this launcher reads them FROM THE VOLUME via the Databricks SDK — authenticated
+as the ambient App identity, authorized by the App's `uc_securable` READ_VOLUME grant (databricks.yml). That
+removes the public-internet egress dependency at cold start. When the volume is configured it is the only
+source: a failed read stops the boot with the reason. Only an App with no volume configured (a local run) reads
+the public URLs. Then `exec` the JVM with a classpath of the app-source lib/ PLUS the fetched jars. Spark-free at
+runtime (EXEC-SQL-BACKEND): compiles CQL/ELM -> SQL text, holds no SparkSession.
 
 Keep MAVEN_JARS in sync with the versions installDist actually resolves for sparkVersion=4.1.2 (Spark
 4.1.2 pulls icu4j 77.1 + scala-compiler 2.13.17 transitively). stage-compiler.sh removes exactly these
@@ -66,22 +66,29 @@ def artifact_manifest():
     return items
 
 
+class ArtifactReadError(RuntimeError):
+    """An artifact could not be read from the runtime volume that the App is configured to use."""
+
+
 def _fetch(dest: str, volume_relpath: str, url: str) -> None:
-    """Fetch one artifact to ``dest``: from the runtime volume (via the Databricks SDK) when configured,
-    else from the public ``url``; on ANY volume error, fall back to the public URL so the App still boots."""
-    if ARTIFACT_VOLUME:
-        vpath = f"{ARTIFACT_VOLUME}/{volume_relpath}"
-        try:
-            from databricks.sdk import WorkspaceClient  # lazy: only needed on the volume path
-            print(f"[bootstrap] downloading {volume_relpath} from volume {vpath}", flush=True)
-            resp = WorkspaceClient().files.download(vpath)
-            with open(dest, "wb") as f:
-                shutil.copyfileobj(resp.contents, f)
-            return
-        except Exception as e:  # missing grant / SDK / file — degrade to the public URL, never fatal
-            print(f"[bootstrap] volume read of {vpath} failed ({e!r}); falling back to {url}", flush=True)
-    print(f"[bootstrap] downloading {volume_relpath} from {url}", flush=True)
-    urllib.request.urlretrieve(url, dest)
+    """Fetch one artifact to ``dest``. With a runtime volume configured, the volume (via the Databricks SDK) is
+    the only source, and a failed read raises :class:`ArtifactReadError` so the App does not boot. With no volume
+    configured, the public ``url`` is used (SVC-PACKAGING)."""
+    if not ARTIFACT_VOLUME:
+        print(f"[bootstrap] downloading {volume_relpath} from {url}", flush=True)
+        urllib.request.urlretrieve(url, dest)
+        return
+    vpath = f"{ARTIFACT_VOLUME}/{volume_relpath}"
+    print(f"[bootstrap] downloading {volume_relpath} from volume {vpath}", flush=True)
+    try:
+        from databricks.sdk import WorkspaceClient  # lazy: only needed on the volume path
+        resp = WorkspaceClient().files.download(vpath)
+        with open(dest, "wb") as f:
+            shutil.copyfileobj(resp.contents, f)
+    except Exception as e:
+        raise ArtifactReadError(
+            f"could not read {vpath} from the runtime volume: {e!r}. Check that the App's service principal "
+            f"has READ_VOLUME on the volume (databricks.yml, uc_securable).") from e
 
 
 def ensure_jre() -> str:

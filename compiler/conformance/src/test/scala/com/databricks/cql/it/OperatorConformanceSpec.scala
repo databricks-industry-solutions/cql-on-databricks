@@ -11,7 +11,7 @@ import org.scalatestplus.junit.JUnitRunner
 
 import scala.collection.mutable.ArrayBuffer
 
-/** PHASE-7 Stage 4, Gate-1 execution layer (`CONF-GATE-OPERATOR`): the executable cases of the
+/** Gate-1 execution layer (`CONF-GATE-OPERATOR`): the executable cases of the
   * vendored `cqframework` operator suite, lowered to a Spark Connect frame and EXECUTED, must agree
   * — per operator — with BOTH the maintained Java CQF reference evaluating the same generated CQL
   * (the `CONF-GATE-MEASURE` reference, reused per PROC-DRY) AND the spec's declared `<output>`. Two

@@ -5,10 +5,10 @@
 // holds the app's own toggles. Execution is the reader's second subject after the measure itself,
 // so it belongs in the middle of the bar, not in its margin.
 //
-// Tour and theme are two buttons (`.mw-bar-tools`) on the right. Settings is removed by DESIGNER-ONE-MODULE.
-// No account menu: this app has no identity endpoint. Tour, theme and (formerly) Settings are TOGGLEs
+// Tour and theme are two buttons (`.mw-bar-tools`) on the right. There is no Settings control (DESIGNER-ONE-MODULE).
+// No account menu: this app has no identity endpoint. Tour and theme are TOGGLEs
 // of the app's own state, and a toggle behind a popover cannot show its state. Buttons in the bar
-// say all of them at a glance and answer in one press.
+// say both of them at a glance and answer in one press.
 //
 // This component owns the parts every module shares; the module-specific zones arrive as slots, so there
 // is one bar in the codebase rather than one copy per screen.

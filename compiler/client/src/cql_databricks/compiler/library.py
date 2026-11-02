@@ -6,7 +6,7 @@ the single `BUILD-RESOLVE` precedence: explicit kwarg > ``spark.cqldatabricks.*`
 loud FAIL. The resolved FHIR catalog / value-set table / versions are carried to the compiler as
 `CompileRequest` overrides under the stable keys in ``config`` (the host-injected provider bakes the concrete
 tables). The data a run reads is not a setting: the library's binder chooses it at compile time
-(`CLIENT-EXEC-DISCOVERY`, :mod:`.binding`).
+(:mod:`.binding`).
 
 Spark conf and file reads are lazy so the module imports (and unit-tests) with no Spark present.
 """
@@ -67,7 +67,7 @@ def measurement_period_literal(start: str, end: str, point_type: str = "DateTime
 # The Spark-conf keys read to build a settings map (there is no public "get all by prefix").
 _CONF_KEYS = [
     config.CONF_PROVIDER_KIND, config.CONF_PROVIDER_ENDPOINT, config.CONF_LIBRARY,
-    config.CONF_LIBRARY_SOURCE, config.CONF_FHIR_CATALOG, config.CONF_VALUESET_TABLE,
+    config.CONF_LIBRARY_SOURCE,
     config.CONF_COMPILER_VERSION, config.CONF_TERMINOLOGY_VERSION, config.CONF_CONTEXT,
     config.CONF_DATA_MODEL,
     config.CONF_LIBRARY_PATH, config.CONF_LIBRARY_LAYOUT, config.CONF_LIBRARY_PROVIDER_KIND,
@@ -75,7 +75,7 @@ _CONF_KEYS = [
     config.CONF_AUTH_KIND, config.CONF_AUTH_TOKEN, config.CONF_AUTH_TOKEN_URL,
     config.CONF_AUTH_AUDIENCE, config.CONF_AUTH_SUBJECT_TOKEN, config.CONF_AUTH_SUBJECT_TOKEN_TYPE,
     config.CONF_AUTH_SCOPE,
-    config.CONF_ENGINE, config.CONF_DATA_SOURCE, config.CONF_MEASUREMENT_PERIOD, config.CONF_RECOMPUTE,
+    config.CONF_ENGINE, config.CONF_MEASUREMENT_PERIOD, config.CONF_RECOMPUTE,
 ]
 
 
@@ -93,29 +93,21 @@ class Library:
     overrides: Dict[str, str] = field(default_factory=dict)
     cql: Optional[str] = None
     parameters: Dict[str, str] = field(default_factory=dict)
-    # BIND-MANIFEST: the retrieve binding table carried to the compiler (fhirType -> {function, catalog?}),
-    # naming the SQL UDTF each retrieve lowers to (BIND-RETRIEVE-UDF). Empty → every type is convention-bound.
-    sources: Dict[str, Dict[str, str]] = field(default_factory=dict)
     # BUILD-LIBRARY-PROVIDER / BUILD-COMPILE-LINK: the resolved include CLOSURE shipped with the root, so a
     # multi-library eCQM compiles. Empty for a single self-contained library (the unchanged path).
     deps: Tuple[LibrarySource, ...] = ()
     # EMIT-SQL-OBJECT-PREFIX: the session-object namespace, or None for BARE names (the default).
     object_prefix: Optional[str] = None
-    # BIND-TERMINOLOGY-TABLE: the value-set expansion table FQN, sent in `sources.valuesets.table` where
-    # the service actually reads it. (It is ALSO carried in `overrides` under the stable client↔host key
-    # for a platform host that bakes tables from there — the two consumers read different places.)
-    valueset_table: Optional[str] = None
-    # EMIT-UDF-QUALIFY: schema qualifying emitted `cql_*` UDF calls, sent in `sources.udfs.schema`.
+    # EMIT-UDF-QUALIFY: schema qualifying emitted `cql_*` UDF calls, sent as `runtime.schema`.
     udf_schema: Optional[str] = None
     # EXEC-UDF-LIBRARY: the opaque-UDF catalog JAR to ship to the session. Resolved HERE, through the one
     # `BUILD-RESOLVE` precedence, rather than read out of `overrides` at exec time — `overrides` carries
     # only the five compiler-override keys, so the `spark.cqldatabricks.runtime.udfJar` CONF was silently
     # dropped and only the env var ever worked.
     udf_jar: Optional[str] = None
-    # EVALUATOR-CLIENT-EVALUATE (`DEC-ENGINE-SESSION-OPTIONS`): which engine runs this library, and what the
+    # `DEC-ENGINE-SESSION-OPTIONS`: which engine runs this library, and what the
     # evaluator engine needs, resolved by the same `BUILD-RESOLVE` precedence as every setting above.
     engine: str = config.LOCAL_ENGINE
-    data_source: Optional[str] = None
     #: The raw ``(start, end)`` of the measurement period, as the caller or the session gave it.
     measurement_period: Optional[Tuple[str, str]] = None
     recompute: bool = False
@@ -123,9 +115,9 @@ class Library:
     session_parameters: Dict[str, str] = field(default_factory=dict)
     #: The session's resolved settings, for an engine's own keys (`engines.EngineRequest.settings`).
     settings: Dict[str, str] = field(default_factory=dict)
-    #: CLIENT-EXEC-DISCOVERY — chooses the data each compile binds to (:class:`~.binding.DataBinder`), or
-    #: ``None`` for the bare ``retrieve_<Type>`` convention. Not compared: two bindings of one library are
-    #: the same library.
+    #: CLIENT-RESOLVERS, BIND-CALL-SITE — binds each compile's call sites (:class:`~.resolver_binder.ResolverBinder`), or
+    #: ``None`` for a library that binds nothing, which only CQL that retrieves nothing compiles with. Not compared:
+    #: two bindings of one library are the same library.
     binder: Optional[object] = field(default=None, compare=False)
     #: SVC-NOTEBOOK-SESSION-SCOPE — when this is the session library, the defines of the fragment that bound
     #: it: what ``exec()`` with no targets runs. ``None`` for any other library.
@@ -160,7 +152,7 @@ class Library:
         that NAMES a precision now truncates both operands to it), so a coarse bound is harmless there too.
         """
         bound = self.with_parameter("Measurement Period", measurement_period_literal(start, end))
-        # EVALUATOR-CLIENT-EVALUATE: the evaluator engine takes the raw bounds and applies the declared type.
+        # The evaluator engine takes the raw bounds and applies the declared type.
         return replace(bound, measurement_period=(start, end))
 
     def explain_elm(self) -> str:
@@ -179,16 +171,11 @@ def load_library(resource: Optional[str] = None, *, elm: Optional[str] = None,
                  endpoint: Optional[str] = None,
                  context: Optional[str] = None,
                  data_model: Optional[str] = None,
-                 fhir_catalog: Optional[str] = None,
-                 data_catalog: Optional[str] = None,
-                 valueset_table: Optional[str] = None,
                  udf_schema: Optional[str] = None,
                  library_source: Optional[str] = None,
                  compiler_version: Optional[str] = None,
                  terminology_version: Optional[str] = None,
-                 sources: Optional[Mapping[str, Mapping[str, str]]] = None,
                  engine: Optional[str] = None,
-                 data_source: Optional[str] = None,
                  recompute: Optional[bool] = None,
                  binder=None) -> Library:
     """Resolve a library and every compiler setting by the `BUILD-RESOLVE` precedence.
@@ -208,8 +195,7 @@ def load_library(resource: Optional[str] = None, *, elm: Optional[str] = None,
     identity, but its ``include``s resolve the same way (`SVC-NOTEBOOK-SESSION-SCOPE`). Set it off to send the root
     alone (an under-supplied closure then fails loudly at the service, never silently).
     ``library_provider`` injects a provider directly, bypassing config resolution — the seam a host or a
-    test supplies its own source from. ``binder`` chooses the data each compile binds to
-    (`CLIENT-EXEC-DISCOVERY`)."""
+    test supplies its own source from. ``binder`` binds each compile's call sites (`BIND-CALL-SITE`)."""
     # `library=` names its own body, so it is exclusive. `resource` may still ACCOMPANY an explicit
     # `elm`/`cql` body — there it is a LABEL (it lands on `Library.resource` for provenance), which is a
     # long-standing calling form and stays valid.
@@ -273,11 +259,8 @@ def load_library(resource: Optional[str] = None, *, elm: Optional[str] = None,
     ctx = config.resolve_setting("CQL context", explicit=context, conf=resolved_conf,
                                  conf_key=config.CONF_CONTEXT, env=config.ENV_CONTEXT)
 
-    # `data_catalog` is the preferred, model-neutral name; `fhir_catalog` is the deprecated alias.
     overrides = _resolve_overrides(
-        resolved_conf, data_model=data_model,
-        fhir_catalog=fhir_catalog if fhir_catalog is not None else data_catalog,
-        valueset_table=valueset_table, compiler_version=compiler_version,
+        resolved_conf, data_model=data_model, compiler_version=compiler_version,
         terminology_version=terminology_version)
 
     # EMIT-SQL-OBJECT-PREFIX: DEFAULT OFF — unset emits bare object names, the long-standing form. `auto`
@@ -287,7 +270,7 @@ def load_library(resource: Optional[str] = None, *, elm: Optional[str] = None,
     if prefix == "auto":
         prefix = _auto_prefix(root, resource, elm_text, cql)
 
-    # EVALUATOR-CLIENT-EVALUATE, BUILD-CLIENT-SESSION-PARAMETERS — the engine and its session settings.
+    # BUILD-CLIENT-SESSION-PARAMETERS — the engine and its session settings.
     from .engines import parse_flag, parse_period
     engine_name = config.resolve_setting("CQL engine", explicit=engine, conf=resolved_conf,
                                          conf_key=config.CONF_ENGINE, env=config.ENV_ENGINE,
@@ -300,10 +283,7 @@ def load_library(resource: Optional[str] = None, *, elm: Optional[str] = None,
         "recompute", conf=resolved_conf, conf_key=config.CONF_RECOMPUTE, env=config.ENV_RECOMPUTE))
 
     return Library(resource=resource or (library or "<inline>"), elm=elm_text, provider=prov, context=ctx,
-                   overrides=overrides, cql=cql,
-                   sources={t: dict(b) for t, b in (sources or {}).items()},
-                   deps=deps, object_prefix=prefix,
-                   valueset_table=overrides.get(config.OVERRIDE_VALUESET_TABLE),
+                   overrides=overrides, cql=cql, deps=deps, object_prefix=prefix,
                    udf_schema=config.resolve_setting(
                        "UDF schema", explicit=udf_schema, conf=resolved_conf,
                        conf_key=config.CONF_UDF_SCHEMA, env=config.ENV_UDF_SCHEMA),
@@ -311,9 +291,6 @@ def load_library(resource: Optional[str] = None, *, elm: Optional[str] = None,
                        "UDF catalog JAR", conf=resolved_conf,
                        conf_key=config.CONF_UDF_JAR, env=config.ENV_UDF_JAR),
                    engine=engine_name,
-                   data_source=config.resolve_setting(
-                       "data source", explicit=data_source, conf=resolved_conf,
-                       conf_key=config.CONF_DATA_SOURCE, env=config.ENV_DATA_SOURCE),
                    measurement_period=period,
                    recompute=recompute_flag,
                    session_parameters=session_parameters,
@@ -342,11 +319,10 @@ def _auto_prefix(root: Optional[LibrarySource], resource: Optional[str], elm: st
     return f"{name}_{version}" if version else name
 
 
-def _resolve_overrides(conf: Mapping[str, str], *, data_model, fhir_catalog, valueset_table,
-                       compiler_version, terminology_version) -> Dict[str, str]:
+def _resolve_overrides(conf: Mapping[str, str], *, data_model, compiler_version,
+                       terminology_version) -> Dict[str, str]:
     """Resolve the settings CARRIED to the compiler as `CompileRequest.overrides` (the client↔host
-    contract). None has a discovery tier: an unset catalog or value-set table is left to the library's
-    binder (`CLIENT-EXEC-DISCOVERY`), and versions are optional pins. The data model is an explicit knob with a compiled-in ``FHIR`` default
+    contract). Versions are optional pins. The data model is an explicit knob with a compiled-in ``FHIR`` default
     (the engine is FHIR-only today, `ARCH-DATAMODEL-TRAIT` future). Each is carry-only (``required=False``)
     — a data-free library needs none, so an unresolved knob is simply omitted, not a FAIL (a platform
     provider raises at the point of use if it truly needs one)."""
@@ -357,18 +333,6 @@ def _resolve_overrides(conf: Mapping[str, str], *, data_model, fhir_catalog, val
                                    default=config.DEFAULT_DATA_MODEL)
     if model:
         out[config.OVERRIDE_DATA_MODEL] = model
-
-    catalog = config.resolve_setting(
-        "FHIR catalog", explicit=fhir_catalog, conf=conf, conf_key=config.CONF_FHIR_CATALOG,
-        env=config.ENV_FHIR_CATALOG)
-    if catalog:
-        out[config.OVERRIDE_FHIR_CATALOG] = catalog
-
-    valueset = config.resolve_setting(
-        "conformed value-set table", explicit=valueset_table, conf=conf,
-        conf_key=config.CONF_VALUESET_TABLE, env=config.ENV_VALUESET_TABLE)
-    if valueset:
-        out[config.OVERRIDE_VALUESET_TABLE] = valueset
 
     cver = config.resolve_setting("compiler version pin", explicit=compiler_version, conf=conf,
                                   conf_key=config.CONF_COMPILER_VERSION, env=config.ENV_COMPILER_VERSION)

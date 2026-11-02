@@ -1,19 +1,19 @@
 // APP-EXECUTION-PILL — the ONE execution control: a short menu with the run STATUS at its head,
-// DATA SOURCE (a submenu of registry sources), COMPUTE (a submenu of SQL warehouses), and Automatic/Manual
-// update options, topped with one REFRESH button. The trigger shows the dot and caret; the data source,
-// warehouse and update mode are in its tooltip.
-// APP-UPDATE-MODE / APP-COMPUTE-TARGET / DATA-SOURCE-REGISTRY.
+// ENVIRONMENT (a submenu of the environments the user can see), COMPUTE (a submenu of SQL warehouses), and
+// Automatic/Manual update options, topped with one REFRESH button. The trigger shows the dot and caret; the
+// environment, warehouse and update mode are in its tooltip.
+// APP-UPDATE-MODE / APP-COMPUTE-TARGET / DOC-ENVIRONMENT-PICKER.
 //
 // ONE ACT: Automatic covers compute-missing; Refresh is the one explicit act and recomputes everything.
 // Automatic and Manual are two marked options, not a checkbox (unchecked state reads ambiguously).
-// Compute is a real choice: a measure runs as SQL on a warehouse (`RUN-STATEMENT-EXEC`),
+// Compute is a real choice: a measure runs as SQL on a warehouse,
 // and the reader picks which warehouse.
 //
 // The execution PARAMETERS stay in the bar (`ExecParamBar`): they are changed while reading.
 
 import type React from "react";
 import { PillMenu, type PillSection, type PillStatus } from "./PillMenu.tsx";
-import type { DataSourceRecord, WarehouseRecord } from "../wire.ts";
+import type { EnvironmentRecord, WarehouseRecord } from "../wire.ts";
 import {
   AUTOMATIC, EXEC_MODES, execModeInfo, type ExecKind, type ExecMode, type UpdateMode,
 } from "./model.ts";
@@ -22,15 +22,13 @@ function kindStatus(kind: ExecKind): PillStatus {
   return kind === "none" ? "none" : kind === "synthetic" ? "info" : "live";
 }
 
-/** DATA-SOURCE-UC-TAG — every source the pill can select is live. A source is a tagged schema the
- *  compiler has checked, so there is no "not deployed" state left to colour. */
-const SOURCE_STATUS: PillStatus = "live";
+/** DOC-ENVIRONMENT-PICKER — every environment the pill can select is live: a tagged catalog the user can see. */
+const ENVIRONMENT_STATUS: PillStatus = "live";
 
-/** DATA-SOURCE-DESCRIPTION — what this source's DATA is, in the words of its schema's own comment.
- *  Undefined when the source carries no description, which leaves the row as its name alone; there is
- *  no subtitle synthesized from the record's metadata. */
-function sourceBlurb(r: DataSourceRecord): string | undefined {
-  return r.description || undefined;
+/** DOC-ENVIRONMENT-PICKER — what this environment holds, in the words of its catalog's comment, and whether it is
+ *  the default. No subtitle is synthesized from the record's other fields. */
+function environmentBlurb(r: EnvironmentRecord): string | undefined {
+  return [r.default ? "Default" : "", r.description ?? ""].filter(Boolean).join(" · ") || undefined;
 }
 
 /** APP-COMPUTE-TARGET — a warehouse row's subtitle: its state, and whether it is the deployment's. */
@@ -39,9 +37,10 @@ function warehouseBlurb(w: WarehouseRecord, defaultId: string | null): string | 
   return parts.length ? parts.join(" · ") : undefined;
 }
 
-export function ComputeMenu({ mode, running, compiling = false, progress = null, stageBadge, sources = [], selectedSourceId = null,
+export function ComputeMenu({ mode, running, compiling = false, progress = null, stageBadge, environments = [],
+                             environment = null,
                              warehouses = [], defaultWarehouseId = null, warehouseId = null, warehouseError = null,
-                             updateMode, runDisabled = false, onModeChange, onSourceChange, onWarehouseChange,
+                             updateMode, runDisabled = false, onModeChange, onEnvironmentChange, onWarehouseChange,
                              onUpdateModeChange, onRefresh }: {
   mode: ExecMode;
   running: boolean;
@@ -50,8 +49,10 @@ export function ComputeMenu({ mode, running, compiling = false, progress = null,
    *  through untouched: the pill draws progress, it does not decide what progress means. */
   progress?: number | null;
   stageBadge?: React.ReactNode;
-  sources?: DataSourceRecord[];
-  selectedSourceId?: string | null;
+  /** DOC-ENVIRONMENT-PICKER — the environments the signed-in user can see (`GET /api/environments`). */
+  environments?: EnvironmentRecord[];
+  /** The environment runs are in; null while none is computing (None). */
+  environment?: string | null;
   /** APP-COMPUTE-TARGET — the warehouses the signed-in user can see (`GET /api/warehouses`). */
   warehouses?: WarehouseRecord[];
   defaultWarehouseId?: string | null;
@@ -60,27 +61,28 @@ export function ComputeMenu({ mode, running, compiling = false, progress = null,
   /** Why the warehouse list is unavailable, shown in the Compute section. */
   warehouseError?: string | null;
   updateMode: UpdateMode;
-  /** No data source, no CQL yet, or an operation already in flight. */
+  /** No environment, no CQL yet, or an operation already in flight. */
   runDisabled?: boolean;
   onModeChange: (m: ExecMode) => void;
-  onSourceChange?: (id: string | null) => void;
+  onEnvironmentChange?: (name: string) => void;
   onWarehouseChange?: (id: string) => void;
   onUpdateModeChange: (m: UpdateMode) => void;
   /** APP-UPDATE-MODE — Refresh: recompute with a computed_since cutoff (RUN-CLIENT-REFRESH-RESUME). */
   onRefresh?: () => void;
 }) {
-  const sourceIds = new Set(sources.map((r) => r.id));
+  const names = new Set(environments.map((r) => r.name));
   const modeOptions = EXEC_MODES.map((m) => ({ id: m.id, label: m.label, blurb: m.blurb, status: kindStatus(m.kind) }));
-  const sourceOptions = sources.map((r) => ({ id: r.id, label: r.name, blurb: sourceBlurb(r), status: SOURCE_STATUS }));
+  const environmentOptions = environments.map((r) => ({ id: r.name, label: r.name, blurb: environmentBlurb(r),
+                                                        status: ENVIRONMENT_STATUS }));
   const activeWarehouse = warehouseId ?? defaultWarehouseId;
 
   const sections: PillSection[] = [
     {
       kind: "submenu",
-      label: "Data source",
-      value: selectedSourceId ?? mode,
-      options: [...modeOptions, ...sourceOptions],
-      onChange: (id) => (sourceIds.has(id) ? onSourceChange?.(id) : onModeChange(id as ExecMode)),
+      label: "Environment",
+      value: environment ?? mode,
+      options: [...modeOptions, ...environmentOptions],
+      onChange: (id) => (names.has(id) ? onEnvironmentChange?.(id) : onModeChange(id as ExecMode)),
     },
     {
       kind: "submenu",
@@ -109,8 +111,8 @@ export function ComputeMenu({ mode, running, compiling = false, progress = null,
   ];
 
   const processing = compiling || running;
-  const engaged = mode !== "static" || selectedSourceId !== null;
-  const sourceLabel = selectedSourceId ? (sources.find((r) => r.id === selectedSourceId)?.name ?? selectedSourceId) : null;
+  const engaged = mode !== "static" || environment !== null;
+  const sourceLabel = environment;
   const warehouseLabel = activeWarehouse
     ? (warehouses.find((w) => w.id === activeWarehouse)?.name ?? activeWarehouse) : null;
   const updateLabel = updateMode === "live" ? "Automatic" : "Manual";

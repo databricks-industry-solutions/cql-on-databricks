@@ -5,7 +5,7 @@ import com.databricks.cql.sema.{FhirModel, FhirSchema}
 
 /** CLI utility: emit the canonical `__resource` mount DDL for every modeled FHIR resource type as a
   * JSON object to stdout (`SVC-RESOURCE-SCHEMA`). The ingest component vendors this output so it can
-  * generate conformant `retrieve_<Type>` SQL UDTFs without a running Compiler Service.
+  * generate conformant `(__subject_id, __resource)` relations without a running Compiler Service.
   *
   * Usage: `./gradlew dumpResourceSchemas` (or `java -cp <classpath> ...DumpResourceSchemas [outfile]`).
   *

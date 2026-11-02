@@ -25,14 +25,6 @@ from cql_databricks.agent.server.mcp import create_mcp
 from agent.server.tests.research_fixture import RESEARCH_TOOLS, fake_research
 
 
-#: A registered Data Source, as `list_data_sources` reads one. A `SimpleNamespace` rather than the real
-#: dataclass because the tool touches four attributes and the seam exists precisely so a test need not
-#: build a registry (`docs/coding-standards.md`, the storage-seam pattern).
-SOURCE = SimpleNamespace(id="example-patients", name="Example Patients",
-                         description="Fabricated patient data for development",
-                         change_data_log="cat.sch.change_log")
-
-
 def _contributed() -> ToolRegistry:
     """The designer's contribution, stood in (AGENT-TOOL-REGISTRY)."""
     registry = ToolRegistry()
@@ -50,10 +42,9 @@ def _contributed() -> ToolRegistry:
 def server():
     return create_mcp(
         warehouse=lambda sql: [["a", "bigint"]] if "information_schema" in sql else [[7]],
-        # DEC-EVALUATOR-OPAQUE — the evaluator's answer for every node: its stored table and the set's filter.
+        # RUN-CLIENT-RESULT-SETS — every node's selected output: its pinned table.
         computed_for=lambda *scope: ["denominator"],
         reference_for=lambda address, define: reference(),
-        data_sources=lambda: [SOURCE],
         research=fake_research(),
         contributed=_contributed(),
     )
@@ -98,7 +89,7 @@ class TestToolDefinitions:
 
     def test_every_published_tool_is_offered_to_the_model(self, server):
         names = {d["function"]["name"] for d in tool_definitions(server)}
-        assert names == {"get_specification", "list_data_sources", "list_tables", "get_output",
+        assert names == {"get_specification", "list_tables", "get_output",
                          "query_data", "get_freshness", "list_skills", "get_skill"} | RESEARCH_TOOLS
 
     def test_the_definitions_carry_the_same_text_the_mcp_client_reads(self, server):
@@ -132,11 +123,11 @@ class TestContext:
         # labelled block of argument values invites it to pass them, which is the only job it has.
         client = _FakeClient([_answering()])
         _run(server, client, selection=Selection(
-            library="HypertensionBPControl", version="1.0.0", data_source_id="ds-1"))
+            library="HypertensionBPControl", version="1.0.0", period_start="2026-01-01"))
         scope = client.requests[0]["messages"][2]["content"]
         payload = json.loads(scope[scope.index("{"):])
         assert payload == {"library": "HypertensionBPControl", "version": "1.0.0",
-                           "data_source_id": "ds-1"}
+                           "period_start": "2026-01-01"}
 
     def test_no_selection_sends_no_scope_block_at_all(self, server):
         # Not an empty object: a caller with no selection must read as one who did not scope the
@@ -197,9 +188,8 @@ class TestContext:
         client = _FakeClient([_answering()])
         _run(server, client, selection=Selection(
             library="HypertensionBPControl", version="1.0.0",
-            data_source_id="example-patients",
             measure_title="Hypertension: BP Control",
-            data_source_name="Example Patients"))
+            environment_name="Example Patients"))
         content = client.requests[0]["messages"][2]["content"]
         assert "Hypertension: BP Control" in content
         assert "Example Patients" in content
@@ -208,7 +198,7 @@ class TestContext:
         assert "Do not pass them as tool arguments" in content
         # The argument block still carries only arguments.
         arguments = json.loads(content[content.index("{"):content.index("}") + 1])
-        assert "measure_title" not in arguments and "data_source_name" not in arguments
+        assert "measure_title" not in arguments and "environment_name" not in arguments
 
     def test_labels_alone_still_reach_the_model(self, server):
         # A selection can carry a title and no addressable scope — a measure open with no data source
@@ -261,7 +251,7 @@ class TestProvenance:
         assert _run(server, client).invocations[0].provenance == "context"
 
     def test_the_handle_travels_so_the_answer_can_be_reproduced(self, server):
-        # SVC-TOOL-ADDRESS — the citation is the address, never a conversation id, and it is lifted
+        # The citation is the address, never a conversation id, and it is lifted
         # onto the invocation rather than left inside a payload the client does not parse.
         client = _FakeClient([
             SimpleNamespace(content="", tool_calls=[_tool_call("c1", "get_output", {
@@ -281,7 +271,7 @@ class TestProvenance:
 
 
 class TestEventStream:
-    """APP-ASSISTANT — the loop reports each tool AS IT LANDS (`THEME-GLASSBOX`).
+    """APP-ASSISTANT — the loop reports each tool AS IT LANDS.
 
     A real answer is a SEQUENCE of calls, so a client that only saw the end would show a spinner for
     the whole investigation. What the reader watches is the same evidence the finished answer cites.

@@ -38,7 +38,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 
 from ..relation import SUBJECT_ID, literal, met_expr, quote, value_column
-from ..results import Execute, RelationRef, count_relations, relation_columns, result_relation
+from ..results import Execute, PinnedRelation, count_relations, relation_columns, result_relation
 from .evaluation import ClosureSource, MetricsUnavailable, locate
 from .model import (
     BLOCK_SAMPLE, BLOCK_TEMPORAL, BLOCK_VALUE_SETS,
@@ -46,7 +46,7 @@ from .model import (
 )
 from .sample import sample_profile
 from .extractors import DEFAULT_MODEL, KIND_SCALAR, UNKNOWN_BIN, elements_for
-from .terminology import extract_terminology
+from .terminology import TerminologyUnavailable, extract_terminology
 
 log = logging.getLogger("cql_databricks.result.insights.profile")
 
@@ -71,7 +71,7 @@ def define_profile(
     eval_id: str,
     draft: str,
     closure: "ClosureSource",
-    patient_function: str | None,
+    patient_relation: str | None,
     results_catalog: str,
     execute: Execute,
 ) -> DefineProfile:
@@ -80,7 +80,7 @@ def define_profile(
     ``define_library`` is the library that DECLARES the define, which is not always the measure — two
     libraries may declare one name (`SPEC-ANCHOR`), so an unqualified lookup resolves the wrong one.
     """
-    # RUN-EVAL-ID-INPUTS: the evaluation set, named by the route (`evaluation_key.EvaluationKeys`).
+    # RUN-CLIENT-RESULT-SETS: the complete selection's identity, which the closure is checked against.
     suffix = eval_id
     libraries = closure.closure(data_source_id, suffix, root=library, draft=draft)
     if not libraries:
@@ -88,17 +88,13 @@ def define_profile(
             f"no compiled libraries for data source {data_source_id!r} at evaluation {suffix} — "
             f"the measure has not been run against this data source and measurement period")
 
-    ref = locate(libraries, define_library, define, results_catalog)
+    ref = locate(libraries, define_library, define)
     if ref is None:
         raise MetricsUnavailable(
             f"{define_library}.{define!r} has no result relation in this evaluation, so there is "
             f"nothing to profile — it was never materialized here (APP-DATA-PROFILE)")
 
-    columns = relation_columns(results_catalog, [ref], execute=execute)
-    if ref not in columns:
-        raise MetricsUnavailable(
-            f"the relation for {define_library}.{define!r} could not be described, so its profile "
-            f"cannot be read")
+    columns = relation_columns(results_catalog, [ref])
     relation_cols = columns[ref]
     subjects, elements = count_relations(execute, columns, eval_id=suffix)[ref]
 
@@ -111,12 +107,21 @@ def define_profile(
     )
     top = _top_values(ref, relation_cols, eval_id=suffix, execute=execute)
     strata = _subject_strata(
-        ref, relation_cols, patient_function=patient_function, period_start=period_start, eval_id=suffix,
+        ref, relation_cols, patient_relation=patient_relation, period_start=period_start, eval_id=suffix,
         execute=execute)
 
     # The profile is WHOLLY DERIVED. `provenance` reflects that without qualification, so the pane
     # reads without checking a mark: `SPEC-TERMINOLOGY-EXTRACT` reads real codes off the define's own
     # results, not an invented list, and strata are derived only when the data structure supports them.
+
+    # SPEC-TERMINOLOGY-EXTRACT — a failed codes read leaves the rest of the profile standing, and says so
+    # in its own block: the reason rides on the payload where the codes would have been.
+    try:
+        terminology = extract_terminology(ref, relation_cols, eval_id=suffix, execute=execute)
+        terminology_error = None
+    except TerminologyUnavailable as e:
+        log.warning("Coded values unreadable for %s/%s: %s", define_library, define, e)
+        terminology, terminology_error = [], e.reason
 
     return DefineProfile(
         library=define_library, define=define,
@@ -131,7 +136,8 @@ def define_profile(
         # SPEC-TERMINOLOGY-EXTRACT — derived, and independent of everything above: a `GROUP BY` over the
         # curated coded paths of this define's own results. Never fabricated, so it is absent rather
         # than sampled when the define returns no resources.
-        terminology=extract_terminology(ref, relation_cols, eval_id=suffix, execute=execute),
+        terminology=terminology,
+        terminology_error=terminology_error,
         strata=strata,
         sampled=[],
     )
@@ -169,7 +175,7 @@ def _generated() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def _null_rate(ref: RelationRef, columns: dict[str, str], *, eval_id: str, execute: Execute) -> float:
+def _null_rate(ref: PinnedRelation, columns: dict[str, str], *, eval_id: str, execute: Execute) -> float:
     """The share of the relation's subjects whose value is null or empty.
 
     Over SUBJECTS, not rows, for the same reason every other figure here is: the relation is not one row
@@ -190,7 +196,7 @@ def _null_rate(ref: RelationRef, columns: dict[str, str], *, eval_id: str, execu
     return nulls / subjects if subjects else 0.0
 
 
-def _top_values(ref: RelationRef, columns: dict[str, str], *, eval_id: str,
+def _top_values(ref: PinnedRelation, columns: dict[str, str], *, eval_id: str,
                 execute: Execute) -> list[ValueSample]:
     """The top-N returned values by how many SUBJECTS returned them.
 
@@ -217,7 +223,7 @@ def _top_values(ref: RelationRef, columns: dict[str, str], *, eval_id: str,
             for r in rows]
 
 
-def _subject_strata(ref: RelationRef, columns: dict[str, str], *, patient_function: str | None,
+def _subject_strata(ref: PinnedRelation, columns: dict[str, str], *, patient_relation: str | None,
                     period_start: str | None,
                     eval_id: str, execute: Execute) -> list[Stratum]:
     """Sex and age band over the subjects this define is TRUE of.
@@ -233,7 +239,7 @@ def _subject_strata(ref: RelationRef, columns: dict[str, str], *, patient_functi
     selected.
     """
 
-    if not patient_function:
+    if not patient_relation:
         return []
     col = value_column(columns)
     met = met_expr(col, columns.get(col) if col else None)
@@ -266,7 +272,7 @@ def _subject_strata(ref: RelationRef, columns: dict[str, str], *, patient_functi
     out: list[Stratum] = []
     for sid, label, dimension, expression, note in cuts:
         sql = (f"SELECT {expression} AS bin, COUNT(DISTINCT p.{SUBJECT_ID}) AS n "
-               f"FROM {patient_function}() p "
+               f"FROM {patient_relation} p "
                f"JOIN ({subjects_sql}) d ON d.{SUBJECT_ID} = p.{SUBJECT_ID} "
                f"GROUP BY 1 ORDER BY n DESC")
         rows = execute(sql) or []

@@ -1,8 +1,9 @@
 """RUN-CLIENT-MAINTENANCE — the daily `cql-databricks-designer-maintenance` Job's entry point (`databricks.yml`).
 
 It runs as the deployment's maintenance principal (`scripts/deploy/maintenance_principal.py`) and calls the
-client's expiry, ``cql_databricks.result.maintenance.maintain_private_results``. Locally, preview with
-``scripts/with-local-env.sh python scripts/jobs/maintenance.py --private-catalog <c> --warehouse <id>``.
+client's expiry, ``cql_databricks.result.maintenance.maintain_draft_results``, over one environment's
+``draft_results`` (`RUN-CLIENT-DRAFT-RESULTS`). Locally, preview with
+``scripts/with-local-env.sh python scripts/jobs/maintenance.py --environment-catalog <c> --warehouse <id>``.
 """
 from __future__ import annotations
 
@@ -13,13 +14,13 @@ import os
 from dataclasses import asdict
 
 from cql_databricks.data_bindings.runner import warehouse_session
-from cql_databricks.result.maintenance import maintain_private_results
+from cql_databricks.result.maintenance import maintain_draft_results
 
 
 def parser() -> argparse.ArgumentParser:
     """RUN-CLIENT-MAINTENANCE — deployment arguments only; no user session or Compiler credentials."""
     command = argparse.ArgumentParser(description=__doc__)
-    command.add_argument("--private-catalog", required=True)
+    command.add_argument("--environment-catalog", required=True)
     command.add_argument("--warehouse", required=True)
     command.add_argument("--retention-days", type=int, default=7)
     command.add_argument("--limit", type=int, default=1000)
@@ -41,7 +42,7 @@ def main(argv=None) -> int:
     logging.basicConfig(level=logging.INFO)
     # RUN-CLIENT-WAREHOUSE-CONNECTOR — one warehouse session for the Job's run, closed at its end.
     with warehouse_session(workspace, args.warehouse) as run:
-        report = maintain_private_results(run=run, catalog=args.private_catalog,
+        report = maintain_draft_results(run=run, catalog=args.environment_catalog,
             retention_days=args.retention_days, limit=args.limit, dry_run=not args.apply)
     print(json.dumps(asdict(report), default=lambda value: value.isoformat()))
     return 0

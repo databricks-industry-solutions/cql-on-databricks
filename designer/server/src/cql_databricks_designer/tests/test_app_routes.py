@@ -18,9 +18,8 @@ handlers into `APIRouter`s and then into three packages changes no URL, no verb,
   the route call ITSELF with the builder's keyword arguments, on every request. Path and verb were
   perfect throughout. Only the target was wrong.
 
-**Nothing is stubbed** since `APP-PER-FEATURE`: the Designer's App holds no store and provisions
-nothing at startup. The data-source and Bind routes it took over from the evaluator App (EVALUATOR-REMOVE,
-`DEC-EVALUATOR-APP-REHOME`) kept their paths and handler names, so the SPA did not change.
+**Nothing is stubbed** (`APP-PER-FEATURE`): the Designer's App holds no store and provisions
+nothing at startup. The data-source and Bind routes keep the paths and handler names the SPA calls.
 """
 
 from __future__ import annotations
@@ -30,8 +29,6 @@ from unittest import mock
 
 import pytest
 
-#: CLIENT-DISCOVERY-SCOPE — building the App resolves the deployment's catalog scopes.
-pytestmark = pytest.mark.usefixtures("catalog_scopes")
 
 # The API surface, frozen. `(path, methods)` -> the handler that must serve it.
 #
@@ -52,21 +49,20 @@ EXPECTED: dict[tuple[str, str], str] = {
     # DOC-OPEN-SAVE, RUN-ADDRESS-LOCATION — where a library can be opened from, and one workspace folder.
     ("/api/locations", "GET"): "locations",
     # DOC-EDITABLE-IN-SCOPE — whether the signed-in user can write a tagged store, asked before a library opens.
-    ("/api/locations/access", "GET"): "location_access",
     ("/api/folders", "GET"): "folder",
     ("/api/libraries/discover", "GET"): "discover",
     ("/api/libraries/{name}/{version}/source", "GET"): "library_source",
     ("/api/libraries/{name}/{version}/data-requirements", "GET"): "library_data_requirements",
     ("/api/libraries/resolve", "POST"): "resolve_libraries",
-    # Read-only since CARVE-CONTENT: a source is a tagged UC schema, declared by tagging it.
-    ("/api/knowledge-sources", "GET"): "list_knowledge_sources",
-    ("/api/knowledge-sources/reload", "POST"): "reload_knowledge_sources",
+    # KNOWLEDGE-LAKE-DIRECT — forget the held environments and their corpora.
+    ("/api/knowledge/reload", "POST"): "reload_knowledge",
     # --- designer: the Specification document and its derivations ---------------------------
     ("/api/libraries/{name}/{version}/specification", "GET"): "library_specification",
     # DOC-OPEN-SAVE — save a library where it was opened, as the signed-in user.
     ("/api/libraries/save", "POST"): "save_library",
     # DOC-OPEN-SAVE — New and Save As: create a library at a location, as the signed-in user.
     ("/api/libraries/new", "POST"): "new_library",
+    ("/api/libraries/publish", "POST"): "publish",
     ("/api/libraries/{name}/{version}/defines/{define}/profile", "POST"): "define_profile",
     ("/api/libraries/{name}/{version}/metrics", "POST"): "measure_metrics",
     ("/api/libraries/{name}/{version}/reads", "POST"): "read_metrics",
@@ -75,13 +71,11 @@ EXPECTED: dict[tuple[str, str], str] = {
     # --- compiler proxy ---------------------------------------------------------------------
     ("/api/translate", "POST"): "translate",
     ("/api/modeled-types", "GET"): "modeled_types",
-    # --- data sources and the knowledge-view Bind (`routes/data_sources.py`, as the signed-in user) ----
-    # DATA-SOURCE-UC-TAG — read-only: a data source is a tagged schema, not a record.
-    ("/api/data-sources", "GET"): "list_data_sources",
-    ("/api/data-sources/{source_id}", "GET"): "get_data_source",
-    ("/api/data-sources/reload", "POST"): "reload_data_sources",
-    ("/api/data-bindings/bind", "POST"): "bind_all",
-    # --- runs on SDP and their results, the Designer's own (`routes/runs.py`, DESIGNER-RUNS-SDP) ----------
+    # --- environments (`routes/environments.py`, as the signed-in user) ----------------------------
+    # DOC-ENVIRONMENT-PICKER — read-only: an environment is a tagged catalog, not a record.
+    ("/api/environments", "GET"): "list_environments",
+    ("/api/environments/reload", "POST"): "reload_environments",
+    # --- runs and their results, the Designer's own (`routes/runs.py`) ----------
     ("/api/run", "POST"): "run_measure",
     ("/api/run-stream", "POST"): "run_measure_stream",
     ("/api/results", "POST"): "get_results",

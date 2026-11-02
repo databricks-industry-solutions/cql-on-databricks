@@ -1,7 +1,7 @@
 // DESIGNER-TOP-BAR — ONE bar, three zones. These pin the parts of that promise a refactor could quietly
 // undo: one bar (no second strip, no wordmark, no module label, no File menu), the artifact selector leads
 // on the left, execution context sits in the CENTRE, and tour / appearance are two buttons at the right end
-// which SHOW their state (never rows behind an avatar). Settings is removed (APP-SETTINGS SUPERSEDED).
+// which SHOW their state (never rows behind an avatar). There is no Settings control.
 
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -50,11 +50,11 @@ describe("TopBar (DESIGNER-TOP-BAR)", () => {
   it("is one bar: the artifact selector and the bar tools, with no chrome strip", () => {
     const { container } = renderBar();
     expect(container.querySelectorAll(".mw-bar")).toHaveLength(1);
-    // The retired strip and its contents.
+    // No chrome strip and none of its contents.
     expect(container.querySelector(".mw-chrome")).toBeNull();
     expect(container.querySelector(".mw-brand")).toBeNull();
     expect(screen.queryByText("File")).toBeNull();
-    // The wordmark is gone.
+    // No wordmark.
     expect(screen.queryByText("CqlDatabricks")).toBeNull();
     // ...and so is the account menu: no avatar, no profile name, no popover to open for a toggle.
     expect(container.querySelector(".mw-avatar")).toBeNull();
@@ -123,7 +123,7 @@ describe("Navigator — the Open menu is the File surface (DESIGNER-TOP-BAR)", (
     render(<Navigator definition={DEFINITION} definitions={[]} onOpenDefinition={() => {}} />);
     fireEvent.click(screen.getByText("Example Measure"));
 
-    // The item whose only function was to open this very menu is gone.
+    // No item's only function is to open this very menu.
     expect(screen.queryByText(/Open from Catalog/)).toBeNull();
     for (const label of ["New measure", "New library", "Import CQL…"]) {
       expect(screen.getByRole("button", { name: new RegExp(label.replace("…", "")) })).toBeTruthy();
@@ -180,12 +180,25 @@ describe("Navigator — the Open menu is the File surface (DESIGNER-TOP-BAR)", (
     fireEvent.click(screen.getByText("Example Measure"));
     const actions = Array.from(container.querySelectorAll<HTMLButtonElement>(".mw-navpop-act"));
     expect(actions.map((b) => [b.textContent, b.disabled])).toEqual([
-      ["New measure", false], ["New library", false], ["Import CQL…", true], ["Save as…", false]]);
+      ["New measure", false], ["New library", false], ["Include a library…", false], ["Import CQL…", true],
+      ["Save as…", false], ["Publish…", false]]);
     expect(container.querySelector(".soon")).toBeNull();
-    expect(actions[2]!.closest(".mw-navpop-act-wrap")?.getAttribute("title")).toMatch(/later phase/);
+    expect(actions[3]!.closest(".mw-navpop-act-wrap")?.getAttribute("title")).toMatch(/later phase/);
     // DOC-OPEN-SAVE — New and Save As go to the workspace, which owns the form.
     fireEvent.click(actions[0]!);
     expect(onFileAction).toHaveBeenCalledWith({ kind: "new", what: "measure" });
+  });
+
+  it("says why a library cannot be included in the open one now", () => {
+    // DOC-INCLUDE-NEW — the workspace gives the reason; the action is disabled and the reason is its tooltip.
+    const onFileAction = vi.fn();
+    const { container } = render(<Navigator definition={DEFINITION} definitions={[]} onOpenDefinition={() => {}}
+      onFileAction={onFileAction} includeBlocked="The CQL as edited must compile first." />);
+    fireEvent.click(screen.getByText("Example Measure"));
+    const include = Array.from(container.querySelectorAll<HTMLButtonElement>(".mw-navpop-act"))
+      .find((b) => b.textContent === "Include a library…")!;
+    expect(include.disabled).toBe(true);
+    expect(include.closest(".mw-navpop-act-wrap")?.getAttribute("title")).toBe("The CQL as edited must compile first.");
   });
 
   it("offers no file action where nothing can take it", () => {

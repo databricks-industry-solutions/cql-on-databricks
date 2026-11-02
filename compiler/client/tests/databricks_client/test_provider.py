@@ -55,7 +55,7 @@ class MakeProviderTest(unittest.TestCase):
         ws.app_url.assert_called_once_with("custom-app")
 
     def test_retired_m2m_settings_are_loud(self):
-        # SVC-COMPILER-M2M is SUPERSEDED: a Job still configured for it fails instead of silently exchanging.
+        # A Job still configured for the retired M2M settings fails instead of silently exchanging.
         for key in provider.RETIRED_M2M_CONFS:
             ws = _ws()
             with mock.patch("cql_databricks.compiler.provider._workspace", ws):

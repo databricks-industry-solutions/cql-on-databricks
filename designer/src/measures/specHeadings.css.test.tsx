@@ -9,7 +9,7 @@
 // plus a type (0,1,1) — so they outrank any component rule written as a bare class (0,1,0). A component
 // whose heading happens to be an `h2` or `h3` therefore loses its own declarations silently: nothing
 // fails, and the dead declaration still reads as if it were in force. That is how every `DEF` / `FN` kind
-// chip came to float ~6px above the name it labels — `.mw-spec h3`'s `margin: 16px 0 4px` beat
+// chip floats ~6px above the name it labels — `.mw-spec h3`'s `margin: 16px 0 4px` beat
 // `.mw-define-title { margin: 0 }`, the 24px title got a 44px outer box, and the chip, which is centred
 // on the flex LINE, centred on the phantom.
 
@@ -47,10 +47,10 @@ describe("a component's heading beats the document's heading rule (APP-STYLE-GUI
   });
 
   it("gives every NAME in the document one and the same type (APP-STYLE-GUIDE)", () => {
-    // The rule the 2026-08-10 change exists to hold: everything that NAMES something is one style —
+    // The rule this test holds: everything that NAMES something is one style —
     // serif `title`, 21px, 600 — and depth is carried by containment and by the eyebrow instead. These
-    // three used to render at three different sizes, which made a reader rank them by comparing them, and
-    // they did not agree: a define's name matched the `Condition` heading that is not its parent.
+    // three must render at one size, or a reader ranks them by comparing them. They must also agree: a
+    // define's name matches the `Condition` heading that is not its parent.
     const specimens = {
       half: getComputedStyle(inSpec("h2")),                       // Description / Value sets
       group: getComputedStyle(inSpec("h3")),                      // Condition / Encounter
@@ -70,8 +70,8 @@ describe("a component's heading beats the document's heading rule (APP-STYLE-GUI
   });
 
   it("keeps the CARD TITLE out of that set, in a register of its own (APP-STYLE-GUIDE)", () => {
-    // It was in the set, and could not stay once a resource type became a heading: the card title
-    // "Data requirements" and the "Condition" inside it rendered identically — this file's own collision,
+    // It is not in the set: once a resource type is a heading, the card title
+    // "Data requirements" and the "Condition" inside it would render identically — this file's own collision,
     // one level up. Sans + uppercase ranks it by REGISTER without competing on size.
     const title = getComputedStyle(inSpec("span", "mw-spec-sec-title"));
     expect(title.fontFamily).toBe("var(--f-ui)");
@@ -79,8 +79,8 @@ describe("a component's heading beats the document's heading rule (APP-STYLE-GUI
     expect(title.fontWeight).toBe("600");
     expect(title.textTransform).toBe("uppercase");
     expect(title.letterSpacing).toBe("0.1em");
-    // PRIMARY ink, not `--tink-2`. At caption contrast the card title was quieter than the lava eyebrow
-    // inside it, so a subdivision out-ranked its own card — and an uppercase 13px label has little mass to
+    // PRIMARY ink, not `--tink-2`. At caption contrast the card title would be quieter than the lava eyebrow
+    // inside it, so a subdivision would out-rank its own card — and an uppercase 13px label has little mass to
     // spend, so ink is most of what it has. It is also the section's collapse control.
     expect(title.color).toBe("var(--tink)");
     // Uppercase without tracking is the one thing section 1 forbids outright, so the two are asserted
@@ -90,8 +90,8 @@ describe("a component's heading beats the document's heading rule (APP-STYLE-GUI
 
   it("gives EVERY kind chip one weight, whether or not it is inside a heading (APP-STYLE-GUIDE)", () => {
     // A population's chip renders INSIDE its `h2`; a define's is a SIBLING of its `h3`. With the chip's
-    // weight unpinned, that structural accident made `pop` 600 and `def` 400 — and made the document's
-    // `pop` disagree with the nav's, which shares the mapping on purpose. It was a synthesized bold too:
+    // weight unpinned, that structural accident would make `pop` 600 and `def` 400 — and would make the document's
+    // `pop` disagree with the nav's, which shares the mapping on purpose. It would also be a synthesized bold:
     // DM Mono has no face above 500.
     const spec = document.createElement("article");
     spec.className = "mw-spec";
@@ -149,10 +149,10 @@ describe("a component's heading beats the document's heading rule (APP-STYLE-GUI
     expect(section.backgroundColor).toBe("rgba(0, 0, 0, 0)");
     expect(section.boxShadow).toBe("");
     // And the ground eyebrow carries no rule of its own: the card edge 8px below it is the boundary, and
-    // two boundaries for one division is what the bled header used to be.
+    // two boundaries for one division is what a bled header produces.
     // `0px` rather than unset: `.mw button` resets borders, so the assertion available is that nothing has
     // put one back. That reset is also why the rule has to be REMOVED rather than merely not declared —
-    // the bled `border-bottom` this head used to carry was its own declaration.
+    // a `border-bottom` set on this head would be its own declaration.
     const head = getComputedStyle(inSpec("button", "mw-spec-sec-head"));
     expect(head.borderBottomWidth).toBe("0px");
     expect(head.paddingLeft).toContain("--spec-pad-x");
@@ -177,9 +177,8 @@ describe("a component's heading beats the document's heading rule (APP-STYLE-GUI
   });
 
   it("keeps the in-card EYEBROW subordinate, and it alone carries the bar (APP-STYLE-GUIDE)", () => {
-    // `.mw-spec-mark` and the library title shared a declaration for one afternoon, on the argument that a
-    // library and `Retrieves` are the same thing. Making a library a CARD retired that: a library is a
-    // section with a header, while `Retrieves` divides the card around it and has no edge of its own.
+    // `.mw-spec-mark` and the library title do not share a declaration. A library is a section with a header,
+    // while `Retrieves` divides the card around it and has no edge of its own: they are not the same thing.
     const mark = getComputedStyle(inSpec("div", "mw-spec-mark"));
     expect(mark.color).toBe("var(--tink-2)");
     expect(mark.fontSize).toBe("11px");
@@ -198,13 +197,13 @@ describe("a component's heading beats the document's heading rule (APP-STYLE-GUI
     expect(style.alignItems).toBe("center");
     // NO FILL, on either. A fill out-ranks the card that contains it.
     expect(getComputedStyle(inSpec("div", "mw-spec-mark")).backgroundColor).toBe("rgba(0, 0, 0, 0)");
-    // 3px, not a hairline: at 1px the rule was the same object as an ordinary border and read as one. It
+    // 3px, not a hairline: at 1px the rule would be the same object as an ordinary border and read as one. It
     // matches the change bar in the gutter, the document's other 3px mark. jsdom cannot compute a
     // pseudo-element, so the declaration is read from the sheet — the only check available here.
     const sheet = readFileSync("src/measures/measures.css", "utf8");
     const trailing = /\.mw-spec-mark::after \{[^}]*\}/.exec(sheet)?.[0] ?? "";
     expect(trailing).toContain("height: 3px");
-    // `--tline`, the RULE weight: with the label's accent withdrawn the bar is the whole of what makes a
+    // `--tline`, the RULE weight: with the label's accent absent the bar is the whole of what makes a
     // subdivision findable, so it may not sit at inner-divider weight.
     expect(trailing).toContain("var(--tline)");
     expect(trailing).toContain("flex: 1 1 auto");
@@ -221,7 +220,7 @@ describe("a component's heading beats the document's heading rule (APP-STYLE-GUI
   });
 
   it("leaves the DOCUMENT unpapered, so the card is the outermost mark", () => {
-    // `.mw-spec` was the single sheet every section sat on. With sections as cards it is a page: the
+    // `.mw-spec` is the single sheet every section sits on. With sections as cards it is a page: the
     // measure title, its eyebrow and the meta row sit on the ground above the stack, because the title is
     // the page rather than a section of it.
     // An unset background computes transparent, which is the assertion available in jsdom.
@@ -250,8 +249,8 @@ describe("a component's heading beats the document's heading rule (APP-STYLE-GUI
     mw.appendChild(head);
     document.body.appendChild(mw);
     expect(getComputedStyle(head).minHeight).toBe("24px");
-    // NOT sticky, and no fill: both were tried and withdrawn. A filled full-bleed band made the boundary
-    // unmissable and made L2 out-rank L1; sticky is the one thing a fill buys that a label cannot.
+    // NOT sticky, and no fill. A filled full-bleed band would make the boundary
+    // unmissable and make L2 out-rank L1; sticky is the one thing a fill buys that a label cannot.
     expect(getComputedStyle(head).position).toBe("relative");
     expect(getComputedStyle(head).backgroundColor).toBe("rgba(0, 0, 0, 0)");
   });
@@ -301,8 +300,8 @@ describe("a component's heading beats the document's heading rule (APP-STYLE-GUI
   });
 
   it("gives a collapsed define row ONE height, open or shut", () => {
-    // A collapsed row is a list row: it was carrying 14px/10px section padding for 24px of content. The
-    // collapsed-only override is gone with the tightening — a row that changed height on toggle moved the
+    // A collapsed row is a list row, so section padding (14px/10px) on 24px of content would be most of
+    // the row. There is no collapsed-only override: a row that changed height on toggle would move the
     // heading a few pixels under the pointer that had just pressed it.
     const open = getComputedStyle(inSpec("section", "mw-define"));
     const shut = getComputedStyle(inSpec("section", "mw-define collapsed"));

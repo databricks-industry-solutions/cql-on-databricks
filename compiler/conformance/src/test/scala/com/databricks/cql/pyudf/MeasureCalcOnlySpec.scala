@@ -1,5 +1,6 @@
 package com.databricks.cql.pyudf
 
+import com.databricks.cql.env.{DataBinding, RetrieveRelation, TerminologyBinding}
 import com.databricks.cql.harness.GroundTruthRunner
 import com.databricks.cql.it._
 import com.databricks.cql.passes.Optimize
@@ -23,7 +24,7 @@ import java.nio.file.Files
   * SINGLE CORE: point `-Dcqldatabricks.sparkRemote` at a `local[1]` Connect server. Both paths then run on one
   * core, so wall == per-core calc+access cost, no parallelism-strategy confound.
   *
-  * DATA VIA SPARK FOR BOTH: the Scala path mounts the deck as `retrieve_<Type>` views and runs the emitted
+  * DATA VIA SPARK FOR BOTH: the Scala path binds the deck by rule to `global_temp.<type>` views and runs the emitted
   * SQL (its scan is on Spark). The CQF path reads the SAME NDJSON deck through `spark.read.text` (the
   * "querying on Spark"), then evaluates per-subject with the maintained Java engine. Both timers therefore
   * include Spark data access + the engine's calc. (CQF still parses per subject in-JVM — that is intrinsic
@@ -41,6 +42,9 @@ final class MeasureCalcOnlySpec extends AnyFunSuite {
   private val enabled = sys.props.get("cqldatabricks.scale").contains("true")
   private val factor = sys.props.get("cqldatabricks.scaleFactors").flatMap(s => scala.util.Try(s.trim.toInt).toOption).getOrElse(1)
   private val measureName = sys.props.getOrElse("cqldatabricks.scaleMeasure", Corpus.defaultScaleMeasure)
+
+  /** The one value-set view the run reads (BIND-CALL-SITE). */
+  private val ValueSetView = "calc_valuesets"
 
   private def isMember(v: ujson.Value): Boolean = v match {
     case ujson.Bool(b)          => b
@@ -70,7 +74,10 @@ final class MeasureCalcOnlySpec extends AnyFunSuite {
     val lib       = Differential.buildLibrary(c)
     val config    = Differential.evalConfig(c.library)
     val optimized = Optimize.run(lib, config)
-    val env       = SqlEvalEnv(c.context, config, terminology = c.terminology.isDefined)
+    // BIND-CALL-SITE: every retrieve by rule from `global_temp.<type>`, every value set from one view.
+    val env       = SqlEvalEnv(c.context, config,
+      data = Some(DataBinding(Some(DataBinding.Rule("global_temp")), Map.empty)),
+      terminologyBinding = Some(TerminologyBinding(Some(Seq(RetrieveRelation(ValueSetView))), Map.empty)))
     val lowered   = SqlFrameLowering.lower(optimized, env)
 
     // Mount all retrieved types (empty frame for a data-less reference-follow type), + valuesets.
@@ -79,24 +86,15 @@ final class MeasureCalcOnlySpec extends AnyFunSuite {
       .flatMap(_.expression.collect { case r: Retrieve => r.dataType.substring(r.dataType.lastIndexOf('}') + 1) }).toSet
     val mountTypes = (retrievedTypes ++ (if (c.context.hasSubjectGrouping) Set(c.context.name) else Set.empty) ++ d.resourceTypes.toSet).toSeq.sorted
     val sfd = c.data.get.asInstanceOf[SparkFhirData]
-    // BIND-RETRIEVE-UDF: the mount is a SQL UDTF `retrieve_<Type>(<8 explicit args>)` (the sole
-    // contract), its parameter list from the single source of truth (SqlEvalEnv.retrieveParamsDdl,
-    // BIND-EXPLICIT-PARAMS); this fixture UDTF ignores all eight and returns the whole mount
-    // (BIND-CAPABILITY).
-    mountTypes.foreach { rt =>
-      val fn = env.retrieveMountName(rt)
-      val df = sfd.retrieve(rt)
-      df.createOrReplaceTempView(fn + "__src")
-      spark.sql(s"CREATE OR REPLACE TEMPORARY FUNCTION `$fn`(${SqlEvalEnv.retrieveParamsDdl}) " +
-        s"RETURNS TABLE (${SparkFhirData.mountReturnsDDL(df.schema)}) RETURN SELECT * FROM `${fn}__src`")
-    }
+    // BIND-CONTRACT: each type's whole deck on the contract, which the plan re-filters (BIND-CAPABILITY).
+    mountTypes.foreach(rt => sfd.retrieve(rt).createOrReplaceGlobalTempView(rt.toLowerCase))
     val hasVs = c.terminology.isDefined && optimized.valueSets.nonEmpty
     if (hasVs) {
       val stp = c.terminology.get.asInstanceOf[SparkTerminology]
       import org.apache.spark.sql.{functions => F}
       optimized.valueSets.map(v =>
         stp.expand(v.id).withColumn(env.valueSetKeyColumn, F.lit(v.id)).select(env.valueSetKeyColumn, "system", "code"))
-        .reduceOption(_ unionByName _).foreach(_.createOrReplaceTempView(env.valueSetsMountName))
+        .reduceOption(_ unionByName _).foreach(_.createOrReplaceTempView(ValueSetView))
     }
 
     // ---- Scala-SQL calc (single core): exec defines + count-force populations. ----

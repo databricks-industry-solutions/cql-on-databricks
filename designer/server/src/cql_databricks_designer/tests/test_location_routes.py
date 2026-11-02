@@ -15,7 +15,7 @@ from cql_databricks_designer import assistant_tools
 from cql_databricks_designer.routes import designer, knowledge
 
 MEASURE = "library Measure version '1.0.0'\ndefine X: 1\n"
-FOLDER = "/Workspace/Users/a@example.org/CMS1"
+FOLDER = "/Workspace/Users/a@example.org/ExamplePackage"
 
 
 class _Files(LibraryFiles):
@@ -75,8 +75,9 @@ def _client(monkeypatch):
     monkeypatch.setattr(knowledge, "forwarded_identity", lambda: ("token", "a@example.org"))
     app = FastAPI()
     content = _Content()
-    app.include_router(knowledge.router(content=content, warehouse=lambda: "wh"))
-    app.include_router(designer.router(content=content))
+    contents = SimpleNamespace(get=lambda name: content, reload=lambda: None)
+    app.include_router(knowledge.router(contents=contents))
+    app.include_router(designer.router(contents=contents))
     return TestClient(app)
 
 
@@ -130,9 +131,23 @@ def test_folder_browses_one_level_and_lists_libraries_only_where_there_is_cql(mo
     monkeypatch.setattr(knowledge, "user_client", lambda: SimpleNamespace(workspace=workspace))
     client = _client(monkeypatch)
     home = client.get("/api/folders", params={"path": "/Workspace/Users/a@example.org"}).json()
-    assert home["folders"] == [{"name": "CMS1", "path": FOLDER}] and home["libraries"] == []
+    assert home["folders"] == [{"name": "ExamplePackage", "path": FOLDER}] and home["libraries"] == []
     package = client.get("/api/folders", params={"path": FOLDER}).json()
     assert [lib["id"]["name"] for lib in package["libraries"]] == ["Measure"]
+
+
+def test_a_failed_data_requirements_read_says_why_rather_than_reading_as_no_requirements(monkeypatch):
+    """SPEC-DATA-REQUIREMENTS, KNOWLEDGE-FAIL-LOUD — an unreadable section answers an error with its reason.
+    An empty list would say "this library reads nothing", which is a claim about the library, not a failure."""
+    class _Unreadable(_Files):
+        def glob(self, root, pattern):
+            raise PermissionError("workspace folder not readable")
+
+    client = _client(monkeypatch)
+    monkeypatch.setattr(knowledge, "files_for", lambda location: _Unreadable({}))
+    response = client.get("/api/libraries/Measure/1.0.0/data-requirements", params={"location": f"folder:{FOLDER}"})
+    assert response.status_code == 500
+    assert response.json() == {"error": "Measure@1.0.0: workspace folder not readable"}
 
 
 def test_an_include_the_folder_lacks_reads_its_data_requirements_from_knowledge(monkeypatch):

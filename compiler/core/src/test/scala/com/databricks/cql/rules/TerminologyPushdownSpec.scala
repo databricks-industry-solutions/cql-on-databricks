@@ -5,8 +5,8 @@ import org.junit.runner.RunWith
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.junit.JUnitRunner
 
-/** Isolated rule test for the terminology retrieve pushdown (ARCH-PUSHDOWN, CONF-GATE-SELFDIFF:
-  * "every new optimizer rule ships with an isolated rule test"). The result-preservation of the
+/** Isolated rule test for the terminology retrieve pushdown (ARCH-PUSHDOWN). Every new optimizer rule
+  * ships with an isolated rule test. The result-preservation of the
   * rewrite is gated end-to-end by the optimized-vs-unoptimized self-diff over `FhirValueSetWhere`;
   * this spec pins the rewrite SHAPE (the `[X] where code in VS` → `[X: VS]` fold) and its safety
   * properties (idempotence, residual preservation, no over-firing). */

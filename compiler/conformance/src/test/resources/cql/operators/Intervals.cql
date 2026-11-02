@@ -3,7 +3,7 @@ library Intervals version '1.0.0'
 // Intervals are typed and may be open/closed at either boundary; boundary semantics are
 // part of every interval operator (LANG-INTERVAL). The Allen-relation algebra
 // (during/overlaps/before/meets/...) is implemented precision-aware in the library, never
-// on native Spark date ops. (Temporal precision lands in Phase 3; these use integers.)
+// on native Spark date ops. These fixtures use integers.
 
 define "ClosedInterval": Interval[1, 10]
 define "OpenInterval": Interval(1, 10)

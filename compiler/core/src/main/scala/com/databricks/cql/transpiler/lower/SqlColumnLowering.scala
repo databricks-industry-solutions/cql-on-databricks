@@ -90,7 +90,7 @@ object SqlColumnLowering {
     case other           => other.toUpperCase
   }
 
-  /** The `op` token each `Cmp` maps to for the `cql_temporal_cmp` opaque UDF (EMIT-SQL-TEMPORAL-UDF). */
+  /** The `op` token each `Cmp` maps to for the `cql_temporal_cmp` opaque UDF (EMIT-SQL-TEMPORAL-UDF-OPAQUE). */
   private def cmpOp(kind: Cmp): String = kind match {
     case Lt => "lt"; case Gt => "gt"; case Le => "le"; case Ge => "ge"
     case Eq => "eq"; case Ne => "ne"; case Equiv => "equiv"
@@ -190,8 +190,7 @@ object SqlColumnLowering {
       // literals lower to DECIMAL(38,8) (`decimal`), and Spark's addition of two (38,8) operands
       // overflows precision 38 and — under allowPrecisionLoss — rounds the result to scale 7,
       // silently erasing the step (1.0 ± 1e-8 → 1.0000000). Narrowing both operands to DECIMAL(28,8)
-      // keeps the natural sum at (29,8) so the 8th digit survives (the retired proto back end avoided
-      // this because its DataFrame literals kept natural, minimal precision).
+      // keeps the natural sum at (29,8) so the 8th digit survives.
       val decStep = decimal(BigDecimal("0.00000001") * d).cast("decimal(28,8)")
       typeOf(o) match {
         case IntegerType     => go(o) + int(d)
@@ -360,7 +359,7 @@ object SqlColumnLowering {
     }
 
     def temporalCompare(a: SqlExpr, b: SqlExpr, aC: TConst, bC: TConst, inLambda: Boolean = false)(kind: Cmp): SqlExpr = {
-      // EMIT-SQL-TEMPORAL-UDF (opaque): collapse the precision-aware compare tower to one black-box call at
+      // EMIT-SQL-TEMPORAL-UDF-OPAQUE (opaque): collapse the precision-aware compare tower to one black-box call at
       // its leaves. Only when a RUNTIME operand is involved — two literals stay native so they const-fold
       // (federated-retrieve arm elimination keeps its foldable guards). A scalar compare has no infinity.
       // `inLambda` keeps it native: Databricks forbids catalog UDFs inside a higher-order function's lambda.
@@ -397,7 +396,7 @@ object SqlColumnLowering {
 
     def cmpPoints(a: SqlExpr, aC: TConst, b: SqlExpr, bC: TConst, dateMode: Boolean)
                  (kind: Cmp, aInf: Option[Boolean] = None, bInf: Option[Boolean] = None): SqlExpr = {
-      // EMIT-SQL-TEMPORAL-UDF (opaque): a DATE-mode bound/point compare collapses to one call, carrying each
+      // EMIT-SQL-TEMPORAL-UDF-OPAQUE (opaque): a DATE-mode bound/point compare collapses to one call, carrying each
       // operand's open-end infinity (−1 low / +1 high / 0 finite) so the whole cmpPoints infinity ladder
       // lives in the UDF. Integer/non-date compares and all-const operands stay native (fold/pushdown).
       if (temporalUdf && dateMode && (aC.isEmpty || bC.isEmpty)) {
@@ -468,7 +467,7 @@ object SqlColumnLowering {
         if (minus) Prefix("-", v) else v
       }
       val unitArg = staticUnit.map(str).getOrElse(qBound.get.getField("unit"))
-      // EMIT-SQL-TEMPORAL-UDF (opaque): one call folds the unit dispatch + make_interval step + re-truncate.
+      // EMIT-SQL-TEMPORAL-UDF-OPAQUE (opaque): one call folds the unit dispatch + make_interval step + re-truncate.
       if (temporalUdf) return hoistT(Call(SqlNames.DateAdd, Seq(s, n, unitArg)))
       val z = int(0)
       def mk(args: SqlExpr*): SqlExpr = Call("make_interval", args)
@@ -555,7 +554,7 @@ object SqlColumnLowering {
       case t if t.isInstanceOf[DateType] || t.isInstanceOf[DateTimeType] || t.isInstanceOf[TimeType] =>
         val cnt = precVal(p).getOrElse(throw UnsupportedNode("Boundary", "temporal boundary needs an explicit precision"))
         val target = if (t.isInstanceOf[TimeType]) timeRankFromCount(cnt) else dateRankFromCount(cnt)
-        // EMIT-SQL-TEMPORAL-UDF (opaque): one call folds the step-up/step-down + re-truncate tower.
+        // EMIT-SQL-TEMPORAL-UDF-OPAQUE (opaque): one call folds the step-up/step-down + re-truncate tower.
         if (temporalUdf) return hoistT(Call(SqlNames.TemporalBoundary, Seq(go(v), int(target), bool(high))))
         val s = go(v); val ownRank = hoist(rankOfLen(Call("length", Seq(s)))); val baseTs = tsOf(s)
         val ts = if (!high) baseTs else addUnit(addUnit(baseTs, ownRank, minus = false), int(target), minus = true)
@@ -1041,7 +1040,7 @@ object SqlColumnLowering {
       case FunctionRef("ToDate", Some("FHIRHelpers"), Seq(arg))     => fhirTemporal(go(arg), DateTimePrecision.Day.rank)
       case FunctionRef("ToInterval", Some("FHIRHelpers"), Seq(arg)) =>
         val period = go(arg)
-        // EMIT-SQL-TEMPORAL-UDF (opaque): return the {low,high} struct from one call, so Catalyst never
+        // EMIT-SQL-TEMPORAL-UDF-OPAQUE (opaque): return the {low,high} struct from one call, so Catalyst never
         // recurses into the per-endpoint normalization (and the named_struct leaves the plan).
         if (temporalUdf) Call(SqlNames.ToInterval, Seq(period.getField("start"), period.getField("end")))
         else Struct(Seq(
@@ -1135,7 +1134,7 @@ object SqlColumnLowering {
           case _: Property => fhirTemporal(go(e0), DateTimePrecision.Day.rank)
           case _           => go(e0)
         }
-        // EMIT-SQL-TEMPORAL-UDF (opaque): one call folds the tsOf/year/month/day age tower.
+        // EMIT-SQL-TEMPORAL-UDF-OPAQUE (opaque): one call folds the tsOf/year/month/day age tower.
         if (temporalUdf) Call(SqlNames.AgeAt, Seq(asTemporal(birth), asTemporal(asOf)))
         else {
         val bs = hoist(asTemporal(birth)); val as_ = hoist(asTemporal(asOf))
@@ -1258,8 +1257,7 @@ object SqlColumnLowering {
     * set/order (the UNION of demand slots across all members), filling only the slots THIS member carries
     * and nulling the rest — so UNION-ALL aligns by position and a navigation reads a shallow top-level
     * `alias.<slot>` (one extraction per field, no per-arm nesting), collapsing the `NestedColumnAliasing`
-    * O(N²). The demand slots are NATIVE top-level fields (the flat encoding is the sole het-Choice carrier;
-    * the former VARIANT payload alternative was retired — see EMIT-SQL-VARIANT-CHOICE RETIRED). */
+    * O(N²). The demand slots are NATIVE top-level fields (the flat encoding is the sole het-Choice carrier). */
   private[lower] def choiceCarrierArm(armVal: SqlExpr, member: CqlType, members: Seq[CqlType],
                                       demand: Set[String]): SqlExpr = {
     def rtOf(m: CqlType): Option[String] = m match { case NamedType(n) => Some(FhirModel.localName(n)); case _ => None }
@@ -1301,7 +1299,7 @@ object SqlColumnLowering {
                              hoist: Hoister, hoistT: Hoister, temporalUdf: Boolean = false): SqlExpr = {
     val point = typeOf(iv) match { case IntervalType(p) => p; case _ => AnyType }
     def s(fields: (String, SqlExpr)*): SqlExpr = Struct(fields)
-    // EMIT-SQL-TEMPORAL-UDF (opaque): close an OPEN temporal bound with the step UDF (successor for a low
+    // EMIT-SQL-TEMPORAL-UDF-OPAQUE (opaque): close an OPEN temporal bound with the step UDF (successor for a low
     // bound, predecessor for a high one) rather than the inline strStep tower; `low` picks the direction
     // (closeTemporal steps `minus = !low`).
     def closeBound(c: SqlExpr, low: Boolean): SqlExpr =

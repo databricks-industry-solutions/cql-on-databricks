@@ -12,7 +12,7 @@ from unittest import mock
 import cql_databricks.compiler.session_libraries as session_mod
 import cql_databricks.compiler.zeroconfig as client_mod
 from cql_databricks.compiler import connect
-from cql_databricks.compiler.mount import reset
+from cql_databricks.compiler.session_state import reset
 from cql_databricks.compiler.providers import CompileError, LibraryGraph, MergedCql
 from cql_databricks.compiler.session_state import SessionRecord
 
@@ -50,6 +50,10 @@ class _SessionSpark:
 
     def createDataFrame(self, rows, schema):
         return _Frame(self, rows)
+
+    def sql(self, statement):
+        assert statement == "SHOW VIEWS IN global_temp"
+        return mock.Mock(collect=lambda: [{"viewName": name, "isTemporary": True} for name in self.views])
 
 
 class _MergingProvider:

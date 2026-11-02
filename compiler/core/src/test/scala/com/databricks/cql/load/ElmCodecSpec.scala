@@ -6,7 +6,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.junit.JUnitRunner
 
 /** Load (ELM JSON -> IR) and the ELM->IR->ELM round-trip, on inline ELM (no translator).
-  * Realizes the PHASE-0 round-trip exit at the unit level and pins Load fidelity. */
+  * Covers the ELM->IR->ELM round-trip at the unit level and pins Load fidelity. */
 @RunWith(classOf[JUnitRunner])
 class ElmCodecSpec extends AnyFunSuite {
 

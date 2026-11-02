@@ -292,10 +292,10 @@ print("populations of HypertensionBPControl:", measure.populations())
 # MAGIC | Compiler Service endpoint | looked up in the workspace App registry by name |
 # MAGIC | Authentication | your ambient identity, exchanged for an App token (RFC 8693) |
 # MAGIC | The `cql_*` operator catalog | read out of `system.information_schema.routines` |
-# MAGIC | FHIR data / value sets | the data source tagged in Unity Catalog, and the `valuesets` view beside the `cql_*` catalog — looked up only when the CQL retrieves data |
+# MAGIC | FHIR data / value sets | the default environment: the catalog tagged `cql_databricks_environment_default`, whose `data` views and `knowledge.valueset` view are read by name — only when the CQL retrieves data |
 # MAGIC
-# MAGIC Each is overridable (`connect(app_name=…, data_source=…, data_catalog=…, valueset_table=…)`), or
-# MAGIC replaced for a session with `mount()` (notebook 3) — but you have to *want* to.
+# MAGIC Each is overridable (`connect(app_name=…, environment=…, data=…, terminology=…)`) — but you have to *want*
+# MAGIC to.
 # MAGIC
 # MAGIC The library source is the one thing you *do* name, and that is deliberate: which measures you mean
 # MAGIC is a decision, not a convention.

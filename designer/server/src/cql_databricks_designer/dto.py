@@ -1,9 +1,7 @@
 """Request models that more than one PACKAGE needs — and a note on why each is here.
 
-It began as `routes/dto.py`, holding the one model several routers shared. SPLIT-PACKAGES turned
-"several routers" into "several packages": `TranslateRequest` is below. A model two packages construct
-cannot live in either without making one depend on the other for a dataclass. (`KnowledgeBindingDto` was
-here too; it went with the Data Source record, `DATA-SOURCE-UC-TAG`.)
+A model two packages construct cannot live in either without making one depend on the other for a
+dataclass.
 
 `TranslateRequest` is shared by three endpoints that belong to three DIFFERENT systems:
 
@@ -34,8 +32,10 @@ from pydantic import BaseModel, Field
 class TranslateRequest(BaseModel):
     cql: str = ""
     includes: list[str] | None = None
-    #: RUN-ADDRESS-LOCATION — where the includes resolve first; None is all of tagged knowledge.
+    #: RUN-ADDRESS-LOCATION — where the includes resolve first; None is the environment's knowledge.
     location: str | None = None
+    #: DOC-ENVIRONMENT-PICKER — the environment whose knowledge resolves the includes; None is the default.
+    environment: str | None = None
     # APP-SPEC-MODEL: also return the ELM (and source) of every library in the include closure.
     # The Define lens derives its whole model from ELM — membership, signatures, bodies via statement
     # locators, dependency edges — so it needs the includes compiled, not just resolved. Off by default:
@@ -43,7 +43,7 @@ class TranslateRequest(BaseModel):
     include_elm: bool = False
 
 
-# APP-SAMPLE-METRICS, SPEC-READ-REF, APP-COHORT-ALGEBRA — the insight request bodies of the Designer's
+# SPEC-READ-REF, APP-COHORT-ALGEBRA — the insight request bodies of the Designer's
 # `/api/libraries/…` routes (`routes/runs.py`).
 
 class DefineRefDto(BaseModel):
@@ -93,10 +93,11 @@ class ReadMetricsRequest(BaseModel):
 
     model_config = {"populate_by_name": True}
     reads: list[ReadDto] = []
-    data_source_id: str | None = Field(default=None, alias="dataSourceId")
+    #: DOC-ENVIRONMENT-PICKER — the environment the figures are read in; None is the default.
+    environment: str | None = None
     period_start: str | None = Field(default=None, alias="periodStart")
     period_end: str | None = Field(default=None, alias="periodEnd")
-    #: RUN-ADDRESS-BY-LIBRARY — the key a draft's run returned, to read that draft; ``""`` reads the version.
+    #: RUN-CLIENT-RESULT-SETS — the label of the complete selection to read, as its run returned it.
     draft: str = ""
     result_set: dict | None = Field(default=None, alias="resultSet")
 
@@ -132,35 +133,35 @@ class CohortFlowRequest(BaseModel):
 
     model_config = {"populate_by_name": True}
     gates: list[FlowGateDto] = []
-    data_source_id: str | None = Field(default=None, alias="dataSourceId")
+    #: DOC-ENVIRONMENT-PICKER — the environment the figures are read in; None is the default.
+    environment: str | None = None
     period_start: str | None = Field(default=None, alias="periodStart")
     period_end: str | None = Field(default=None, alias="periodEnd")
-    #: RUN-ADDRESS-BY-LIBRARY — the key a draft's run returned, to read that draft; ``""`` reads the version.
+    #: RUN-CLIENT-RESULT-SETS — the label of the complete selection to read, as its run returned it.
     draft: str = ""
     result_set: dict | None = Field(default=None, alias="resultSet")
 
 class MeasureMetricsRequest(BaseModel):
-    """APP-SAMPLE-METRICS — the metric request body.
+    """APP-SPEC-MODEL — the metric request body.
 
     MODULE SCOPE, not nested in `create_app`. This file uses postponed annotations, so FastAPI resolves
     a handler's types through the MODULE namespace: a locally-defined body model is unresolvable there
     and silently degrades to a required QUERY parameter, which fails every request with
     `missing: query.req` rather than with anything naming the real problem.
 
-    **THE EVALUATION SCOPE IS PART OF THE QUESTION.** A figure is a fact about one evaluation — one data
-    source over one measurement period (`PIPE-PER-LIBRARY-SCHEMA`) — so asking for "the measure's numbers"
-    without naming it is asking something with several different true answers. The sample builder could
+    **THE EVALUATION SCOPE IS PART OF THE QUESTION.** A figure is a fact about one evaluation — one
+    environment's data over one measurement period — so asking for "the measure's numbers" without naming it is
+    asking something with several different true answers. The sample builder could
     ignore the scope because it invented the figures; a warehouse-backed one cannot even find the tables.
     """
 
     model_config = {"populate_by_name": True}
     defines: list[MetricDefineDto] = []
-    #: The Data Source the figures are read for. Absent means no evaluation is selected, so there are
-    #: no figures — the document reads on its own (`SPEC-METRIC`'s not-computed state).
-    data_source_id: str | None = Field(default=None, alias="dataSourceId")
+    #: DOC-ENVIRONMENT-PICKER — the environment the figures are read in; None is the default.
+    environment: str | None = None
     period_start: str | None = Field(default=None, alias="periodStart")
     period_end: str | None = Field(default=None, alias="periodEnd")
-    #: RUN-ADDRESS-BY-LIBRARY — the key a draft's run returned, to read that draft; ``""`` reads the version.
+    #: RUN-CLIENT-RESULT-SETS — the label of the complete selection to read, as its run returned it.
     draft: str = ""
     result_set: dict | None = Field(default=None, alias="resultSet")
     #: RUN-CLIENT-MEASURE-SCORE — the measure's DECLARED scoring (`Measure.scoring`), which the score is
@@ -169,17 +170,17 @@ class MeasureMetricsRequest(BaseModel):
 
 
 class RunRequest(BaseModel):
-    """SVC-RUN-STAGE — a run: the CQL, the Data Source (required) and its overrides (``periodStart``, ``periodEnd``).
+    """SVC-RUN-STAGE — a run: the CQL, the environment it runs in and its overrides (``periodStart``, ``periodEnd``).
     The Designer's `/api/run` takes this body."""
     model_config = {"populate_by_name": True}
     cql: str = ""
-    #: RUN-ADDRESS-LOCATION — where the library's includes resolve first (``store:<catalog>.<schema>`` or
-    #: ``folder:<path>``); None is all of tagged knowledge.
+    #: RUN-ADDRESS-LOCATION — where the library's includes resolve first (``store:<catalog>.knowledge`` or
+    #: ``folder:<path>``); None is the environment's knowledge.
     location: str | None = None
     defines: list[str] | None = None
     overrides: dict[str, str] | None = None
-    # The Data Source to run against (required).
-    data_source_id: str | None = None
+    #: DOC-ENVIRONMENT-PICKER — the environment the run is in; None is the default.
+    environment: str | None = None
     #: RUN-RECOMPUTE-OVERRIDE — run every define of the closure even where its rows are current.
     recompute: bool = False
     #: RUN-CLIENT-REFRESH-RESUME — explicit cutoff and stable logical session for retries.

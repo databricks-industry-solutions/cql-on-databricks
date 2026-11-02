@@ -5,9 +5,8 @@
 // result table gets WIDTH, and a table is the one shape a narrow pane cannot show; and it is the one
 // region of the workspace nothing else claims — left is the nav, right is the inspector, centre is the
 // document. The rejected placement is a tab in the inspector: that pane's scope is *data about the
-// selection* (`APP-INSPECTOR`), and it already spent a year holding a disabled Assistant tab
-// (`APP-ASSISTANT-PANE`, retired). The scope binding a pane would have bought is paid for instead by
-// `APP-ASSISTANT-CONTEXT` — scope travels as context, so the conversation can be placed anywhere.
+// selection* (`APP-INSPECTOR`). Scope travels as context instead (`APP-ASSISTANT-CONTEXT`), so the
+// conversation can be placed anywhere.
 //
 // IT OVERLAYS, IT DOES NOT REFLOW (`APP-STABLE-LAYOUT`). The drawer shares the reading column's grid
 // cell and is `align-self: end`, so opening it moves nothing: the document does not re-wrap, and the
@@ -82,7 +81,7 @@ interface Turn {
 
 /** What each tool is doing, in the reader's terms rather than the tool's.
  *
- *  `THEME-GLASSBOX`: the point of showing the trace is that a clinician can follow it, and
+ *  The point of showing the trace is that a clinician can follow it, and
  *  `get_freshness` is not something they should have to learn. A tool with no phrase here still
  *  reports — it falls back to its own name — because an unnamed step is better than a silent one. */
 const TOOL_PHRASE: Record<string, string> = {
@@ -272,7 +271,7 @@ function steps(trace: AssistantInvocation[]): Step[] {
 
 /** The turn in flight — ONE LINE, the step now, overwritten as the loop moves.
  *
- *  `THEME-GLASSBOX` is served by saying what is being done, not by keeping every line that was ever
+ *  The reader is served by saying what is being done, not by keeping every line that was ever
  *  true on the screen. A growing list pushes the reader's own question off the top of a drawer that
  *  is a third of the column, and by the time the answer arrives it is a wall of text nobody read —
  *  the account of the investigation belongs to the FINISHED answer, where it is one press away
@@ -392,7 +391,7 @@ function AnswerBody({ answer, lens, funnel }: {
   );
 }
 
-/** One source line. The HANDLE is the citation (`SVC-TOOL-ADDRESS`) — an address anyone can re-read,
+/** One source line. The HANDLE is the citation — an address anyone can re-read,
  *  which is what lets someone who was not in the conversation reproduce the answer. */
 function SourceRow({ inv }: { inv: AssistantInvocation }) {
   return (

@@ -1,22 +1,22 @@
-"""DOC-OPEN-SAVE — save a library where it was opened: its workspace folder or its tagged store, as the signed-in user.
+"""DOC-OPEN-SAVE, DOC-AUTO-SAVE — write a library back to the workspace folder it was opened from, as the signed-in user.
+Every edit is written, whether or not it compiles. Folders are the only place the Designer edits: a tagged store is
+read-only here (`DOC-EDITABLE-IN-SCOPE`), so nothing the Designer edits reaches tagged knowledge.
 
-A folder mirrors an eCQI measure package (`folder_content.py`), which holds one library's logic several times: the
+A folder mirrors a measure package (`folder_content.py`), which holds one library's logic several times: the
 ``.cql`` file, the ``Library`` resource's encoded CQL and compiled ELM, the bundle, an XML copy of each resource and
-an HTML rendering. Save rewrites the ``.cql`` and every JSON copy, with ELM compiled from the saved CQL, so nothing
-in the folder disagrees with it. The XML copies and the HTML cannot be regenerated here; the first save that would
+an HTML rendering. A save rewrites the ``.cql`` and every JSON copy, with ELM compiled from the saved CQL, or with no
+ELM when it does not compile, so no ELM in the folder disagrees with the CQL beside it. The XML copies and the HTML cannot be regenerated here; the first save that would
 leave them out of date names them and asks, and they are deleted only when the caller confirms each one.
 
-A tagged store is saved in place: the ``Library`` row (and the ``Measure`` row, when its fields were edited) through
-the one knowledge MERGE the import uses (`knowledge_merge.py`), replacing a row only while it is unchanged since it
-was read. A save never creates a library.
+A save never creates a library, and refuses when the library changed since it was opened or last saved: the caller
+sends the digest of the CQL it last knew to be there, and the save compares it with the CQL there now.
 
-Either way, a save refuses when the library changed since it was opened: the caller sends the digest of the CQL it
-opened, and the save compares it with the CQL there now.
+New and Save As create one in a folder (`create_in_folder`): its CQL, a ``Library`` resource and, for a measure, a
+``Measure``. Each gets a canonical URL under the deployment's one base (`config.canonical_base`). A create writes
+nothing over anything: a folder that already holds one of its files refuses it.
 
-New and Save As create one (`create_in_folder`, `create_in_store`): its CQL, a ``Library`` resource and, for a
-measure, a ``Measure``. Both get a canonical URL under the deployment's one base (`config.canonical_base`). A
-create writes nothing over anything: a folder that already holds one of its files, or a store that already holds
-its ``(url, version)``, refuses it.
+A tagged store changes only by publishing (`CLIENT-PUBLISH`, `DOC-PUBLISH`), which the client does.
+The ``Library`` resource every write carries is the client's (`library_resource.py`).
 """
 from __future__ import annotations
 
@@ -26,12 +26,11 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from cql_databricks.compiler.folder_content import folder_library_resource, folder_measure
 from cql_databricks.compiler.libraries import FileLibraryProvider, LibraryFiles, LibraryRef, LibraryResolutionError
-from cql_databricks.data_bindings.measure_import.knowledge_merge import SINGLE_ROW, knowledge_merge_sql
+from cql_databricks.compiler.library_resource import library_canonical, library_resource, with_content
 
 
 class SaveConflict(Exception):
@@ -93,8 +92,9 @@ class WorkspaceFolderWriter:
 
 
 def save_to_folder(req: SaveRequest, folder: str, *, files: LibraryFiles, writer: FolderWriter,
-                   elm: str) -> dict[str, Any]:
-    """Save ``req`` into the package folder ``folder``. ``elm`` is the saved CQL, compiled."""
+                   elm: str | None) -> dict[str, Any]:
+    """Save ``req`` into the package folder ``folder``. ``elm`` is the saved CQL, compiled; None when it does not
+    compile."""
     folder = folder.rstrip("/")
     try:
         existing = FileLibraryProvider([folder], files=files).resolve(LibraryRef(req.name, req.version))
@@ -102,7 +102,7 @@ def save_to_folder(req: SaveRequest, folder: str, *, files: LibraryFiles, writer
         existing = None
     if existing is not None:
         if req.base_sha256 is None or cql_sha256(existing.cql or "") != req.base_sha256:
-            raise SaveConflict(f"{existing.origin} changed since it was opened")
+            raise SaveConflict(f"{existing.origin} changed since it was opened or last saved")
         cql_path = existing.origin or ""
     elif req.base_sha256 is not None:
         raise SaveConflict(f"{req.name} {req.version} is no longer in {folder}")
@@ -140,50 +140,12 @@ def save_to_folder(req: SaveRequest, folder: str, *, files: LibraryFiles, writer
             "sha256": cql_sha256(req.cql)}
 
 
-def save_to_store(req: SaveRequest, store: tuple[str, str], *, corpus, run, elm: str) -> dict[str, Any]:
-    """Save ``req`` over its ``Library`` row (and ``Measure`` row) in the tagged ``store``, as ``run``'s identity."""
-    found = corpus.library_in(store, req.name, req.version)
-    if found is None:
-        raise SaveRefused(f"{req.name} {req.version} is not in {'.'.join(store)}; save a new library to a folder")
-    if req.base_sha256 is None:
-        raise SaveConflict(f"{req.name} {req.version} is already in {'.'.join(store)}")
-    library = _write_row(run, found.knowledge.table("library"), (found.url, found.fhir_version), req,
-                         lambda resource: with_content(resource, req.cql, elm), check_cql=True)
-    measure = None
-    if req.measure is not None:
-        if found.measure is None:
-            raise SaveRefused(f"{req.name} has no Measure row in {'.'.join(store)} to update")
-        measure = _write_row(run, found.knowledge.table("measure"), found.measure, req, lambda _: req.measure)
-    return {"location": f"store:{'.'.join(store)}", "saved": [library] + ([measure] if measure else []),
-            "deleted": [], "sha256": cql_sha256(req.cql)}
-
-
-def _write_row(run, table: str, key: tuple[str, str], req: SaveRequest, update, *, check_cql: bool = False) -> str:
-    rows = run(f"SELECT to_json(resource) AS resource, source_package, source_year FROM {table} "
-               "WHERE url = :url AND version = :version", {"url": key[0], "version": key[1]})
-    if len(rows) != 1:
-        raise SaveConflict(f"{key[0]}|{key[1]} is no longer in {table}")
-    stored = rows[0]["resource"]
-    resource = json.loads(stored)
-    if check_cql and cql_sha256(_attachment(resource, "text/cql") or "") != req.base_sha256:
-        raise SaveConflict(f"{req.name} {req.version} changed in {table} since it was opened")
-    merged = run(knowledge_merge_sql(table, SINGLE_ROW, unchanged_digest=True), {
-        "resource_json": json.dumps(update(resource)), "source_package": rows[0].get("source_package"),
-        "source_year": rows[0].get("source_year"), "source_lineage": "designer",
-        "ingested_at": datetime.now(timezone.utc).isoformat(),
-        "resource_sha256": hashlib.sha256(stored.encode("utf-8")).hexdigest()})
-    if not merged or int(merged[0].get("num_updated_rows") or 0) != 1:
-        raise SaveConflict(f"{key[0]}|{key[1]} changed in {table} while it was being saved")
-    return f"{table} {key[0]}|{key[1]}"
-
-
 # ── New and Save As ───────────────────────────────────────────────────────────────────────────────
 
 #: What a new library's name and version must be: each becomes part of a file name and of a canonical URL.
 _NAME = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 _VERSION = re.compile(r"[0-9A-Za-z][0-9A-Za-z._-]*")
 
-_LIBRARY_TYPE = {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/library-type", "code": "logic-library"}]}
 _PROPORTION = {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/measure-scoring", "code": "proportion"}]}
 _STARTING_POPULATIONS = (("initial-population", "Initial Population"), ("denominator", "Denominator"),
                          ("numerator", "Numerator"))
@@ -219,10 +181,6 @@ def starting_cql(name: str, version: str, *, measure: bool) -> str:
     return cql
 
 
-def library_canonical(base: str, name: str) -> str:
-    return f"{base}/Library/{name}"
-
-
 def starting_measure(name: str, version: str, *, base: str) -> dict[str, Any]:
     """The ``Measure`` a New measure starts with: its identity, its library, and one proportion group over the
     starting populations (`starting_cql`)."""
@@ -249,26 +207,15 @@ def measure_copy(source: dict[str, Any], name: str, version: str, *, base: str) 
     return out
 
 
-def library_resource(new: NewLibrary, elm: str, *, base: str) -> dict[str, Any]:
-    """The FHIR ``Library`` for ``new``: identity, the CQL and its compiled ELM, and its origin when it is a copy."""
-    resource: dict[str, Any] = {
-        "resourceType": "Library", "id": new.name, "url": library_canonical(base, new.name), "version": new.version,
-        "name": new.name, "status": "draft", "type": _LIBRARY_TYPE,
-        "content": [{"contentType": "text/cql", "data": _b64(new.cql)},
-                    {"contentType": "application/elm+json", "data": _b64(elm)}]}
-    if new.derived_from:
-        resource["relatedArtifact"] = [{"type": "derived-from", "resource": new.derived_from}]
-    return resource
-
-
-def create_in_folder(new: NewLibrary, folder: str, *, files: LibraryFiles, writer: FolderWriter, elm: str,
+def create_in_folder(new: NewLibrary, folder: str, *, files: LibraryFiles, writer: FolderWriter, elm: str | None,
                      base: str) -> dict[str, Any]:
     """Create ``new`` in the folder ``folder``, laid out as a measure package: ``cql/<Name>-<version>.cql``,
     ``resources/library-…json`` and, for a measure, ``resources/measure-…json``."""
     folder = folder.rstrip("/")
     stem = f"{new.name}-{new.version}"
     writes = {f"{folder}/cql/{stem}.cql": new.cql,
-              f"{folder}/resources/library-{stem}.json": _json(library_resource(new, elm, base=base))}
+              f"{folder}/resources/library-{stem}.json": _json(library_resource(
+                  new.name, new.version, new.cql, elm, base=base, derived_from=new.derived_from))}
     if new.measure is not None:
         writes[f"{folder}/resources/measure-{stem}.json"] = _json(new.measure)
     try:
@@ -287,57 +234,8 @@ def create_in_folder(new: NewLibrary, folder: str, *, files: LibraryFiles, write
     return {"location": f"folder:{folder}", "saved": sorted(writes), "deleted": [], "sha256": cql_sha256(new.cql)}
 
 
-def create_in_store(new: NewLibrary, store: tuple[str, str], *, corpus, run, elm: str, base: str) -> dict[str, Any]:
-    """Create ``new`` in the tagged ``store``: a ``Library`` row and, for a measure, a ``Measure`` row, each through
-    the knowledge MERGE in its insert-only form, as ``run``'s identity.
-
-    The ``Measure`` row's key is checked free before the ``Library`` row is written, so the common refusal leaves
-    nothing behind; one written by someone else between the check and the insert leaves the ``Library`` row alone
-    in the store, and the error says so."""
-    knowledge = next((s for s in corpus.sources if (s.catalog, s.schema) == store), None)
-    if knowledge is None:
-        raise SaveRefused(f"{'.'.join(store)} is not a tagged knowledge store")
-    if corpus.library_in(store, new.name, new.version) is not None:
-        raise SaveConflict(f"{new.name} {new.version} is already in {'.'.join(store)}")
-    library = library_resource(new, elm, base=base)
-    rows = [(knowledge.table("library"), library)]
-    if new.measure is not None:
-        rows.append((knowledge.table("measure"), new.measure))
-        held = run(f"SELECT 1 AS held FROM {knowledge.table('measure')} WHERE url = :url AND version = :version",
-                   {"url": new.measure["url"], "version": new.measure["version"]})
-        if held:
-            raise SaveConflict(f"{new.measure['url']}|{new.measure['version']} is already in {'.'.join(store)}")
-    saved = []
-    for table, resource in rows:
-        inserted = run(knowledge_merge_sql(table, SINGLE_ROW, insert_only=True), {
-            "resource_json": json.dumps(resource), "source_package": None, "source_year": None,
-            "source_lineage": "designer", "ingested_at": datetime.now(timezone.utc).isoformat()})
-        key = f"{table} {resource['url']}|{resource['version']}"
-        if not inserted or int(inserted[0].get("num_inserted_rows") or 0) != 1:
-            raise SaveConflict(f"{key} is already there" + (f"; {saved[0]} was written without it" if saved else ""))
-        saved.append(key)
-    return {"location": f"store:{'.'.join(store)}", "saved": saved, "deleted": [], "sha256": cql_sha256(new.cql)}
-
-
-def with_content(resource: dict[str, Any], cql: str, elm: str | None) -> dict[str, Any]:
-    """``resource`` (a FHIR ``Library``) carrying ``cql`` and, where it carries ELM, ``elm`` — nothing else changed."""
-    out = copy.deepcopy(resource)
-    content = out.setdefault("content", [])
-    has_cql = False
-    for attachment in content:
-        kind = (attachment.get("contentType") or "").lower()
-        if "cql" in kind:
-            attachment["data"] = _b64(cql)
-            has_cql = True
-        elif "elm" in kind and "json" in kind and elm is not None:
-            attachment["data"] = _b64(elm)
-    if not has_cql:
-        content.append({"contentType": "text/cql", "data": _b64(cql)})
-    return out
-
-
 def _bundle_with(text: str | None, req: SaveRequest, library: dict[str, Any] | None,
-                 elm: str) -> dict[str, Any] | None:
+                 elm: str | None) -> dict[str, Any] | None:
     """A bundle carrying this library (and measure) as saved, or None when ``text`` is no bundle holding them."""
     try:
         bundle = json.loads(text) if text else None
@@ -361,17 +259,6 @@ def _bundle_with(text: str | None, req: SaveRequest, library: dict[str, Any] | N
 
 def _named(measure: dict[str, Any]) -> list[str]:
     return [c.split("|", 1)[0].rstrip("/").rsplit("/", 1)[-1] for c in measure.get("library") or [] if isinstance(c, str)]
-
-
-def _attachment(resource: dict[str, Any], content_type: str) -> str | None:
-    for attachment in resource.get("content") or []:
-        if (attachment.get("contentType") or "").lower() == content_type and attachment.get("data"):
-            return base64.b64decode(attachment["data"]).decode("utf-8")
-    return None
-
-
-def _b64(text: str) -> str:
-    return base64.b64encode(text.encode("utf-8")).decode("ascii")
 
 
 def _json(resource: dict[str, Any]) -> str:

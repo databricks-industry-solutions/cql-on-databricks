@@ -58,7 +58,9 @@ compiler because the functions and the SQL that calls them are one versioned con
 The client (`compiler/client`, the `cql-databricks` wheel) runs that SQL as the caller and keeps the results
 (`RESULT-INTO-CLIENT`):
 
-- `cql_databricks.compiler`: `cql()`, compiling, and the data-source layout and lookup.
+- `cql_databricks.compiler`: `cql()`, compiling through the stateless compiler, and binding a run.
+- `cql_databricks.resolvers`: everything a run reads and writes through: the resolvers, the environments, and the
+  value-set digest (`CLIENT-PACKAGE-SPLIT`).
 - `cql_databricks.data_bindings`: finding knowledge, terminology and data sources by UC tag, and the knowledge
   views.
 - `cql_databricks.result`: durable bulk calculations on a SQL warehouse, reading results, and the result views.

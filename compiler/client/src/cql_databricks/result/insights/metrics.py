@@ -1,20 +1,17 @@
-"""APP-SAMPLE-METRICS (retiring), SPEC-METRIC, SPEC-ATTRITION — the measure's REAL metric set.
+"""SPEC-METRIC, SPEC-ATTRITION — the measure's real metric set.
 
-Every figure the Specification renders, read from the tables the pipeline already wrote. This is what
-retires ``insights/sample.py``'s metric half: same route, same wire shape, same client, real numbers.
+Every figure the Specification renders, read from the tables the pipeline already wrote: the same route and
+wire shape as the sample metrics, with real numbers.
 
-**A MEASURE'S DEFINES LIVE IN SEVERAL SCHEMAS.** ``PIPE-PER-LIBRARY-SCHEMA`` gives each library its own
-results schema, and a measure reads its include closure — a multi-library measure spans one schema per
-library (itself plus each shared helper library it includes). So the builder resolves a schema PER LIBRARY and counts across all of them in one query, which
-is what makes the figures comparable: `SPEC-ATTRITION` puts each figure beside its base, and a base read
+**A MEASURE'S DEFINES SPAN ITS INCLUDE CLOSURE.** A measure reads defines of itself and of each helper library it
+includes, each in its own selected table. So the builder counts across all of them in one query, which is what makes
+the figures comparable: `SPEC-ATTRITION` puts each figure beside its base, and a base read
 a minute later than the figure it scales can contradict it.
 
-**THE DEFINE→TABLE MAP COMES FROM THE STATE LAYER, NOT FROM GUESSING THE NAME.** ``pipeline_defines``
-records ``(define_name, mv_name)`` per compiled library, so the map is what the compiler actually emitted.
-Re-deriving a table name from a define name would be a second naming rule able to disagree with
-``PIPE-RESULT-NAMING`` — and it would be wrong today, because a dependency library's defines are recorded
-LIBRARY-PREFIXED (``CareVisits_Visits_During_Period``) while the client asks about
-``Visits During Period`` in library ``Encounters``.
+**THE DEFINE→RELATION MAP COMES FROM THE SELECTION, NOT FROM GUESSING THE NAME.** The selection's metadata
+names each define's library and its pinned table (``selection_reading.SelectionClosure``), so the map is what the
+compiler actually emitted. Re-deriving a table name from a define name would be a second naming rule that
+could disagree with the compiler's.
 
 **A DEFINE THE PIPELINE DID NOT MATERIALIZE IS ABSENT, NEVER ZERO.** Only the defines a measure actually
 reaches are compiled into its pipeline — a helper library may contribute 4 of its defines, not all
@@ -38,7 +35,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from ..relation import SUBJECT_ID, met_expr, value_column
-from ..results import Execute, RelationRef, count_relations, relation_columns, result_relation
+from ..results import Execute, PinnedRelation, count_relations, relation_columns, result_relation
 from .evaluation import ClosureSource, MetricsUnavailable, locate
 from .model import PROVENANCE_RUN, DefineMetric, MeasureMetrics
 
@@ -81,7 +78,7 @@ def measure_metrics(
     defines: list[tuple[str, str, str | None]],
     cohorts: dict[DefineKey, Cohort],
     closure: "ClosureSource",
-    patient_function: str | None,
+    patient_relation: str | None,
     results_catalog: str,
     execute: Execute,
 ) -> MeasureMetrics:
@@ -92,17 +89,17 @@ def measure_metrics(
     ``cohorts`` is each define's cohort, keyed ``(library, name)``, and every define must have one.
     What this function adds is the figures.
 
-    ``result_type`` is deliberately NOT used to decide the element grain here, unlike the sample builder
-    it replaces. The relation's own schema decides it (`relation.element_count_expr`), because the
-    relation is the thing being counted; a `List<…>` return whose relation carries no usable ordinal has
-    no element count to give, and the result type cannot know that.
+    ``result_type`` is deliberately NOT used to decide the element grain here. The relation's own schema
+    decides it (`relation.element_count_expr`), because the relation is the thing being counted; a `List<…>`
+    return whose relation carries no usable ordinal has no element count to give, and the result type cannot
+    know that.
     """
     missing_cohort = [(lib, name) for lib, name, _ in defines if (lib, name) not in cohorts]
     if missing_cohort:
         raise ValueError(f"every define needs a cohort to be counted in (SPEC-POPULATION-CASCADE); "
                          f"none given for {missing_cohort}")
 
-    # RUN-EVAL-ID-INPUTS: the evaluation set, named by the route (`evaluation_key.EvaluationKeys`).
+    # RUN-CLIENT-RESULT-SETS: the complete selection's identity, which the closure is checked against.
     suffix = eval_id
     libraries = closure.closure(data_source_id, suffix, root=library, draft=draft)
     if not libraries:
@@ -114,15 +111,15 @@ def measure_metrics(
     # populations are located with the defines: a population is normally one of them, but need not be.
     wanted = [(lib, name) for lib, name, _ in defines]
     wanted += [key for c in cohorts.values() for key in (*c.all_of, *c.none_of)]
-    located: dict[DefineKey, RelationRef] = {}
+    located: dict[DefineKey, PinnedRelation] = {}
     for define_library, name in dict.fromkeys(wanted):
-        ref = locate(libraries, define_library, name, results_catalog)
+        ref = locate(libraries, define_library, name)
         if ref is not None:
             located[(define_library, name)] = ref
 
-    columns = relation_columns(results_catalog, located.values(), execute=execute)
+    columns = relation_columns(results_catalog, located.values())
     counts = count_relations(execute, columns, eval_id=suffix)
-    evaluated = _evaluated_subjects(patient_function, execute=execute)
+    evaluated = _evaluated_subjects(patient_relation, execute=execute)
 
     present = [(lib, name) for lib, name, _ in defines
                if (lib, name) in located and located[(lib, name)] in counts]
@@ -150,8 +147,8 @@ def measure_metrics(
 def _counted_within(
     present: list[DefineKey],
     cohorts: dict[DefineKey, Cohort],
-    located: dict[DefineKey, RelationRef],
-    columns: dict[RelationRef, dict[str, str]],
+    located: dict[DefineKey, PinnedRelation],
+    columns: dict[PinnedRelation, dict[str, str]],
     eval_id: str,
     *,
     execute: Execute,
@@ -168,7 +165,7 @@ def _counted_within(
         return {}
     distinct = list(dict.fromkeys(cohorts[key] for key in scoped))
     members = [m for c in distinct for m in (*c.all_of, *c.none_of)]
-    unread = sorted({m for m in members if m not in located or located[m] not in columns})
+    unread = sorted({m for m in members if m not in located})
     if unread:
         raise MetricsUnavailable(
             f"the population(s) {unread} have no result relation at this evaluation, so the defines "
@@ -229,10 +226,10 @@ def cohort_count_sql(subjects: list[str], cohorts: list[tuple[list[int], list[in
     return "WITH " + ",\n".join(ctes) + "\n" + "\nUNION ALL\n".join(branches)
 
 
-def _evaluated_subjects(patient_function: str | None, *, execute: Execute) -> int:
+def _evaluated_subjects(patient_relation: str | None, *, execute: Execute) -> int:
     """The EVALUATED total — every subject the measure ran against, before any criterion (`SPEC-METRIC`).
 
-    **Read from the bound Patient retrieve, and only from there** (D3, `BIND-RETRIEVE-UDF`). This is the
+    **Read from the environment's Patient view, and only from there** (`BIND-PUBLISHED-VIEW`). This is the
     decision the metric set waited on, and the reason it is the binding rather than a result table: a
     result relation's subject set is whatever its joins LEFT — the numerator relation mentions 2,713
     subjects, but that excludes every patient with no reading at all, so it is a lower
@@ -240,30 +237,30 @@ def _evaluated_subjects(patient_function: str | None, *, execute: Execute) -> in
     is" when the strata read demographics, so the cohort and its breakdowns come from one definition
     rather than two that can disagree.
 
-    **THE DATA SOURCE IS THE POPULATION.** The call passes no argument: a retrieve's rows depend only on its
-    arguments and its data source (`EMIT-ROOT-INDEPENDENT`), and a measure's population is chosen by
-    choosing its data source (`DATA-CONFORMANCE-MEASURE-SELECT`, one conformance source per measure).
+    **THE ENVIRONMENT'S DATA IS THE POPULATION.** The view takes no argument: a retrieve's rows depend only on its
+    request and the data it is bound to (`EMIT-ROOT-INDEPENDENT`), and a measure's population is chosen by
+    choosing its environment (`CLIENT-ENVIRONMENT`).
 
-    A Data Source with no Patient binding has no cohort to state, and 0 is not the answer — it reports
+    An environment with no Patient view has no cohort to state, and 0 is not the answer — it reports
     absence upward by raising, since `SPEC-METRIC` requires a share's base be STATED. A binding that
     resolves but yields no subjects is the same absence for the same reason: a document cannot take
     shares against an empty cohort, and rendering "0 → 67" is a base that is not a base.
     """
-    if not patient_function:
+    if not patient_relation:
         raise MetricsUnavailable(
-            "the Data Source has no Patient data binding, so the evaluated-subject total the shares "
+            "the environment has no Patient view, so the evaluated-subject total the shares "
             "are taken against cannot be stated (SPEC-METRIC requires the base be stated)")
 
     sql = (f"SELECT COUNT(DISTINCT {SUBJECT_ID}) AS subjects "
-           f"FROM {patient_function}()")
+           f"FROM {patient_relation}")
     rows = execute(sql)
     if not rows or not rows[0]:
         raise MetricsUnavailable(
-            f"the Patient binding {patient_function} returned no count for the evaluated-subject total")
+            f"the Patient binding {patient_relation} returned no count for the evaluated-subject total")
     subjects = int(rows[0][0] or 0)
     if subjects == 0:
         raise MetricsUnavailable(
-            f"the Patient binding {patient_function} holds no subjects, so the "
+            f"the Patient binding {patient_relation} holds no subjects, so the "
             f"evaluated-subject total the shares are taken against cannot be stated (SPEC-METRIC)")
     return subjects
 

@@ -3,8 +3,8 @@
 // Its trigger is a status DOT and a caret, and it opens a popover. Open-state is a straight accent bar,
 // never a ring (cql-databricks-no-curved-accent-rings).
 //
-// THE TRIGGER CARRIES NO VALUE (APP-EXECUTION-PILL). A `● <data source> · <warehouse> ▾` label was tried
-// and dropped: it was long and reflowed the toolbar. The values are in the tooltip and in the popover's rows.
+// THE TRIGGER CARRIES NO VALUE (APP-EXECUTION-PILL). A `● <data source> · <warehouse> ▾` label would be
+// long and reflow the toolbar. The values are in the tooltip and in the popover's rows.
 //
 // THE POPOVER IS ONE SHORT MENU OF ITEMS, no section headings. An item is one of:
 //   • SUBMENU — one row: its label as an eyebrow above the current value, then `›`; its options open
@@ -81,17 +81,17 @@ export function PillMenu({
   /** The trigger dot's status color. */
   status: PillStatus;
   /** True while a live/async selection is computing. Exposed as `data-running` on the trigger — state
-   *  on the DOM, not motion: the dot no longer pulses (a permanent animation in the toolbar corner of
+   *  on the DOM, not motion: the dot does not pulse (a permanent animation in the toolbar corner of
    *  a reading surface), and progress is reported by the stage badge at the head of the popover. */
   running?: boolean;
   /** APP-COMPUTE-ACTIVITY — how far the running work has got, 0–1, or null when there is no figure.
    *
    *  Drawn as a HAIRLINE along the collapsed trigger's bottom edge, so the pill reports progress without
    *  being opened. The stage badge is inside the popover, which means the one control that says a run is
-   *  happening could not say how far along it was until you clicked it — and the answer to "is it worth
+   *  happening cannot say how far along it is until you click it — and the answer to "is it worth
    *  waiting?" should not itself cost an interaction. Same material as the badge's bar (`--fun-3` over a
    *  hairline track) so the collapsed and expanded readings are one idiom at two sizes, and a fill rather
-   *  than an animation for the same reason the dot stopped pulsing. */
+   *  than an animation for the same reason the dot does not pulse. */
   progress?: number | null;
   ariaLabel: string;
   title?: string;

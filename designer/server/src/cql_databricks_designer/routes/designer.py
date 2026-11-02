@@ -1,15 +1,14 @@
 """Designer Specification document (`SPEC-*`, `APP-*`): its prose and the synthetic deck.
 
-The result derivations this module used to serve — the metric set, a define's profile, the cohort flow
-and the read accounting — moved to the evaluator (`MOVE-DERIVATIONS`), and then into its client
-(`DERIVATIONS-TO-LIBRARY`, `cql_databricks.result.insights`); `routes/runs.py` serves them.
+The result derivations — the metric set, a define's profile, the cohort flow and the read accounting — live
+in the client (`DERIVATIONS-TO-LIBRARY`, `cql_databricks.result.insights`); `routes/runs.py` serves them.
 The Designer renders them; the agent needs them as much as it does. The Data Readiness read is gone
 with its module (DESIGNER-ONE-MODULE).
 
-**Every derivation here is scoped to ONE evaluation, and that is not an implementation detail.** A
+**Every derivation here is scoped to ONE complete selection, and that is not an implementation detail.** A
 profile and a metric set are facts about a data source over a measurement period, so the same define
 has different true distributions per scope and the server cannot locate the result relation without it
-(`PIPE-PER-LIBRARY-SCHEMA`). Required, never defaulted: a request without a scope has no answer rather
+(`RUN-CLIENT-RESULT-SETS`). Required, never defaulted: a request without a scope has no answer rather
 than a stale one, and a figure silently read from a different evaluation than the one above it on the
 page is the defect `APP-SPEC-MODEL` names.
 
@@ -30,20 +29,21 @@ from fastapi.responses import JSONResponse
 from ..assistant_tools import specification_document
 
 from .. import sample_deck
-from cql_databricks.data_bindings import ContentResolver
+from cql_databricks_designer.data_bindings import EnvironmentContents
 
 from cql_databricks_designer.dto import TranslateRequest
 
 log = logging.getLogger("cql_databricks_designer")
 
 
-def router(*, content: ContentResolver) -> APIRouter:
+def router(*, contents: EnvironmentContents) -> APIRouter:
 
 
     router = APIRouter()
 
     @router.get("/api/libraries/{name}/{version}/specification")
-    def library_specification(name: str, version: str, location: str | None = None) -> JSONResponse:
+    def library_specification(name: str, version: str, location: str | None = None,
+                              environment: str | None = None) -> JSONResponse:
         # The Specification's PROSE for a library: the Summary, and the what/why/how-to-read triple
         # per define, keyed library-qualified so the client can join it onto the structure it derives
         # from the ELM (SPEC-DOCUMENT). Structure, metrics and the Appendix are NOT here — they are
@@ -58,7 +58,7 @@ def router(*, content: ContentResolver) -> APIRouter:
         # `get_specification` must return exactly what this route returns, or one define reads one
         # way to a person and another way to an agent — which is the drift the whole tool surface
         # exists to prevent. The independent-failure behaviour above moved with it, unchanged.
-        document = specification_document(name, version, content=content, location=location)
+        document = specification_document(name, version, content=contents.get(environment), location=location)
         if document is None:
             return JSONResponse(status_code=404,
                                 content={"error": f"No Specification for {name}@{version}"})

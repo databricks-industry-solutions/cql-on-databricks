@@ -1,9 +1,9 @@
 package com.databricks.cql.service
 
-import com.databricks.cql.env.{Config, Context, SourceBinding}
+import com.databricks.cql.env.{Config, Context, DataBinding, RetrieveRelation, TerminologyBinding}
 import com.databricks.cql.ir.{Expr, ExpressionDef, Library}
 import com.databricks.cql.meta.{LibraryDescribe, LibraryGraph}
-import com.databricks.cql.passes.{BuildInfo, LibraryLinker, Optimize, Pipeline, RetrieveCatalog, RetrieveReads}
+import com.databricks.cql.passes.{BuildInfo, LibraryLinker, Optimize, ParameterScope, Pipeline, RetrieveCatalog, RetrieveReads}
 import com.databricks.cql.retrieve.TerminologyProvider
 import com.databricks.cql.spark.SystemColumns
 import com.databricks.cql.translate.CqlToElmCli
@@ -11,14 +11,6 @@ import com.databricks.cql.transpiler.emit.{SqlNames, SqlRel, SqlRender, SqlStmt}
 import com.databricks.cql.transpiler.lower.{SqlEvalEnv, SqlFrameLowering}
 
 import scala.collection.mutable
-
-/** One library entry in a multi-library `PIPE-MULTI-LIB` request: the ROOT library as ELM JSON plus
-  * its dependency closure. The same pair a single-library request carries in `elm` + `deps`, but
-  * bundled so the caller can ship multiple roots in one request.
-  *
-  * @param elmJson the ROOT library as ELM JSON.
-  * @param deps    the ROOT's dependency libraries as ELM JSON (the caller-supplied include closure). */
-final case class LibraryInput(elmJson: String, deps: Seq[String] = Seq.empty)
 
 /** A compile request (`BUILD-COMPILE-SERVICE`) — DATA-FREE: the CQL library
   * as ELM JSON, the target define to build, the fixed materialization boundary set (`RUNTIME` compiler
@@ -28,9 +20,8 @@ final case class LibraryInput(elmJson: String, deps: Seq[String] = Seq.empty)
   *
   * @param elmJson      the ROOT library as ELM JSON (the interchange form, `EMIT-INTERCHANGE`). Empty when
   *                     `cql` is supplied instead (the service translates CQL → ELM, `BUILD-CLIENT-SESSION`).
-  *                     Ignored when `libraries` is non-empty (`PIPE-MULTI-LIB`).
   * @param cql          raw CQL TEXT to translate to ELM in-process (`CqlToElmCli`) — the alternative to
-  *                     `elmJson`; exactly one is non-empty. Ignored when `libraries` is non-empty.
+  *                     `elmJson`; exactly one is non-empty.
   * @param deps         the ROOT's dependency libraries as ELM JSON — the caller-supplied include closure
   *                     for a multi-library eCQM (`BUILD-COMPILE-LINK`). The service is a DUMB compile
   *                     endpoint: it does NO library-source RESOLUTION (discovering which libraries are
@@ -40,12 +31,6 @@ final case class LibraryInput(elmJson: String, deps: Seq[String] = Seq.empty)
   *                     input (today's behavior, unchanged). `FHIRHelpers` may be included harmlessly (it is
   *                     lowered directly, never merged). An include whose ELM is not supplied fails loudly
   *                     (`CORE-NO-SILENT-MISLOWER`) rather than silently dropping the dependency.
-  *                     Ignored when `libraries` is non-empty.
-  * @param libraries    the Data Space manifest (`PIPE-MULTI-LIB`): multiple root libraries, each with its
-  *                     own dependency closure. When non-empty, `elm`/`cql`/`deps` are ignored and the
-  *                     service links all roots into one merged library with library-qualified define names
-  *                     (`{libId}__{define}`), deduplicating shared dependencies. The response shape is
-  *                     unchanged — just more recipes (one per materialized define across all libraries).
   * @param target       the define to compile to a plan; `None` builds the whole assembled frame.
   * @param boundaries   the fixed barrier set — `Some` selects RUNTIME (cost-free) lowering; `None`
   *                     GENERATION (cost-model) lowering.
@@ -77,56 +62,58 @@ final case class CompileRequest(
       * closure from that translation for `LibraryLinker.link`, without retranslating each include.
       * An ELM root with CQL-only dependencies still needs to translate those dependency sources. */
     depCql: Seq[String] = Seq.empty,
-    sources: Map[String, SourceBinding] = Map.empty,
-    libraries: Seq[LibraryInput] = Seq.empty,
-    /** BIND-TERMINOLOGY-TABLE: optional fully-qualified table name for the terminology value-set
-      * expansion mount (e.g. `"catalog.schema.valuesets"`). Parsed from `sources.valuesets.table` in the
-      * wire JSON. When set, the emitted SQL references `FROM <fqn>` instead of bare `FROM valuesets`. */
-    terminologyTable: Option[String] = None,
     /** EMIT-UDF-QUALIFY: optional schema qualifier for emitted `cql_*` UDF calls (e.g.
-      * `"cql_databricks.runtime"`). Parsed from `sources.udfs.schema` in the wire JSON (consistent with
-      * `sources.valuesets.table` and the per-type `sources.<Type>.{function, catalog}`). When set, every
-      * `cql_*` function call in the emitted SQL is qualified as `schema.cql_fn(…)` — so a pipeline whose
-      * session search path does not include the UDF registration schema resolves the functions. When absent
-      * or empty, bare names are emitted (backward-compatible). */
+      * `"cql_databricks.runtime"`). Parsed from `runtime.schema` in the wire JSON. When set, every `cql_*` function
+      * call in the emitted SQL is qualified as `schema.cql_fn(…)` — so a pipeline whose session search path does not
+      * include the UDF registration schema resolves the functions. When absent or empty, bare names are emitted. */
     udfSchema: Option[String] = None,
     /** EMIT-SQL-OBJECT-PREFIX: optional namespace for emitted SESSION object names — every `obj`/`rel`/
       * null-sidecar/retrieve-read name becomes `<prefix>__<name>`. DEFAULT OFF (`None` ⇒ bare names, the
       * long-standing emitted form). A caller lowering more than one library into ONE Spark session sets it
       * so two libraries' identically-named defines (`Numerator`) cannot rebind each other's temp views. */
     objectPrefix: Option[String] = None,
-    /** RUN-RESULTS-BY-EVAL (`DEC-EVAL-ID-LOOKUP`): the evaluation set a PIPELINE plan is compiled for. Its
-      * recipes read a published sibling's rows for this evaluation only (`SqlEvalEnv.publishedEvalId`).
-      * Absent ⇒ bare reads, as before. Only `compilePipeline` reads it. */
-    evalId: Option[String] = None,
     durable: Boolean = false,
     /** SVC-COMPILE-BATCH — raw bounds are typed against the root's ELM on the service. */
     measurementPeriod: Option[(String, String)] = None,
-    /** SVC-COMPILE-BATCH — caller-discovered routine names; the compiler owns model validation. */
-    dataSource: Option[DataSourceRoutines] = None)
+    /** BIND-CALL-SITE: how the request binds each retrieve call site, by rule, per site, or both. `None` binds
+      * nothing, which only CQL that retrieves nothing compiles with. */
+    data: Option[DataBinding] = None,
+    /** BIND-CALL-SITE: how the request binds each value-set site; each list in precedence order, a set read
+      * from the first relation that holds it. Parsed from the wire's `terminology`. */
+    terminology: Option[TerminologyBinding] = None)
 
 object CompileRequest {
-  /** Parse the wire JSON `{elm, cql?, deps?, libraries?, target?, boundaries?, context?, overrides?,
-    * grainFirst?, parameters?, sources?}`. `deps` is the array of dependency-library ELM JSON strings
-    * (`BUILD-COMPILE-LINK`); `libraries` is the `PIPE-MULTI-LIB` Data Space manifest (array of
-    * `{elm, deps?}`); `sources` is the `BIND-MANIFEST` retrieve binding table (per-FHIR-type
-    * `{ function, catalog? }`, leniently parsed — an entry without a `function` is ignored, so an
-    * unmapped type falls back to the convention `retrieve_<Type>`). A `"valuesets": { "table": "<fqn>" }`
-    * entry in `sources` sets the terminology table FQN (BIND-TERMINOLOGY-TABLE). A
-    * `"udfs": { "schema": "<schema>" }` entry in `sources` sets the UDF schema qualifier
-    * (EMIT-UDF-QUALIFY). */
+  /** Parse the wire JSON `{elm, cql?, knowledge?, deps?, target?, boundaries?, context?, overrides?,
+    * grainFirst?, parameters?, data?, terminology?, runtime?}`. `knowledge` (or `deps`) is the include closure
+    * (`BUILD-COMPILE-LINK`); `data` and `terminology` bind the call sites (`BIND-CALL-SITE`); `runtime.schema`
+    * qualifies the `cql_*` calls (EMIT-UDF-QUALIFY). A `libraries` field, and `sources` or `dataSource` (the per-type
+    * bindings `BIND-CALL-SITE` replaced), is refused, naming it. */
   def fromJson(json: String): CompileRequest = {
     val o = ujson.read(json)
-    val sourcesObj = o.obj.get("sources").filterNot(_.isNull)
+    // BIND-CALL-SITE: one field per role. A request carrying them never also carries the per-type `deps` they replace.
+    val present = (key: String) => o.obj.get(key).exists(v => !v.isNull)
+    // SVC-PROTOCOL: a retired key is refused, naming it. Each root compiles on its own, with its dependencies
+    // in `knowledge` (BUILD-COMPILE-LINK).
+    require(!o.obj.contains("libraries"), "a compile request has no libraries: compile each root with its " +
+      "dependencies in knowledge (BUILD-COMPILE-LINK)")
+    val retired = Seq("sources", "dataSource").filter(o.obj.contains)
+    require(retired.isEmpty, s"a compile request has no ${retired.mkString(" or ")}: bind each role with data and " +
+      "terminology (BIND-CALL-SITE)")
+    val roles = Seq("data", "terminology", "knowledge", "runtime").filter(present)
+    val replaced = Seq("deps").filter(present)
+    require(roles.isEmpty || replaced.isEmpty,
+      s"a request with ${roles.mkString(", ")} has no ${replaced.mkString(", ")} (BIND-CALL-SITE)")
+    // BUILD-COMPILE-LINK: `knowledge` is the include closure, each entry as a `deps` entry is.
+    val closure = o.obj.get("knowledge").filterNot(_.isNull).orElse(o.obj.get("deps").filterNot(_.isNull))
     CompileRequest(
       elmJson = o.obj.get("elm").filterNot(_.isNull).map(_.str).getOrElse(""),
       cql = o.obj.get("cql").flatMap(v => if (v.isNull) None else Some(v.str)),
       // BUILD-COMPILE-LINK: a `deps` entry is EITHER an ELM JSON string (the long-standing form) or a
       // `{ "cql": "…" }` object (a caller-resolved CQL closure). Split by JSON type so both may be mixed
       // in one array and an old caller's all-string array parses exactly as before.
-      deps = o.obj.get("deps").filterNot(_.isNull)
+      deps = closure
         .map(_.arr.iterator.filter(_.isInstanceOf[ujson.Str]).map(_.str).toSeq).getOrElse(Seq.empty),
-      depCql = o.obj.get("deps").filterNot(_.isNull)
+      depCql = closure
         .map(_.arr.iterator.collect { case v: ujson.Obj => v }
           .flatMap(_.obj.get("cql").filterNot(_.isNull).map(_.str)).toSeq).getOrElse(Seq.empty),
       target = o.obj.get("target").flatMap(v => if (v.isNull) None else Some(v.str)),
@@ -140,32 +127,17 @@ object CompileRequest {
         require(p.arr.size == 2, "measurementPeriod requires start and end")
         (p(0).str, p(1).str)
       },
-      dataSource = o.obj.get("dataSource").filterNot(_.isNull).map { d =>
-        DataSourceRoutines(d("catalog").str, d("schema").str, d("routines").arr.map(_.str).toSeq)
-      },
       parameters = o.obj.get("parameters").filterNot(_.isNull)
         .map(_.obj.map { case (k, v) => k -> v.str }.toMap).getOrElse(Map.empty),
       sessionParameters = o.obj.get("sessionParameters").filterNot(_.isNull)
         .map(_.obj.map { case (k, v) => k -> v.str }.toMap).getOrElse(Map.empty),
-      sources = sourcesObj.map(_.obj.flatMap { case (rt, v) =>
-        v.obj.get("function").filterNot(_.isNull).map(fn =>
-          rt -> SourceBinding(fn.str, v.obj.get("catalog").filterNot(_.isNull).map(_.str)))
-      }.toMap).getOrElse(Map.empty),
-      libraries = o.obj.get("libraries").filterNot(_.isNull).map(_.arr.map { lib =>
-        LibraryInput(
-          elmJson = lib.obj.get("elm").filterNot(_.isNull).map(_.str).getOrElse(""),
-          deps = lib.obj.get("deps").filterNot(_.isNull).map(_.arr.map(_.str).toSeq).getOrElse(Seq.empty))
-      }.toSeq).getOrElse(Seq.empty),
-      // BIND-TERMINOLOGY-TABLE: sources.valuesets.table → fully-qualified terminology table name.
-      terminologyTable = sourcesObj.flatMap(_.obj.get("valuesets")).filterNot(_.isNull)
-        .flatMap(_.obj.get("table")).filterNot(_.isNull).map(_.str),
-      // EMIT-UDF-QUALIFY: sources.udfs.schema → schema qualifier for cql_* UDF calls.
-      udfSchema = sourcesObj.flatMap(_.obj.get("udfs")).filterNot(_.isNull)
+      // EMIT-UDF-QUALIFY: runtime.schema → schema qualifier for cql_* UDF calls.
+      udfSchema = o.obj.get("runtime").filterNot(_.isNull)
         .flatMap(_.obj.get("schema")).filterNot(_.isNull).map(_.str).filter(_.nonEmpty),
+      data = o.obj.get("data").filterNot(_.isNull).map(DataBinding.fromJson),
+      terminology = o.obj.get("terminology").filterNot(_.isNull).map(TerminologyBinding.fromJson),
       // EMIT-SQL-OBJECT-PREFIX: absent/empty ⇒ None ⇒ bare object names (the default).
-      objectPrefix = o.obj.get("objectPrefix").filterNot(_.isNull).map(_.str).filter(_.nonEmpty),
-      // RUN-RESULTS-BY-EVAL: absent/empty ⇒ None ⇒ bare published reads.
-      evalId = o.obj.get("evalId").filterNot(_.isNull).map(_.str).filter(_.nonEmpty))
+      objectPrefix = o.obj.get("objectPrefix").filterNot(_.isNull).map(_.str).filter(_.nonEmpty))
   }
 }
 
@@ -216,7 +188,7 @@ object DefineShape {
   *                            applies, so a consumer never mistakes an unresolvable bracket for no filter
   *                            (`CORE-NO-SILENT-MISLOWER`).
   * @param valueSetId          the CANONICAL value-set url/oid when `codeFilterKind = "valueset"` — the key
-  *                            the runtime's `valuesets` table is keyed by (`BIND-TERMINOLOGY-TABLE`).
+  *                            the runtime's `valuesets` table is keyed by (`DATA-ENVIRONMENT-LAYOUT`).
   * @param codes               literal `(system, code)` pairs when `codeFilterKind = "codes"`.
   * @param dateProperty        the element a folded date filter applies to.
   * @param dateFiltered        whether a date range folded onto the read. The range itself is NOT published:
@@ -284,7 +256,7 @@ final case class SqlCompileResult(statements: Seq[SqlStatementOut], target: Stri
   *                   `FROM cql_<sibling>` in the query, so SDP traces them as the dependency edges.
   * @param library        the ELM library name that owns this define (e.g. `"MyMeasure"`). For single-library
   *                       plans this is the root library's `identifier.id`; for multi-library
-  *                       (`PIPE-MULTI-LIB`) it is the originating root's id, recovered by splitting the
+  *                       it is the originating root's id, recovered by splitting the
   *                       qualified define name at `__`.
   * @param libraryVersion the ELM library version (e.g. `"1.2.000"`), empty when the source declares none.
   * @param define         the RAW `ExpressionDef.name` from the ELM (e.g. `"Initial Population"` — spaces and
@@ -329,30 +301,28 @@ final case class PipelinePlan(datasets: Seq[DatasetRecipe], compilerVersion: Str
   * (`describe`). Both are SPARK-FREE (pure IR → text / metadata), so the service holds NO `SparkSession`
   * and touches no data — a strict strengthening of ARCH-PURITY. The only injected dependency is whether a
   * terminology expansion is mounted at runtime (`terminology.isDefined` → the `valueset_<id>` seam); the
-  * `retrieve_<Type>` mounts are an external contract the runtime provides. */
+  * relations each retrieve call site binds are an external contract the request supplies (`BIND-CALL-SITE`). */
 final class CompileService(terminology: Option[TerminologyProvider] = None) {
 
   /** SQL COMPILE (EMIT-SQL-EXECUTE): lower the optimized IR to a Spark SQL SCRIPT — one
     * `CREATE OR REPLACE TEMP VIEW` per define (cost-chosen barriers as `CACHE TABLE`), a small auditable
     * DAG the client runs via `spark.sql`. SESSION-FREE. */
   def compileSql(req: CompileRequest): SqlCompileResult =
-    CompileService.compileSql(req, terminology.isDefined)
+    CompileService.compileSql(req)
 
   /** PIPELINE PLAN (`PIPE-SQL-DAG-REUSE`): compile the whole library ONCE and cut the resulting DAG at each
     * materialized define into one dataset recipe per materialized define — the reference pipeline's
-    * `@dp.materialized_view` bodies, with NO per-node `cql()`. When the request carries a `libraries`
-    * manifest (`PIPE-MULTI-LIB`), all roots are merged into one library-qualified plan. SESSION-FREE. */
+    * `@dp.materialized_view` bodies, with NO per-node `cql()`. SESSION-FREE. */
   def compilePipeline(req: CompileRequest): PipelinePlan =
-    CompileService.compilePipeline(req, terminology.isDefined)
+    CompileService.compilePipeline(req)
 
   /** DESCRIBE (`BUILD-COMPILE-SERVICE`): the neutral, pipeline-agnostic graph metadata an external
     * pipeline reads to build its own dataset graph (`LibraryDescribe`). When the request carries a
-    * `libraries` manifest (`PIPE-MULTI-DESCRIBE`), returns a merged graph across all roots. GENERATION
-    * mode — the SQL classifier chooses the boundary set. Spark-free: nothing executes. */
+    * GENERATION mode — the SQL classifier chooses the boundary set. Spark-free: nothing executes. */
   def describe(req: CompileRequest): LibraryGraph = {
-    val loaded = CompileService.normalizedInput(req) // root + linked/pruned dependency closure (BUILD-COMPILE-LINK / PIPE-MULTI-LIB)
+    val loaded = CompileService.normalizedInput(req) // root + linked/pruned dependency closure (BUILD-COMPILE-LINK)
     LibraryDescribe.describe(loaded, CompileService.resolveContext(req, loaded),
-      hasTerminology = terminology.isDefined, overrides = req.overrides, grainFirst = req.grainFirst,
+      overrides = req.overrides, grainFirst = req.grainFirst,
       terminologyVersion = None)
   }
 }
@@ -360,9 +330,9 @@ final class CompileService(terminology: Option[TerminologyProvider] = None) {
 object CompileService {
   /** The SESSION-FREE SQL compile (EMIT-SQL-EXECUTE): the front end (`normalize` + `Optimize`) then
     * [[SqlFrameLowering]] to a script rendered by [[SqlRender]]. Pure
-    * (no Spark), so it is directly unit-testable. `hasTerminology` reports whether the runtime mounts the
-    * `valueset_<id>` expansion views (the SQL analog of an injected `TerminologyProvider`). */
-  def compileSql(request: CompileRequest, hasTerminology: Boolean): SqlCompileResult = {
+    * (no Spark), so it is directly unit-testable. The request's `data` and `terminology` bind every call site
+    * (`BIND-CALL-SITE`). */
+  def compileSql(request: CompileRequest): SqlCompileResult = {
     val req = prepareRequest(request)
     val base   = Config.resolve(req.overrides).copy(grainFirst = req.grainFirst,
       // EMIT-SQL-OBJECT-PREFIX: the request field is the explicit tier over the
@@ -371,8 +341,8 @@ object CompileService {
     val config = req.boundaries.map(b => base.copy(materializeBoundaries = Some(b))).getOrElse(base)
     val loaded = normalizedInput(req)
     val optimized = Optimize.run(Pipeline().normalize(loaded), config)
-    val env = SqlEvalEnv(resolveContext(req, loaded), config, terminology = hasTerminology, sources = req.sources,
-      terminologyTable = req.terminologyTable)
+    val env = SqlEvalEnv(resolveContext(req, loaded), config, data = req.data, terminologyBinding = req.terminology,
+      defineParameters = ParameterScope.of(loaded))
     val lowered = SqlFrameLowering.lower(optimized, env, req.target)
     // EMIT-UDF-QUALIFY: scope the UDF schema qualifier so every cql_* call renders qualified.
     SqlRender.withUdfSchema(req.udfSchema) {
@@ -399,17 +369,16 @@ object CompileService {
   private def kindOf(s: SqlStmt): String = s match {
     case _: SqlStmt.CreateView     => "view"
     case _: SqlStmt.CacheTable     => "cache_table"
-    case _: SqlStmt.CreateFunction => "function" // EMIT-SQL-TEMPORAL-UDF prelude
   }
 
   /** The compile-once PIPELINE PLAN (`PIPE-SQL-DAG-REUSE`): lower the WHOLE library ONCE in pipeline-cut
     * mode (`SqlEvalEnv.cutSiblings` on — every reference to a materialized sibling lowers straight to
     * `FROM cql_<sibling>`), then partition the one resulting DAG into a [[DatasetRecipe]] per materialized
     * define. The cut set is exactly the materialized boundaries the SINGLE lowering discovered
-    * (`lowered.materializedDefines`), subsuming the retired proto's per-call `referenceDefines`. Pure (no
+    * (`lowered.materializedDefines`). Pure (no
     * Spark), like [[compileSql]] / [[LibraryDescribe]]; GENERATION mode by default (the classifier chooses
     * the boundaries), or RUNTIME when the caller pins `req.boundaries`. */
-  def compilePipeline(request: CompileRequest, hasTerminology: Boolean): PipelinePlan = {
+  def compilePipeline(request: CompileRequest): PipelinePlan = {
     val req = prepareRequest(request)
     // PIPE-DURABLE-IDENTITY: stable per-definition seams even when a later definition adds a reader.
     require(!req.durable || req.boundaries.isEmpty, "durable plans use all definition boundaries")
@@ -423,10 +392,9 @@ object CompileService {
       // `emit.object_prefix` override; absent leaves the config default (empty = bare names).
       objectPrefix = req.objectPrefix.getOrElse(Config.resolve(req.overrides).objectPrefix))
     // EMIT-ROOT-INDEPENDENT: every define is named by the library that declares it, the root's own included,
-    // so a define's recipe is the same whichever library is being compiled. `PIPE-MULTI-LIB` keeps its
-    // `{libId}__` names.
+    // so a define's recipe is the same whichever library is being compiled.
     val linked = normalizedInput(req)
-    val loaded = if (req.libraries.nonEmpty) linked else LibraryLinker.ownerQualified(linked)
+    val loaded = LibraryLinker.ownerQualified(linked)
     val ownName: Map[String, String] = loaded.owners.collect {
       case (merged, owner) if owner.library == loaded.id => owner.name -> merged
     }
@@ -438,22 +406,12 @@ object CompileService {
       if (req.durable) "" else SqlNames.paramHash(req.parameters), loaded.owners)
     // Pipeline-cut mode ON: the empty set is only the SIGNAL — `SqlFrameLowering.lower` rebinds the
     // resolvers to its own GROWING `matDefs`, so ONE pass both discovers the boundaries and cuts references.
-    val env = SqlEvalEnv(resolveContext(req, loaded), config, terminology = hasTerminology,
-      sources = req.sources, cutSiblings = Some(mutable.Set.empty[String]),
-      datasetNameCtx = Some(dsCtx), terminologyTable = req.terminologyTable,
-      publishedEvalId = req.evalId)
-    // Build the library-id → version mapping for ELM origin metadata on each recipe.
-    // Multi-library: each root's id and version extracted from its ELM; single-library: empty (the root
-    // library's own id/version is used directly).
-    val libVersions: Map[String, String] = if (req.libraries.nonEmpty) {
-      req.libraries.map { lib =>
-        val root = Pipeline().load(lib.elmJson)
-        root.id -> root.version.getOrElse("")
-      }.toMap
-    } else Map.empty
+    val env = SqlEvalEnv(resolveContext(req, loaded), config, cutSiblings = Some(mutable.Set.empty[String]),
+      datasetNameCtx = Some(dsCtx), data = req.data, terminologyBinding = req.terminology,
+      defineParameters = ParameterScope.of(loaded))
     // EMIT-UDF-QUALIFY: scope the UDF schema qualifier so every cql_* call renders qualified.
     SqlRender.withUdfSchema(req.udfSchema) {
-      val plan = cutPlan(SqlFrameLowering.lower(optimized, env), loaded.id, loaded.version.getOrElse(""), libVersions, dsCtx)
+      val plan = cutPlan(SqlFrameLowering.lower(optimized, env), loaded.id, loaded.version.getOrElse(""), dsCtx)
       if (!req.durable) plan
       else {
         val volatileKinds = Set("Now", "Today", "TimeOfDay", "Random")
@@ -468,13 +426,16 @@ object CompileService {
         def isVolatile(name: String): Boolean = volatility.getOrElseUpdate(name,
           volatileDefinitions(name) || dependencies.getOrElse(name, Set.empty).exists(isVolatile))
         val nonReusable = dependencies.keys.filter(isVolatile).map(SqlNames.datasetName(_, dsCtx)).toSet
-        // RUN-CLIENT-RESULT-IDENTITY: a kept result is identified by the tagged data source it read. An
-        // explicit per-type manifest or a bare `retrieve_<Type>` names no source, so it fails here.
-        val source = request.dataSource.map(d => s"${d.catalog}.${d.schema}")
-        require(source.nonEmpty || RetrieveCatalog.analyze(optimized).retrieves.isEmpty,
-          "a durable compile that retrieves data needs a tagged data source (dataSource), not explicit " +
-            "source bindings or the bare retrieve_<Type> convention: its results are kept under that source")
-        DurablePlan.annotate(plan, nonReusable, DurablePlan.parameterClaims(loaded, dsCtx), source)
+        // CLIENT-RESOLVER-IDENTITY: a kept result is identified by the identities of the resolvers whose relations
+        // this compile binds. CQL that retrieves nothing binds no data, and lowering already refused a retrieve the
+        // request does not bind (BIND-CALL-SITE).
+        val identities = (relations: Seq[RetrieveRelation]) => relations.map(r => r.identity.getOrElse(
+          throw new IllegalArgumentException(s"a durable compile's relation ${r.table} has no identity " +
+            "(CLIENT-RESOLVER-IDENTITY)"))).distinct.sorted
+        val bound = DurablePlan.Providers(identities(req.data.map(_.relations).getOrElse(Nil)),
+          identities(req.terminology.map(_.relations).getOrElse(Nil)))
+        DurablePlan.annotate(plan, nonReusable, DurablePlan.parameterClaims(loaded, dsCtx), bound,
+          DurablePlan.valueSetClaims(loaded, dsCtx))
       }
     }
   }
@@ -482,28 +443,16 @@ object CompileService {
   /** Partition ONE pipeline-cut lowering into per-materialized-define recipes (`PIPE-SQL-DAG-REUSE`). For
     * each materialized define D: walk its producer statement's `TableRef` dependencies, INCLUDING every
     * non-materialized dependency view (re-inlined) and STOPPING at a materialized sibling's published
-    * dataset (`cql_<sibling>` — recorded as a declared `read`, never descended into). The base view and any
-    * `CREATE FUNCTION` prelude are shared, so they are re-inlined into every recipe that needs them. */
-  /** Resolve the ELM origin coordinates (library, version, raw define name) for a define name.
-    * Single-library (EMIT-ROOT-INDEPENDENT): the library that declares `d` and its name there, from `owners`.
-    * Multi-library (`PIPE-MULTI-LIB`): `d` is `{libId}__{define}` — split to recover the library id and
-    * raw define name; the version comes from `libVersions`. */
+    * dataset (`cql_<sibling>` — recorded as a declared `read`, never descended into). The base view is
+    * shared, so it is re-inlined into every recipe that needs it. */
+  /** Resolve the ELM origin coordinates (library, version, raw define name) for a define name: the library
+    * that declares `d` and its name there, from `owners` (EMIT-ROOT-INDEPENDENT). */
   private def resolveOrigin(d: String, rootLibrary: String, rootVersion: String,
-                            libVersions: Map[String, String],
-                            owners: Map[String, com.databricks.cql.ir.StatementOwner]): (String, String, String) = {
-    if (libVersions.nonEmpty) {
-      val sep = d.indexOf("__")
-      if (sep > 0) {
-        val libId = d.substring(0, sep)
-        val define = d.substring(sep + 2)
-        (libId, libVersions.getOrElse(libId, rootVersion), define)
-      } else (rootLibrary, rootVersion, d) // unqualified (e.g. a shared dep without library prefix)
-    } else owners.get(d).map(o => (o.library, o.version, o.name)).getOrElse((rootLibrary, rootVersion, d))
-  }
+                            owners: Map[String, com.databricks.cql.ir.StatementOwner]): (String, String, String) =
+    owners.get(d).map(o => (o.library, o.version, o.name)).getOrElse((rootLibrary, rootVersion, d))
 
   def cutPlan(lowered: SqlFrameLowering.SqlLoweredLibrary,
               rootLibrary: String = "", rootVersion: String = "",
-              libVersions: Map[String, String] = Map.empty,
               dsCtx: SqlNames.DatasetNameContext = SqlNames.DatasetNameContext("", "")): PipelinePlan = {
     val matDefs  = lowered.materializedDefines
     val relDefs  = lowered.relationDefines
@@ -520,9 +469,6 @@ object CompileService {
     val publishedNames: Set[String] = publishedToDefine.keySet ++ readPublished.values
     val stmtByName: Map[String, SqlStmt] = lowered.script.statements.iterator.map(s => s.name -> s).toMap
     val stmtOrder: Seq[String] = lowered.script.statements.map(_.name) // a valid topological order
-    // A `CREATE FUNCTION` prelude (EMIT-SQL-TEMPORAL-UDF) is shared, not part of any define's DAG — head it
-    // onto every recipe unconditionally so an emitted call resolves in the node's own session.
-    val prelude: Seq[SqlStmt] = lowered.script.statements.collect { case f: SqlStmt.CreateFunction => f }
     // EMIT-ROOT-INDEPENDENT: the compiled library's own defines are published by their authored names, an
     // included library's by their merged `<library>.<define>` names, as before owner naming.
     def authored(d: String): String = dsCtx.owners.get(d).filter(_.library == rootLibrary).map(_.name).getOrElse(d)
@@ -536,23 +482,21 @@ object CompileService {
           included += name                                            // local: a non-materialized view / the base / D's producer
           SqlRender.tableRefs(stmtByName(name)).foreach(visit)
         }
-        // else: an external mount (`retrieve_<Type>` / `valuesets`) the runtime provides — left as-is.
+        // else: an external relation (a bound retrieve or terminology read) the runtime provides — left as-is.
       visit(producerName(d))
 
-      val ordered = prelude ++ stmtOrder.filter(included.contains).map(stmtByName)
+      val ordered = stmtOrder.filter(included.contains).map(stmtByName)
       // The DECLARATIVE form for a Spark Declarative Pipeline body: collapse the recipe's view/cache
       // statements into ONE `WITH <name> AS (<rel>), … SELECT * FROM <target>` query (no DDL). The
       // statements are already in dependency order, so each CTE references only earlier CTEs + external
-      // reads (`<sibling>` / `retrieve_<Type>`) — a valid sequential `WITH`. (A `CREATE FUNCTION`
-      // prelude, if ever emitted, has no relational body and is not representable as a CTE; the current
-      // emit produces none.)
+      // reads (`<sibling>` / a bound retrieve relation) — a valid sequential `WITH`.
       val ctes = ordered.collect {
         case SqlStmt.CreateView(n, r) => n -> r
         case SqlStmt.CacheTable(n, r) => n -> r
       }
       val query = SqlRender.renderRel(
         SqlRel.With(ctes, SqlRel.Select(Seq(SqlRel.Proj.star), from = SqlRel.TableRef(producerName(d)))), 0)
-      val (lib, libVer, rawDefine) = resolveOrigin(d, rootLibrary, rootVersion, libVersions, dsCtx.owners)
+      val (lib, libVer, rawDefine) = resolveOrigin(d, rootLibrary, rootVersion, dsCtx.owners)
       val dsName = SqlNames.datasetName(d, dsCtx)
       // PIPE-EMIT-SQL: the deploy-ready SDP SQL statement — CREATE OR REFRESH MATERIALIZED VIEW for
       // materialized defines (all recipes in the current cut are materialized; non-materialized defines
@@ -595,7 +539,7 @@ object CompileService {
         }
       visit(s.obj)
 
-      val ordered = prelude ++ stmtOrder.filter(included.contains).map(stmtByName)
+      val ordered = stmtOrder.filter(included.contains).map(stmtByName)
       val ctes = ordered.collect {
         case SqlStmt.CreateView(n, r) => n -> r
         case SqlStmt.CacheTable(n, r) => n -> r
@@ -689,9 +633,7 @@ object CompileService {
 
   /** The LOADED library a compile normalizes: the ROOT from `elm`/`cql`, FLATTENED with any caller-supplied
     * dependency libraries (`BUILD-COMPILE-LINK`), then with any parameter-VALUE overrides applied
-    * (`BUILD-CLIENT-SESSION`). When the request carries a `libraries` manifest (`PIPE-MULTI-LIB`), all
-    * roots are merged via [[LibraryLinker.linkMulti]] into one library with library-qualified defines.
-    * Overrides are pre-seeded as parameter DEFAULTS so the existing `ParameterResolver` substitutes them —
+    * (`BUILD-CLIENT-SESSION`). Overrides are pre-seeded as parameter DEFAULTS so the existing `ParameterResolver` substitutes them —
     * the engine-supplied override seam it left open. */
   def normalizedInput(request: CompileRequest): Library = {
     val req = prepareRequest(request)
@@ -700,7 +642,7 @@ object CompileService {
 
   /** SVC-COMPILE-BATCH — translate once, retain the closure, and type inputs before lowering. */
   private def prepareRequest(request: CompileRequest): CompileRequest = {
-    val translated = if (request.libraries.nonEmpty || request.cql.isEmpty) request else {
+    val translated = if (request.cql.isEmpty) request else {
       val result = CqlToElmCli.translateClosure(request.cql.get, request.depCql)
       val elm = result.root.elmJson.getOrElse(throw new IllegalArgumentException(
         s"CQL translation produced errors: ${result.root.errors.mkString("; ")}"))
@@ -720,22 +662,16 @@ object CompileService {
     * define an unused branch never touches (with, say, an unmodeled node) never trips lowering. The service
     * does NO source resolution — a `link` over a closure the caller under-supplied fails loudly
     * (`missing dependency library …`, `CORE-NO-SILENT-MISLOWER`).
-    *
-    * When the request carries a `libraries` manifest (`PIPE-MULTI-LIB`), each root is linked with its own
-    * deps, then [[LibraryLinker.linkMulti]] merges all roots into one library with library-qualified
-    * defines (`{libId}__{define}`). Shared dependencies are deduplicated. */
+    */
   def linkedRoot(request: CompileRequest): Library = {
     val req = prepareRequest(request)
-    if (req.libraries.nonEmpty) multiLinkedRoot(req)
-    else {
-      val root = Pipeline().load(elmOf(req))
-      // FHIRHelpers arrives in the closure like any included library (LANG-FHIRHELPERS-FROM-CONTENT), but it
-      // is never merged: its calls are lowered directly. A closure of only FHIRHelpers has nothing to link.
-      val depsById = (req.deps ++ translatedDepCql(req)).iterator.map(Pipeline().load)
-        .filterNot(_.id == LibraryLinker.FhirHelpers).map(d => d.id -> d).toMap
-      if (depsById.isEmpty) root
-      else LibraryLinker.prune(LibraryLinker.link(root, depsById), pruneRoots(req, root))
-    }
+    val root = Pipeline().load(elmOf(req))
+    // FHIRHelpers arrives in the closure like any included library (LANG-FHIRHELPERS-FROM-CONTENT), but it
+    // is never merged: its calls are lowered directly. A closure of only FHIRHelpers has nothing to link.
+    val depsById = (req.deps ++ translatedDepCql(req)).iterator.map(Pipeline().load)
+      .filterNot(_.id == LibraryLinker.FhirHelpers).map(d => d.id -> d).toMap
+    if (depsById.isEmpty) root
+    else LibraryLinker.prune(LibraryLinker.link(root, depsById), pruneRoots(req, root))
   }
 
   /** The `depCql` closure translated to ELM so it can be LINKED (`BUILD-COMPILE-LINK`).
@@ -755,26 +691,6 @@ object CompileService {
   private def translatedDepCql(req: CompileRequest): Seq[String] =
     if (req.depCql.isEmpty) Seq.empty
     else req.depCql.flatMap(d => CqlToElmCli.translateText(d, req.depCql).elmJson)
-
-  /** Multi-library linking (`PIPE-MULTI-LIB`): link each root with its own deps, merge all roots into
-    * one library with library-qualified defines, prune to the union of all roots' population defines. */
-  private def multiLinkedRoot(req: CompileRequest): Library = {
-    val loaded: Seq[(Library, Map[String, Library])] = req.libraries.map { lib =>
-      val root = Pipeline().load(lib.elmJson)
-      val depsById = lib.deps.iterator.map(Pipeline().load).map(d => d.id -> d).toMap
-      (root, depsById)
-    }
-    val merged = LibraryLinker.linkMulti(loaded)
-    // Prune to the union of all roots' qualified population defines (PIPE-MULTI-LIB).
-    // After linkMulti, root defines are `{libId}__{name}`; collect the qualified population names.
-    val qualifiedRoots: Set[String] = loaded.flatMap { case (root, _) =>
-      val rootDefNames = root.statements.collect { case e: ExpressionDef => e.name }.toSet
-      val populations = PopulationDefineNames.filter(rootDefNames.contains)
-      val slice = if (populations.nonEmpty) populations.toSet else rootDefNames
-      slice.map(n => s"${root.id}__$n")
-    }.toSet
-    LibraryLinker.prune(merged, qualifiedRoots)
-  }
 
   /** The prune roots for a linked measure: the explicit `target` when the caller names one, else the
     * measure's DEFAULT slice — the well-known population defines present in the root library

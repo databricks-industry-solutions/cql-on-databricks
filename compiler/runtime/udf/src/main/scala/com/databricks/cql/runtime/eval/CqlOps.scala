@@ -18,11 +18,9 @@ final case class CqlQuantity(value: java.math.BigDecimal, unit: String)
 
 /** EVAL-OPS-CORE (compiler/docs/execution-model.md) — the SEMANTIC CORE. CQL operator semantics live HERE,
   * once, over host-neutral representations (canonical-ISO temporal strings, the `CqlQuantity` case class for
-  * a Quantity struct, boxed scalars for three-valued nullability). Two callers share this one source of
-  * truth: the granular catalog UDFs ([[com.databricks.cql.runtime.udf.CqlRuntimeUdfs]]) wrap these
-  * functions (`cql_temporal_cmp = udf(CqlOps.temporalCmp _)`), and — should the fallback ever be built — the
-  * coarse per-define ELM tree-walker (`EVAL-DEFINE-EVALUATOR`) calls the SAME functions. Neither
-  * re-implements semantics: granularity is a dial, not a fork (correctness preserved by construction).
+  * a Quantity struct, boxed scalars for three-valued nullability). The granular catalog UDFs
+  * ([[com.databricks.cql.runtime.udf.CqlRuntimeUdfs]]) wrap these functions (`cql_temporal_cmp =
+  * udf(CqlOps.temporalCmp _)`), so each operator has one implementation.
   *
   * ==Spark-free by construction — UC-hostable (`ARCH-PURITY`, EXEC-UC-STRUCT-ARG)==
   * This object references NO `org.apache.spark.*` type: every operator takes/returns scalars, canonical-ISO
@@ -260,7 +258,7 @@ object CqlOps {
 
   /** `cql_variant_valid(actualSchemaDdl, expectedDdl)` — a JSON-FREE, UC-safe QA check that what LANDED in
     * a VARIANT field conforms to an expected model schema (a general aid — usable on any VARIANT, e.g. the
-    * retrieve UDTF's `parameters` map, BIND-EXPLICIT-PARAMS). `actualSchemaDdl` is the
+    * retrieve UDTF's `parameters` map). `actualSchemaDdl` is the
     * built-in `schema_of_variant(carrier.__variant)` — NOT `to_json` (no JSON round trip) and NOT the raw
     * VARIANT value (no `org.apache.spark.*` type crosses into this sandbox-safe handler, `ARCH-PURITY`);
     * `expectedDdl` is the FHIR-model schema for the demanded slots (`FhirSchema.rawResourceSchema`-derived).

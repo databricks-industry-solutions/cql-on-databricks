@@ -4,19 +4,18 @@
 // "what does each population actually depend on, and how deep does it go" — the question a reviewer
 // asks first and the flat catalogue cannot answer at all.
 //
-// THIS IS THE RETIRED `SPEC-INDEX-TREE`, ROOTED DIFFERENTLY AND STRIPPED OF ITS LABELS.
-// Git history records why the original was removed, and both of its
-// failures are addressed by construction rather than argued away:
+// A reachability tree rooted at the populations, with no edge labels. Its two design points are met
+// by construction rather than argued away:
 //
-//  1. IT WAS EMPTY WHERE IT WAS MOST NEEDED. As a per-define lens it had nothing to show for
+//  1. A PER-DEFINE TREE IS EMPTY WHERE IT IS MOST NEEDED. As a per-define lens it has nothing to show for
 //     `Qualifying Reading`, which references no other define — so a tab that could not
-//     take focus sat beside the defines that most needed explaining. Rooted at the POPULATIONS it is
+//     take focus sits beside the defines that most needed explaining. Rooted at the POPULATIONS it is
 //     never empty: a population is by definition the thing everything else hangs off, and a define
 //     with no dependencies is a LEAF of this view rather than an empty instance of it.
-//  2. ITS EDGE LABELS OVER-CLAIMED. Each edge carried a connective (AND/OR/NOT) and an operation
+//  2. EDGE LABELS OVER-CLAIM. Each edge carries a connective (AND/OR/NOT) and an operation
 //     (EXISTS, WITHOUT, FILTERS, EITHER OF) read off the ELM ancestors of the reference site, and on
-//     real published content a top-level `Union` labelled every dependency `EITHER OF` — so exclusions
-//     rendered as alternatives. **There are no edge labels here.** This view states REACHABILITY and
+//     real published content a top-level `Union` labels every dependency `EITHER OF` — so exclusions
+//     render as alternatives. **There are no edge labels here.** This view states REACHABILITY and
 //     nothing else, which is a fact the graph has exactly. What an edge MEANS is what the narration
 //     and the CQL are for, one click away on the row.
 //

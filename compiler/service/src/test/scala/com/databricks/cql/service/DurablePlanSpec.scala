@@ -15,7 +15,7 @@ final class DurablePlanSpec extends AnyFunSuite {
 
   private def compile(cql: String = source, durable: Boolean = true): PipelinePlan =
     CompileService.compilePipeline(CompileRequest(cql = Some(cql), durable = durable,
-      overrides = Map("materialize.mode" -> "all")), hasTerminology = false)
+      overrides = Map("materialize.mode" -> "all")))
 
   private def recipe(plan: PipelinePlan, define: String): DatasetRecipe =
     plan.datasets.find(_.define == define).getOrElse(fail(s"missing $define"))
@@ -64,7 +64,7 @@ final class DurablePlanSpec extends AnyFunSuite {
     val changed = compile(functions.replace("value + 1", "value + 2"))
     assert(recipe(original, "Base").durable != recipe(changed, "Base").durable)
     val parameterized = CompileService.compilePipeline(CompileRequest(cql = Some(functions), durable = true,
-      parameters = Map("Amount" -> "9"), overrides = Map("materialize.mode" -> "all")), hasTerminology = false)
+      parameters = Map("Amount" -> "9"), overrides = Map("materialize.mode" -> "all")))
     assert(recipe(original, "Output").durable != recipe(parameterized, "Output").durable)
   }
 
@@ -80,11 +80,11 @@ final class DurablePlanSpec extends AnyFunSuite {
                 |define Base: Amount
                 |define Output: Base + 3
                 |""".stripMargin
-    val initial = CompileService.compilePipeline(CompileRequest(cql = Some(cql), durable = true), false)
+    val initial = CompileService.compilePipeline(CompileRequest(cql = Some(cql), durable = true))
     val extended = CompileService.compilePipeline(CompileRequest(
       cql = Some(cql.replace("define Base:", "parameter Unrelated Integer default 2\ndefine Base:") +
         "define Added: Output + Unrelated\n"),
-      durable = true, parameters = Map("Unrelated" -> "4")), false)
+      durable = true, parameters = Map("Unrelated" -> "4")))
     Seq("Base", "Output").foreach { name =>
       assert(recipe(initial, name).name == recipe(extended, name).name)
       assert(recipe(initial, name).durable == recipe(extended, name).durable)
@@ -124,37 +124,43 @@ final class DurablePlanSpec extends AnyFunSuite {
                              |define Output: Female
                              |""".stripMargin
 
-  private def bound(catalog: String, schema: String): CompileRequest =
+  /** BIND-CALL-SITE: `fhirSource` bound by rule to the views of `schema`, with that schema as its identity. */
+  private def bound(schema: String, identity: Option[String] = None): CompileRequest =
     CompileRequest(cql = Some(fhirSource), depCql = Seq(FhirHelpersCql.text), durable = true,
-      dataSource = Some(DataSourceRoutines(catalog, schema, Seq("retrieve_patient"))))
+      data = Some(com.databricks.cql.env.DataBinding(
+        Some(com.databricks.cql.env.DataBinding.Rule(schema, identity.orElse(Some(schema)))), Map.empty)))
 
-  test("RUN-CLIENT-RESULT-IDENTITY: a different data source changes every fingerprint") {
-    val first = CompileService.compilePipeline(bound("synthetic", "source_a"), false)
-    val again = CompileService.compilePipeline(bound("synthetic", "source_a"), false)
-    val other = CompileService.compilePipeline(bound("synthetic", "source_b"), false)
+  test("CLIENT-RESOLVER-IDENTITY: a different data resolver changes every fingerprint") {
+    val first = CompileService.compilePipeline(bound("synthetic.source_a"))
+    val again = CompileService.compilePipeline(bound("synthetic.source_a"))
+    val other = CompileService.compilePipeline(bound("synthetic.source_a", Some("another resolver")))
     Seq("Female", "Output").foreach { name =>
       assert(recipe(first, name).durable == recipe(again, name).durable)
       assert(recipe(first, name).durable.get.fingerprint != recipe(other, name).durable.get.fingerprint)
     }
   }
 
-  test("RUN-CLIENT-RESULT-IDENTITY: the source address is hashed even where the SQL is identical") {
+  test("CLIENT-RESOLVER-IDENTITY: provider identities are hashed even where the SQL is identical") {
     val plan = compile(durable = false)
-    def fingerprints(source: Option[String]) =
-      DurablePlan.annotate(plan, Set.empty, source = source).datasets.map(_.durable.get.fingerprint)
-    assert(fingerprints(Some("synthetic.source_a")) != fingerprints(Some("synthetic.source_b")))
-    assert(fingerprints(Some("synthetic.source_a")) != fingerprints(None))
+    def fingerprints(data: Seq[String], terminology: Seq[String]) =
+      DurablePlan.annotate(plan, Set.empty, boundTo = DurablePlan.Providers(data, terminology))
+        .datasets.map(_.durable.get.fingerprint)
+    val base = fingerprints(Seq("synthetic.source_a"), Seq("synthetic.terminology"))
+    assert(base == fingerprints(Seq("synthetic.source_a"), Seq("synthetic.terminology")))
+    assert(base != fingerprints(Seq("synthetic.source_b"), Seq("synthetic.terminology")))
+    assert(base != fingerprints(Seq("synthetic.source_a"), Seq("synthetic.other_terminology")))
   }
 
-  test("RUN-CLIENT-RESULT-IDENTITY: a durable compile that retrieves needs a tagged data source") {
-    val unbound = bound("synthetic", "source_a").copy(dataSource = None)
-    val bare = intercept[IllegalArgumentException] { CompileService.compilePipeline(unbound, false) }
-    assert(bare.getMessage.contains("tagged data source"))
-    val explicit = unbound.copy(sources = Map("Patient" -> com.databricks.cql.env.SourceBinding(
-      "retrieve_Patient", Some("synthetic.source_a"))))
-    intercept[IllegalArgumentException] { CompileService.compilePipeline(explicit, false) }
-    val ordinary = unbound.copy(durable = false, overrides = Map("materialize.mode" -> "all"))
-    assert(CompileService.compilePipeline(ordinary, false).datasets.nonEmpty)
+  test("BIND-CALL-SITE, CLIENT-RESOLVER-IDENTITY: a durable compile that retrieves needs data, each relation an identity") {
+    val unbound = bound("synthetic.source_a").copy(data = None)
+    val bare = intercept[com.databricks.cql.error.UnsupportedNode] { CompileService.compilePipeline(unbound) }
+    assert(bare.getMessage.contains("needs data"))
+    val anonymous = unbound.copy(data = Some(com.databricks.cql.env.DataBinding(
+      Some(com.databricks.cql.env.DataBinding.Rule("synthetic.source_a")), Map.empty)))
+    val err = intercept[IllegalArgumentException] { CompileService.compilePipeline(anonymous) }
+    assert(err.getMessage.contains("has no identity"))
+    val ordinary = anonymous.copy(durable = false, overrides = Map("materialize.mode" -> "all"))
+    assert(CompileService.compilePipeline(ordinary).datasets.nonEmpty)
   }
 
   test("PIPE-DURABLE-IDENTITY: durable is an explicit request field with an inert default") {

@@ -1,9 +1,9 @@
-// PHASE-S5 / APP-EVALUATION, SVC-RUN-EVAL — the SPA's client over the run endpoint (via the backend).
+// APP-EVALUATION, SVC-RUN-EVAL — the SPA's client over the run endpoint (via the backend).
 //
 // RUN-CLIENT-RESULT-SETS — the backend compiles and materializes through the durable client under
 // caller SQL credentials. It returns one complete selection and its counts, never partial outputs.
 
-import type { DataSourceRecord, PreComputedResults, ResultSetAddress, RunOutcome, RunResult,
+import type { EnvironmentRecord, PreComputedResults, ResultSetAddress, RunOutcome, RunResult,
   RunStage, WarehouseList } from "./wire.ts";
 // PERF-CLIENT-REVISION — reads go through the data cache; WRITES go through `mutate`, which reads the
 // revision off the response so a successful write invalidates immediately rather than at the next
@@ -31,28 +31,21 @@ export function designerInstanceId(): string {
   return DESIGNER_INSTANCE_ID;
 }
 
-/** The CQL context a measure declares (`context Patient` / `context Unfiltered`), so the run evaluates in
- *  the same context it was authored in. Defaults to Patient (the common eCQM case) when undeclared. */
-export function contextFromSource(cql: string): string {
-  const m = /\bcontext\s+([A-Za-z_]\w*)/.exec(cql);
-  return m?.[1] ?? "Patient";
-}
-
 export interface RunOptions {
   /** RUN-CLIENT-REFRESH-RESUME — retry callers must pass the same explicit computedSince. */
   recompute?: boolean;
   computedSince?: string;
   /** Restrict to specific defines; omit to run every define in the library. */
   defines?: string[];
-  /** RUN-CLIENT-IDENTITY — the selected tagged source's actual bindings form the calculation inputs. */
-  dataSourceId?: string;
+  /** DOC-ENVIRONMENT-PICKER — the environment the calculation runs in; omitted means the default. */
+  environment?: string;
   /** PIPE-MEASUREMENT-PERIOD: the measurement period start date (YYYY-MM-DD). */
   periodStart?: string;
   /** PIPE-MEASUREMENT-PERIOD: the measurement period end date (YYYY-MM-DD). */
   periodEnd?: string;
   /** APP-COMPUTE-TARGET — the SQL warehouse to run on; omitted means the deployment's. */
   warehouseId?: string;
-  /** RUN-ADDRESS-LOCATION — where the library's includes resolve first; omitted means all of tagged knowledge. */
+  /** RUN-ADDRESS-LOCATION — where the library's includes resolve first; omitted means the environment's knowledge. */
   location?: string | null;
 }
 
@@ -77,7 +70,7 @@ async function refreshIntent(cql: string, opts: RunOptions) {
   let record: string | undefined;
   let cutoff = opts.computedSince;
   if (pending || opts.recompute || cutoff) {
-    const request = JSON.stringify({ cql, defines: opts.defines, dataSourceId: opts.dataSourceId,
+    const request = JSON.stringify({ cql, defines: opts.defines, environment: opts.environment,
       periodStart: opts.periodStart, periodEnd: opts.periodEnd, location: opts.location ?? null });
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(request));
     const hash = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -97,32 +90,24 @@ async function refreshIntent(cql: string, opts: RunOptions) {
   };
 }
 
-/** DATA-SOURCE-UC-TAG — the Data Sources the Compute dropdown offers: the UC schemas tagged
- *  `cql_databricks_data_source`, each with the `retrieve_<Type>` UDTFs the compiler found in it
- *  (/api/data-sources). API-driven (APP-NO-UI-MOCK); degrades to [] on any failure so the
- *  page still renders. */
-export async function fetchDataSources(): Promise<DataSourceRecord[]> {
-  try {
-    return await cachedGet("/api/data-sources", async (res) =>
-      res.ok ? ((await res.json()) as DataSourceRecord[]) : []);
-  } catch {
-    return [];
-  }
+/** DOC-ENVIRONMENT-PICKER — the environments the compute pill offers: the catalogs tagged
+ *  `cql_databricks_environment` the signed-in user can see (/api/environments). Rejects with the server's
+ *  message: an empty list would hide why the picker is empty. */
+export async function fetchEnvironments(): Promise<EnvironmentRecord[]> {
+  return await cachedGet("/api/environments", async (res) => {
+    if (!res.ok) throw new Error(await errorText(res, "list environments"));
+    return (await res.json()) as EnvironmentRecord[];
+  });
 }
 
 /** SVC-RESOURCE-SCHEMA — the FHIR resource types the engine actually models, so the Data Sources editor offers
- *  only bindable entities (DATA-SOURCE-PROFILE, APP-NO-UI-MOCK). Degrades to [] on any failure OR a compiler
- *  fallback, so the editor uses its static list rather than an empty picker. */
+ *  only bindable entities (APP-NO-UI-MOCK). A failure rejects with the server's message: the caller shows it,
+ *  and an empty picker is never presented as the engine's answer. */
 export async function fetchModeledTypes(): Promise<string[]> {
-  try {
-    return await cachedGet("/api/modeled-types", async (res) => {
-      if (!res.ok) return [];
-      const body = (await res.json()) as { types?: string[]; fallback?: boolean };
-      return body.fallback ? [] : (body.types ?? []);
-    });
-  } catch {
-    return [];
-  }
+  return await cachedGet("/api/modeled-types", async (res) => {
+    if (!res.ok) throw new Error(await errorText(res, "list modeled types"));
+    return ((await res.json()) as { types: string[] }).types;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +117,7 @@ export async function fetchModeledTypes(): Promise<string[]> {
 /** PIPE-PRE-COMPUTED — fetch pre-computed results for one EVALUATION of a library.
  *
  *  THE MEASUREMENT PERIOD IS PART OF THE ADDRESS, not an optional refinement. A results schema is keyed
- *  by `(library, evaluation)` (`PIPE-PER-LIBRARY-SCHEMA`) and the evaluation is the data source plus the
+ *  by `(library, evaluation)` and the evaluation is the environment plus the
  *  period, so the same measure over two years has two result sets. Sending the library and version alone
  *  named a schema no pipeline had ever written to, and this route returned an empty set every time.
  *
@@ -140,13 +125,13 @@ export async function fetchModeledTypes(): Promise<string[]> {
  *  (`funnelFromCounts()`), which is what keeps the document's reported rate and the Analyze lens from
  *  printing two different scores. If nothing has been computed yet, the result set is empty (no error). */
 export async function fetchResults(
-  dataSource: string, library: string, version: string,
+  environment: string, library: string, version: string,
   periodStart?: string, periodEnd?: string, draft?: string, resultSet?: ResultSetAddress,
 ): Promise<PreComputedResults | null> {
   try {
-    // RUN-ADDRESS-BY-LIBRARY — a library version's results are its own; a draft's are read by the key its
-    // run returned, which is all the Designer knows of where they are.
-    return await cachedPost("/api/results", { dataSourceId: dataSource, library, version,
+    // RUN-CLIENT-RESULT-SETS — the results are the run's complete selection, read by its `resultSet` address and
+    // the `draft` label its run returned, which is all the Designer knows of where they are.
+    return await cachedPost("/api/results", { environment, library, version,
       periodStart, periodEnd, draft, resultSet }, async (res) =>
       res.ok ? ((await res.json()) as PreComputedResults) : null);
   } catch {
@@ -167,7 +152,7 @@ async function errorText(res: Response, verb: string): Promise<string> {
 /** RUN-CLIENT-REQUEST-REOPEN — the signed-in user's own results for exactly this calculation, if any.
  *
  *  Read-only: the server never computes, never creates the private schema, and never reads a Job's or
- *  another user's results (RUN-CLIENT-PUBLISHED, amended 2026-10-10). A miss resolves `found: false`
+ *  another user's results (RUN-CLIENT-PUBLISHED). A miss resolves `found: false`
  *  with the server's reason; a failure (compile error, no access to the warehouse) rejects with its
  *  message, so the caller shows it rather than reading it as "not computed". */
 export type ReopenResult = { found: true; result: RunResult } | { found: false; reason: string };
@@ -176,7 +161,7 @@ export async function reopenResults(cql: string, opts: RunOptions): Promise<Reop
   const response = await fetch("/api/reopen", {
     method: "POST",
     headers: { "content-type": "application/json", "x-designer-instance": DESIGNER_INSTANCE_ID },
-    body: JSON.stringify({ cql, dataSourceId: opts.dataSourceId, periodStart: opts.periodStart,
+    body: JSON.stringify({ cql, environment: opts.environment, periodStart: opts.periodStart,
       periodEnd: opts.periodEnd, warehouseId: opts.warehouseId, location: opts.location ?? null }),
   });
   if (!response.ok) throw new Error(await errorText(response, "open results"));
@@ -228,7 +213,7 @@ export async function runMeasure(cql: string, opts: RunCallOptions): Promise<Run
     computed_since: intent.cutoff,
     session_id: DESIGNER_INSTANCE_ID,
     defines: opts.defines,
-    data_source_id: opts.dataSourceId,
+    environment: opts.environment,
     overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
     warehouse_id: opts.warehouseId,
     location: opts.location ?? null,
@@ -258,12 +243,12 @@ export async function runMeasure(cql: string, opts: RunCallOptions): Promise<Run
  *  each carrying every definition's state). `onStage` is called for every progress event; the
  *  final `RunResult` is returned on completion.
  *
- *  **THE FINAL RESULT IS BUILT FROM THE `done` FRAME'S OWN FIELDS.** It used to be read from
- *  `event.result`, a key only the retired in-process runner ever sent — so the placeholder below
- *  survived every successful run and the Designer showed "stream ended unexpectedly" on top of
- *  correct numbers, while genuine failures (which do send `stage: "error"`) reported properly. The
- *  inversion is what made it look intermittent. `status` is now read as well, so a `timeout` or a
- *  `failed` Job says which it was instead of borrowing the disconnect message (`RUN-PROGRESS-TASKS`,
+ *  **THE FINAL RESULT IS BUILT FROM THE `done` FRAME'S OWN FIELDS.** It is not read from
+ *  `event.result`, a key no run sends. The placeholder below would survive every successful run and
+ *  show "stream ended unexpectedly" on top of correct numbers, while genuine failures (which do send
+ *  `stage: "error"`) report properly. The inversion is what makes it look intermittent. `status` is
+ *  read as well, so a `timeout` or a `failed` Job says which it was instead of borrowing the disconnect
+ *  message (`RUN-PROGRESS-TASKS`,
  *  `CORE-NO-SILENT-MISLOWER`). */
 export async function runMeasureStreaming(
   cql: string,
@@ -281,7 +266,7 @@ export async function runMeasureStreaming(
     computed_since: intent.cutoff,
     session_id: DESIGNER_INSTANCE_ID,
     defines: opts.defines,
-    data_source_id: opts.dataSourceId,
+    environment: opts.environment,
     overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
     warehouse_id: opts.warehouseId,
     trigger: opts.trigger,
@@ -312,7 +297,7 @@ export async function runMeasureStreaming(
   const decoder = new TextDecoder();
   let buffer = "";
   // Reached only when the stream ends with no terminal frame at all — the backend went away
-  // mid-run (a reload in dev, a proxy timeout). It is no longer the outcome of an ordinary run.
+  // mid-run (a reload in dev, a proxy timeout). It is not the outcome of an ordinary run.
   let finalResult: RunResult = {
     ok: false,
     error: "The backend closed the run stream before it reported a result.",
@@ -368,7 +353,7 @@ export function runResultFromDone(event: RunStage): RunResult {
   if (!event.results) return { ok: false, error: "The run did not return a complete result selection." };
   const result = { ...preComputedToRunResult({ defines: event.results.defines }), resultSet: event.resultSet,
     computedAt: latestCompletion(event.outcomes) };
-  // RUN-ADDRESS-BY-LIBRARY — the reads of this run's results name its draft, when it is one.
+  // RUN-CLIENT-RESULT-SETS — the reads of this run's results name its selection's label.
   return event.identity?.draft ? { ...result, draft: event.identity.draft } : result;
 }
 

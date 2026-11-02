@@ -1,4 +1,4 @@
-"""How the Designer's FastAPI App runs under uvicorn (it served the evaluator App too, until EVALUATOR-REMOVE).
+"""How the Designer's FastAPI App runs under uvicorn.
 
 `APP-PER-FEATURE` gave each feature its own App and its own `python -m` entry point. They differ only in
 the app factory, the local port and the directory a local reload watches, so the rest lives here: the

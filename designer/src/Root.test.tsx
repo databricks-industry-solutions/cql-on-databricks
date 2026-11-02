@@ -18,6 +18,9 @@ import { MW_MODULES, TOUR_FEATURES } from "./measures/model.ts";
 vi.mock("./library-client.ts", () => ({
   fetchDefinitions: async () => [],
   fetchLibrarySource: async () => "",
+  // DOC-AUTO-SAVE — the workspace hands the save to its write queue as it renders; no library is open here.
+  saveLibrary: async () => { throw new Error("no save in this test"); },
+  cqlSha256: async () => "",
 }));
 
 // Same reasoning for the tour's workspace read (APP-TOUR): the overlay asks the BFF which workspace

@@ -28,7 +28,7 @@
 //
 // LIBRARY OWNERSHIP is by DECLARING SOURCE: each entry belongs to the library whose ELM declares it. The
 // describe graph contributes EDGES only, never membership — merging its cross-library define list into
-// the root library is what previously listed an include's defines twice in the nav.
+// the root library would list an include's defines twice in the nav.
 
 import { buildElmGraph, type ElmLibrarySource } from "../authoring/elmGraph.ts";
 import type { ElmDefine, ElmLibraryInfo } from "../authoring/elmDefines.ts";
@@ -341,17 +341,16 @@ export type SpecSortKey = "declared" | "topo" | "az" | "usedby" | "uses";
 
 /** SPEC-SHARED-ORDER — order the define catalogue, for BOTH surfaces at once.
  *
- *  ORDER IS A PROPERTY OF THE SPECIFICATION, exactly as elimination is. Sorting was a nav-only aid, on
- *  the reasoning that the page should keep a stable published reading order — but the nav opened on
- *  `topo` while the page rendered declaration order, so the two disagreed by default, and no setting
- *  could make them agree because declaration order was not one of the nav's options. A nav whose third
- *  row is the eleventh section is not navigation. The stable-reading-order argument survives as the
- *  DEFAULT (`declared`, the CQL's own order): a reader who picks another order moves both surfaces.
+ *  ORDER IS A PROPERTY OF THE SPECIFICATION, exactly as elimination is. Sorting is not a nav-only aid: the page keeps
+ *  a stable published reading order, and a nav that sorts its own copy would disagree with it (opening on `topo`
+ *  while the page renders declaration order). No setting could make them agree, because declaration order is not one
+ *  of the nav's options. A nav whose third row is the eleventh section is not navigation. The stable-reading-order
+ *  argument is the DEFAULT (`declared`, the CQL's own order): a reader who picks another order moves both surfaces.
  *
  *  POPULATIONS ARE NEVER SORTED. They are stated in eCQM reporting order — Initial Population,
- *  Denominator, exclusions, Numerator — which is the order a reader reasons in; topological sort put
- *  Initial Population last, so nav and page disagreed about where the measure starts. That carve-out
- *  was already in the nav and moves here with the rest.
+ *  Denominator, exclusions, Numerator — which is the order a reader reasons in; topological sort would put
+ *  Initial Population last, so nav and page would disagree about where the measure starts. That carve-out
+ *  lives here with the rest of the order.
  *
  *  The graph supplies the relational keys (`layer`, `deps`, `dependents`) and nothing else — membership
  *  is the model's (APP-SPEC-MODEL). Name is the tie-breaker throughout, so an order is total and a
@@ -386,17 +385,17 @@ export function eliminatedCount(model: SpecModel): number {
 /** APP-SPEC-MODEL — the ONE resolution of a bare name to the entry it names.
  *
  *  Selection and every inline reference travel by NAME (`APP-LOGIC-VIEW`) while entries are
- *  library-qualified, so something has to decide which declaration a bare name means. That decision now
- *  lives here once, because it had been made twice: the inspector resolved a selected name to scope its
- *  pane and the Specification resolved the same name to build its reference lenses, and the two agreeing
- *  was a coincidence maintained by hand. With the lens rendering the inspector's own body
+ *  library-qualified, so something has to decide which declaration a bare name means. That decision lives
+ *  here once. Were it made twice, the inspector (resolving a selected name to scope its pane) and the
+ *  Specification (resolving the same name to build its reference lenses) would agree only by coincidence,
+ *  maintained by hand. With the lens rendering the inspector's own body
  *  (`SPEC-REF-LENS`), a disagreement would put two different defines' figures under one name in one
  *  gesture — the exact drift this requirement exists to prevent.
  *
  *  POPULATIONS FIRST, then libraries in declaration order, first declaration wins. The order is not
  *  arbitrary: the model holds populations in their OWN list rather than among the library entries, so a
- *  lookup that walked only `libraries` resolved every ordinary define and silently missed all four
- *  population criteria — the inspector read "Whole document" while the nav row beside it was plainly
+ *  lookup that walked only `libraries` would resolve every ordinary define and silently miss all four
+ *  population criteria — the inspector would read "Whole document" while the nav row beside it is plainly
  *  selected. */
 export function entriesByName(model: SpecModel): Map<string, SpecEntry> {
   const out = new Map<string, SpecEntry>();

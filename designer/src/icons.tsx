@@ -12,6 +12,8 @@ export {
   // DOC-CQL-EDIT, DOC-OPEN-SAVE — the CQL view's toggle and Save.
   CodeXml as EditCql,
   Save,
+  // DOC-PUBLISH — a folder library out to a tagged store.
+  Upload as Publish,
   FolderOpen,
   X,
   ChevronDown,
@@ -54,8 +56,7 @@ export {
   // ── APP-WORKBENCH — the right pane's tab glyphs + the artifact/pin mark ──
   GitBranch,
   Package,
-  // `Command` and `CornerDownLeft` are GONE with the ⌘K palette they belonged to
-  // (DESIGNER-COMMAND-PALETTE, retired 2026-08-07) — nothing else drew either.
+  // `Command` and `CornerDownLeft` are not imported: nothing here draws them.
   // ── SPEC-NAV-COMPOSITION — the nav's tabs, and its "expanded above" reference mark. `Waypoints` is
   // the Composition tab's glyph: a spine with branches off it, which is the shape the tree draws.
   Compass,

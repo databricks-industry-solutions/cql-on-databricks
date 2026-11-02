@@ -378,55 +378,35 @@ object SqlQueryLowering {
     (cd.codeSystem.flatMap(cs => lib.codeSystems.find(_.name == cs).map(_.id)).getOrElse(""), cd.id)
   }
 
-  /** BIND-EXPLICIT-PARAMS: the retrieve UDTF's SEVEN EXPLICIT positional arguments — everything the
-    * compiler statically knows about ONE retrieve, spelled out as named/typed SQL parameters (the
-    * opaque `(context VARIANT, hints VARIANT)` envelope pair this replaced was RETIRED, 2026-08):
+  /** BIND-CALL-SITE: the mount for one retrieve call site. The context's own retrieve (`r` is `None`) belongs to
+    * no define, so its site names no library; every other site names the define being lowered and its library
+    * ([[SqlEvalEnv.siteOwner]]). */
+  private[lower] def retrieveMount(r: Option[Retrieve], rt: String, lib: Library, env: SqlEvalEnv): SqlRel = {
+    val call = retrieveCall(r, rt, lib, env)
+    env.retrieveMount(call, CallSite.retrieve(call, if (r.isEmpty) None else env.siteOwner(lib)))
+  }
+
+  /** BIND-CALL-SITE: the value-set site for a membership test on `vsId` in the define being lowered. */
+  private[lower] def valueSetMount(vsId: String, lib: Library, env: SqlEvalEnv): SqlRel =
+    env.valueSetMount(vsId, CallSite.valueSet(vsId, lib.valueSets.find(_.id == vsId).flatMap(_.version),
+      env.siteOwner(lib)))
+
+  /** BIND-RETRIEVE-REQUEST: what one retrieve call site asks its data binding for, as [[RetrieveCall]] holds it.
+    * A relation takes no arguments. The compiled plan re-applies every filter above it (BIND-CAPABILITY), so a
+    * binding that ignores the request still returns a correct superset. An absent value is NULL or an empty array
+    * or map, never a guessed literal (CORE-NO-SILENT-MISLOWER).
     *
-    * {{{
-    * retrieve_<Type>(value_set, code_property, codes, date_property, date_low, date_high, parameters)
-    * }}}
-    *
-    *  1. `value_set STRING` — the canonical value-set id (URL / `urn:oid:…`) of a value-set-filtered
-    *     retrieve, the terminology semi-join key.
-    *  2. `code_property STRING` — the FHIR element the code filter tests, already RESOLVED to its
-    *     PHYSICAL slot ([[resolveCodeSlot]]): a `value[x]`-choice property like
-    *     `MedicationRequest.medication` is emitted as `medicationCodeableConcept`, so a binding can
-    *     navigate `<code_property>.coding` directly and match what the plan filters on.
-    *  3. `codes ARRAY<STRUCT<system STRING, code STRING>>` — the DIRECT declared codes of a
-    *     code-filtered retrieve (`[Condition: "Acute Pharyngitis code"]`). Disjoint from `value_set` in
-    *     practice: a retrieve filters by a value set OR by declared codes, never both.
-    *  4. `date_property STRING` — the FHIR element the date filter applies to.
-    *  5. `date_low STRING` / 6. `date_high STRING` — the folded literal date window on it, as INCLUSIVE
-    *     ISO bounds (`Retrieve.dateRange`, ARCH-PUSHDOWN). Both are emitted only for a CLOSED literal
-    *     interval; a half-open or non-literal range leaves them NULL rather than shift a bound.
-    *  7. `parameters MAP<STRING, VARIANT>` — every parameter the define's dependency closure uses whose
-    *     resolved default is a compile-time literal, keyed by its CQL NAME in the define's own library
-    *     ([[com.databricks.cql.passes.ParameterScope]], EMIT-ROOT-INDEPENDENT). A MAP because those names are not SQL identifiers
-    *     (`'Measurement Period'` has a space) and the set is open per library; VARIANT values because
-    *     a default is not always a string — an interval lands as a `{low, high}` VARIANT OBJECT (this
-    *     is where the retired `context.measurementPeriod` field went), a scalar as a VARIANT SCALAR.
-    *
-    * Every argument is a FOLDABLE literal, so a guard on any of them — `library[0].id = '…'`,
-    * `try_variant_get(parameters['Measurement Period'], '$.low', 'string')`, `cardinality(codes) > 0` —
-    * folds at ANALYSIS time and Catalyst eliminates the body's non-matching `UNION` arms
-    * (BIND-PUSHDOWN, verified against Spark 4.1.2: an array/map/struct argument folds exactly as well
-    * as a scalar). ABSENT is a NULL (or an empty array/map), never a wrong literal
-    * (CORE-NO-SILENT-MISLOWER) — a binding tests presence exactly as it used to test a missing VARIANT
-    * key. Advisory only: [[filteredRetrieve]] re-applies every filter ABOVE the call, so a binding that
-    * ignores all seven arguments still returns a correct un-pruned superset (BIND-CAPABILITY).
-    *
-    * EMIT-ROOT-INDEPENDENT: no argument names a library. The retrieve's rows may depend only on its arguments
+    * EMIT-ROOT-INDEPENDENT: no request field names a library. The retrieve's rows may depend only on its request
     * and its data source, so a define's SQL, and its stored result, is the same whichever library is being
     * compiled (`DEC-RESULT-IDENTITY`).
     *
-    * `r` is `None` for the CONTEXT BASE mount (the per-subject `Patient` scan, [[contextRel]]): it has no
+    * `r` is `None` for the CONTEXT BASE read (the per-subject `Patient` scan, [[contextRel]]): it has no
     * predicates and belongs to no define, so its `parameters` map is empty. */
-  private[lower] def retrieveArgs(r: Option[Retrieve], rt: String, lib: Library, env: SqlEvalEnv): Seq[SqlExpr] = {
+  private[lower] def retrieveCall(r: Option[Retrieve], rt: String, lib: Library, env: SqlEvalEnv): RetrieveCall = {
     val valueSet = r.flatMap(_.codes).collect {
       case ValueSetRef(name, _)         => valueSetId(lib, name)
       case ToList(ValueSetRef(name, _)) => valueSetId(lib, name)
     }
-    val codeProperty = r.flatMap(_.codeProperty).map(resolveCodeSlot(rt, _))
     val codes = r.flatMap(_.codes).toSeq.collect {
       case CodeRef(name, _)         => codePair(lib, name)
       case ToList(CodeRef(name, _)) => codePair(lib, name)
@@ -435,46 +415,35 @@ object SqlQueryLowering {
       case Some(IntervalExpr(Some(lo), Some(hi), true, true)) => (literalString(lo), literalString(hi))
       case _                                                  => (None, None)
     }
-    Seq(optStr(valueSet),
-        optStr(codeProperty),
-        Call("array", codes.map { case (system, code) =>
-          Struct(Seq("system" -> str(system), "code" -> str(code))) }),
-        optStr(r.flatMap(_.dateProperty)),
-        optStr(dateLow),
-        optStr(dateHigh),
-        parametersMap(env.currentDefine.flatMap(env.defineParameters.get).getOrElse(Seq.empty)))
+    RetrieveCall(
+      fhirType = rt,
+      valueSet = valueSet,
+      codes = codes,
+      dateProperty = r.flatMap(_.dateProperty),
+      dateLow = dateLow,
+      dateHigh = dateHigh,
+      parameters = parameterValues(env.currentDefine.flatMap(env.defineParameters.get).getOrElse(Seq.empty)))
   }
 
-  /** A present value as a string literal, an absent one as NULL — the ABSENT convention of every scalar
-    * retrieve argument (BIND-EXPLICIT-PARAMS). */
-  private def optStr(v: Option[String]): SqlExpr = v.map(str).getOrElse(Null)
-
-  /** The `parameters` argument (BIND-EXPLICIT-PARAMS): a `MAP<STRING, VARIANT>` of every parameter whose
-    * resolved default is a compile-time literal — a literal INTERVAL as a
-    * `{low, lowClosed, high, highClosed}` VARIANT object, a scalar as a VARIANT scalar. A parameter with
-    * no literal default is OMITTED (the binding reads NULL for its key) rather than guessed at
+  /** The request's `parameters` (BIND-RETRIEVE-REQUEST): every parameter whose resolved default is a
+    * compile-time literal, a literal INTERVAL with its closure flags, a scalar as its string. A parameter with
+    * no literal default is OMITTED (the relation reads NULL for its key) rather than guessed at
     * (CORE-NO-SILENT-MISLOWER).
     *
-    * The CLOSURE flags are carried, not assumed: the standard eCQM Measurement Period is
-    * `Interval[@2026-01-01T00:00:00.0, @2027-01-01T00:00:00.0)` — HALF-OPEN — so a binding that read a
-    * bare `high` as inclusive would over-select a whole instant at the boundary. Growth inside the
-    * VARIANT is free, so the exact interval is spelled out rather than narrowed to fit. */
-  private def parametersMap(scope: Seq[(String, ParameterDef)]): SqlExpr = {
-    val entries = scope.flatMap { case (key, p) =>
+    * The CLOSURE flags are carried, not assumed: the standard Measurement Period is
+    * `Interval[@2026-01-01T00:00:00.0, @2027-01-01T00:00:00.0)` — HALF-OPEN — so a relation that read a bare
+    * `high` as inclusive would over-select a whole instant at the boundary. */
+  private def parameterValues(scope: Seq[(String, ParameterDef)]): Seq[(String, RetrieveCall.Value)] =
+    scope.flatMap { case (key, p) =>
       p.default.flatMap {
         case IntervalExpr(Some(lo), Some(hi), lowClosed, highClosed) =>
           (literalString(lo), literalString(hi)) match {
-            case (Some(l), Some(h)) =>
-              Some(key -> Call("to_variant_object", Seq(Struct(Seq(
-                "low" -> str(l), "lowClosed" -> bool(lowClosed),
-                "high" -> str(h), "highClosed" -> bool(highClosed))))))
-            case _ => None
+            case (Some(l), Some(h)) => Some(key -> RetrieveCall.Interval(l, lowClosed, h, highClosed))
+            case _                  => None
           }
-        case other => literalString(other).map(v => key -> Cast(str(v), "VARIANT"))
+        case other => literalString(other).map(v => key -> RetrieveCall.Scalar(v))
       }
     }
-    Call("map", entries.flatMap { case (n, v) => Seq(str(n), v) })
-  }
 
   /** The ISO/scalar string value of a compile-time-literal expression (a resolved parameter default, a
     * folded date-range bound), unwrapping the `As` cast and `To*` conversion the front end leaves around
@@ -536,7 +505,7 @@ object SqlQueryLowering {
     * flattens the extra list level (cardinality read STATICALLY from the model, ARCH-NO-RUNTIME-SCHEMA).
     * `resourceExpr` navigates the coding/id off the row (a mount navigates `__resource`). */
   private def membershipSemiJoin(resources: SqlRel, resourceExpr: SqlExpr, codeProperty: String,
-                                 vsId: String, env: SqlEvalEnv, codeIsList: Boolean): SqlRel = {
+                                 vsId: String, env: SqlEvalEnv, codeIsList: Boolean, lib: Library): SqlRel = {
     val codings0 = navPath(resourceExpr, s"$codeProperty.coding")
     val codings  = if (codeIsList) Call("flatten", Seq(codings0)) else codings0
     resources match {
@@ -555,7 +524,7 @@ object SqlQueryLowering {
           from = SqlRel.LateralView(mount, Call("explode", Seq(codings)), "__cx", Seq("__coding")))
         val matched = SqlRel.Select(
           projections = Seq(SqlRel.Proj(Col("__mid"))), distinct = true,
-          from = SqlRel.Join(asFrom(exploded, "__ex"), SqlRel.AliasRel(env.valueSetMount(vsId), "__vs"),
+          from = SqlRel.Join(asFrom(exploded, "__ex"), SqlRel.AliasRel(valueSetMount(vsId, lib, env), "__vs"),
             SqlRel.JoinKind.LeftSemi, using = Seq("system", "code")))
         SqlRel.Join(mount, SqlRel.AliasRel(matched, "__mids"), SqlRel.JoinKind.LeftSemi,
           on = Some(Infix("=", idExpr, Col("__mid"))))
@@ -568,7 +537,7 @@ object SqlQueryLowering {
         val cond = Call("exists", Seq(codings, Lambda(Seq("x"),
           Infix("AND", Infix("=", Field(Col("x"), "system"), Field(Col(vs), "system")),
                        Infix("=", Field(Col("x"), "code"),   Field(Col(vs), "code"))))))
-        SqlRel.Join(frame, SqlRel.AliasRel(env.valueSetMount(vsId), vs), SqlRel.JoinKind.LeftSemi, on = Some(cond))
+        SqlRel.Join(frame, SqlRel.AliasRel(valueSetMount(vsId, lib, env), vs), SqlRel.JoinKind.LeftSemi, on = Some(cond))
     }
   }
 
@@ -599,7 +568,7 @@ object SqlQueryLowering {
   /** Scan a retrieve's resources applying its scan-level filters: the value-set/single-code terminology
     * membership and the date-range / period pre-filter (the SQL twin of `QueryLowering.filteredRetrieve`).
     * Returns a relation exposing the mount's `(__subject_id, __resource)`. Navigates the code/date
-    * property THROUGH the `__resource` struct of the mount (DATA-RETRIEVE-VIEW). */
+    * property THROUGH the `__resource` struct of the mount (BIND-CONTRACT). */
   private[lower] def filteredRetrieve(r: Retrieve, rt: String, env: SqlEvalEnv, lib: Library,
                                       typeOf: Expr => CqlType): SqlRel =
     // DATA-RETRIEVE-BARRIER-OPT: when this read was materialized as its own object, READ it instead of
@@ -616,22 +585,22 @@ object SqlQueryLowering {
     * read's BODY without recursing into the substitution that would make it read itself. */
   private[lower] def filteredRetrieveInline(r: Retrieve, rt: String, env: SqlEvalEnv, lib: Library,
                                             typeOf: Expr => CqlType): SqlRel = {
-    val mount = env.retrieveMount(rt, retrieveArgs(Some(r), rt, lib, env))
+    val mount = retrieveMount(Some(r), rt, lib, env)
     val resourceCol = Col(Resource)
     def codeProp: String = resolveCodeSlot(rt, r.codeProperty.getOrElse(throw UnsupportedNode("Retrieve",
       s"code-filtered retrieve [$rt] has no codeProperty to test membership on")))
     def isList: Boolean = FhirModel.isListElement(rt, codeProp)
     val codeFiltered = r.codes match {
       case None                                 => mount
-      case Some(ValueSetRef(name, _))           => membershipSemiJoin(mount, resourceCol, codeProp, valueSetId(lib, name), env, isList)
-      case Some(ToList(ValueSetRef(name, _)))   => membershipSemiJoin(mount, resourceCol, codeProp, valueSetId(lib, name), env, isList)
+      case Some(ValueSetRef(name, _))           => membershipSemiJoin(mount, resourceCol, codeProp, valueSetId(lib, name), env, isList, lib)
+      case Some(ToList(ValueSetRef(name, _)))   => membershipSemiJoin(mount, resourceCol, codeProp, valueSetId(lib, name), env, isList, lib)
       case Some(CodeRef(name, _))               => val (s, c) = codePair(lib, name); codeFilter(mount, resourceCol, codeProp, s, c, isList)
       case Some(ToList(CodeRef(name, _)))       => val (s, c) = codePair(lib, name); codeFilter(mount, resourceCol, codeProp, s, c, isList)
       case Some(other)                          => throw UnsupportedNode(other.elmType, s"retrieve [$rt] code filter must be a ValueSetRef or a code")
     }
     // Date-range scan filter (ARCH-PUSHDOWN): keep resources whose `<dateProperty>` point is in the
     // range — the SAME `point in range` predicate the unoptimized `where` lowers, navigated through the
-    // `__resource` struct so the optimized scan and the `where` are identical (CONF-GATE-SELFDIFF).
+    // `__resource` struct so the optimized scan and the `where` are identical.
     val dateFiltered = (r.dateProperty, r.dateRange) match {
       case (Some(dp), Some(range)) =>
         val conv = r.datePointConverter.getOrElse("ToDateTime")
@@ -680,12 +649,12 @@ object SqlQueryLowering {
     * THROUGH the `__resource` struct (mirrors `QueryLowering.resourceScanPredicate`): `bindScopes`
     * rewrites scope-rooted navigation and every alias binds to `__resource`.
     *
-    * EMIT-SQL-TEMPORAL-UDF: fold the precision-aware temporal-compare tower to `cql_temporal_cmp` here too.
+    * EMIT-SQL-TEMPORAL-UDF-OPAQUE: fold the precision-aware temporal-compare tower to `cql_temporal_cmp` here too.
     * This is the pushed date-range scan filter (`In(point, range)` folded by `DateRangePushdown` and
     * re-emitted at [[filteredRetrieve]]) — a runtime `__resource.<date>` operand, so it is exactly the
     * operator tower the UDF collapses (a literal-only predicate still const-folds via the `aC/bC` guard in
     * `SqlColumnLowering`). Aligns the pushdown-ON scan predicate with the pushdown-OFF residual `where`
-    * (which `applyWhere` already lowers UDF-first), preserving the emit-identical self-diff (CONF-GATE-SELFDIFF)
+    * (which `applyWhere` already lowers UDF-first), preserving the emit-identical self-diff
     * while cutting the analyzer's per-site cost. The coarse Period pre-filter (raw string `>=`/`<`) stays
     * native by construction (it is emitted directly, not through this path). */
   private[lower] def resourceScanPredicate(pred: Expr, typeOf: Expr => CqlType = _ => CqlType.AnyType): SqlExpr =
@@ -849,13 +818,13 @@ object SqlQueryLowering {
     *
     * The context base has NO retrieve predicates, but it is still passed the compilation-global
     * arguments (`library`, `parameters`) — those do not depend on a retrieve, and a binding for the
-    * context type deserves the same evaluation metadata as any other (BIND-EXPLICIT-PARAMS). It
-    * previously received two EMPTY envelopes, so a `Patient` binding could see nothing at all. */
+    * context type deserves the same evaluation metadata as any other, so a `Patient`
+    * binding sees the library and parameters. */
   private[lower] def contextRel(env: SqlEvalEnv, lib: Library): Option[SqlRel] =
     if (env.context.hasSubjectGrouping)
       Some(SqlRel.Select(
         projections = Seq(SqlRel.Proj(Col(SubjectId)), SqlRel.Proj(Col(Resource), env.context.name)),
-        from = env.retrieveMount(env.context.name, retrieveArgs(None, env.context.name, lib, env))))
+        from = retrieveMount(None, env.context.name, lib, env)))
     else None
 
   /** The Cartesian combination of all sources (inner-joined on `__subject_id`), with the value[x] static
@@ -1259,7 +1228,7 @@ object SqlQueryLowering {
         from = codingRows)
       SqlRel.Select(
         projections = keyProjs :+ SqlRel.Proj(bool(true), flagCol), distinct = true,
-        from = SqlRel.Join(asFrom(exploded, "__ex"), SqlRel.AliasRel(env.valueSetMount(vsId), "__vs"),
+        from = SqlRel.Join(asFrom(exploded, "__ex"), SqlRel.AliasRel(valueSetMount(vsId, lib, env), "__vs"),
           SqlRel.JoinKind.LeftSemi, using = Seq("system", "code")))
     }
 
@@ -1344,7 +1313,7 @@ object SqlQueryLowering {
     val (alias, path, vs) = RetrieveFilter.membership(conjunct).get
     val srcExpr = q.sources.collectFirst { case QuerySource(`alias`, e) => e }
     val isList  = srcExpr.flatMap(e => aliasResourceType(e, typeOf)).exists(FhirModel.isListElement(_, path))
-    membershipSemiJoin(SqlRel.AliasRel(frame, "__m"), Col(alias), path, valueSetId(lib, vs.name), env, isList)
+    membershipSemiJoin(SqlRel.AliasRel(frame, "__m"), Col(alias), path, valueSetId(lib, vs.name), env, isList, lib)
   }
 
   /** `exists(query)`: the distinct subjects with ≥1 surviving combined row (the SQL twin of
@@ -1359,7 +1328,7 @@ object SqlQueryLowering {
     * `FrameLowering.subjectsPresent`). */
   def subjectsPresent(r: Retrieve, env: SqlEvalEnv, lib: Library, typeOf: Expr => CqlType): SqlRel = {
     val rt = localName(r.dataType)
-    val read = if (isUnfilteredScan(r)) env.retrieveMount(rt, retrieveArgs(Some(r), rt, lib, env))
+    val read = if (isUnfilteredScan(r)) retrieveMount(Some(r), rt, lib, env)
                else filteredRetrieve(r, rt, env, lib, typeOf)
     SqlRel.Select(projections = Seq(SqlRel.Proj(Col(SubjectId))), from = asFrom(read, "__sp"), distinct = true)
   }

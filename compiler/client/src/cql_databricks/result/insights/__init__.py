@@ -1,12 +1,12 @@
-"""APP-DATA-PROFILE / APP-SAMPLE-METRICS — the figures the Designer renders.
+"""APP-DATA-PROFILE / APP-SPEC-MODEL — the figures the Designer renders.
 
 Two payloads, one boundary. `DefineProfile` is what the right pane's Data tab asks about ONE define;
 `MeasureMetrics` is every figure the document, the nav and the reported result share, fetched once so
 they cannot disagree.
 
 `model.py` is the wire contract and survives. **`metrics.py` is the warehouse-backed metric builder**
-replacing `sample.py`'s metric half. `sample.py` retains the per-define PROFILE, which is still
-scaffolding until the distribution reads land.
+replacing `sample.py`'s metric half. `sample.py` retains the per-define PROFILE, which is scaffolding until the
+distribution reads land.
 """
 
 from __future__ import annotations

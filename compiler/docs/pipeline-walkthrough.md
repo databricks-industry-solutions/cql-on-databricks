@@ -172,8 +172,9 @@ Resolve, Normalize and Schedule change nothing: no references, functions or para
 
 ### Lower
 
-The Patient context becomes a base frame over `retrieve_Patient`. Each retrieve is a call to the bound
-table function with its eight arguments ([data-binding.md](data-binding.md)). `exists` is a left join to
+The Patient context becomes a base frame over the relation bound to the `[Patient]` call site. Each retrieve
+reads `__subject_id` and `__resource` from its bound relation ([data-binding.md](data-binding.md)). The
+`<… relation>` placeholders below stand for the table each call site is bound to. `exists` is a left join to
 the subjects that have a Condition row, with absent subjects coalesced to `false`.
 
 ```sql
@@ -181,7 +182,7 @@ CREATE OR REPLACE TEMP VIEW __frame_base AS
 SELECT
   __subject_id,
   __resource AS Patient
-FROM retrieve_Patient(array(named_struct('id', 'Demo', 'version', '1.0.0')), NULL, NULL, array(), NULL, NULL, NULL, map())
+FROM (SELECT __subject_id, __resource FROM <Patient relation>)
 
 CREATE OR REPLACE TEMP VIEW HasAnyCondition AS
 SELECT
@@ -195,7 +196,7 @@ FROM (
     FROM (
       SELECT DISTINCT
         __subject_id
-      FROM retrieve_Condition(array(named_struct('id', 'Demo', 'version', '1.0.0')), NULL, NULL, array(), NULL, NULL, NULL, map()) AS __sp
+      FROM (SELECT __subject_id, __resource FROM <Condition relation>) AS __sp
     ) AS __pr
   ) AS __j0 USING (__subject_id)
 ) AS __h
@@ -204,7 +205,7 @@ FROM (
 ### Value-set membership
 
 `exists [Condition: "Diabetes"]` differs only in how the subjects with a match are found. The retrieve
-carries the value set, the call passes its id as `value_set`, and the lowering adds a semi-join of each
+request carries the value set as `value_set`, and the lowering adds a semi-join of each
 Condition's codings against the value-set table, filtered to that set
 (`SqlQueryLowering.membershipSemiJoin`, `LANG-TERMINOLOGY`). The local compile host has no terminology, so
 it rejects this example; the Compiler Service App compiles it.

@@ -342,7 +342,7 @@ function date(s: string): string | null {
   return hour && !(hour === "00" && minute === "00") ? `${written} ${hour}:${minute}` : written;
 }
 
-/** The labelled fields, empties already gone, in clinical reading order. */
+/** The labelled fields, with empty ones left out, in clinical reading order. */
 function fieldsOf(v: unknown): ValueField[] {
   if (Array.isArray(v)) {
     // A list-valued define returns several elements and each one is a field of the list.

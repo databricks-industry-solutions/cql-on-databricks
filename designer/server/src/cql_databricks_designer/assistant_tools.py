@@ -12,12 +12,13 @@ import logging
 from typing import Any
 
 from cql_databricks.agent.server.registry import ToolRegistry
+from cql_databricks.agent.server.wiring import current_environment
 from cql_databricks.data_bindings import ContentResolver
 
 from cql_databricks.compiler.folder_content import folder_measure
 from cql_databricks.compiler.location import Location
 
-from .data_bindings import files_for
+from .data_bindings import EnvironmentContents, files_for
 from .specification.measure_metadata import authored_overlay
 
 log = logging.getLogger("cql_databricks_designer.assistant_tools")
@@ -50,9 +51,9 @@ def specification_document(library: str, version: str, *, content: ContentResolv
     return authored.to_dict() if authored is not None else None
 
 
-def designer_tools(*, content: ContentResolver) -> ToolRegistry:
+def designer_tools(*, contents: EnvironmentContents) -> ToolRegistry:
     """The Designer's contribution to the agent's server: ``get_specification``, and the sentence that
-    says to start with it."""
+    says to start with it. It reads the knowledge of the environment the drawer passes (`AGENT-DEFAULT-ENVIRONMENT`)."""
     registry = ToolRegistry(instructions=(
         "Start with `get_specification` — it is the map of what can be addressed, and every other tool "
         "takes a define name it lists."))
@@ -64,9 +65,10 @@ def designer_tools(*, content: ContentResolver) -> ToolRegistry:
         Start here. This is the map of what can be addressed — every other tool takes a define name
         that this one lists. `version` is the base version the measure states (e.g. "0.0.006").
         Returns null when the library has no specification, which is an answer, not a failure.
-        `location` is where the library is read: `store:<catalog>.<schema>` or `folder:<path>`; omit it for tagged
-        knowledge.
+        `location` is where the library is read: `store:<catalog>.<schema>` or `folder:<path>`; omit it for the
+        environment's knowledge.
         """
-        return specification_document(library, version, content=content, location=location)
+        return specification_document(library, version, content=contents.get(current_environment()),
+                                      location=location)
 
     return registry

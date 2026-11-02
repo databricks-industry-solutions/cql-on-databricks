@@ -47,7 +47,7 @@ def _library(name, version, source, store):
 
 
 class _Content:
-    scopes = ("k",)
+    catalog = "k"
 
     def __init__(self, libraries, stores):
         self._corpus = Corpus(lambda *a: [], list(stores), libraries)
@@ -60,7 +60,7 @@ class _Content:
 class LocationTests(unittest.TestCase):
 
     def test_round_trips_its_wire_form(self):
-        for text in ("store:k.measures", "folder:/Workspace/Users/a@example.org/CMS165"):
+        for text in ("store:k.measures", "folder:/Workspace/Users/a@example.org/ExamplePackage2"):
             self.assertEqual(str(Location.parse(text)), text)
         self.assertEqual(str(Location.parse("folder:/Workspace/x/")), "folder:/Workspace/x")
 
@@ -88,12 +88,13 @@ class FileSeamTests(unittest.TestCase):
     """The provider's rules hold over any LibraryFiles, not only the local filesystem."""
 
     def test_reads_a_package_folder_through_its_file_source(self):
-        files = _MemoryFiles({"/W/CMS1/cql/Measure-1.0.0.cql": MEASURE, "/W/CMS1/cql/Helpers-1.0.0.cql": HELPERS,
-                              "/W/CMS1/resources/measure-Measure-1.0.0.json": "{}"})
-        provider = FileLibraryProvider(["/W/CMS1"], files=files)
+        files = _MemoryFiles({"/W/ExamplePackage/cql/Measure-1.0.0.cql": MEASURE,
+                              "/W/ExamplePackage/cql/Helpers-1.0.0.cql": HELPERS,
+                              "/W/ExamplePackage/resources/measure-Measure-1.0.0.json": "{}"})
+        provider = FileLibraryProvider(["/W/ExamplePackage"], files=files)
         root = provider.resolve(LibraryRef("Measure", "1.0.0"))
-        self.assertEqual(root.origin, "/W/CMS1/cql/Measure-1.0.0.cql")
-        self.assertEqual(provider.home_of(root), "/W/CMS1/cql")
+        self.assertEqual(root.origin, "/W/ExamplePackage/cql/Measure-1.0.0.cql")
+        self.assertEqual(provider.home_of(root), "/W/ExamplePackage/cql")
 
     def test_resolves_sibling_first_over_another_folders_copy(self):
         files = _MemoryFiles({"/W/a/Common-2.0.0.cql": OTHER_COMMON, "/W/b/Common-2.0.0.cql": COMMON})
@@ -129,29 +130,31 @@ class ResolveAtLocationTests(unittest.TestCase):
             resolve(self.content, library="Measure", version="1.0.0", location=Location("store", "k.first"))
 
     def test_a_folder_location_resolves_the_folder_first_then_knowledge(self):
-        files = _MemoryFiles({"/W/CMS1/cql/Measure-1.0.0.cql": MEASURE, "/W/CMS1/cql/Common-2.0.0.cql": COMMON})
-        r = resolve(self.content, library="Measure", version="1.0.0", location="folder:/W/CMS1", files=files)
+        files = _MemoryFiles({"/W/ExamplePackage/cql/Measure-1.0.0.cql": MEASURE,
+                              "/W/ExamplePackage/cql/Common-2.0.0.cql": COMMON})
+        r = resolve(self.content, library="Measure", version="1.0.0", location="folder:/W/ExamplePackage", files=files)
         self.assertEqual((r.name, r.version, r.source), ("Measure", "1.0.0", MEASURE))
         self.assertEqual(r.include_sources, [HELPERS, COMMON])   # Helpers from knowledge, Common from the folder
         self.assertEqual([i.id.name for i in r.includes], ["Helpers", "Common"])   # dependencies first
 
     def test_cql_text_at_a_folder_resolves_its_includes_there(self):
-        files = _MemoryFiles({"/W/CMS1/cql/Common-2.0.0.cql": COMMON, "/W/CMS1/cql/Helpers-1.0.0.cql": HELPERS})
-        r = resolve(self.content, cql=MEASURE, location="folder:/W/CMS1", files=files)
+        files = _MemoryFiles({"/W/ExamplePackage/cql/Common-2.0.0.cql": COMMON,
+                              "/W/ExamplePackage/cql/Helpers-1.0.0.cql": HELPERS})
+        r = resolve(self.content, cql=MEASURE, location="folder:/W/ExamplePackage", files=files)
         self.assertEqual(r.include_sources, [HELPERS, COMMON])
 
     def test_a_folder_reports_every_missing_include_naming_the_folder(self):
         lonely = _Content([], [self.first])
-        files = _MemoryFiles({"/W/CMS1/cql/Measure-1.0.0.cql": MEASURE})
-        r = resolve(lonely, library="Measure", location="folder:/W/CMS1", files=files)
+        files = _MemoryFiles({"/W/ExamplePackage/cql/Measure-1.0.0.cql": MEASURE})
+        r = resolve(lonely, library="Measure", location="folder:/W/ExamplePackage", files=files)
         self.assertEqual(sorted(u.name for u in r.unresolved), ["Common", "Helpers"])
-        self.assertIn("is not in the folder /W/CMS1 or any tagged knowledge source", r.unresolved_messages()[0])
-        with self.assertRaisesRegex(ResolutionError, "includes not in the folder /W/CMS1"):
+        self.assertIn("is not in the folder /W/ExamplePackage or the environment's knowledge", r.unresolved_messages()[0])
+        with self.assertRaisesRegex(ResolutionError, "includes not in the folder /W/ExamplePackage"):
             r.require_complete()
 
     def test_a_folder_location_needs_a_file_source(self):
         with self.assertRaisesRegex(ResolutionError, "needs a file source"):
-            resolve(self.content, library="Measure", location="folder:/W/CMS1")
+            resolve(self.content, library="Measure", location="folder:/W/ExamplePackage")
 
 
 def _measure(name, version, title):
@@ -166,21 +169,21 @@ class FolderContentTests(unittest.TestCase):
     def test_reads_a_package_folder_as_the_package_lays_it_out(self):
         import json
         files = _MemoryFiles({
-            "/W/CMS1/cql/Measure-1.0.0.cql": MEASURE, "/W/CMS1/cql/Helpers-1.0.0.cql": HELPERS,
-            "/W/CMS1/resources/measure-Measure-1.0.0.json": _measure("Measure", "1.0.0", "A measure"),
-            "/W/CMS1/resources/library-Measure-1.0.0.json": json.dumps(
+            "/W/ExamplePackage/cql/Measure-1.0.0.cql": MEASURE, "/W/ExamplePackage/cql/Helpers-1.0.0.cql": HELPERS,
+            "/W/ExamplePackage/resources/measure-Measure-1.0.0.json": _measure("Measure", "1.0.0", "A measure"),
+            "/W/ExamplePackage/resources/library-Measure-1.0.0.json": json.dumps(
                 {"resourceType": "Library", "name": "Measure", "version": "1.0.0"}),
-            "/W/CMS1/resources/measure-Measure-1.0.0.xml": "<Measure/>",
+            "/W/ExamplePackage/resources/measure-Measure-1.0.0.xml": "<Measure/>",
         })
-        found = {f.name: f for f in folder_libraries(files, "/W/CMS1")}
+        found = {f.name: f for f in folder_libraries(files, "/W/ExamplePackage")}
         self.assertEqual(found["Measure"].kind, "measure")
         self.assertEqual(found["Measure"].title, "A measure")
-        self.assertEqual(found["Measure"].measure_path, "/W/CMS1/resources/measure-Measure-1.0.0.json")
+        self.assertEqual(found["Measure"].measure_path, "/W/ExamplePackage/resources/measure-Measure-1.0.0.json")
         self.assertEqual(found["Helpers"].kind, "library")
-        path, measure = folder_measure(files, "/W/CMS1", "Measure", "1.0.0")
+        path, measure = folder_measure(files, "/W/ExamplePackage", "Measure", "1.0.0")
         self.assertEqual(measure["title"], "A measure")
-        self.assertEqual(folder_library_resource(files, "/W/CMS1", "Measure", "1.0.0")[0],
-                         "/W/CMS1/resources/library-Measure-1.0.0.json")
+        self.assertEqual(folder_library_resource(files, "/W/ExamplePackage", "Measure", "1.0.0")[0],
+                         "/W/ExamplePackage/resources/library-Measure-1.0.0.json")
 
     def test_reads_a_flat_folder_with_the_measure_beside_its_cql(self):
         files = _MemoryFiles({"/W/ex/Measure.cql": MEASURE,

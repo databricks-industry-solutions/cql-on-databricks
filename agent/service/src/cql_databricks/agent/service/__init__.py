@@ -8,12 +8,10 @@ transport and no App, so they are testable without one and cannot acquire a shap
 from __future__ import annotations
 
 from .model import Column, Freshness, NodeAddress, Output, OutputShape
-from .data import (
-    DataSourceLister, ReadOnlyViolation, Warehouse, get_freshness, get_output,
-    list_data_sources, list_tables, query_data)
+from .data import ReadOnlyViolation, Warehouse, get_freshness, get_output, list_tables, query_data
 
 __all__ = [
     "Column", "Freshness", "NodeAddress", "Output", "OutputShape",
-    "DataSourceLister", "ReadOnlyViolation", "Warehouse",
-    "get_freshness", "get_output", "list_data_sources", "list_tables", "query_data",
+    "ReadOnlyViolation", "Warehouse",
+    "get_freshness", "get_output", "list_tables", "query_data",
 ]

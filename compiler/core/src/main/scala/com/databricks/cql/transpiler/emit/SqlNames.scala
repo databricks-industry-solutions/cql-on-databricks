@@ -31,7 +31,7 @@ object SqlNames {
     * instead of treating it as a CQL/FHIRHelpers function. Not a real CQL library — an emit-internal tag. */
   val UdfMarkerLib = "__cqldatabricks_udf"
 
-  /** EMIT-SQL-TEMPORAL-UDF (opaque): the opaque JVM catalog-UDF names the temporal-operator collapse emits
+  /** EMIT-SQL-TEMPORAL-UDF-OPAQUE (opaque): the opaque JVM catalog-UDF names the temporal-operator collapse emits
     * (`Config.opaqueTemporalUdf`), each rendered to a raw `Call(name, …)` in `SqlColumnLowering`. These
     * MUST match the catalog keys in
     * [[com.databricks.cql.runtime.udf.CqlRuntimeUdfs.catalog]] (the emit<->UDF wire contract —
@@ -82,7 +82,7 @@ object SqlNames {
     * under — so a consumer never re-derives it (one contract, in the compiler).
     *
     * The `{library}_{version}[_{param_hash}]__{define}` scheme keeps the published namespace:
-    *   1. DISJOINT from the internal per-statement object names (`sanitize`, `null_`, `retrieve_`)
+    *   1. DISJOINT from the internal per-statement object names (`sanitize`, `null_`)
     *      because the library+version prefix is never empty.
     *   2. UNIQUE across multi-measure pipelines (different libraries produce different prefixes).
     *   3. PARAMETER-AWARE: the same measure compiled with different parameters (e.g. different measurement

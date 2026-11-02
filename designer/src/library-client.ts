@@ -5,6 +5,7 @@
 // Browse/Home/Detail components are unchanged.
 
 import { cachedGet, cachedPost, mutate, postKey, peek } from "./data-cache.ts";
+import { currentEnvironment, withEnvironment } from "./environment.ts";
 import type { Category, Definition, Status } from "./catalog.ts";
 import type { MeasureMetricsDto } from "./measures/specMetrics.ts";
 import type { CohortFlowDto, FlowGateRequest } from "./measures/specFlow.ts";
@@ -12,7 +13,8 @@ import type { DefineProfile, ResultSetAddress } from "./wire.ts";
 
 /** RUN-CLIENT-REQUEST-REOPEN — compilation request context belongs in the POST body. */
 export interface ResultReadScope {
-  dataSourceId: string;
+  /** DOC-ENVIRONMENT-PICKER — the environment the calculation ran in. */
+  environment: string;
   periodStart?: string;
   periodEnd?: string;
   draft?: string;
@@ -69,17 +71,19 @@ export function toDefinition(r: LibraryRecordDto): Definition {
   };
 }
 
-/** RUN-ADDRESS-LOCATION — `url` read at `location`. A folder is never served from the page's cache: the
- *  server's revision tracks tagged knowledge, and a workspace file changes without moving it. */
-function readAt<T>(url: string, location: string | null | undefined,
+/** RUN-ADDRESS-LOCATION — `url` read at `location`, in the picked environment (`DOC-ENVIRONMENT-PICKER`). A folder
+ *  is never served from the page's cache: the server's revision tracks the environment's knowledge, and a workspace
+ *  file changes without moving it. */
+function readAt<T>(path: string, location: string | null | undefined,
                    parse: (res: Response) => Promise<T>): Promise<T> {
+  const url = withEnvironment(path);
   if (!location) return cachedGet(url, parse);
   const at = `${url}${url.includes("?") ? "&" : "?"}location=${encodeURIComponent(location)}`;
   return location.startsWith("folder:") ? fetch(at).then(parse) : cachedGet(at, parse);
 }
 
-/** Fetch definitions by querying UC Knowledge Source tables directly (KNOWLEDGE-LAKE-DIRECT), or those at one
- *  location (RUN-ADDRESS-LOCATION): one tagged store, or one folder. */
+/** Fetch the definitions in the picked environment's knowledge (KNOWLEDGE-LAKE-DIRECT), or those at one
+ *  location (RUN-ADDRESS-LOCATION): the environment's knowledge, or one folder. */
 export async function fetchDefinitions(location?: string | null): Promise<Definition[]> {
   return readAt("/api/libraries/discover", location, async (res) => {
     if (!res.ok) throw new Error(`library discover failed: ${res.status}`);
@@ -99,27 +103,17 @@ export async function fetchLibrarySource(name: string, version: string, location
     });
 }
 
-/** DOC-OPEN-SAVE — where a library can be opened from: the tagged stores, and folders to browse from. */
+/** DOC-OPEN-SAVE — where a library can be opened from: the picked environment's knowledge, and folders to browse
+ *  from. */
 export interface Locations {
   stores: { location: string; catalog: string; schema: string }[];
   folders: { location: string; label: string }[];
 }
 
 export async function fetchLocations(): Promise<Locations> {
-  const res = await fetch("/api/locations");
+  const res = await fetch(withEnvironment("/api/locations"));
   if (!res.ok) throw new Error(`locations failed: ${res.status}`);
   return (await res.json()) as Locations;
-}
-
-/** DOC-EDITABLE-IN-SCOPE — whether the signed-in user can write a tagged store, and why not. A folder is never
- *  asked (the server refuses one): its libraries open editable and Databricks refuses a save the user cannot make. */
-export interface StoreAccess { writable: boolean; reason: string | null }
-
-export async function fetchStoreAccess(location: string): Promise<StoreAccess> {
-  const res = await fetch(`/api/locations/access?location=${encodeURIComponent(location)}`);
-  const body = await res.json().catch(() => null) as (StoreAccess & { error?: string }) | null;
-  if (!res.ok || !body) throw new Error(body?.error ?? `access check failed: ${res.status}`);
-  return { writable: body.writable, reason: body.reason };
 }
 
 /** DOC-OPEN-SAVE — one workspace folder: its subfolders, and the libraries it holds when it holds CQL. */
@@ -140,7 +134,7 @@ export async function fetchFolder(path: string): Promise<FolderListing> {
   return { ...body, libraries: body.libraries.map(toDefinition) };
 }
 
-// ── APP-NARRATIVE-OVERLAY / SPEC-MEASURE-METADATA — the Specification's prose for a measure ─────────
+// ── SPEC-MEASURE-METADATA — the Specification's prose for a measure ─────────
 //
 // Hand-mirrors the server dataclasses in `cql_databricks_designer/specification/model.py`, which in turn mirror
 // `schema/specification.xsd` (SPEC-XSD). When these three disagree, the XSD is right.
@@ -412,15 +406,19 @@ export interface DataRequirement {
 }
 
 /** Fetch what a library reads. `[]` is a real answer — a library of pure type conversions reads
- *  nothing — so it is not distinguished from a library whose resource carries none. */
+ *  nothing — so it is not distinguished from a library whose resource carries none. A failed read REJECTS
+ *  with the server's reason (`KNOWLEDGE-FAIL-LOUD`): an empty list there would claim the library reads nothing. */
 export async function fetchDataRequirements(name: string, version: string,
                                             location?: string | null): Promise<DataRequirement[]> {
   return readAt(
     `/api/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/data-requirements`, location,
     async (res) => {
-      if (!res.ok) return [];
-      const body = (await res.json()) as { dataRequirements?: DataRequirement[] };
-      return body.dataRequirements ?? [];
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? `data requirements failed: ${res.status}`);
+      }
+      const body = (await res.json()) as { dataRequirements: DataRequirement[] };
+      return body.dataRequirements;
     });
 }
 
@@ -477,7 +475,7 @@ export function peekDefineProfile(
     postKey(defineProfileUrl(name, version, define), JSON.stringify({ defineLibrary, ...scope })));
 }
 
-// ── APP-SAMPLE-METRICS — every figure the Specification renders ────────────────────────────────
+// ── every figure the Specification renders ────────────────────────────────
 
 /** The three figure reads' shared status handling.
  *
@@ -519,9 +517,9 @@ export async function fetchCohortFlow(
  *  since it owns that determination (`APP-SPEC-MODEL`) and a server-side re-derivation could
  *  disagree with it.
  *
- *  THE SCOPE IS PART OF THE QUESTION TOO. A figure is a fact about one evaluation — one data source over
- *  one measurement period — so the same measure has different true numbers per scope, and the server
- *  cannot even locate the result tables without it (`PIPE-PER-LIBRARY-SCHEMA`). Required, not optional:
+ *  THE SCOPE IS PART OF THE QUESTION TOO. A figure is a fact about one complete selection — one data source
+ *  over one measurement period — so the same measure has different true numbers per scope, and the server
+ *  cannot even locate the result tables without it (`RUN-CLIENT-RESULT-SETS`). Required, not optional:
  *  a request without it has no answer rather than a default one.
  *
  *  `null` for the 409 the server returns when it has no figures for this scope (`figures`).
@@ -591,26 +589,56 @@ export interface SaveBody {
   deleteStale?: string[];
 }
 
-/** What a save answered. `stale` and `conflict` wrote nothing. */
+/** What a save answered. Only `saved` wrote anything. DOC-AUTO-SAVE — CQL that does not compile is written too,
+ *  with no ELM: `compiled` is false and `diagnostics` says why. */
 export type SaveOutcome =
-  | { kind: "saved"; location: string; saved: string[]; deleted: string[]; sha256: string }
+  | { kind: "saved"; location: string; saved: string[]; deleted: string[]; sha256: string; compiled: boolean;
+      diagnostics: string[] }
   | { kind: "stale"; paths: string[] }
   | { kind: "conflict"; error: string }
-  | { kind: "invalid"; error: string; diagnostics: string[] }
   | { kind: "refused"; error: string };
 
 export async function saveLibrary(body: SaveBody): Promise<SaveOutcome> {
   // `mutate`: a store save moves the server's revision, which must clear what the page cached from that store.
   const res = await mutate("/api/libraries/save", {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    method: "POST", headers: { "content-type": "application/json" },
+    // DOC-ENVIRONMENT-PICKER — includes the folder does not hold resolve in the picked environment.
+    body: JSON.stringify({ ...body, environment: currentEnvironment() }),
   });
   const answer = await res.json().catch(() => ({})) as Record<string, unknown>;
   if (res.ok) return { kind: "saved", ...(answer as Omit<Extract<SaveOutcome, { kind: "saved" }>, "kind">) };
   const error = String(answer.error ?? `save failed: ${res.status}`);
   if (res.status === 409 && answer.kind === "stale") return { kind: "stale", paths: answer.paths as string[] };
   if (res.status === 409) return { kind: "conflict", error };
-  if (res.status === 422) return { kind: "invalid", error, diagnostics: (answer.diagnostics as string[]) ?? [] };
   return { kind: "refused", error };
+}
+
+/** DOC-PUBLISH — what publishing did with each library, dependencies first, the one published last
+ *  (`CLIENT-PUBLISH`). */
+export interface PublishSummary {
+  store: string;
+  libraries: { name: string; version: string; url: string;
+               outcome: "published" | "unchanged" | "refused" | "not written"; detail: string[] }[];
+}
+
+/** `refused` wrote nothing; `failed` wrote the libraries the summary marks published, then stopped. */
+export type PublishOutcome =
+  | { kind: "published"; summary: PublishSummary }
+  | { kind: "refused" | "failed"; error: string; summary: PublishSummary | null };
+
+/** DOC-PUBLISH — publish the folder library at `location` into the picked environment's knowledge store, as the
+ *  signed-in user (`DOC-ENVIRONMENT-PICKER`). */
+export async function publishLibrary(body: { location: string; name: string; version: string }):
+    Promise<PublishOutcome> {
+  // `mutate`: publishing moves the server's revision, which must clear what the page cached from the store.
+  const res = await mutate("/api/libraries/publish", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...body, environment: currentEnvironment() }),
+  });
+  const answer = await res.json().catch(() => ({})) as Record<string, unknown>;
+  if (res.ok) return { kind: "published", summary: answer as unknown as PublishSummary };
+  return { kind: res.status === 400 ? "refused" : "failed", error: String(answer.error ?? `publish failed: ${res.status}`),
+           summary: (answer.summary as PublishSummary | null) ?? null };
 }
 
 /** DOC-OPEN-SAVE — New and Save As: create a library at `location`. New starts from the server's starting CQL
@@ -630,12 +658,12 @@ export type CreateOutcome = Exclude<SaveOutcome, { kind: "stale" }>;
 export async function createLibrary(body: NewBody): Promise<CreateOutcome> {
   // `mutate`: a library created in a store moves the server's revision, which must clear the cached catalog.
   const res = await mutate("/api/libraries/new", {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...body, environment: currentEnvironment() }),
   });
   const answer = await res.json().catch(() => ({})) as Record<string, unknown>;
   if (res.ok) return { kind: "saved", ...(answer as Omit<Extract<SaveOutcome, { kind: "saved" }>, "kind">) };
   const error = String(answer.error ?? `create failed: ${res.status}`);
   if (res.status === 409) return { kind: "conflict", error };
-  if (res.status === 422) return { kind: "invalid", error, diagnostics: (answer.diagnostics as string[]) ?? [] };
   return { kind: "refused", error };
 }

@@ -1,4 +1,4 @@
-"""RUN-CLIENT-RESULT-SETS, SVC-TOOL-FRESHNESS — selected outputs and successful-completion evidence."""
+"""RUN-CLIENT-RESULT-SETS — selected outputs and successful-completion evidence."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -8,19 +8,17 @@ from typing import Any
 
 @dataclass(frozen=True)
 class NodeAddress:
-    """WHICH output a tool asks about: one define of one library version, for one data source and period.
+    """WHICH output a tool asks about: one define of one library version, in one environment and period.
 
-    It names the scope and nothing else. Where the output is stored, and which of a table's rows are this
-    scope's, are the evaluator's to say (`DEC-EVALUATOR-OPAQUE`): a tool asks it for a
-    :class:`~cql_databricks.result.ResultReference` and reads through that. Until 2026-10-05 this class
-    derived the table and the ``__eval_id`` itself, and when the evaluator's id gained terms the agent
-    could not see (`RUN-EVAL-ID-INPUTS`), its reads silently missed every new row.
+    It names the scope and nothing else. Where the output is stored is the complete selection's to say
+    (`RUN-CLIENT-RESULT-SETS`): a tool reads it through the selection's pinned output, never a table it derives.
     """
 
     library: str
     version: str
     define: str
-    data_source_id: str
+    #: CLIENT-ENVIRONMENT: the environment the calculation ran in.
+    environment: str
     period_start: str | None = None
     period_end: str | None = None
 
@@ -29,7 +27,7 @@ class NodeAddress:
             "library": self.library,
             "version": self.version,
             "define": self.define,
-            "dataSourceId": self.data_source_id,
+            "environment": self.environment,
         }
         if self.period_start:
             d["periodStart"] = self.period_start

@@ -46,8 +46,8 @@ An arrow means "depends on".
 
 `compiler/{core,service,server,runtime,client,conformance,cqf}`.
 
-- **Owns:** CQL to ELM to typed IR to Spark SQL, and CQL semantics. The data-source binding contract: what a
-  `retrieve_<Type>` function must look like, and the optional change log. The runtime `cql_*` functions,
+- **Owns:** CQL to ELM to typed IR to Spark SQL, and CQL semantics. The data contract: what each per-type data
+  view must return (`DATA-CONTRACT`), and the optional change log. The runtime `cql_*` functions,
   registered for open-source Spark (`udf`) or Unity Catalog (`uc`). The Python client (below). The conformance
   suite, and `cqf`, the reference engine conformance checks against.
 - **Doesn't own:** state or scheduling. Results belong to the client, never the service. Any Databricks
@@ -61,21 +61,23 @@ An arrow means "depends on".
 `compiler/client`, the `cql-databricks` wheel. Part of the compiler feature; it runs as the caller.
 
 - **Owns:**
-  - `cql_databricks.compiler`: `cql()`, compiling through the compiler service, and data sources as a caller
-    sees them (`cql_databricks.compiler.data_source.list_data_sources`). Publishing a data source over your
-    tables (`BIND-PUBLISH`): its schema, `retrieve_<Type>` functions and tag, never its data.
-  - `cql_databricks.data_bindings`: the resolver, which finds schemas by UC tag, checks their tables and
-    columns, and reads a library closure (`CONTENT-RESOLVER`); the knowledge and terminology layouts; the
-    runtime knowledge views (`DATA-BINDINGS`); the data-source declaration.
+  - `cql_databricks.compiler`: `cql()`, compiling through the stateless compiler service, and binding a run.
+    Publishing a data source over your tables (`BIND-PUBLISH`): its published views, never its data.
+  - `cql_databricks.resolvers` (`CLIENT-PACKAGE-SPLIT`): everything a run reads and writes through. The resolver
+    interfaces and the shipped data, terminology and knowledge resolvers (`CLIENT-RESOLVERS`), the environments
+    (`CLIENT-ENVIRONMENT-RESOLVER`) and the value-set digest.
+  - `cql_databricks.data_bindings`: `ContentResolver`, which reads an environment's knowledge and its library
+    closures; the knowledge and terminology layouts; and the measure import (`CONTENT-IMPORT-MEASURES`).
   - `cql_databricks.result` (`RESULT-INTO-CLIENT`): durable bulk calculations (`materialize`). They run in your
-    SQL session and write result tables you own (`RUN-CLIENT-DURABLE`). Reading results: the membership
+    SQL session, reuse your own and the official results, and write result tables you own (`RUN-CLIENT-DURABLE`,
+    `CLIENT-RESULT-RESOLVER`). Reading results: the membership
     predicate and the explain, flow, strata and metrics derivations (`cql_databricks.result.insights`). The
     expiry of private results that the maintenance Job runs (`RUN-CLIENT-MAINTENANCE`).
 - **Doesn't own:** writing FHIR data, content or value sets (loader), value-set expansion (done upstream),
   rendering (designer), the Jobs and principals the deploy creates (`DEPLOY-OWNS-PRINCIPALS`), publishing
   shared results (the implementer's, `RUN-CLIENT-PUBLISHED`). It has no Lakebase state.
-- **Interface:** the `cql_databricks.compiler`, `cql_databricks.data_bindings` and `cql_databricks.result`
-  packages. A result's UC tags are the contract another client discovers and reuses it by.
+- **Interface:** the `cql_databricks.compiler`, `cql_databricks.resolvers`, `cql_databricks.data_bindings` and
+  `cql_databricks.result` packages. A result's UC tags are the contract another client discovers and reuses it by.
 
 ## agent
 
@@ -124,9 +126,8 @@ The client's mode is fixed when you construct it. It never switches per call (`B
 4. One owner per definition: the membership predicate, the results address and the fingerprint each have
    one implementation.
 5. A feature reads another's data through its interface, never by querying its tables.
-6. Contracts customers implement, the `retrieve_<Type>` signature and the change log, are versioned on
-   purpose (`DATA-CONTRACT`).
+6. Contracts customers implement, the data contract (the per-type views returning `(__subject_id, __resource)`)
+   and the change log, are versioned on purpose (`DATA-CONTRACT`).
 
-Known crossings: the agent reads result tables directly and has its own copy of the tag lookup
-(`agent/wiring.py`). The Designer and agent servers import `cql_databricks_common`. A dependency check
+Known crossings: the agent reads result tables through the client's reader (`agent/wiring.py`). The Designer and agent servers import `cql_databricks_common`. A dependency check
 (`CHECK-FEATURE-DEPS`) is not built yet.

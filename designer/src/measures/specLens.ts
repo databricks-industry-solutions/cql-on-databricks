@@ -63,7 +63,7 @@ export interface ReadLens {
   resolve: (ref: SpecReadRef) => SpecRetrieve | null;
   /** Subjects behind the read, or null when this evaluation did not materialize it (`SPEC-METRIC`:
    *  absent, never zero). Normally null: read materialization is retired for readers
-   *  (`SPEC-READ-METRICS`), and `CQL_MATERIALIZE_RETRIEVES` is the authoring switch that still fills it. */
+   *  (`SPEC-READ-REF`), and `CQL_MATERIALIZE_RETRIEVES` is the authoring switch that still fills it. */
   count: (key: string) => number | null;
   onSelect: (sel: Selection) => void;
   /** SPEC-REF-LENS — the pinned lens offers `Jump to section` on a bound phrase exactly as it does on a

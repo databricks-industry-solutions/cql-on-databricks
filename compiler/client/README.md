@@ -22,8 +22,8 @@ from cql_databricks.compiler import cql
 cql('define "Two": 2 + 2').exec("Two").display()
 ```
 
-In a notebook this needs no settings. The client finds the compiler App in the workspace App registry,
-signs in as you, and finds data sources, value sets and the runtime functions through Unity Catalog tags.
+In a notebook this needs no settings. The client finds the compiler App in the workspace App registry, signs
+in as you, and runs in the default environment: its data, value sets and libraries (see below).
 
 To run a library from a folder of `.cql` files, by name:
 
@@ -38,6 +38,14 @@ result = (client.cql(library="HypertensionBPControl")
 
 `exec("X")` returns one DataFrame. `exec()` or `exec("X", "Y")` returns a dict of define name to
 DataFrame. `describe()` returns the library's defines, their shapes and dependencies.
+
+A library's `exec()` reads kept results where they match: yours, then the environment's official ones
+(`CLIENT-QUERY-REUSE`). Only the defines with no kept result are computed. It writes nothing.
+
+- A kept result is as fresh as when it was computed. Pass `recompute=True` to `connect()` or `cql()`, or call
+  `.with_recompute()`, to compute everything from the data as it is now.
+- CQL with no `library` header, and data from a resolver that is never reused (a DataFrame), are always computed.
+- `boundaries=` needs `recompute=True`.
 
 ## The session library
 
@@ -60,75 +68,114 @@ cql('define "Two": 3').exec("Two")             # replaces Two; Four is now 6
   any fragment declares `context Patient`, every define in the session library runs per patient.
 - `include` works in a fragment, so a fragment can use a library from your folder or from a cell.
 - CQL with a `library` header is its own library, as before.
-- `reset(spark)` clears the session library.
+- `reset(spark)` clears the session library, the `%%cql` cells and the temporary views the client made, and
+  returns the session's resolvers to the environment's (`CLIENT-SESSION-RESET`).
 
-## Which data a run reads
+## Environments
 
-`exec()` and `materialize()` read the same data source (`CLIENT-EXEC-DISCOVERY`): a schema tagged
-`cql_databricks_data_source`, found in your catalog scopes.
+Every run is in one environment (`CLIENT-ENVIRONMENT`). An environment is a Unity Catalog catalog tagged
+`cql_databricks_environment = <name>`, with standard schemas (`DATA-ENVIRONMENT-LAYOUT`):
 
-- `connect(spark, data_source="acme_fhir")`, or `spark.cqldatabricks.dataSource`, names one by its tag value.
-- With none named, the only data source in scope is used. Several fail, listing their names.
-- CQL that retrieves nothing needs no data source.
-- A data source without a function for a type the CQL retrieves fails before the run, naming the type.
-- `connect(spark, data_catalog="cat.schema")` reads that schema's `retrieve_<Type>` functions instead.
+| Schema | Holds |
+|---|---|
+| `data` | One view per FHIR type, named for the type in lower case (`condition`), returning `(__subject_id, __resource)`, and optionally `change_log` |
+| `knowledge` | The views `library`, `measure` and `valueset(valueset_id, system, code, version)` |
+| `data_store`, `knowledge_store` | The tables the views select by default. Optional |
+| `results` | Published results |
+| `draft_results` | Each user's own results |
 
-Value sets come from the `valuesets` view beside the runtime functions, which covers every schema tagged
-`cql_databricks_terminology`. `connect(valueset_table=...)` names a table instead.
-
-## Data in a session
-
-`mount()` puts FHIR data and value sets on your Spark session, with nothing written to a catalog
-(`CLIENT-SESSION-MOUNT`). It ends when the session ends. Every client on the session reads it, the `%%cql`
-magic's too, and it replaces the data-source search.
+The deploy builds the default environment in `uc_catalog` and tags it `cql_databricks_environment_default =
+true` (`DEPLOY-DEFAULT-ENVIRONMENT`). A run with nothing named uses it. Name another one:
 
 ```python
-from cql_databricks.compiler import FhirJson, mount, reset
-
-reset(spark)                                                    # start clean
-mount(spark, "./data", valuesets="./valuesets")                 # a folder of <Type>.ndjson files
-mount(spark, {"Patient": patients_df, "Observation": "acme.silver.observation"})   # replaces the first
-mount(spark, FhirJson("acme.bronze.fhir_raw", column="resource"))                  # raw JSON, mixed types
+client = connect(spark, environment="synthetic-population-large")
 ```
 
-- A string is a folder only if it contains `/`. A table name is `catalog.schema.table`. Nothing is guessed.
-- Each source is checked against the model first. Any error refuses the whole mount, listing every problem.
-- A DataFrame or table is reshaped to the model: missing fields read as null, extra fields are dropped.
-- Value sets are a folder of `{valueset_id, system, code}` rows, a table, or a DataFrame with those columns.
-- A retrieve of a type you didn't mount fails, naming the mounted types.
-- `data_source=` still names a tagged data source instead. `materialize()` refuses a mount: kept results
-  belong to a data source.
-- `reset(spark)` drops the mount, the libraries your `%%cql` cells declared, and the session library
-  (`CLIENT-SESSION-RESET`).
+Or set `CQL_DATABRICKS_ENVIRONMENT`. Environments are found with one query of
+`system.information_schema.catalog_tags`, as you, so you see only catalogs you can read. Two defaults, no
+default, a name that isn't there, or a layout version the client doesn't read each fail, naming what was found
+(`CLIENT-ENVIRONMENT-RESOLVER`).
 
-Files under `/Volumes` are read by Spark. Other files are read on the driver, up to 64 MiB per mount.
+A run binds the environment's views by name, in one compiler call, and reads no other catalog metadata
+(`BIND-PUBLISHED-VIEW`). A view that is missing fails in the warehouse, naming it. CQL that retrieves nothing
+reads no data.
 
-## Publish a data source
+## Your own data, value sets and libraries
 
-`publish_data_source()` writes a data source over your tables (`BIND-PUBLISH`): the schema, one
-`retrieve_<Type>` function per type, and the `cql_databricks_data_source` tag. It writes no data. Nothing runs
-until `run()`.
+Each role can be replaced for a client (`CLIENT-RESOLVERS`). Pass a resolver to `connect()`:
+
+```python
+from cql_databricks.compiler import connect
+from cql_databricks.resolvers import (DataFrameDataResolver, EnvironmentResolver, FolderTerminologyResolver, Overlay,
+                                      TableDataResolver)
+from cql_databricks.data_bindings import spark_runner
+
+client = connect(spark, data=TableDataResolver({"Patient": "acme.silver.patient"}))
+client = connect(spark, terminology=FolderTerminologyResolver("/Volumes/acme/dev/valuesets"))
+# Develop a mapping: DataFrames for the types you have, the default environment's views for the rest.
+environments = EnvironmentResolver(spark_runner(spark))
+client = connect(spark, data=Overlay(DataFrameDataResolver({"Observation": observations_df}),
+                                     environments.data(environments.default())))
+```
+
+| Role | Shipped resolvers |
+|---|---|
+| Data | `SchemaDataResolver` (an environment's `data` schema), `TableDataResolver`, `VolumeDataResolver`, `DataFrameDataResolver` |
+| Terminology | `TableTerminologyResolver`, `FolderTerminologyResolver`, `DataFrameTerminologyResolver` |
+| Knowledge | `TableKnowledgeResolver`, `FolderKnowledgeResolver`, `CellsKnowledgeResolver` |
+
+- A DataFrame resolver is never reused or kept, and a SQL warehouse can't read it.
+- `Overlay(dev, base)` serves each type, value set or library from `dev` when it has it, else from `base`
+  (`CLIENT-RESOLVER-OVERLAY`).
+- A resolver that binds per call site makes the run ask the compiler for the call sites first, so it costs a
+  second compiler call (`BIND-CALL-SITE`).
+- Libraries resolve from your `%%cql` cells, then `library_path`, then the environment's knowledge.
+
+`%%cql` cells and `cql()` calls use one client the session builds for you. Set its resolvers with
+`use_resolvers()` (`CLIENT-SESSION-RESOLVERS`):
+
+```python
+from cql_databricks.compiler import use_resolvers
+from cql_databricks.resolvers import FolderTerminologyResolver, VolumeDataResolver
+
+use_resolvers(data=VolumeDataResolver("/Volumes/acme/dev/tests/fhir"),
+              terminology=FolderTerminologyResolver("/Volumes/acme/dev/tests/valuesets"))
+```
+
+- Every later cell reads through them. A role you don't pass is the environment's.
+- Each call sets every role, so `use_resolvers()` with nothing returns to the environment. So does
+  `reset(spark)`.
+- They live in the Python process: restarting Python drops them.
+- `results=` replaces where `exec()` reads kept results.
+- A client from `connect()` is not affected. Pass it its resolvers.
+- Notebook `07_test_files_in_a_volume` runs CQL over FHIR NDJSON and value sets in a Volume this way.
+
+## Publish data into an environment
+
+`publish_data_source()` writes an environment's data views over your tables (`BIND-PUBLISH`): one
+`CREATE OR REPLACE VIEW <catalog>.data.<type>` per type, with the reshape of the table as its body. It writes
+no data and tags nothing. Nothing runs until `run()`.
 
 ```python
 from cql_databricks.compiler import publish_data_source
 
-plan = publish_data_source(spark, "acme.cql_fhir", name="acme_fhir", description="Acme FHIR R4, nightly",
+plan = publish_data_source(spark, "acme_env",
                            fhir={"Patient": "acme.silver.patient", "Observation": "acme.silver.observation"})
 print(plan.sql)       # review
 plan.issues           # every finding against the model, any severity
-plan.run()            # refuses on any ERROR; then creates, tags, and checks the layout
+plan.run()            # refuses on any ERROR
 ```
 
 - Sources are tables only, `catalog.schema.table`. For raw JSON or a DataFrame, write
   `FhirJson(...).to_df(spark, type)` or the DataFrame to a table first, then publish that table.
-- Each function reads the whole table and ignores the pushdown arguments; the run filters above it.
-- It runs as you. You need `CREATE SCHEMA`, `CREATE FUNCTION` and `APPLY TAG`.
+- Each view reads the whole table; the run filters above it.
+- It runs as you. You need `CREATE TABLE` on the environment's `data` schema.
 - `run(runner=...)` runs the same statements through a SQL warehouse runner instead of the session.
 
 ## The FHIR model
 
 `resource_schema()` returns the struct the compiler expects for each FHIR type (`CLIENT-RESOURCE-SCHEMA`):
-what a `retrieve_<Type>` function returns in `__resource`.
+what a data view returns in `__resource` (`BIND-CONTRACT`).
 
 ```python
 client.resource_schema("Observation").struct   # a PySpark StructType
@@ -136,52 +183,47 @@ client.resource_schema("Observation").ddl      # the same, as DDL
 client.resource_schema()                       # every modeled type, keyed by type
 ```
 
-## Discovery scopes
-
-Discovery reads an ordered list of catalog scopes (`CLIENT-DISCOVERY-SCOPE`). Each entry is a `catalog`, a
-`catalog.schema`, or `*` for every catalog you can see. When a name is found in more than one scope, the
-earliest wins.
-
-```python
-client = connect(spark, catalog_scopes=["my_catalog.fhir", "shared_catalog"])
-```
-
-Or set `CQL_DATABRICKS_CATALOG_SCOPES` to a comma-separated list (`my_catalog.fhir,shared_catalog`), which the
-`%%cql` magic and the module-level `cql()` read too. Don't use the Spark conf: serverless refuses to set it.
-With no list set, discovery searches every catalog and logs a warning. An empty list is an error.
-
-Data sources, value sets and libraries are found by tag. See the
-[Data Bindings README](src/cql_databricks/data_bindings/README.md).
-
 ## Durable results
 
-`exec()` computes every time and keeps nothing. `materialize()` writes each define to a Delta table you
-own, and reuses a table when the define computes the same thing: the same SQL, parameter values, upstream
-defines and data source (`RUN-CLIENT-DURABLE`, `RUN-CLIENT-RESULT-IDENTITY`).
+`exec()` computes every time and keeps nothing. `materialize()` writes each define to a Delta table you own, and
+reuses a table when the define computes the same thing: the same SQL, parameter values, upstream defines, bound
+relations and value-set codes (`RUN-CLIENT-DURABLE`, `RUN-CLIENT-RESULT-IDENTITY`, `CLIENT-RESOLVER-IDENTITY`).
+Results are found and written through a result store you pass (`CLIENT-RESULT-RESOLVER`).
 
 ```python
-from cql_databricks.result import materialize
+from cql_databricks.resolvers import EnvironmentResolver
+from cql_databricks.data_bindings import spark_runner
+from cql_databricks.result import DeltaResultStore, materialize
 
+environments = EnvironmentResolver(spark_runner(spark))
+env = environments.default()
 query = client.cql(library="HypertensionBPControl") \
               .with_measurement_period("2026-01-01", "2026-12-31")
-results = materialize(query, "Initial Population", "Numerator",
-                      spark=spark,
-                      destination=("my_catalog", "cql_results"))
+# Your own schema; official results in the environment's `results` are found first if you don't have one.
+store = DeltaResultStore(("my_catalog", "my_results"), spark=spark, official=[env.address("results")])
+results = materialize(query, "Initial Population", "Numerator", spark=spark, results=store)
 results.read("Initial Population").display()
 ```
 
-- The destination schema must exist. `ensure_private_destination()` creates a private one for you.
-- A durable run reads a tagged data source. Its address is part of each result's identity.
-- Pass `mode="recompute"` to rebuild instead of reuse.
+- A store finds each result in two places, in one lookup: your own results first, in its schemas, then the
+  environment's official ones in its `results`, whoever wrote them (`RUN-CLIENT-RESULT-OWNERSHIP`). What isn't
+  found is computed and written to the store's own schema, as you. Another user's results are never reused.
+- `results` is official by construction: whoever the implementer grants write access decides what is there. Its
+  publishers write it with `environments.official_store(env)`, which takes only a library from the environment's
+  own knowledge over its own data and terminology. CQL text, a folder library, a volume, a DataFrame or a custom
+  resolver is refused before it computes (`RUN-CLIENT-DRAFT-RESULTS`).
+- `environments.draft_store(env)` writes the environment's shared `draft_results`, as the Designer and the agent do.
+  It needs `CREATE TABLE` on that schema.
+- Table names carry the writer's digest, so two identities computing one result write two tables. Two runs of
+  yours computing one result write the same table. Each looks the result up again just before it writes, and again
+  if its write fails, and reuses it if another run finished it.
+- Pass `mode="recompute"` to rebuild instead of reuse, or `computed_since=` to pass over older results.
 - Pass `run=` with a SQL warehouse runner instead of `spark=` to run on a warehouse.
-- The client doesn't track source changes. Refresh when your data, value sets or runtime change.
-- Results are written only to `destination`. A define it holds no reusable result for is reused from the
-  `catalog.schema` entries of your catalog scopes, in order (`CLIENT-DISCOVERY-SCOPE`). Whole catalogs are
-  never read for results. List only schemas whose results you trust: nothing checks who wrote them.
-  `catalog_scopes=` on `materialize()` overrides the client's list.
+- The client doesn't track data changes. A kept result is as fresh as when it was computed. A value set's codes are
+  part of the identity, so an edited value set recomputes.
 
-Tables are tagged in Unity Catalog, so a later session, or another user with grants, can find and read
-them (`resolve_results()`, `search_results()`). [calculation-architecture.md](docs/calculation-architecture.md)
+A later session reads results back with `resolve_results(query, ..., results=resolver)`, which never computes, and
+lists a store's results with `store.search()`. [calculation-architecture.md](docs/calculation-architecture.md)
 covers how results are stored and reused.
 
 ## Inline runs on a SQL warehouse
@@ -192,15 +234,20 @@ It is the warehouse form of `exec()`: temporary views only, dropped when you clo
 ```python
 from cql_databricks.result import run_inline
 
-with run_inline(content=content, run=session, compiler=compiler, data_source="acme_fhir",
+resolvers = environments.resolvers(env, environments.results(env))
+with run_inline(content=content, run=session, compiler=compiler, resolvers=resolvers,
                 cql=library_text, runtime_catalog="acme", period=("2026-01-01", "2026-12-31")) as run:
     run.counts()               # distinct subjects per define, as written
     run.score("proportion")    # the measure's score
+    run.reused                 # the defines read from kept results, and their tables
 ```
 
+- With a result resolver, a define already computed (yours, then the official one) is read from its table in place
+  of computing it, and only the rest become views. Without one, or over a resolver that is not reusable, nothing is
+  reused.
 - `compiler` must render barriers as views: use `CqlDatabricksCompileProvider`. A `CACHE TABLE` is refused.
 - Each run has its own view prefix, so two runs on one session never replace each other's views.
-- Includes resolve from tagged knowledge. The data source is read as it is now; nothing is reused or tagged.
+- Includes resolve from `content`. A view reads the data as it is now; nothing is written or tagged.
 
 ## Scoring a measure
 
@@ -217,7 +264,7 @@ Numerator.
 ## The explicit client
 
 The package has two layers. The core reaches the compiler over plain HTTP with standard OAuth and imports
-no platform SDK. The Databricks layer adds App discovery, ambient sign-in and Unity Catalog discovery.
+no platform SDK. The Databricks layer adds App discovery, ambient sign-in and the environment.
 
 Ambient sign-in exchanges the notebook's or Job's own token for one scoped to the compiler App. In a Job
 the exchange sometimes fails with `invalid_grant` for a minute or two and then succeeds, so the
@@ -234,8 +281,11 @@ end-to-end lane drives this path against a local compile service:
 from cql_databricks.compiler import CqlClient
 client = (CqlClient.builder()
           .endpoint("http://localhost:8080").auth_bearer(token)
-          .library_source("cql/").data_catalog("fhir").spark(spark).build())
+          .library_source("cql/").spark(spark).data_binder(binder).build())
 ```
+
+`binder` is a `ResolverBinder` over the run's resolvers (`BIND-CALL-SITE`). Without one, only CQL that retrieves
+nothing compiles: a retrieve or a value-set membership fails, naming its call site.
 
 This path never imports the Databricks SDK, although the SDK is a base dependency
 (`test_remote_kind_never_imports_the_platform_layer`).

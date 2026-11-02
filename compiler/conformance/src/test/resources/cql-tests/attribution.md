@@ -1,7 +1,7 @@
 # Vendored cqframework CQL operator test suite (`CONF-GATE-OPERATOR`)
 
 These XML files are vendored **verbatim** from the cqframework CQL conformance test suite and used
-as the per-operator Gate-1 corpus (PHASE-7 Stage 4, doc/phase-7-status.md).
+as the per-operator corpus of the operator gate.
 
 - **Source:** https://github.com/cqframework/cql-tests — `tests/cql/`
 - **Pinned commit:** `06667083335f645e46e6f88bbd3b4d8d232574df` (the single source of truth for the vendored snapshot)

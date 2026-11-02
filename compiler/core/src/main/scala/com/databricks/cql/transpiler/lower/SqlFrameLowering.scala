@@ -2,11 +2,11 @@ package com.databricks.cql.transpiler.lower
 
 import com.databricks.cql.error.UnsupportedNode
 import com.databricks.cql.ir.{Case => CqlCase, _}
-import com.databricks.cql.passes.{ChoiceDemand, Materialize, RetrieveDemand, RetrieveReads, Schedule, TypeEncoding}
+import com.databricks.cql.passes.{ChoiceDemand, Materialize, RetrieveDemand, RetrieveReads, Schedule, SchemaPaths, TypeEncoding}
 import com.databricks.cql.sema.FhirModel
 import com.databricks.cql.spark.SystemColumns
 import com.databricks.cql.transpiler.emit.SqlExpr._
-import com.databricks.cql.transpiler.emit.{SqlExpr, SqlNames, SqlRel, SqlRender, SqlScript, SqlStmt, SqlTemporalFold}
+import com.databricks.cql.transpiler.emit.{SqlExpr, SqlNames, SqlRel, SqlRender, SqlScript, SqlStmt}
 
 import scala.collection.mutable
 
@@ -23,9 +23,9 @@ import scala.collection.mutable
   * carried grain-first as a `Relation` view. Sharing is native SQL, so the boxing/hoisting the proto
   * path needed is not a port target.
   *
-  * THE RETRIEVE MOUNTS are an EXTERNAL contract (like the `DataProvider`): the runtime mounts
-  * `retrieve_<Type>` (and the terminology `valueset_<id>`) views BEFORE running this script; the
-  * transpiler references them by name ([[SqlEvalEnv.retrieveMount]]) and never emits their bodies.
+  * THE RETRIEVE MOUNTS are an EXTERNAL contract (like the `DataProvider`): the runtime makes the relation each
+  * retrieve call site binds, and each terminology relation, available BEFORE running this script (`BIND-CALL-SITE`);
+  * the transpiler references them by name ([[SqlEvalEnv.retrieveMount]]) and never emits their bodies.
   *
   * SCOPE (Phase 3b): subject-grouped contexts (Patient/Practitioner — the FHIR measures); bare-retrieve
   * and grain-first relation-query list defines (plain `return all` + single-key sort); scalar defines
@@ -75,6 +75,8 @@ object SqlFrameLowering {
   def lower(lib: Library, env0: SqlEvalEnv, target: Option[String] = None): SqlLoweredLibrary = {
     val tctx   = TypeEncoding.ctxOf(lib)
     val typeOf: Expr => CqlType = e => TypeEncoding.typeOf(e, tctx)
+    // DATA-PATH-IN-SCHEMA: an element the data model leaves out fails here, not when the SQL runs.
+    SchemaPaths.check(lib, typeOf)
     // Thread the pure-IR materialization-policy inputs from the single source (`passes.Materialize`),
     // and the het-`Choice` demand (ARCH-RESOURCE-HANDLE) from `passes.ChoiceDemand` — both Spark-free.
     // DATA-RETRIEVE-BARRIER-OPT: the FILTERED reads to give their own object, under the optional
@@ -82,7 +84,6 @@ object SqlFrameLowering {
     // byte-identical for every existing caller.
     val reads = RetrieveReads.selected(lib, env0.config)
     val env = env0.copy(
-      defineParameters = com.databricks.cql.passes.ParameterScope.of(lib),
       reuseCounts    = Materialize.reuseCounts(lib),
       skipUnfiltered = Materialize.skipUnfilteredNames(lib, env0.config),
       choiceDemand   = ChoiceDemand.analyze(lib, typeOf),
@@ -123,7 +124,7 @@ object SqlFrameLowering {
     val matDefs      = mutable.LinkedHashSet.empty[String] // RAW define names staged as a barrier (the boundary set describe reports)
 
     // The base relation `__frame_base`, a named view every scalar define reads for the subject universe:
-    //   - subject-grouped context -> the per-subject context resource (DATA-RETRIEVE-VIEW), carrying the
+    //   - subject-grouped context -> the per-subject context resource, carrying the
     //     context struct (`Patient`);
     //   - ungrouped (Unfiltered/Population) -> a single synthetic-subject row (ARCH-SET-EVAL), the
     //     degenerate one-subject case, seeded with no data (`SELECT '*' AS __subject_id FROM (SELECT 1)`).
@@ -297,13 +298,6 @@ object SqlFrameLowering {
     val tgt = target.orElse(defines.lastOption.map(_.name))
       .map(n => if (relDefs.contains(n)) relName(n, env.config.objectPrefix) else defName(n, env.config.objectPrefix))
       .getOrElse(baseView(env.config.objectPrefix))
-    // EMIT-SQL-TEMPORAL-UDF: a pure EMIT-only readability refactor of the assembled script — fold the
-    // inlined partial-precision date towers into calls to small SQL-body UDFs (+ a `CREATE FUNCTION`
-    // prelude). The lowering above is untouched; the fold inlines back to the identical plan, so results
-    // are unchanged (default OFF → script byte-identical).
-    // The SQL-emit readability fold (`temporalUdfs`, `SqlTemporalFold`) was retired as a config knob
-    // (2026-07); the opaque temporal-operator UDFs already collapse the towers at operator granularity,
-    // so the script keeps any inline remnants as-is (the fold was default-off).
     val script  = SqlScript(stmts.toSeq, tgt)
     SqlLoweredLibrary(script, defines.map(_.name), relDefs.toSet, listMeta.toMap,
       nullDefines = nullDefs.toSet, decisions = decisions.toSeq, materializedDefines = matDefs.toSet,

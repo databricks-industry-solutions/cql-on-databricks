@@ -1,6 +1,6 @@
 library FhirValueSet version '1.0.0'
 
-// PHASE-2 slice 3 (LANG-TERMINOLOGY, DATA-TERMINOLOGY-ADAPTER): the dominant measure pattern —
+// LANG-TERMINOLOGY, DATA-TERMINOLOGY-ADAPTER: the dominant measure pattern —
 // a value-set-filtered retrieve. `[Condition: "Diabetes"]` keeps only Conditions whose code is
 // in the (pre-expanded, version-pinned) Diabetes value set; membership is a broadcast semi-join.
 // Proves code-filtering, not just existence: a patient with a non-Diabetes Condition is false.

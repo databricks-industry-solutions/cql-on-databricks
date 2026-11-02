@@ -69,9 +69,8 @@ class ClientClosureE2ESpec extends AnyFunSuite {
       val deps = closure(m.library)
       assert(deps.nonEmpty, s"${m.library} includes no library, so it proves nothing about a closure")
       val res = CompileService.compileSql(
-        CompileRequest(cql = Some(read(m.library)), depCql = deps.map(read), target = Some(target),
-          parameters = Map("Measurement Period" -> m.period)),
-        hasTerminology = true)
+        CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, cql = Some(read(m.library)), depCql = deps.map(read), target = Some(target),
+          parameters = Map("Measurement Period" -> m.period)))
 
       assert(res.statements.nonEmpty, "a measure must lower to statements")
       // `target` is the SQL object the script ends on: the requested define's statement.
@@ -84,8 +83,8 @@ class ClientClosureE2ESpec extends AnyFunSuite {
 
     test(s"${m.library} without its closure fails LOUDLY rather than compiling something wrong") {
       val err = intercept[IllegalArgumentException] {
-        CompileService.compileSql(CompileRequest(cql = Some(read(m.library)), target = Some(target),
-          parameters = Map("Measurement Period" -> m.period)), hasTerminology = true)
+        CompileService.compileSql(CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, cql = Some(read(m.library)), target = Some(target),
+          parameters = Map("Measurement Period" -> m.period)))
       }
       assert(err.getMessage.contains("translation produced errors"),
         s"expected a loud translation failure, got: ${err.getMessage}")

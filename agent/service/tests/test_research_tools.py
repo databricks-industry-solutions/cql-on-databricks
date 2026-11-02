@@ -12,6 +12,7 @@ import sqlite3
 import pytest
 
 from cql_databricks.agent.service import definitions, experiments
+from cql_databricks.resolvers.environment import Environment, EnvironmentResolver
 from cql_databricks.compiler.providers import DefineShape, SqlCompileResult, SqlStatement
 from cql_databricks.data_bindings import Corpus, Library, TaggedSchema
 from cql_databricks.result import run_inline
@@ -56,11 +57,20 @@ class Content:
     def corpus(self):
         return CORPUS
 
-    def data_source_schemas(self):
-        return [TaggedSchema("population", "population", "synthetic", "source")]
+    generation = 1
+
+
+#: AGENT-DEFAULT-ENVIRONMENT: the environment the experiments run in.
+ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="2")
 
 
 class Compiler:
+    def describe(self, request):
+        raise AssertionError("BIND-PUBLISHED-VIEW: an environment binds by rule, so an experiment asks no describe")
+
+    def resource_schemas(self, types):
+        raise AssertionError("a table relation needs no reshape")
+
     def compile_sql(self, request):
         statements, shapes = [], []
         for define, rows in ROWS[request.cql].items():
@@ -76,8 +86,6 @@ class Warehouse:
         self.db = sqlite3.connect(":memory:")
 
     def __call__(self, statement, params=None):
-        if "information_schema.routines" in statement:
-            return [{"routine_name": "retrieve_patient"}]
         self.db.execute(statement)
         return []
 
@@ -98,8 +106,9 @@ def warehouse():
 
 
 def inline_on(warehouse):
-    def inline(cql, data_source, period, location=None):
-        return run_inline(content=Content(), run=warehouse, compiler=Compiler(), data_source=data_source,
+    def inline(cql, period, location=None):
+        resolvers = EnvironmentResolver(warehouse).resolvers(ENVIRONMENT)
+        return run_inline(content=Content(), run=warehouse, compiler=Compiler(), resolvers=resolvers,
                           cql=cql, runtime_catalog="synthetic_runtime", period=period)
     return inline
 
@@ -147,7 +156,7 @@ class TestExperiments:
         assert '+define "Denominator Exclusions": false' in result["diff"]
 
     def test_run_cql_counts_as_written_scores_and_keeps_nothing(self, warehouse):
-        result = experiments.run_cql(BASELINE, "population", ("2026-01-01", "2026-12-31"), scoring=None,
+        result = experiments.run_cql(BASELINE, ("2026-01-01", "2026-12-31"), scoring=None,
                                      defines=None, inline=inline_on(warehouse), scoring_for=scoring_for)
         assert result["counts"]["Numerator"] == 3          # as written: p1, p3 and the non-diabetic p9
         assert (result["score"]["numerator"], result["score"]["base"]) == (1, 2)
@@ -155,7 +164,7 @@ class TestExperiments:
         assert warehouse.views() == []
 
     def test_compare_cql_reports_who_moved_and_the_score_change(self, warehouse):
-        result = experiments.compare_cql(BASELINE, EDITED, "population", ("2026-01-01", "2026-12-31"),
+        result = experiments.compare_cql(BASELINE, EDITED, ("2026-01-01", "2026-12-31"),
                                          scoring=None, defines=None, inline=inline_on(warehouse),
                                          scoring_for=scoring_for)
         changes = {c["define"]: c for c in result["changes"]}
@@ -170,11 +179,11 @@ class TestExperiments:
 
     def test_an_unknown_define_is_refused_naming_what_exists(self, warehouse):
         with pytest.raises(ValueError, match="Missing"):
-            experiments.run_cql(BASELINE, "population", (None, None), scoring=None, defines=["Missing"],
+            experiments.run_cql(BASELINE, (None, None), scoring=None, defines=["Missing"],
                                 inline=inline_on(warehouse), scoring_for=scoring_for)
         assert warehouse.views() == []
 
     def test_without_a_declared_scoring_there_is_no_score_and_it_says_why(self, warehouse):
-        result = experiments.run_cql(BASELINE, "population", (None, None), scoring=None, defines=None,
+        result = experiments.run_cql(BASELINE, (None, None), scoring=None, defines=None,
                                      inline=inline_on(warehouse), scoring_for=lambda *a: None)
         assert result["score"] is None and "scoring" in result["scoreNote"]

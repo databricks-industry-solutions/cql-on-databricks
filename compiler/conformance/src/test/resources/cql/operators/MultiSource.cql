@@ -4,7 +4,7 @@ library MultiSource version '1.0.0'
 // combination and every alias enters scope. Over System (Array-encoded) lists this is nested
 // iteration, so a `where` correlating the aliases falls out for free (no join). The query's
 // element is the `return` shape, defaulting to the alias Tuple the translator synthesizes — the
-// tuple encoding (a struct per row). (Phase 4b.3.)
+// tuple encoding (a struct per row).
 
 // Cartesian product, projected to a scalar; `return all` keeps every (ordered) pair.
 define "Sums": from ({ 1, 2 }) X, ({ 10, 20 }) Y return all X + Y

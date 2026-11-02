@@ -1,4 +1,4 @@
-"""Config keys + ONE-precedence setting resolution for the cql client (PHASE-10, BUILD-CLIENT / BUILD-RESOLVE).
+"""Config keys + ONE-precedence setting resolution for the cql client (BUILD-CLIENT / BUILD-RESOLVE).
 
 Every setting resolves by a SINGLE precedence (`BUILD-RESOLVE`)::
 
@@ -7,7 +7,7 @@ Every setting resolves by a SINGLE precedence (`BUILD-RESOLVE`)::
 Config is granular and explicit — one knob each, Spark-conf style; there is NO bespoke selector object,
 and the client never reads a config *table* from a catalog. Compiled-in defaults are constants, never
 fetched. A setting has no discovery tier: the data a run reads is chosen at compile time by the library's
-binder (`CLIENT-EXEC-DISCOVERY`, :mod:`.binding`), never guessed from a conventional name.
+binder (:mod:`.binding`), never guessed from a conventional name.
 
 This module owns the READING of config. The OSS core imports no platform SDK.
 """
@@ -23,8 +23,6 @@ CONF_PROVIDER_KIND = "spark.cqldatabricks.provider.kind"
 CONF_PROVIDER_ENDPOINT = "spark.cqldatabricks.provider.endpoint"
 CONF_LIBRARY = "spark.cqldatabricks.library"
 CONF_LIBRARY_SOURCE = "spark.cqldatabricks.librarySource"
-CONF_FHIR_CATALOG = "spark.cqldatabricks.fhirCatalog"
-CONF_VALUESET_TABLE = "spark.cqldatabricks.valueSetTable"
 CONF_COMPILER_VERSION = "spark.cqldatabricks.compilerVersion"
 CONF_TERMINOLOGY_VERSION = "spark.cqldatabricks.terminologyVersion"
 CONF_CONTEXT = "spark.cqldatabricks.context"
@@ -40,22 +38,18 @@ CONF_LIBRARY_PROVIDER_KIND = "spark.cqldatabricks.libraryProvider.kind"
 # long-standing form. `auto` derives a stable prefix from the library identity; any other value is used
 # verbatim. Opt in when more than one library is lowered into a single Spark session.
 CONF_OBJECT_PREFIX = "spark.cqldatabricks.objectPrefix"
-# EVALUATOR-CLIENT-EVALUATE (`DEC-ONE-VERB-ENGINE-OPTION`, `DEC-ENGINE-SESSION-OPTIONS`): which engine runs a
+# `DEC-ONE-VERB-ENGINE-OPTION`, `DEC-ENGINE-SESSION-OPTIONS`: which engine runs a
 # query, and the settings the evaluator engine needs. All are session settings like the rest of this block,
 # so a session sets them once and every call is just `cql("…")`.
 CONF_ENGINE = "spark.cqldatabricks.engine"                      # local (default) | evaluator
-CONF_DATA_SOURCE = "spark.cqldatabricks.dataSource"             # the evaluator's data source id
 CONF_MEASUREMENT_PERIOD = "spark.cqldatabricks.measurementPeriod"  # "<start>/<end>", ISO 8601 interval form
 CONF_RECOMPUTE = "spark.cqldatabricks.recompute"                # true: run what the evaluator would skip
-# CLIENT-DISCOVERY-SCOPE: the ordered catalog scopes discovery reads, comma-separated (`cat,cat.schema,*`). Unset
-# searches every catalog the caller can see (the resolver warns).
-CONF_CATALOG_SCOPES = "spark.cqldatabricks.catalogScopes"
 # EXEC-UDF-LIBRARY (compiler/docs/execution-model.md): the opaque-UDF catalog JAR to ship to the
 # Connect server (`spark.addArtifact`) on the OSS/local path, so emitted SQL referencing `cql_*` UDFs
 # resolves. On Databricks the catalog is instead a UC-governed `CREATE FUNCTION … USING JAR` deployed
 # once, so this is unset there (registration is a deploy step, not a per-session client action).
 CONF_UDF_JAR = "spark.cqldatabricks.runtime.udfJar"
-# EMIT-UDF-QUALIFY: the schema qualifying emitted `cql_*` UDF calls (`sources.udfs.schema` on the wire),
+# EMIT-UDF-QUALIFY: the schema qualifying emitted `cql_*` UDF calls (`runtime.schema` on the wire),
 # for a session whose search path does not include the schema the catalog was registered in.
 CONF_UDF_SCHEMA = "spark.cqldatabricks.udfSchema"
 
@@ -75,8 +69,6 @@ ENV_PROVIDER = "CQL_DATABRICKS_PROVIDER"
 ENV_ENDPOINT = "CQL_DATABRICKS_COMPILE_ENDPOINT"
 ENV_LIBRARY = "CQL_DATABRICKS_LIBRARY"
 ENV_LIBRARY_SOURCE = "CQL_DATABRICKS_LIBRARY_SOURCE"
-ENV_FHIR_CATALOG = "CQL_DATABRICKS_FHIR_CATALOG"
-ENV_VALUESET_TABLE = "CQL_DATABRICKS_VALUESET_TABLE"
 ENV_COMPILER_VERSION = "CQL_DATABRICKS_COMPILER_VERSION"
 ENV_TERMINOLOGY_VERSION = "CQL_DATABRICKS_TERMINOLOGY_VERSION"
 ENV_CONTEXT = "CQL_DATABRICKS_CONTEXT"
@@ -86,10 +78,10 @@ ENV_LIBRARY_LAYOUT = "CQL_DATABRICKS_LIBRARY_LAYOUT"
 ENV_LIBRARY_PROVIDER = "CQL_DATABRICKS_LIBRARY_PROVIDER"
 ENV_OBJECT_PREFIX = "CQL_DATABRICKS_OBJECT_PREFIX"
 ENV_ENGINE = "CQL_DATABRICKS_ENGINE"
-ENV_DATA_SOURCE = "CQL_DATABRICKS_DATA_SOURCE"
+#: CLIENT-ENVIRONMENT: the environment a notebook or Job runs in; unset, the default environment.
+ENV_ENVIRONMENT = "CQL_DATABRICKS_ENVIRONMENT"
 ENV_MEASUREMENT_PERIOD = "CQL_DATABRICKS_MEASUREMENT_PERIOD"
 ENV_RECOMPUTE = "CQL_DATABRICKS_RECOMPUTE"
-ENV_CATALOG_SCOPES = "CQL_DATABRICKS_CATALOG_SCOPES"
 ENV_UDF_JAR = "CQL_DATABRICKS_UDF_JAR"
 ENV_UDF_SCHEMA = "CQL_DATABRICKS_UDF_SCHEMA"
 ENV_AUTH_KIND = "CQL_DATABRICKS_AUTH_KIND"
@@ -102,7 +94,7 @@ ENV_AUTH_TOKEN = "CQL_DATABRICKS_AUTH_TOKEN"
 # sets no context (explicit arg / conf / env), the client sends UNSET and the COMPILER applies the
 # spec-conformant resolution (library-declared `context`, else the model default, else `Unfiltered`).
 # Hard-coding `Patient` here was non-conformant (it forced a Patient retrieve onto a context-free define).
-#: EVALUATOR-CLIENT-EVALUATE — the convention tier of the engine setting: the caller's own compute, as today.
+#: The convention tier of the engine setting: the caller's own compute, as today.
 #: Not a fallback: an engine that fails never hands the query to another (`DEC-ONE-VERB-ENGINE-OPTION`).
 LOCAL_ENGINE = "local"
 DEFAULT_DATA_MODEL = "FHIR"                         # the CQL data model; engine is FHIR-only today (ARCH-DATAMODEL-TRAIT future)
@@ -125,12 +117,10 @@ POPULATION_DEFINE_NAMES = (
 
 # --------------------------------------------------------------------------------------------------
 # Client -> host CARRY contract (`BUILD-RESOLVE`): resolved settings the client hands the compiler as
-# `CompileRequest.overrides` under these stable keys. The OSS compiler carries them through; the concrete
-# table references are baked by the host-injected DataProvider/TerminologyProvider (a platform plugin).
+# `CompileRequest.overrides` under these stable keys. Data and value sets are bound by role in the request
+# (`BIND-CALL-SITE`), never through an override.
 # --------------------------------------------------------------------------------------------------
 OVERRIDE_DATA_MODEL = "data.model"
-OVERRIDE_FHIR_CATALOG = "data.fhir_catalog"
-OVERRIDE_VALUESET_TABLE = "terminology.valueset_table"
 OVERRIDE_COMPILER_VERSION = "compiler.version"
 OVERRIDE_TERMINOLOGY_VERSION = "terminology.version"
 
@@ -182,20 +172,6 @@ def resolve_setting(
     if required:
         raise ConfigResolutionError(name, conf_key, env)
     return None
-
-
-def resolve_catalog_scopes(explicit: Optional[Sequence[str]] = None, *,
-                           conf: Optional[Mapping[str, str]] = None) -> Optional[list[str]]:
-    """CLIENT-DISCOVERY-SCOPE — the session's ordered catalog scopes, by the `BUILD-RESOLVE` precedence with no
-    discovery tier: ``explicit > spark.cqldatabricks.catalogScopes > CQL_DATABRICKS_CATALOG_SCOPES``, else ``None``.
-
-    ``None`` is "none configured": ``ContentResolver`` then searches every catalog (``*``) and warns. The conf and
-    env forms are comma-separated. The entries are checked where they are used
-    (``cql_databricks.data_bindings.parse_scopes``), so an empty explicit list fails there, naming the problem."""
-    if explicit is not None:
-        return list(explicit)
-    value = resolve_setting("catalog scopes", conf=conf, conf_key=CONF_CATALOG_SCOPES, env=ENV_CATALOG_SCOPES)
-    return None if value is None else [entry.strip() for entry in value.split(",")]
 
 
 def resolve(conf: Mapping[str, str], key: str, env: Optional[str] = None,

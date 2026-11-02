@@ -80,20 +80,4 @@ class SqlRenderSpec extends AnyFunSuite {
     val e = Over(call("row_number"), Seq(col("__subject_id")), Seq(SortKey(col("__ordinal"), ascending = true)))
     assert(SqlRender.expr(e) == "row_number() OVER (PARTITION BY __subject_id ORDER BY __ordinal ASC)")
   }
-
-  test("a table-function call renders as FROM fn(args), catalog-qualified per segment (BIND-RETRIEVE-UDF)") {
-    // A convention-name UDTF with the explicit retrieve arguments (BIND-EXPLICIT-PARAMS): a collection
-    // argument renders as `array(...)` / `map(...)`, an absent scalar as NULL.
-    val bare = TableFunc("retrieve_Encounter",
-      Seq(str("urn:oid:1.2.3"), str("type"), call("array"), Null, Null, Null,
-          call("map", str("Threshold"), Cast(str("40"), "VARIANT"))))
-    assert(SqlRender.renderRel(bare, 0) ==
-      "SELECT * FROM retrieve_Encounter('urn:oid:1.2.3', " +
-        "'type', array(), NULL, NULL, NULL, map('Threshold', CAST('40' AS VARIANT)))")
-
-    // A catalog-qualified binding: each dotted segment independently quoted, aliasable as a derived table.
-    val qualified = AliasRel(TableFunc("retrieve_observation", Seq(col("c"), col("h")), Some("acme.fhir")), "__ret")
-    val out = SqlRender.renderRel(Select(Seq(Proj.star), from = qualified), 0)
-    assert(out.contains("FROM acme.fhir.retrieve_observation(c, h) AS __ret"))
-  }
 }

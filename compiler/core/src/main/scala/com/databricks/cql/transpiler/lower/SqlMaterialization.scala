@@ -7,8 +7,7 @@ import com.databricks.cql.transpiler.emit.{SqlRel, SqlStmt}
   * `CACHE TABLE` barrier — the SQL-native replacement for the proto path's `localCheckpoint` (it cuts
   * lineage and caches, session-scoped). ONE barrier realization, identical for local and deploy: a
   * session cache runs on ANY host (including the OSS Spark Connect session catalog, which does not
-  * support REPLACE-TABLE-AS-SELECT). (An earlier variant defaulted to a `CREATE OR REPLACE TABLE`
-  * managed barrier — EMIT-SQL-BARRIER-TABLE, now RETIRED/reverted for exactly that host-parity reason.)
+  * support REPLACE-TABLE-AS-SELECT).
   *
   * The DECISION itself (materialize or not) is a simple SEMANTIC classification of the define, made in
   * [[SqlFrameLowering]] — NOT the proto path's structural cost × reuse model. Each decision carries a

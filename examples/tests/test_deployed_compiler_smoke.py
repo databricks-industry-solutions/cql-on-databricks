@@ -16,8 +16,8 @@ import os
 
 import pytest
 
-# There is deliberately NO default host. The previous literal was a stale hostname from an earlier App
-# name, and the monorepo rename then corrupted it into `https://server/compiler-...` — a slash in
+# There is deliberately NO default host. A hard-coded host goes stale when the App is renamed, and a rename
+# can corrupt it into `https://server/compiler-...` — a slash in
 # the authority, so not a parseable URL at all. A wrong-but-plausible default is worse than none here:
 # it turns "you did not configure an endpoint" into a connection error against someone else's workspace.
 # Every App gets a fresh databricksapps.com hostname on deploy, so the value cannot live in source.

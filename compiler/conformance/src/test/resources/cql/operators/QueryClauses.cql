@@ -2,7 +2,7 @@ library QueryClauses version '1.0.0'
 
 // List set operators (LANG-LIST) and query shaping/ordering/aggregate clauses (LANG-QUERY),
 // over System lists (Array-encoded). Set ops are equivalence-based; sort rewrites order;
-// return distinct dedups by equivalence; aggregate folds in order. (Phase 4b.1.)
+// return distinct dedups by equivalence; aggregate folds in order.
 
 define "UnionList": { 1, 2, 3 } union { 3, 4, 5 }
 define "IntersectList": { 1, 2, 3 } intersect { 2, 3, 4 }

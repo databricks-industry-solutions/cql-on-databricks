@@ -4,7 +4,7 @@ import org.junit.runner.RunWith
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.junit.JUnitRunner
 
-/** RUN-POINT-CQF — the point evaluator over a small inline library: values, requirements, the period, refusals.
+/** The point evaluator over a small inline library: values, requirements, the period, refusals.
   * The same-answer gate against the conformance oracle on a real measure is `PointOracleSpec` in conformance. */
 @RunWith(classOf[JUnitRunner])
 class CqfEvaluatorSpec extends AnyFunSuite {
@@ -40,7 +40,7 @@ class CqfEvaluatorSpec extends AnyFunSuite {
       encounter("e1", "a", "2026-03-01T10:00:00Z"))),
     CqfPatient("b", Seq(patient("b", "male"), condition("c3", "b", "11111111"), encounter("e2", "b", "2025-03-01T10:00:00Z"))))
 
-  test("RUN-POINT-CQF: every Patient-context define, per patient, in the oracle's JSON") {
+  test("every Patient-context define, per patient, in the oracle's JSON") {
     val out = new CqfEvaluator().evaluate("PointTest", Seq(Library, FhirHelpersCql.text), patients, expansions, p2026).toMap
     assert(out("a")("Is Female") == ujson.Bool(true))
     assert(out("a")("Example Condition Count") == ujson.Num(2))
@@ -52,20 +52,20 @@ class CqfEvaluatorSpec extends AnyFunSuite {
     assert(!out("a").contains("Patient"))
   }
 
-  test("RUN-POINT-CQF: the period given is the one evaluated") {
+  test("the period given is the one evaluated") {
     val p2025 = Some(("2025-01-01T00:00:00.000", "2025-12-31T23:59:59.999"))
     val out = new CqfEvaluator().evaluate("PointTest", Seq(Library, FhirHelpersCql.text), patients, expansions, p2025).toMap
     assert(out("a")("Encounter In Period") == ujson.Bool(false))
     assert(out("b")("Encounter In Period") == ujson.Bool(true))
   }
 
-  test("RUN-POINT-CQF: requirements are the retrieved types and declared value sets of the closure") {
+  test("requirements are the retrieved types and declared value sets of the closure") {
     val r = new CqfEvaluator().requirements("PointTest", Seq(Library, FhirHelpersCql.text))
     assert(r.resourceTypes.toSet == Set("Patient", "Condition", "Encounter"))
     assert(r.valueSets == Seq(Vs))
   }
 
-  test("RUN-POINT-CQF: a closure is translated once and reused") {
+  test("a closure is translated once and reused") {
     val e = new CqfEvaluator()
     e.evaluate("PointTest", Seq(Library, FhirHelpersCql.text), patients.take(1), expansions, p2026)
     val t0 = System.nanoTime()
@@ -73,7 +73,7 @@ class CqfEvaluatorSpec extends AnyFunSuite {
     assert((System.nanoTime() - t0) / 1e6 < 1000, "a second call must not translate again")
   }
 
-  test("RUN-POINT-CQF: refusals are loud") {
+  test("refusals are loud") {
     val e = new CqfEvaluator()
     assert(intercept[IllegalArgumentException](
       e.evaluate("Nope", Seq(Library, FhirHelpersCql.text), patients, expansions, p2026)).getMessage.contains("no CQL"))

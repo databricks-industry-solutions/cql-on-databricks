@@ -182,7 +182,7 @@ class ValueProfile:
 
 @dataclass
 class DefineMetric:
-    """APP-SAMPLE-METRICS — the two grains for ONE define, and nothing else.
+    """The two grains for ONE define, and nothing else.
 
     Deliberately numbers only. `SPEC-METRIC` decides a metric's UNIT from the ELM `context`, its FORM
     from the result type and its BASE from the enclosing population — all three already derived in the
@@ -219,7 +219,7 @@ class DefineMetric:
 
 @dataclass
 class MeasureMetrics:
-    """APP-SAMPLE-METRICS — every figure one Specification renders, in one payload.
+    """APP-SPEC-MODEL — every figure one Specification renders, in one payload.
 
     ONE REQUEST, NOT ONE PER DEFINE. The document, the nav and the reported result must agree to the
     digit — a nav row saying 8,204 beside a section saying 8,207 is the two-surfaces-disagreeing
@@ -279,20 +279,21 @@ class DefineProfile:
     #: CURATED path (`insights/terminology.py`). DERIVED, never sampled: it is a `GROUP BY` over the
     #: define's own result relation, so a define with no resource-valued output simply has none. This is
     #: not `value_sets` by another name — that block reports hits against a value set the logic BINDS,
-    #: which needs a filter this layer may not reconstruct (`SPEC-CLAUSE-PROBE`, rejected); this one
+    #: which needs a filter this layer may not reconstruct; this one
     #: reports what is ON the records, which needs no filter at all.
     terminology: list[dict] = field(default_factory=list)
+    #: SPEC-TERMINOLOGY-EXTRACT — why ``terminology`` is absent, when its read failed. Stated, never an empty list.
+    terminology_error: str | None = None
     temporal: list[TemporalBin] = field(default_factory=list)
     strata: list[Stratum] = field(default_factory=list)
     #: APP-NO-UI-MOCK — the blocks on THIS payload that are fabricated (`BLOCK_*`).
     #:
-    #: PROVENANCE MOVED FROM THE PAYLOAD TO THE BLOCK when the derivable blocks were wired, and it had
-    #: to. `provenance` is one word for the whole profile, which was true while every block came from
-    #: the same place; a payload whose value profile is read from the evaluation and whose temporal
-    #: spread is still invented cannot be described by one word, and the honest options were both bad —
+    #: PROVENANCE IS PER BLOCK, not per payload. `provenance` is one word for the whole profile, which is true
+    #: only while every block comes from the same place; a payload whose value profile is read from the evaluation
+    #: and whose temporal spread is invented cannot be described by one word, and the honest options were both bad —
     #: stamp it `run` and the invented bars lose their mark, stamp it `sample` and real figures carry a
     #: warning that is false. The block list is what lets the mark land on exactly the invented bars.
-    #: `provenance` survives as the payload's summary (`mixed` when this list is a proper subset).
+    #: `provenance` is kept as the payload's summary (`mixed` when this list is a proper subset).
     sampled: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -307,6 +308,7 @@ class DefineProfile:
             "values": self.values.to_dict() if self.values else None,
             "valueSets": [v.to_dict() for v in self.value_sets] or None,
             "terminology": self.terminology or None,
+            "terminologyError": self.terminology_error,
             "temporal": [t.to_dict() for t in self.temporal] or None,
             "strata": [s.to_dict() for s in self.strata] or None,
         })
