@@ -3,10 +3,9 @@
 Every figure the Specification renders, read from the tables the pipeline already wrote. This is what
 retires ``insights/sample.py``'s metric half: same route, same wire shape, same client, real numbers.
 
-**A MEASURE'S DEFINES LIVE IN SEVERAL SCHEMAS.** ``PIPE-PER-LIBRARY-SCHEMA`` gives each library its own
-results schema, and a measure reads its include closure — a multi-library measure spans one schema per
-library (itself plus each shared helper library it includes). So the builder resolves a schema PER LIBRARY and counts across all of them in one query, which
-is what makes the figures comparable: `SPEC-ATTRITION` puts each figure beside its base, and a base read
+**A MEASURE'S DEFINES SPAN ITS INCLUDE CLOSURE.** A measure reads defines of itself and of each helper library it
+includes, each in its own selected table. So the builder counts across all of them in one query, which is what makes
+the figures comparable: `SPEC-ATTRITION` puts each figure beside its base, and a base read
 a minute later than the figure it scales can contradict it.
 
 **THE DEFINE→RELATION MAP COMES FROM THE SELECTION, NOT FROM GUESSING THE NAME.** The selection's metadata

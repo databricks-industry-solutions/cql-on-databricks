@@ -113,22 +113,6 @@ final class SqlDagReuseSpec extends AnyFunSuite {
       "the un-cut script references DiabetesList as a local view (re-inlined by name), never a cql_ dataset")
   }
 
-  test("RUN-RESULTS-BY-EVAL: a cut plan compiled for one evaluation reads only its rows of each published sibling") {
-    val spark: SparkSession = SparkConnect.session()
-    val data = Some(new SparkFhirData(spark, Paths.dataDir.getAbsolutePath))
-    val terminology = Some(new SparkTerminology(spark, Paths.dataDir.getAbsolutePath))
-    val c = Differential.Case(Fixture, Context.Patient, data, terminology)
-
-    val truth = SqlDifferential.engineResults(spark, c)
-    // Every published sibling also holds a decoy evaluation's copy of its rows (`pipelineResults`).
-    val scoped = SqlDifferential.pipelineResults(spark, c, evalId = Some("abcd1234"))
-    assert(scoped == truth, s"scoped cut differs from the re-inlined baseline:\nscoped=$scoped\ntruth=$truth")
-    // Control (non-vacuous): the same decoy rows read BARE diverge or fail, so the scope is what keeps
-    // the answer right.
-    val bare = scala.util.Try(SqlDifferential.pipelineResults(spark, c, evalId = Some("abcd1234"), scopeReads = false))
-    assert(bare.isFailure || bare.get != truth, "unscoped reads over two evaluations' rows still matched")
-  }
-
   test("equivalence: executing the cut plan matches the fully re-inlined baseline (only p1 has Diabetes)") {
     val spark: SparkSession = SparkConnect.session() // a live server, or a clean skip
     val data = Some(new SparkFhirData(spark, Paths.dataDir.getAbsolutePath))

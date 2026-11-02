@@ -111,11 +111,6 @@ final case class SqlEvalEnv(
       * (the default, off the pipeline path) → `datasetName` is never called (the interactive `compileSql`
       * path has no cut and emits no published names). */
     datasetNameCtx: Option[SqlNames.DatasetNameContext] = None,
-    /** RUN-RESULTS-BY-EVAL (`DEC-EVAL-ID-LOOKUP`): the evaluation set this pipeline-cut compile writes. A
-      * published sibling holds every evaluation set's rows keyed by `__eval_id`, so when this is set a read
-      * of one ([[relRef]], [[scalarRef]], [[readRef]]) keeps only this evaluation's rows and drops the key.
-      * `None` (the default) reads the published name bare, as before. Ignored off the cut path. */
-    publishedEvalId: Option[String] = None,
     /** BIND-CALL-SITE: how the request binds each retrieve call site, by rule or per site. A site with no
       * relation fails, and so does any retrieve when it is `None`: CQL that retrieves nothing needs no data. */
     data: Option[DataBinding] = None,
@@ -159,32 +154,14 @@ final case class SqlEvalEnv(
   def readRefName(obj: String): String =
     if (cutSiblings.isDefined) publishedName(obj) else obj
 
-  /** The RELATION a reference to Relation define `n` reads ([[relRefName]]), scoped to [[publishedEvalId]]
-    * when it is a published sibling. Every reference site goes through these three, so no site can read
-    * another evaluation set's rows. */
-  def relRef(n: String): SqlRel = scoped(relRefName(n), n, cutSiblings.exists(_.contains(n)))
+  /** The RELATION a reference to Relation define `n` reads ([[relRefName]]). */
+  def relRef(n: String): SqlRel = SqlRel.TableRef(relRefName(n))
 
-  /** The relation a reference to scalar define `n` reads ([[scalarRefName]]), scoped like [[relRef]]. */
-  def scalarRef(n: String): SqlRel = scoped(scalarRefName(n), n, cutSiblings.exists(_.contains(n)))
+  /** The relation a reference to scalar define `n` reads ([[scalarRefName]]). */
+  def scalarRef(n: String): SqlRel = SqlRel.TableRef(scalarRefName(n))
 
-  /** The relation a reference to materialized read `obj` reads ([[readRefName]]), scoped like [[relRef]]. */
-  def readRef(obj: String): SqlRel = scoped(readRefName(obj), obj, cutSiblings.isDefined)
-
-  /** `name` bare, or — for a published dataset under [[publishedEvalId]] — `(SELECT * EXCEPT (__eval_id)
-    * FROM name WHERE __eval_id = '<id>') AS __scoped_<key>`. The alias must NOT be the published name: the
-    * evaluator relocates every occurrence of that name to its three-part results address
-    * (`PIPE-CROSS-SCHEMA-QUALIFY`), and a three-part alias does not parse. Every caller wraps the result in a
-    * relation of its own, so nothing qualifies a column by this alias. */
-  private def scoped(name: String, key: String, published: Boolean): SqlRel = publishedEvalId match {
-    case Some(id) if published =>
-      val eval = com.databricks.cql.spark.SystemColumns.EvalId
-      SqlRel.AliasRel(SqlRel.Select(
-        projections = Seq(SqlRel.Proj(SqlExpr.starExcept(Seq(eval)))),
-        from = SqlRel.TableRef(name),
-        where = Some(SqlExpr.Infix("=", SqlExpr.Col(eval), SqlExpr.str(id)))),
-        s"__scoped_${SqlNames.sanitize(key)}")
-    case _ => SqlRel.TableRef(name)
-  }
+  /** The relation a reference to materialized read `obj` reads ([[readRefName]]). */
+  def readRef(obj: String): SqlRel = SqlRel.TableRef(readRefName(obj))
 
   /** BIND-CALL-SITE: the library, version and own name of the define being lowered, which a call site is in;
     * none outside a define. */

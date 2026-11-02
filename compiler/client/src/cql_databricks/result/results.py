@@ -1,4 +1,4 @@
-"""PIPE-RESULTS-SCHEMA, RUN-CLIENT-RESULT-SETS — shared columns and counts over one complete selection's pins.
+"""RUN-CLIENT-RESULT-SETS — shared columns and counts over one complete selection's pins.
 
 Every relation here is a :class:`PinnedRelation` of one complete selection: its columns come from the selection's
 recorded schema and its rows from the selected table, never from a catalog read. Every derivation counts and
@@ -28,8 +28,7 @@ Execute = Callable[[str], "list[tuple] | None"]
 class PinnedRelation:
     """RUN-CLIENT-CATALOG-CHECKPOINTS — selected descriptors, not a historical Delta snapshot.
 
-    One result relation of one complete selection. A relation is addressed by its selected table, so a measure whose
-    defines are spread across one schema per library (`PIPE-PER-LIBRARY-SCHEMA`) names each one exactly.
+    One result relation of one complete selection, addressed by its selected table.
 
     The internal name predates current-table reads. The selection ID moves when a result is recomputed, so a
     reopened selection that changed is refused; owners must serialize writes with reads that require a

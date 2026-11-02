@@ -6,8 +6,8 @@ import unittest
 
 try:
     from cql_databricks.data_bindings import KNOWLEDGE_TAG, Corpus, Library, TaggedSchema
-    from cql_databricks.compiler.resolve import (ResolutionError, is_published, require_translated, resolve,
-                                                 translate_includes, translate_root)
+    from cql_databricks.compiler.resolve import (ResolutionError, require_translated, resolve, translate_includes,
+                                                 translate_root)
 except ImportError:  # pragma: no cover - the stdlib-only fallback of scripts/test.sh
     Corpus = None
 
@@ -68,15 +68,6 @@ class ResolveTests(unittest.TestCase):
                             _library("Base", "1.1.0", BASE)])
         r = resolve(content, library="Root")
         self.assertEqual([(u.name, u.version) for u in r.unresolved], [("Base", "1.0.0")])
-
-    def test_published_is_the_corpus_source_exactly_line_endings_aside(self):
-        """RUN-ADDRESS-BY-LIBRARY, `DEC-PUBLISHED-TEST` — the one test of whether CQL may read as the published version."""
-        content = _content()
-        self.assertTrue(is_published(content, ROOT, "Root", "1.0.0"))
-        self.assertTrue(is_published(content, ROOT.replace("\n", "\r\n"), "Root", "1.0.0"))
-        self.assertFalse(is_published(content, ROOT + "define Y: 2\n", "Root", "1.0.0"))
-        self.assertFalse(is_published(content, ROOT, "Root", "9.9.9"))
-        self.assertFalse(is_published(content, ROOT, "", ""))
 
     def test_refusals(self):
         with self.assertRaisesRegex(ResolutionError, "exactly one"):

@@ -12,8 +12,9 @@ private[service] object BatchInputs {
     req.copy(measurementPeriod = None, parameters = req.parameters ++ period)
   }
 
-  /** RUN-EVAL-ID-INPUTS, LANG-PARAM-INSTANT — preserve existing closed-interval precision rules.
-    * HL7 CQL 1.5 sections 9.2 (Date/Time) and 9.6 (Intervals); the ELM declaration supplies the type. */
+  /** LANG-PARAM-INSTANT — the measurement period's bounds take the canonical precision of the type its declaration
+    * gives, closed at both ends. HL7 CQL 1.5 sections 9.2 (Date/Time) and 9.6 (Intervals); the ELM declaration
+    * supplies the type. */
   private def periodParameters(elm: String, bounds: (String, String)): Map[String, String] = {
     val lib = ujson.read(elm)("library")
     val parameters = lib.obj.get("parameters").toSeq.flatMap(_.obj.get("def").toSeq.flatMap(_.arr))

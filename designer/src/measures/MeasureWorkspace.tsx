@@ -265,8 +265,8 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // as a literal at each of the two call sites — an object rebuilt every render is a new identity every
   // render, which would re-run the lens context's memo continuously, and two literals are two places for
   // the period to be forgotten from.
-  // RUN-ADDRESS-BY-LIBRARY — `draft` is the key the last run's CQL was given when it is not the published
-  // version; every figure on the page then reads that draft's results, never the version's.
+  // RUN-CLIENT-RESULT-SETS — `draft` labels the last run's complete selection; every figure on the page reads that
+  // selection's results.
   const draft = run?.draft || undefined;
   const profileScope = useMemo<ProfileScope | null>(() => (
     runEnvironment && draft && run?.resultSet

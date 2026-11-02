@@ -6,10 +6,10 @@ and the read accounting — moved to the evaluator (`MOVE-DERIVATIONS`), and the
 The Designer renders them; the agent needs them as much as it does. The Data Readiness read is gone
 with its module (DESIGNER-ONE-MODULE).
 
-**Every derivation here is scoped to ONE evaluation, and that is not an implementation detail.** A
+**Every derivation here is scoped to ONE complete selection, and that is not an implementation detail.** A
 profile and a metric set are facts about a data source over a measurement period, so the same define
 has different true distributions per scope and the server cannot locate the result relation without it
-(`PIPE-PER-LIBRARY-SCHEMA`). Required, never defaulted: a request without a scope has no answer rather
+(`RUN-CLIENT-RESULT-SETS`). Required, never defaulted: a request without a scope has no answer rather
 than a stale one, and a figure silently read from a different evaluation than the one above it on the
 page is the defect `APP-SPEC-MODEL` names.
 

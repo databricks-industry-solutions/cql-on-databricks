@@ -48,11 +48,6 @@ object SystemColumns {
     * scope by the time the value expression is built. */
   val Val          = "__val"
 
-  /** RUN-RESULTS-BY-EVAL (`DEC-EVAL-ID-LOOKUP`): the column a results-store table keys each evaluation set's
-    * rows by. The compiler never writes it; it only filters a published sibling's rows by it when the
-    * compile request names an evaluation ([[com.databricks.cql.transpiler.lower.SqlEvalEnv.publishedEvalId]]). */
-  val EvalId       = "__eval_id"
-
   /** Marks a value's list-encoding state (Array vs Relation, DATA-LIST-ENCODING). */
   val Encoding     = "__encoding"
 

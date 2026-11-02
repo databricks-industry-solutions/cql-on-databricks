@@ -419,28 +419,6 @@ class CompileServiceSqlSpec extends AnyFunSuite {
     assert(a.intersect(b).isEmpty, s"namespaces overlap: ${a.intersect(b)}")
   }
 
-  // -- RUN-RESULTS-BY-EVAL / DEC-EVAL-ID-LOOKUP -------------------------------------------------
-
-  test("RUN-RESULTS-BY-EVAL: with an evalId, a recipe reads a published sibling's rows for that evaluation only") {
-    val req = CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, elmJson = elm, context = Some("Patient"), evalId = Some("abcd1234"),
-      overrides = Map("materialize.mode" -> "all"))
-    val plan = CompileService.compilePipeline(req)
-    val reader = plan.datasets.find(_.reads.nonEmpty).getOrElse(fail("no recipe reads a sibling"))
-    val flat = reader.query.replaceAll("\\s+", " ")
-    reader.reads.foreach { sibling =>
-      assert(flat.contains(s"( SELECT * EXCEPT (`__eval_id`) FROM $sibling WHERE (__eval_id = 'abcd1234') ) AS __scoped_"),
-        reader.query)
-      // The evaluator relocates every occurrence of a dataset name to its three-part results address
-      // (PIPE-CROSS-SCHEMA-QUALIFY); a name used as an alias would become `AS c.s.t`, which does not parse.
-      assert(!flat.contains(s"AS $sibling"), reader.query)
-    }
-    // No bare read of a sibling survives beside the scoped one.
-    val bare = CompileService.compilePipeline(req.copy(evalId = None))
-    assert(!bare.datasets.exists(_.query.contains("__eval_id")))
-    assert(CompileRequest.fromJson("""{"elm": "{}", "evalId": "abcd1234"}""").evalId.contains("abcd1234"))
-    assert(CompileRequest.fromJson("""{"elm": "{}"}""").evalId.isEmpty)
-  }
-
   // -- PIPE-READS-SORTED ------------------------------------------------------------------------
 
   test("PIPE-READS-SORTED: a recipe's reads are sorted, not in the order its SQL first references them") {

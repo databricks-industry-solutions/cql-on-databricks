@@ -60,9 +60,6 @@ class CompileRequest:
     object_prefix: Optional[str] = None
     # EMIT-UDF-QUALIFY: the schema qualifying emitted `cql_*` UDF calls, sent as `runtime.schema`.
     udf_schema: Optional[str] = None
-    # PIPE-EVAL-SCOPED-READ: the evaluation set a pipeline plan writes; its recipes then read only that
-    # evaluation's rows of each published sibling (`RUN-RESULTS-BY-EVAL`). Unset: bare reads.
-    eval_id: Optional[str] = None
     # BUILD-CLIENT-SESSION-PARAMETERS: values set for the whole session. The service applies the ones the
     # library declares, beneath ``parameters``, and leaves the rest, so one session period binds every
     # measure that declares one and no library that does not.
@@ -94,7 +91,6 @@ class CompileRequest:
                if self.deps else {}),
             **({"runtime": {"schema": self.udf_schema}} if self.udf_schema else {}),
             **({"objectPrefix": self.object_prefix} if self.object_prefix else {}),
-            **({"evalId": self.eval_id} if self.eval_id else {}),
             **({"durable": True} if self.durable else {}),
             **({"measurementPeriod": list(self.measurement_period)} if self.measurement_period else {}),
             **({"sessionParameters": {k: self.session_parameters[k] for k in sorted(self.session_parameters)}}

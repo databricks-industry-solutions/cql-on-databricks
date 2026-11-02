@@ -42,7 +42,7 @@ def _contributed() -> ToolRegistry:
 def server():
     return create_mcp(
         warehouse=lambda sql: [["a", "bigint"]] if "information_schema" in sql else [[7]],
-        # DEC-EVALUATOR-OPAQUE — the evaluator's answer for every node: its stored table and the set's filter.
+        # RUN-CLIENT-RESULT-SETS — every node's selected output: its pinned table.
         computed_for=lambda *scope: ["denominator"],
         reference_for=lambda address, define: reference(),
         research=fake_research(),

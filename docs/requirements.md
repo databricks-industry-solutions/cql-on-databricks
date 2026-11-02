@@ -224,12 +224,9 @@ How the rest of the system uses the compiler.
 | `PIPE-LIFECYCLE` | Retired: Draft pipeline lifecycle and cleanup removed with pipelines. |
 | `PIPE-PROGRESS-CHIP` | Retired: Pipeline progress UI removed with Designer and pipelines. |
 | `PIPE-RECOMPILE-GATE` | Retired: Pipeline recompile gating superseded by PIPE-BARRIER-HASH determinants. |
-| `PIPE-RESULT-NAMING` | Retired: Table naming convention revised. See `PIPE-PER-LIBRARY-SCHEMA`. |
 | `PIPE-RESULTS-CATALOG-ISOLATION` | Retired: Shared results catalog variable removed with Designer. |
-| `PIPE-RESULTS-SCHEMA` | Retired: Schema structure revised. See `PIPE-PER-LIBRARY-SCHEMA`. |
 | `PIPE-SERVICE` | Retired: Pipeline orchestration service was future work, not implemented. |
 | `PIPE-STATE-LAYER` | Retired: Lakebase pipeline state layer rebuilt into cache logic. See `PIPE-BARRIER-HASH`. |
-| `RUN-ADDRESS-BY-LIBRARY` | Retired: the evaluator App's draft sweeper and address API are removed. See `RUN-CLIENT-RESULT-SETS`. |
 | `RUN-DAG-EXECUTOR` | Retired: App statement executor and warm session pool removed. |
 | `RUN-DEPLOYMENT-CONFIG` | Retired: Deployment orchestration removed; calculations are data-only. |
 | `RUN-DRAFT-RESULTS` | Retired: Designer draft results feature removed with Designer. |
@@ -247,7 +244,6 @@ How the rest of the system uses the compiler.
 | `RUN-SKIP-IN-TASK` | Retired: Per-statement currency check superseded by table state. |
 | `RUN-STATEMENT-EXEC` | Retired: Barrier statement execution removed with evaluator App. |
 | `SDP-ALL-DEFINES` | Retired with SDP. |
-| `SDP-DEPLOY-ADDRESS` | Retired with SDP. |
 | `SDP-DEPLOYER` | Retired with SDP. |
 | `SDP-DESIGNER-RUN` | Retired with SDP. |
 | `SDP-DIAGNOSTICS` | Retired with SDP. |

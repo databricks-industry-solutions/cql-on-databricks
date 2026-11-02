@@ -111,7 +111,7 @@ export interface ProfileScope extends ResultReadScope {
   environment: string;
   periodStart?: string;
   periodEnd?: string;
-  /** RUN-ADDRESS-BY-LIBRARY — the run's draft key, when the CQL run is not the published version. */
+  /** RUN-CLIENT-RESULT-SETS — the label of the run's complete selection. */
   draft?: string;
 }
 

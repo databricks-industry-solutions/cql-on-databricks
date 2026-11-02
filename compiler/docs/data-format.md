@@ -70,7 +70,6 @@ underscore for primitive extensions (`_birthDate`), so there is no collision. pa
 | `__resource_id`, `__resource_type` | The source resource's identity, for traceability (section 7) |
 | `__choice` | The Choice discriminator |
 | `__encoding` | A value's list encoding |
-| `__eval_id` | The evaluation a row belongs to |
 | `__is_null` | The per-subject list-null sidecar ([list-null-tristate.md](list-null-tristate.md)) |
 
 ## 5. Defines as relations — `DATA-DEFINE-DF`

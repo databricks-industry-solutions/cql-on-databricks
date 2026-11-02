@@ -95,16 +95,6 @@ class ObjectPrefixWireTests(unittest.TestCase):
                          "screeningmeasure_0_3")
 
 
-class EvalIdWireTests(unittest.TestCase):
-    """PIPE-EVAL-SCOPED-READ — the evaluation set a pipeline plan is compiled for."""
-
-    def test_eval_id_is_omitted_by_default(self):
-        self.assertNotIn("evalId", CompileRequest(elm="{}").to_json())
-
-    def test_eval_id_is_sent_when_set(self):
-        self.assertEqual(CompileRequest(elm="{}", eval_id="abcd1234").to_json()["evalId"], "abcd1234")
-
-
 class ResponseToleranceTests(unittest.TestCase):
     """BUILD-CLIENT-COMPAT, the other direction: an OLDER service omits fields a NEWER client reads."""
 

@@ -198,8 +198,8 @@ class HandleTests(unittest.TestCase):
                          "Interval[@2026-01-01T00:00:00.0, @2026-12-31T23:59:59.999]")
 
     def test_measurement_period_bounds_follow_the_declared_point_type(self):
-        """RUN-EVAL-ID-INPUTS — one rule for the compile parameter and the evaluator's ``__eval_id``: a DateTime
-        period widens a bare date, a Date period truncates a datetime, anything else is refused."""
+        """LANG-PARAM-INSTANT — a DateTime period widens a bare date, a Date period truncates a datetime, anything
+        else is refused."""
         from cql_databricks.compiler import measurement_period_bounds, measurement_period_literal
         self.assertEqual(measurement_period_bounds("2026-01-01", "2026-12-31"),
                          ("2026-01-01T00:00:00.000", "2026-12-31T23:59:59.999"))

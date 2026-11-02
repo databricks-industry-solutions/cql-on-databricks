@@ -71,12 +71,6 @@ object SqlExpr {
     * `\`, is silently mangled), then the single quote is doubled. */
   def str(s: String): SqlExpr = Lit("'" + s.replace("\\", "\\\\").replace("'", "''") + "'")
 
-  /** `* EXCEPT (c1, …)` — a projection of every column but `cols` (RUN-RESULTS-BY-EVAL: a published
-    * sibling read drops the store's `__eval_id`). One projection token, so a [[Lit]]; valid on DBSQL and
-    * OSS Spark 4.1. */
-  def starExcept(cols: Seq[String]): SqlExpr =
-    Lit(cols.map(c => "`" + c.replace("`", "``") + "`").mkString("* EXCEPT (", ", ", ")"))
-
   def col(name: String): SqlExpr = Col(name)
   def call(fn: String, args: SqlExpr*): SqlExpr = Call(fn, args)
 }

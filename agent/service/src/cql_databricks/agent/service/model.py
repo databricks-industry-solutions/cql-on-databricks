@@ -10,11 +10,8 @@ from typing import Any
 class NodeAddress:
     """WHICH output a tool asks about: one define of one library version, in one environment and period.
 
-    It names the scope and nothing else. Where the output is stored, and which of a table's rows are this
-    scope's, are the evaluator's to say (`DEC-EVALUATOR-OPAQUE`): a tool asks it for a
-    :class:`~cql_databricks.result.ResultReference` and reads through that. Until 2026-10-05 this class
-    derived the table and the ``__eval_id`` itself, and when the evaluator's id gained terms the agent
-    could not see (`RUN-EVAL-ID-INPUTS`), its reads silently missed every new row.
+    It names the scope and nothing else. Where the output is stored is the complete selection's to say
+    (`RUN-CLIENT-RESULT-SETS`): a tool reads it through the selection's pinned output, never a table it derives.
     """
 
     library: str

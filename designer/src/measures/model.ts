@@ -204,9 +204,8 @@ export function funnelFromCounts(
   return { total, stages, readout };
 }
 
-/** A result table name as `PIPE-RESULT-NAMING` writes it: lowercased, non-alphanumerics collapsed to
- *  underscores. Mirrors the backend's `_naming._normalize` — the two have to agree for a population's
- *  table to be recognized as that population at all. */
+/** A define name lowercased, non-alphanumerics collapsed to underscores, so a population define is recognized
+ *  whatever its spacing or case. */
 function normalizeResultName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
@@ -218,7 +217,7 @@ function normalizeResultName(name: string): string {
  *  camelCase keys were mapped back to define names on arrival; that was a second answer to "what did
  *  this measure score" (`SPEC-ATTRITION`) and it was built from `COUNT(*)`. What arrives now is one
  *  count per define, and the population defines are recognized by matching normalized names against
- *  `POPULATIONS` — the same names `PIPE-RESULT-NAMING` derived the tables from.
+ *  `POPULATIONS`.
  *
  *  Per-member results are not available from this route (future: member pagination), which is why the
  *  Patient Lens still needs a run.

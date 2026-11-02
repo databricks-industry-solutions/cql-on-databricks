@@ -141,8 +141,8 @@ export async function fetchResults(
   periodStart?: string, periodEnd?: string, draft?: string, resultSet?: ResultSetAddress,
 ): Promise<PreComputedResults | null> {
   try {
-    // RUN-ADDRESS-BY-LIBRARY — a library version's results are its own; a draft's are read by the key its
-    // run returned, which is all the Designer knows of where they are.
+    // RUN-CLIENT-RESULT-SETS — the results are the run's complete selection, read by its `resultSet` address and
+    // the `draft` label its run returned, which is all the Designer knows of where they are.
     return await cachedPost("/api/results", { environment, library, version,
       periodStart, periodEnd, draft, resultSet }, async (res) =>
       res.ok ? ((await res.json()) as PreComputedResults) : null);
@@ -365,7 +365,7 @@ export function runResultFromDone(event: RunStage): RunResult {
   if (!event.results) return { ok: false, error: "The run did not return a complete result selection." };
   const result = { ...preComputedToRunResult({ defines: event.results.defines }), resultSet: event.resultSet,
     computedAt: latestCompletion(event.outcomes) };
-  // RUN-ADDRESS-BY-LIBRARY — the reads of this run's results name its draft, when it is one.
+  // RUN-CLIENT-RESULT-SETS — the reads of this run's results name its selection's label.
   return event.identity?.draft ? { ...result, draft: event.identity.draft } : result;
 }
 

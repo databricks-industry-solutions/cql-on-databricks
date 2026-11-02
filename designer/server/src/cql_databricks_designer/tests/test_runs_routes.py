@@ -107,7 +107,7 @@ def setup(monkeypatch):
 
     def reader(sql):
         state.sql.append(sql)
-        assert "information_schema" not in sql and "__eval_id" not in sql and "VERSION AS OF" not in sql
+        assert "information_schema" not in sql and "VERSION AS OF" not in sql
         return [(label, 0, None, 0) for label in re.findall(r"'([^']+)' AS d", sql)]
 
     def compute(*args, **kwargs):

@@ -41,7 +41,7 @@ class EngineRequest:
 
 class Engine(Protocol):
     """Runs an :class:`EngineRequest` and returns ``{define: DataFrame}`` for each of its targets, with the
-    same columns ``local`` returns for that define (`DEC-EVALUATOR-OPAQUE`)."""
+    same columns ``local`` returns for that define."""
 
     def exec(self, request: EngineRequest) -> dict:
         ...

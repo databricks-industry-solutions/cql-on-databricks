@@ -163,20 +163,6 @@ def _dependencies_first(sources: list[LibrarySource]) -> list[LibrarySource]:
     return out
 
 
-def is_published(content: ContentResolver, cql: str, library: str, version: str) -> bool:
-    """RUN-ADDRESS-BY-LIBRARY, `DEC-PUBLISHED-TEST` — ``cql`` is the corpus's ``library@version`` exactly, line endings
-    aside; ``False`` for anything else, including a library or version the corpus does not hold. Only CQL that is the
-    published version may be read as, or write, its results; anything else is a draft (`DEC-DRAFT-ADDRESS`)."""
-    if not (library and version):
-        return False
-    published = content.corpus().library(library, version)
-    return published is not None and _lines(published.source) == _lines(cql)
-
-
-def _lines(text: str) -> str:
-    return text.replace("\r\n", "\n").replace("\r", "\n")
-
-
 @dataclass(frozen=True)
 class TranslatedLibrary:
     """One library's ELM, or its diagnostics."""

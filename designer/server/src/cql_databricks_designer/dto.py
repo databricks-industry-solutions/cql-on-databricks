@@ -99,7 +99,7 @@ class ReadMetricsRequest(BaseModel):
     environment: str | None = None
     period_start: str | None = Field(default=None, alias="periodStart")
     period_end: str | None = Field(default=None, alias="periodEnd")
-    #: RUN-ADDRESS-BY-LIBRARY — the key a draft's run returned, to read that draft; ``""`` reads the version.
+    #: RUN-CLIENT-RESULT-SETS — the label of the complete selection to read, as its run returned it.
     draft: str = ""
     result_set: dict | None = Field(default=None, alias="resultSet")
 
@@ -139,7 +139,7 @@ class CohortFlowRequest(BaseModel):
     environment: str | None = None
     period_start: str | None = Field(default=None, alias="periodStart")
     period_end: str | None = Field(default=None, alias="periodEnd")
-    #: RUN-ADDRESS-BY-LIBRARY — the key a draft's run returned, to read that draft; ``""`` reads the version.
+    #: RUN-CLIENT-RESULT-SETS — the label of the complete selection to read, as its run returned it.
     draft: str = ""
     result_set: dict | None = Field(default=None, alias="resultSet")
 
@@ -163,7 +163,7 @@ class MeasureMetricsRequest(BaseModel):
     environment: str | None = None
     period_start: str | None = Field(default=None, alias="periodStart")
     period_end: str | None = Field(default=None, alias="periodEnd")
-    #: RUN-ADDRESS-BY-LIBRARY — the key a draft's run returned, to read that draft; ``""`` reads the version.
+    #: RUN-CLIENT-RESULT-SETS — the label of the complete selection to read, as its run returned it.
     draft: str = ""
     result_set: dict | None = Field(default=None, alias="resultSet")
     #: RUN-CLIENT-MEASURE-SCORE — the measure's DECLARED scoring (`Measure.scoring`), which the score is

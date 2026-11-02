@@ -21,8 +21,8 @@ dependencies = [
     "cql-databricks-agent-skills",
     # COMMON-LIBRARY — config, the workspace client (SEC-OBO), the compiler's HTTP client.
     "cql-databricks-common",
-    # SDP-DEPLOY-ADDRESS — the results address (`cql_databricks.result.address`), read through the client
-    # (RESULT-INTO-CLIENT) rather than its internals.
+    # RESULT-INTO-CLIENT — the result readers (`cql_databricks.result`), read through the client rather than its
+    # internals.
     "cql-databricks",
     # SVC-MCP-TOOLS — the MCP surface, mounted at /mcp. `fastmcp` alone, which brings the official `mcp` SDK
     # transitively: two pins that must stay mutually compatible is a version puzzle with no upside.

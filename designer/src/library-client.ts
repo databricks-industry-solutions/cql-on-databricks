@@ -513,9 +513,9 @@ export async function fetchCohortFlow(
  *  since it owns that determination (`APP-SPEC-MODEL`) and a server-side re-derivation could
  *  disagree with it.
  *
- *  THE SCOPE IS PART OF THE QUESTION TOO. A figure is a fact about one evaluation — one data source over
- *  one measurement period — so the same measure has different true numbers per scope, and the server
- *  cannot even locate the result tables without it (`PIPE-PER-LIBRARY-SCHEMA`). Required, not optional:
+ *  THE SCOPE IS PART OF THE QUESTION TOO. A figure is a fact about one complete selection — one data source
+ *  over one measurement period — so the same measure has different true numbers per scope, and the server
+ *  cannot even locate the result tables without it (`RUN-CLIENT-RESULT-SETS`). Required, not optional:
  *  a request without it has no answer rather than a default one.
  *
  *  `null` for the 409 the server returns when it has no figures for this scope (`figures`).

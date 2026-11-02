@@ -37,7 +37,7 @@ final case class CqfPatient(id: String, resources: Seq[String])
   * (`DEC-SAME-ANSWER`).
   *
   * The measurement period is the only parameter, given as ISO bounds and built in the type the root declares
-  * (`Interval<DateTime>` or `Interval<Date>`, both ends inclusive, the canonical bounds of `RUN-EVAL-ID-INPUTS`). It
+  * (`Interval<DateTime>` or `Interval<Date>`, both ends inclusive, the canonical bounds of `LANG-PARAM-INSTANT`). It
   * is given to the root and, by qualified name, to every library in the closure. Thread-safe. */
 final class CqfEvaluator(maxClosures: Int = 32) {
   import CqfEvaluator.Closure

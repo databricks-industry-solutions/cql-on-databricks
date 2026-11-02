@@ -157,7 +157,7 @@ export interface RunStage {
   total_ms?: number;
   /** Error message (stage=error). */
   error?: string;
-  /** The run's identity (stage=done). `draft` is RUN-ADDRESS-BY-LIBRARY's key. */
+  /** The run's identity (stage=done). `draft` labels its complete selection (RUN-CLIENT-RESULT-SETS). */
   identity?: { library: string; version: string; environment: string; draft: string };
   /** RUN-CLIENT-REQUEST-REOPEN — per-output reuse decisions (stage=done). */
   outcomes?: RunOutcome[];

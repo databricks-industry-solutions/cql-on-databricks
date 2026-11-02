@@ -88,10 +88,6 @@ final case class CompileRequest(
       * long-standing emitted form). A caller lowering more than one library into ONE Spark session sets it
       * so two libraries' identically-named defines (`Numerator`) cannot rebind each other's temp views. */
     objectPrefix: Option[String] = None,
-    /** RUN-RESULTS-BY-EVAL (`DEC-EVAL-ID-LOOKUP`): the evaluation set a PIPELINE plan is compiled for. Its
-      * recipes read a published sibling's rows for this evaluation only (`SqlEvalEnv.publishedEvalId`).
-      * Absent ⇒ bare reads, as before. Only `compilePipeline` reads it. */
-    evalId: Option[String] = None,
     durable: Boolean = false,
     /** SVC-COMPILE-BATCH — raw bounds are typed against the root's ELM on the service. */
     measurementPeriod: Option[(String, String)] = None,
@@ -160,9 +156,7 @@ object CompileRequest {
       data = o.obj.get("data").filterNot(_.isNull).map(DataBinding.fromJson),
       terminology = o.obj.get("terminology").filterNot(_.isNull).map(TerminologyBinding.fromJson),
       // EMIT-SQL-OBJECT-PREFIX: absent/empty ⇒ None ⇒ bare object names (the default).
-      objectPrefix = o.obj.get("objectPrefix").filterNot(_.isNull).map(_.str).filter(_.nonEmpty),
-      // RUN-RESULTS-BY-EVAL: absent/empty ⇒ None ⇒ bare published reads.
-      evalId = o.obj.get("evalId").filterNot(_.isNull).map(_.str).filter(_.nonEmpty))
+      objectPrefix = o.obj.get("objectPrefix").filterNot(_.isNull).map(_.str).filter(_.nonEmpty))
   }
 }
 
@@ -436,7 +430,7 @@ object CompileService {
     // Pipeline-cut mode ON: the empty set is only the SIGNAL — `SqlFrameLowering.lower` rebinds the
     // resolvers to its own GROWING `matDefs`, so ONE pass both discovers the boundaries and cuts references.
     val env = SqlEvalEnv(resolveContext(req, loaded), config, cutSiblings = Some(mutable.Set.empty[String]),
-      datasetNameCtx = Some(dsCtx), publishedEvalId = req.evalId, data = req.data, terminologyBinding = req.terminology,
+      datasetNameCtx = Some(dsCtx), data = req.data, terminologyBinding = req.terminology,
       defineParameters = ParameterScope.of(loaded))
     // Build the library-id → version mapping for ELM origin metadata on each recipe.
     // Multi-library: each root's id and version extracted from its ELM; single-library: empty (the root

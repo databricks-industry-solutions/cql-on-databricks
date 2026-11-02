@@ -1,8 +1,8 @@
 """SVC-MCP-TOOLS, SVC-TOOL-ADDRESS, SVC-TOOL-FRESHNESS — the assistant's five tools.
 
 These pin the properties an EXTERNAL caller depends on, which is the whole reason the surface exists
-(`agent/README.md`): that where an output is stored is the evaluator's answer, never the
-agent's derivation (`DEC-EVALUATOR-OPAQUE`), that `get_output` answers with a handle instead of rows, that `query_data` is a read, and that
+(`agent/README.md`): that where an output is stored is the complete selection's answer, never the
+agent's derivation (`RUN-CLIENT-RESULT-SETS`), that `get_output` answers with a handle instead of rows, that `query_data` is a read, and that
 `get_freshness` reports evidence and refuses to render a verdict.
 
 The warehouse is a fake — the tools take it as a seam precisely so their contract is testable without
@@ -23,7 +23,7 @@ ADDRESS = NodeAddress(
     library="HypertensionBPControl", version="1.0.0", define="Initial Population",
     environment="acme-prod", period_start="2026-01-01", period_end="2026-12-31")
 
-#: What the evaluator answers for ADDRESS (`DEC-EVALUATOR-OPAQUE`): the stored table and the set's filter.
+#: The selected output for ADDRESS (`RUN-CLIENT-RESULT-SETS`): its pinned table and recorded columns.
 REFERENCE = reference()
 
 
@@ -46,20 +46,18 @@ class FakeWarehouse:
 
 
 # ---------------------------------------------------------------------------
-# DEC-EVALUATOR-OPAQUE — the evaluator says where an output is; the agent never derives it
+# RUN-CLIENT-RESULT-SETS — the selection says where an output is; the agent never derives it
 # ---------------------------------------------------------------------------
 
 class TestReference:
     def test_the_address_names_the_scope_and_nothing_about_storage(self):
-        # Until 2026-10-05 the address derived the table and the `__eval_id`; when the evaluator's id gained
-        # terms the agent could not see (RUN-EVAL-ID-INPUTS), every new row was silently missed.
         assert not any(hasattr(ADDRESS, attr) for attr in ("eval_id", "table", "schema", "handle", "deployment"))
 
-    def test_the_handle_is_the_references_relation_without_the_evaluators_columns(self):
+    def test_the_handle_is_the_selected_outputs_relation(self):
         out = get_output(ADDRESS, REFERENCE, warehouse=FakeWarehouse({"COUNT(*)": [[0]]}))
         assert out.handle == REFERENCE.relation()
-        assert "VERSION AS OF" not in out.handle and "__eval_id" not in out.handle
-        # The evaluator's key is dropped; the compiler's own columns stay (ad-hoc `cql()` returns them too).
+        assert "VERSION AS OF" not in out.handle
+        # The compiler's own columns stay (ad-hoc `cql()` returns them too).
         assert [c.name for c in out.shape.columns] == ["__subject_id", "__val"]
 
     def test_an_unselected_output_fails_without_queries(self):

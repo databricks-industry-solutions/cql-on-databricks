@@ -505,9 +505,7 @@ object SqlDifferential {
     * cross-dataset DAG cut driven in-JVM (the SDP node-body contract). Returns the per-(subject, define) map
     * off the produced objects — which must EQUAL the fully re-inlined [[engineResults]] (`CORE-NO-SILENT-MISLOWER`:
     * the cut is a structure change, not a semantic one). Single-factor per call (shared-session name reuse). */
-  def pipelineResults(spark: SparkSession, c: Differential.Case,
-                      evalId: Option[String] = None,
-                      scopeReads: Boolean = true): Map[String, Map[String, ujson.Value]] = {
+  def pipelineResults(spark: SparkSession, c: Differential.Case): Map[String, Map[String, ujson.Value]] = {
     Differential.onlyFilter(c.library)
     val lib       = Differential.buildLibrary(c)
     val config    = Differential.evalConfig(c.library)
@@ -515,7 +513,7 @@ object SqlDifferential {
     val dsCtx     = SqlNames.DatasetNameContext(lib.id, lib.version.getOrElse(""))
     val env       = providerEnv(spark, c, optimized, SqlEvalEnv(c.context, config,
       cutSiblings = Some(mutable.Set.empty[String]),
-      datasetNameCtx = Some(dsCtx), publishedEvalId = evalId.filter(_ => scopeReads)))
+      datasetNameCtx = Some(dsCtx)))
     val lowered   = SqlFrameLowering.lower(optimized, env)
     val plan      = CompileService.cutPlan(lowered, dsCtx = dsCtx)
     def drop(name: String): Unit = {
@@ -530,18 +528,7 @@ object SqlDifferential {
       drop(r.name)
       val qn = "`" + r.name.replace("`", "``") + "`"
       val qt = "`" + r.target.replace("`", "``") + "`"
-      evalId match {
-        // RUN-RESULTS-BY-EVAL: publish as the results store holds it — keyed by `__eval_id`, beside a
-        // DECOY evaluation that gives EVERY subject this dataset's rows, so a read that does not keep
-        // only its own evaluation changes the answer (an exact copy would be invisible to `exists`).
-        case Some(id) =>
-          val rows = spark.table(qt)
-          val subjects = spark.table("__frame_base").select(SystemColumns.SubjectId).distinct()
-          val decoy = rows.drop(SystemColumns.SubjectId).crossJoin(subjects)
-            .withColumn(SystemColumns.EvalId, F.lit("decoy000"))
-          rows.withColumn(SystemColumns.EvalId, F.lit(id)).unionByName(decoy).createOrReplaceTempView(r.name)
-        case None => spark.sql(s"CREATE OR REPLACE TEMP VIEW $qn AS SELECT * FROM $qt")
-      }
+      spark.sql(s"CREATE OR REPLACE TEMP VIEW $qn AS SELECT * FROM $qt")
     }
     // Collect off the LOCAL objects the recipes produced — a dependent define's object was computed from
     // its sibling's PUBLISHED dataset (the cut path), so this is the cut result.

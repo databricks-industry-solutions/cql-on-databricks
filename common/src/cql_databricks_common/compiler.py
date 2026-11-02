@@ -134,55 +134,6 @@ class CompilerClient:
         cross-library edges, library-qualified defines, and deduplication."""
         return self._post("/describe", {"libraries": libraries})
 
-    def compile_pipeline(self, elm: str, *,
-                         deps: list[str] | None = None,
-                         parameters: dict[str, str] | None = None,
-                         sources: dict[str, dict] | None = None,
-                         overrides: dict[str, str] | None = None,
-                         eval_id: str | None = None) -> dict:
-        """POST /compile-pipeline — compile a library into a PipelinePlan (PIPE-EMIT-SQL).
-
-        Moves SQL generation to deploy time (APP-DECOUPLE): each DatasetRecipe in the response
-        carries ``statements`` — a list of deploy-ready SQL statements (``{name, kind, sql}``).
-        The BFF uploads these as ``.sql`` files to the workspace — no runtime compilation, no
-        wheel installs.
-
-        ``elm`` is the root library's **ELM JSON** (from a prior ``translate()`` call).
-        ``deps`` is a list of **ELM JSON** strings for dependency libraries.
-        The caller must translate CQL to ELM before calling this method — the engine's
-        ``/compile-pipeline`` does NOT resolve includes on its own.
-
-        Returns ``{datasets: [{name, target, query, reads, library, libraryVersion, define,
-        sqlFile, statements: [{name, kind, sql}]}, ...]}``.
-        """
-        import json as _json
-        import logging as _logging
-        _log = _logging.getLogger("cql_databricks_common.compiler")
-        # Ensure elm is a JSON string — translate() may return it as a parsed dict
-        # on some engine versions, but /compile-pipeline expects a JSON string.
-        elm_str = elm if isinstance(elm, str) else _json.dumps(elm)
-        _log.info("compile_pipeline: elm type=%s len=%d first60=%r",
-                  type(elm).__name__, len(elm_str), elm_str[:60])
-        body: dict[str, Any] = {"elm": elm_str}
-        if deps:
-            body["deps"] = [d if isinstance(d, str) else _json.dumps(d) for d in deps]
-            _log.info("compile_pipeline: %d deps, first dep type=%s len=%d",
-                      len(deps), type(deps[0]).__name__, len(deps[0]) if deps else 0)
-        if parameters:
-            body["parameters"] = parameters
-        if sources:
-            body["sources"] = sources
-        if overrides:
-            # `CompileRequest.overrides` — namespaced engine config, resolved by `Config.resolve`.
-            # Carries `materialize.retrieves` (RUN-READ-BARRIER). An engine that predates a key
-            # ignores it, so sending one is safe against an older service.
-            body["overrides"] = overrides
-        if eval_id:
-            # PIPE-EVAL-SCOPED-READ: the evaluation set the plan writes, so its sibling reads keep only
-            # that evaluation's rows of each results-store table (`RUN-RESULTS-BY-EVAL`).
-            body["evalId"] = eval_id
-        return self._post("/compile-pipeline", body, timeout=120.0)
-
 
 def compile_provider(endpoint: str, token: str | None = None, *, timeout: float = 600.0):
     """The compiler's own client transport (`cql_databricks.compiler.RemoteProvider`) for this process.

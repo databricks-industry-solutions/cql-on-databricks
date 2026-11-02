@@ -43,7 +43,7 @@ ORDINAL = "__ordinal"
 #: Columns the emit owns. Everything else on the relation is the define's value.
 #: ``__enzyme__row__id__`` appears on the pipeline's internal materialization tables rather than on a
 #: served result, but it is a key either way and must never be mistaken for a define's value.
-RESERVED = frozenset({SUBJECT_ID, ORDINAL, "__enzyme__row__id__", "__eval_id"})
+RESERVED = frozenset({SUBJECT_ID, ORDINAL, "__enzyme__row__id__"})
 
 def quote(identifier: str) -> str:
     """Backtick-quote a column or relation identifier for Spark SQL."""

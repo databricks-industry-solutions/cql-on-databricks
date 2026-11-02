@@ -54,7 +54,6 @@ class Reader:
     def __call__(self, statement):
         self.statements.append(statement)
         assert "information_schema" not in statement
-        assert "__eval_id" not in statement
         assert "cql_completed_results" not in statement
         assert "COUNT(*)" not in statement
         if "'__entered' AS c" in statement:
