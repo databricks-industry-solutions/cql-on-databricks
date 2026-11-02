@@ -37,6 +37,9 @@ targets:
       # DEPLOY-PROJECT-ADMINS — optional: the project's admins besides the deployer (emails, service principal
       # application IDs or groups). Every deploy makes them workspace admins; they may tag environments.
       # admins: ["<admin-email>"]
+      # DEPLOY-ENVIRONMENT-TAG-POLICIES — optional, true by default: false leaves the environment tags ungoverned, for an
+      # account with no room for three more tag policies.
+      # govern_environment_tags: false
       # DOC-OPEN-SAVE — the base of the canonical URL of every library and measure created in the Designer:
       # <base>/Library/<Name>. Defaults to http://example.org/fhir, the examples' base. Set your own before
       # anyone creates a library: the URL is an identity a library keeps.

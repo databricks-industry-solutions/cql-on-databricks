@@ -148,6 +148,12 @@ variables:
       default: the deployer alone.
     type: complex
     default: []
+  govern_environment_tags:
+    description: >-
+      DEPLOY-ENVIRONMENT-TAG-POLICIES — true makes the three environment tags governed tags, so only the deployer and
+      admins can tag a catalog an environment or the default. false skips it, for an account with no room for three
+      more tag policies (1,000 per account), and the deploy warns that the tags are not governed.
+    default: true
   workspace_users_group:
     description: >-
       DEPLOY-AGENT-SKILLS — the WORKSPACE group granted read on the workspace skills folder Genie Code loads. A workspace

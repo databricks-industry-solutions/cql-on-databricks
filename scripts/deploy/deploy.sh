@@ -264,7 +264,14 @@ _agent_app="$(jqpy "a=(d.get('resources') or {}).get('apps') or {};print((a.get(
 
 echo "==> [7.9] govern the environment tags (DEPLOY-ENVIRONMENT-TAG-POLICIES)"
 # Before [8], which tags the default environment: once a key is governed, only its assigners can apply it.
-bash "$here/scripts/deploy/environment-tag-policies.sh" -t "$target" ${profile_args[@]+"${profile_args[@]}"}
+_govern="$(jqpy "v=d.get('variables') or {};print(str((v.get('govern_environment_tags') or {}).get('value', True)).lower())")"
+case "$_govern" in
+  true) bash "$here/scripts/deploy/environment-tag-policies.sh" -t "$target" ${profile_args[@]+"${profile_args[@]}"};;
+  false)
+    echo "!!! WARNING: govern_environment_tags is false, so the environment tags are NOT governed: anyone who can tag a"
+    echo "!!! catalog can make it an environment or the default environment (DEPLOY-ENVIRONMENT-TAG-POLICIES).";;
+  *) echo "!!! govern_environment_tags must be true or false, not $_govern"; exit 1;;
+esac
 
 echo "==> [8] fill the default environment in $_uc_catalog, as the deployer (DEPLOY-DEFAULT-ENVIRONMENT)"
 # After [3/7], whose bundle deploy made the environment's schemas and their grants. FATAL on failure, like every step

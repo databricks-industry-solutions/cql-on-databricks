@@ -116,3 +116,13 @@ def test_the_deploy_governs_the_tags_before_it_tags_a_catalog():
     bundle = (_ROOT / "databricks.yml").read_text()
     assert "content: bash ./scripts/deploy/environment-tag-policies.sh" in bundle
     assert deploy.index('"$here/scripts/deploy/environment-tag-policies.sh"') < deploy.index("provision-examples.py\"")
+
+
+def test_governing_the_tags_can_be_turned_off_with_a_warning():
+    """An account at its tag-policy limit turns governance off; the deploy says the tags are not governed."""
+    import yaml
+    deploy = (_ROOT / "scripts/deploy/deploy.sh").read_text()
+    variables = yaml.safe_load((_ROOT / "databricks.yml").read_text())["variables"]
+    assert variables["govern_environment_tags"]["default"] is True
+    assert "the environment tags are NOT governed" in deploy
+    assert deploy.index("govern_environment_tags must be true or false") > deploy.index("environment-tag-policies.sh")

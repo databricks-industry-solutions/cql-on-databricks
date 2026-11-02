@@ -38,8 +38,9 @@ default environment, so no business user is ever asked which one.
 | `cql_databricks_environment_default` | `true` on the default environment |
 | Catalog comment | The description. Keep it short |
 
-The three tags are governed tags, which only the project's admins can assign (`DEPLOY-ENVIRONMENT-TAG-POLICIES`), so
-owning a catalog does not make it an environment or the default.
+The deploy makes the three tags governed tags, which only the project's admins can assign (`DEPLOY-ENVIRONMENT-TAG-POLICIES`),
+so owning a catalog does not make it an environment or the default. An account with no room for the policies can turn
+this off, with a warning.
 
 Environments are found with one query of `system.information_schema.catalog_tags`. Only catalogs the caller can
 see are found. Two visible defaults fail, naming both; no visible default fails, naming the tag.
