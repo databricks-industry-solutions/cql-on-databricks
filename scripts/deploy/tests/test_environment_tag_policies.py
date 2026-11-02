@@ -53,7 +53,7 @@ def test_each_environment_tag_is_governed_with_its_values():
     workspace = Workspace()
     policies.provision(workspace, [])
     assert {p.tag_key: [v.name for v in p.values] for p in workspace.created} == {
-        "cql_databricks_environment": [], "cql_databricks_environment_version": ["1"],
+        "cql_databricks_environment": [], "cql_databricks_environment_version": ["2"],
         "cql_databricks_environment_default": ["true"]}
 
 

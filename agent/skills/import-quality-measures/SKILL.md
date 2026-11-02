@@ -72,7 +72,7 @@ needed = set().union(*(declared_valuesets(lib) for lib in libraries))
 Every value set the libraries declare (`needed`) must have codes, in this import or already in the target's
 `valueset` table. A measure run without them under-counts silently, so the import refuses.
 
-- Check which ones already have codes in the terminology schema you will use (step 5):
+- Check which ones already have codes in the knowledge store you will use (step 5):
   `SELECT DISTINCT valueset_id FROM <catalog>.<schema>.valueset`.
 - For the rest, find out what the user has. A `ValueSet` resource with an `expansion`, or with a `compose` that
   only lists concepts, can be imported as is. One defined by filters or by other value sets must be expanded
@@ -84,9 +84,9 @@ Every value set the libraries declare (`needed`) must have codes, in this import
 
 ## 5. Choose where it goes
 
-Measures go into an environment: a catalog tagged `cql_databricks_environment`, whose `knowledge_store` and
-`terminology_store` tables its `knowledge` and `terminology` views select. The import writes those two store
-schemas. List the environments the user can see, and what they can do in each store:
+Measures go into an environment: a catalog tagged `cql_databricks_environment`, whose `knowledge_store` tables
+its `knowledge` views select: `library`, `measure` and `valueset`. The import writes that store. List the
+environments the user can see, and what they can do in each store:
 
 ```sql
 -- Environments: one row per tag of each catalog tagged as one
@@ -94,16 +94,16 @@ SELECT catalog_name, tag_name, tag_value
 FROM system.information_schema.catalog_tags
 WHERE tag_name IN ('cql_databricks_environment', 'cql_databricks_environment_default');
 
--- What you can do in each store schema (your own grants and your groups')
+-- What you can do in each knowledge store (your own grants and your groups')
 SELECT catalog_name, schema_name, collect_set(privilege_type) AS privileges
 FROM system.information_schema.schema_privileges
-WHERE schema_name IN ('knowledge_store', 'terminology_store')
+WHERE schema_name = 'knowledge_store'
   AND (grantee = current_user() OR is_account_group_member(grantee))
 GROUP BY ALL;
 ```
 
-An import works when the user can write both stores: `USE CATALOG`, `USE SCHEMA`, `CREATE TABLE`, `MODIFY` and
-`SELECT` on `knowledge_store` and `terminology_store` (`ALL PRIVILEGES` covers them). Propose the environment, with
+An import works when the user can write the store: `USE CATALOG`, `USE SCHEMA`, `CREATE TABLE`, `MODIFY` and
+`SELECT` on `knowledge_store` (`ALL PRIVILEGES` covers them). Propose the environment, with
 the reason, and let the user choose. The default environment is the one the Designer and Genie use unless someone
 picks another. Re-importing replaces a value set's codes whole, and merges measures and libraries on their canonical
 URL and version.

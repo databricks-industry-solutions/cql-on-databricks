@@ -1,7 +1,6 @@
 """DATA-ENVIRONMENT-LAYOUT — the identity of one content schema an environment holds.
 
-An environment's knowledge and terminology are its ``knowledge`` and ``terminology`` schemas, by their standard names
-(`CLIENT-ENVIRONMENT`). Nothing is found by tag: :class:`TaggedSchema` names a schema, the kind of content it holds and
+An environment's knowledge and terminology are its ``knowledge`` schema, by its standard name (`CLIENT-ENVIRONMENT`). Nothing is found by tag: :class:`TaggedSchema` names a schema, the kind of content it holds and
 the environment it belongs to, so a library read from it can say where it came from.
 """
 from __future__ import annotations

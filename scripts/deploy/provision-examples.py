@@ -3,7 +3,7 @@ deployer.
 
 Run by ``scripts/deploy/deploy.sh`` after the Apps start. The bundle has made the environment's schemas and their
 grants (``databricks.yml``). This fills them (``shipped_sources.environment.fill``): the example measures and their
-value sets in ``knowledge_store`` and ``terminology_store`` through the import (``CONTENT-IMPORT-MEASURES``) and the
+value sets in ``knowledge_store`` through the import (``CONTENT-IMPORT-MEASURES``) and the
 synthetic small population in ``data_store`` (``DATA-SYNTH-SMALL``), from ``examples/`` (``shipped_sources.examples``,
 ``DEPLOY-SHIPPED-SOURCES``); the published views over them; and the catalog tags, default only if no catalog the
 deployer can see is the default already. Then the two grants a bundle cannot make: ``USE CATALOG`` for the App users'

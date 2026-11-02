@@ -127,7 +127,7 @@ print(json.dumps(encounters["expression"], indent=2)[:600], "...")
 # MAGIC DataFrame on the contract every data view returns, `(__subject_id, __resource)`, its `__resource` the struct
 # MAGIC the compiler's FHIR model defines (`client.resource_schema(type)`), with a single all-null row instead of a
 # MAGIC clinical record. A `DataFrameDataResolver` hands them to a second client; value sets still come from the
-# MAGIC environment's `terminology` view.
+# MAGIC environment's `knowledge.valueset` view.
 # MAGIC
 # MAGIC One row rather than none, because an empty relation is something the optimizer is entitled to fold
 # MAGIC away — the plan would collapse to nothing and prove nothing. The row is a **plan placeholder** and is

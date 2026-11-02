@@ -36,7 +36,7 @@ class Content:
     generation = 1
 
 
-ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="1")
+ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="2")
 
 
 class Compiler:
@@ -103,10 +103,10 @@ def test_an_inline_run_binds_the_environment_and_period_under_its_own_prefix():
     inline(compiler)
     inline(compiler)
     first, second = compiler.requests
-    # BIND-PUBLISHED-VIEW: the environment's data and terminology views, by rule; one compiler call.
+    # BIND-PUBLISHED-VIEW: the environment's data and knowledge views, by rule; one compiler call.
     assert first.data == {"rule": {"schema": "synthetic.data", "identity": "synthetic.data"}}
-    assert first.terminology == {"rule": [{"table": "synthetic.terminology.valueset",
-                                            "identity": "synthetic.terminology"}]}
+    assert first.terminology == {"rule": [{"table": "synthetic.knowledge.valueset",
+                                            "identity": "synthetic.knowledge"}]}
     assert first.measurement_period == ("2026-01-01", "2026-12-31")
     assert first.udf_schema == "synthetic_runtime.runtime" and not first.durable
     assert first.object_prefix != second.object_prefix

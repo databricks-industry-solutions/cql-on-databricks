@@ -353,7 +353,7 @@ def test_the_route_refuses_a_new_library_with_no_base(monkeypatch):
 
 #: CLIENT-ENVIRONMENT — the environment the caller can see, in catalog ``k``.
 ENVIRONMENT_TAGS = [{"catalog": "k", "tag": "cql_databricks_environment", "value": "k_env", "comment": None},
-                    {"catalog": "k", "tag": "cql_databricks_environment_version", "value": "1", "comment": None},
+                    {"catalog": "k", "tag": "cql_databricks_environment_version", "value": "2", "comment": None},
                     {"catalog": "k", "tag": "cql_databricks_environment_default", "value": "true", "comment": None}]
 
 

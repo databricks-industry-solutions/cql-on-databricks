@@ -20,8 +20,8 @@ import logging
 from collections.abc import Callable, Iterable
 
 from cql_databricks.resolvers.environment import (DATA, DATA_STORE, DEFAULT_TAG, DRAFT_RESULTS, KNOWLEDGE,
-                                                  KNOWLEDGE_STORE, LAYOUT_VERSION, NAME_TAG, RESULTS, TERMINOLOGY,
-                                                  TERMINOLOGY_STORE, VERSION_TAG, EnvironmentResolver)
+                                                  KNOWLEDGE_STORE, LAYOUT_VERSION, NAME_TAG, RESULTS, VERSION_TAG,
+                                                  EnvironmentResolver)
 
 log = logging.getLogger("shipped_sources.environment")
 
@@ -29,16 +29,14 @@ log = logging.getLogger("shipped_sources.environment")
 SCHEMAS: dict[str, str] = {
     DATA: "Published data: one view per FHIR type on the contract (__subject_id, __resource), and change_log",
     DATA_STORE: "The data store the data views select",
-    TERMINOLOGY: "Published terminology: the valueset view",
-    TERMINOLOGY_STORE: "The terminology store the valueset view selects",
-    KNOWLEDGE: "Published knowledge: the library and measure views",
-    KNOWLEDGE_STORE: "The knowledge store the library and measure views select",
+    KNOWLEDGE: "Published knowledge: the library, measure and valueset views",
+    KNOWLEDGE_STORE: "The knowledge store the library, measure and valueset views select",
     RESULTS: "Published results, written by their publishers",
     DRAFT_RESULTS: "Each user's own results, one table per result, owned by its writer",
 }
 
 #: The schemas readers get SELECT on (`DATA-ENVIRONMENT-LAYOUT`): the published ones, never a store.
-PUBLISHED = (DATA, TERMINOLOGY, KNOWLEDGE, RESULTS)
+PUBLISHED = (DATA, KNOWLEDGE, RESULTS)
 
 #: DATA-CHANGE-LOG-PERIODS — the change log's name in ``data`` and in ``data_store``.
 CHANGE_LOG = "change_log"
@@ -81,9 +79,9 @@ def change_log_all_statement(catalog: str) -> str:
 
 
 def content_view_statements(catalog: str) -> list[str]:
-    """BIND-PUBLISHED-VIEW — the terminology and knowledge views, each selecting its store."""
-    return [f"CREATE OR REPLACE VIEW {quote(catalog, TERMINOLOGY, 'valueset')} AS "
-            f"SELECT valueset_id, system, code, version FROM {quote(catalog, TERMINOLOGY_STORE, 'valueset')}",
+    """BIND-PUBLISHED-VIEW — the knowledge views, each selecting its store."""
+    return [f"CREATE OR REPLACE VIEW {quote(catalog, KNOWLEDGE, 'valueset')} AS "
+            f"SELECT valueset_id, system, code, version FROM {quote(catalog, KNOWLEDGE_STORE, 'valueset')}",
             *(f"CREATE OR REPLACE VIEW {quote(catalog, KNOWLEDGE, table)} AS "
               f"SELECT * FROM {quote(catalog, KNOWLEDGE_STORE, table)}" for table in ("library", "measure"))]
 
@@ -115,8 +113,8 @@ def grant_statements(catalog: str, *, users: str, maintenance: str | None,
     ``users`` (the App users' group) read the published schemas and create their own tables in ``draft_results``,
     with no ``SELECT`` or ``MODIFY`` on it, so each reads only the tables they own. ``maintenance``, the maintenance
     Job's principal, gets ``MANAGE`` on ``draft_results`` to expire its tables (`RUN-CLIENT-MAINTENANCE`).
-    ``content_readers`` (the Designer App's service principal) read the knowledge and terminology views it holds
-    in memory (`KNOWLEDGE-LAKE-DIRECT`) and nothing else: never a store or a result."""
+    ``content_readers`` (the Designer App's service principal) read the knowledge views, whose libraries and value
+    sets it holds in memory (`KNOWLEDGE-LAKE-DIRECT`) and nothing else: never a store or a result."""
     statements = [catalog_grant(catalog, users),
                   *(f"GRANT USE SCHEMA, SELECT ON SCHEMA {quote(catalog, schema)} TO {quote(users)}"
                     for schema in PUBLISHED),
@@ -125,8 +123,7 @@ def grant_statements(catalog: str, *, users: str, maintenance: str | None,
         statements += [catalog_grant(catalog, maintenance), maintenance_grant(catalog, maintenance)]
     for reader in content_readers:
         statements += [catalog_grant(catalog, reader),
-                       *(f"GRANT USE SCHEMA, SELECT ON SCHEMA {quote(catalog, schema)} TO {quote(reader)}"
-                         for schema in (KNOWLEDGE, TERMINOLOGY))]
+                       f"GRANT USE SCHEMA, SELECT ON SCHEMA {quote(catalog, KNOWLEDGE)} TO {quote(reader)}"]
     return statements
 
 

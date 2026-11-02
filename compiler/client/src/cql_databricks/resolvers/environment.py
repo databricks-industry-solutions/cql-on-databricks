@@ -8,9 +8,8 @@ run in the schemas of ``DATA-ENVIRONMENT-LAYOUT``:
 | Schema | Holds |
 |---|---|
 | ``data`` | published views, one per FHIR type, named for the type in lower case, on the contract |
-| ``terminology`` | the published view ``valueset(valueset_id, system, code, version)`` |
-| ``knowledge`` | the published views ``library`` and ``measure`` |
-| ``data_store``, ``terminology_store``, ``knowledge_store`` | the store tables publishing writes; optional |
+| ``knowledge`` | the published views ``library``, ``measure`` and ``valueset(valueset_id, system, code, version)`` |
+| ``data_store``, ``knowledge_store`` | the store tables publishing writes; optional |
 | ``results``, ``draft_results`` | kept results (`RUN-CLIENT-DRAFT-RESULTS`) |
 
 :class:`EnvironmentResolver` finds environments with one query of ``system.information_schema.catalog_tags``, as the
@@ -39,12 +38,12 @@ VERSION_TAG = "cql_databricks_environment_version"
 DEFAULT_TAG = "cql_databricks_environment_default"
 
 #: CLIENT-ENVIRONMENT: the layout version this client writes, and every version it reads.
-LAYOUT_VERSION = "1"
-SUPPORTED_LAYOUTS = ("1",)
+LAYOUT_VERSION = "2"
+SUPPORTED_LAYOUTS = ("2",)
 
 #: DATA-ENVIRONMENT-LAYOUT: the standard schema names.
-DATA, TERMINOLOGY, KNOWLEDGE = "data", "terminology", "knowledge"
-DATA_STORE, TERMINOLOGY_STORE, KNOWLEDGE_STORE = "data_store", "terminology_store", "knowledge_store"
+DATA, KNOWLEDGE = "data", "knowledge"
+DATA_STORE, KNOWLEDGE_STORE = "data_store", "knowledge_store"
 RESULTS, DRAFT_RESULTS = "results", "draft_results"
 
 _ENVIRONMENTS = f"""
@@ -187,10 +186,10 @@ class EnvironmentResolver:
         return SchemaDataResolver(env.schema(DATA))
 
     def terminology(self, env: Environment) -> TableTerminologyResolver:
-        """BIND-PUBLISHED-VIEW: the environment's ``terminology.valueset`` view, by rule; its store is
-        ``terminology_store.valueset``."""
-        return TableTerminologyResolver(f"{env.schema(TERMINOLOGY)}.valueset", self._run,
-                                        store=f"{env.schema(TERMINOLOGY_STORE)}.valueset")
+        """BIND-PUBLISHED-VIEW: the environment's ``knowledge.valueset`` view, by rule; its store is
+        ``knowledge_store.valueset``."""
+        return TableTerminologyResolver(f"{env.schema(KNOWLEDGE)}.valueset", self._run,
+                                        store=f"{env.schema(KNOWLEDGE_STORE)}.valueset")
 
     def content(self, env: Environment, runner: Callable | None = None):
         """The environment's knowledge and terminology as a

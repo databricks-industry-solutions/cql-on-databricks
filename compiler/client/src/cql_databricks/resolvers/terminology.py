@@ -2,7 +2,7 @@
 
 | Resolver | Reads | A store |
 |---|---|---|
-| :class:`TableTerminologyResolver` | a ``valueset(valueset_id, system, code, version)`` table or view; an environment's ``terminology.valueset`` | yes, given its store table |
+| :class:`TableTerminologyResolver` | a ``valueset(valueset_id, system, code, version)`` table or view; an environment's ``knowledge.valueset`` | yes, given its store table |
 | :class:`FolderTerminologyResolver` | FHIR ``ValueSet`` JSON, one per ``.json`` file, in a volume or workspace folder | no |
 | :class:`DataFrameTerminologyResolver` | a DataFrame of ``(valueset_id, version, system, code)`` rows; for development, Spark only | no |
 

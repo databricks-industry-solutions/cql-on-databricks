@@ -48,7 +48,7 @@ echo "==> catalog=$catalog apps=$designer_app $agent_app"
 # DEPLOY-APP-GRANTS, RUN-CLIENT-DRAFT-RESULTS — the App service principals get USE_CATALOG on the catalog and nothing
 # that reaches data: the catalog is the default environment, and a catalog-wide SELECT would be inherited by every
 # user's table in draft_results. Every result read is the signed-in user's (SEC-OBO). The Designer's principal reads
-# the environment's knowledge and terminology as itself (KNOWLEDGE-LAKE-DIRECT); those schema grants are bundle
+# the environment's knowledge, with its value sets, as itself (KNOWLEDGE-LAKE-DIRECT); those schema grants are bundle
 # resources (databricks.yml). USE_CATALOG is here because a bundle grants on a catalog only when it holds the catalog,
 # and this one is the deployer's. An earlier deploy granted USE_SCHEMA and SELECT catalog-wide, so they are revoked.
 catalog_privs='["USE_CATALOG"]'

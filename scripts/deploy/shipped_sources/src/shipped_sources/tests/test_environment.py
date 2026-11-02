@@ -8,7 +8,7 @@ import pytest
 from shipped_sources import environment
 
 TAGS = [{"catalog": "other_cat", "tag": "cql_databricks_environment", "value": "other", "comment": None},
-        {"catalog": "other_cat", "tag": "cql_databricks_environment_version", "value": "1", "comment": None}]
+        {"catalog": "other_cat", "tag": "cql_databricks_environment_version", "value": "2", "comment": None}]
 
 
 def _build(tags, *, default=True, maintenance="maint-sp"):
@@ -32,18 +32,18 @@ def test_schemas_come_first_then_the_content_then_views_tags_and_grants():
     statements, loaded_at, counts = _build(TAGS)
     assert counts == {"Patient": 3}
     schemas = [s for s in statements if s.startswith("CREATE SCHEMA IF NOT EXISTS")]
-    assert [s.split("`")[3] for s in schemas] == ["data", "data_store", "terminology", "terminology_store",
-                                                  "knowledge", "knowledge_store", "results", "draft_results"]
+    assert [s.split("`")[3] for s in schemas] == ["data", "data_store", "knowledge", "knowledge_store", "results",
+                                                  "draft_results"]
     assert loaded_at == len(schemas)
     views = statements[loaded_at:loaded_at + 3]
     assert views == [
-        "CREATE OR REPLACE VIEW `env_cat`.`terminology`.`valueset` AS "
-        "SELECT valueset_id, system, code, version FROM `env_cat`.`terminology_store`.`valueset`",
+        "CREATE OR REPLACE VIEW `env_cat`.`knowledge`.`valueset` AS "
+        "SELECT valueset_id, system, code, version FROM `env_cat`.`knowledge_store`.`valueset`",
         "CREATE OR REPLACE VIEW `env_cat`.`knowledge`.`library` AS SELECT * FROM `env_cat`.`knowledge_store`.`library`",
         "CREATE OR REPLACE VIEW `env_cat`.`knowledge`.`measure` AS SELECT * FROM `env_cat`.`knowledge_store`.`measure`"]
     assert statements[loaded_at + 3] == (
         "ALTER CATALOG `env_cat` SET TAGS ('cql_databricks_environment' = 'example', "
-        "'cql_databricks_environment_version' = '1', 'cql_databricks_environment_default' = 'true')")
+        "'cql_databricks_environment_version' = '2', 'cql_databricks_environment_default' = 'true')")
     assert statements[loaded_at + 4] == "COMMENT ON CATALOG `env_cat` IS 'It\\'s synthetic'"
 
 
@@ -62,7 +62,6 @@ def test_users_read_published_schemas_and_create_only_their_own_draft_tables():
     users = [s for s in statements if s.endswith("TO `app users`")]
     assert users == ["GRANT USE CATALOG ON CATALOG `env_cat` TO `app users`",
                      "GRANT USE SCHEMA, SELECT ON SCHEMA `env_cat`.`data` TO `app users`",
-                     "GRANT USE SCHEMA, SELECT ON SCHEMA `env_cat`.`terminology` TO `app users`",
                      "GRANT USE SCHEMA, SELECT ON SCHEMA `env_cat`.`knowledge` TO `app users`",
                      "GRANT USE SCHEMA, SELECT ON SCHEMA `env_cat`.`results` TO `app users`",
                      "GRANT USE SCHEMA, CREATE TABLE ON SCHEMA `env_cat`.`draft_results` TO `app users`"]
@@ -75,8 +74,7 @@ def test_maintenance_manages_draft_results_and_the_designer_reads_only_content()
     assert "GRANT USE SCHEMA, MANAGE ON SCHEMA `env_cat`.`draft_results` TO `maint-sp`" in statements
     designer = [s for s in statements if s.endswith("TO `designer-sp`")]
     assert designer == ["GRANT USE CATALOG ON CATALOG `env_cat` TO `designer-sp`",
-                        "GRANT USE SCHEMA, SELECT ON SCHEMA `env_cat`.`knowledge` TO `designer-sp`",
-                        "GRANT USE SCHEMA, SELECT ON SCHEMA `env_cat`.`terminology` TO `designer-sp`"]
+                        "GRANT USE SCHEMA, SELECT ON SCHEMA `env_cat`.`knowledge` TO `designer-sp`"]
     statements, _, _ = _build(TAGS, maintenance=None)
     assert not any("MANAGE" in s for s in statements)
 

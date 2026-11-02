@@ -16,7 +16,7 @@ results need a schema of their own.
 ## Decision
 
 Everything runs in an **environment**. An environment is one Unity Catalog catalog holding every dependency of
-a run in standard schemas: data, terminology, knowledge and results. A client with nothing named runs in the
+a run in standard schemas: data, knowledge (which holds terminology) and results. A client with nothing named runs in the
 default environment, so no business user is ever asked which one.
 
 ### Terms
@@ -49,12 +49,15 @@ see are found. Two visible defaults fail, naming both; no visible default fails,
 |---|---|---|
 | `data` | Published views: one per FHIR type, named for the type in lower case (`condition`), with the contract columns `(__subject_id, __resource)` (`BIND-CONTRACT`), and `change_log` | The customer; the deploy for the default environment |
 | `data_store` | Store tables a view selects by default | Publishing, the synthetic loader |
-| `terminology` | The published view `valueset(valueset_id, system, code, version)` | As `data` |
-| `terminology_store` | Its store table | Publishing |
-| `knowledge` | The published views `library` and `measure` | As `data` |
-| `knowledge_store` | Their store tables | Publishing, the Designer's Publish |
+| `knowledge` | The published views `library`, `measure` and `valueset(valueset_id, system, code, version)` | As `data` |
+| `knowledge_store` | Their store tables | Publishing; the Designer's Publish writes `library` and `measure` |
 | `results` | Official results, reused by every identity: runs that bind only the environment's own resolvers | Whoever the implementer grants: publishing Jobs |
 | `draft_results` | Each user's own results, in one shared schema | The Designer, as the user; the agent's tools read it |
+
+Terminology lives in `knowledge`, not in schemas of its own. A schema is the grant boundary, and value sets have
+the same readers and writers as libraries and measures, and no patient data. Patient data (`data`) and results,
+which derive from it and are written per user, stay apart. Where value sets have writers of their own, grant
+`MODIFY` on the store's tables rather than on the schema.
 
 A store schema is optional. A customer may define every view over tables of their own and have no store. A run
 never checks a store. A run binds the published views by name and reads no `information_schema`; a view that is
@@ -114,7 +117,7 @@ discovery.
 The compiler stays pure: it never calls a resolver or reads the catalog. It reports sites and takes answers.
 Each role in the compile request carries a rule, a map by site id, or both; for each site the compiler uses the
 map entry if there is one, else the rule. The environment's rule is `<catalog>.data.<type>` for data,
-`<catalog>.terminology.valueset` for terminology and `<catalog>.knowledge` for knowledge. A run whose resolvers
+`<catalog>.knowledge.valueset` for terminology and `<catalog>.knowledge` for knowledge. A run whose resolvers
 bind by rule makes one compiler call. Only a resolver that binds per site calls `describe` first, then compiles
 with its map: two calls, the CQL translated twice. The fingerprint covers the relation each site was bound to,
 whether it came from the rule or the map.

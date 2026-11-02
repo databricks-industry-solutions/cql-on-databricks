@@ -30,10 +30,10 @@ SCOPE = {"environment": "synthetic", "library": "Synthetic", "version": "1",
 #: CLIENT-ENVIRONMENT — the environments the caller can see: the default one, and another.
 ENVIRONMENT_TAGS = [
     {"catalog": "synthetic_env", "tag": "cql_databricks_environment", "value": "synthetic", "comment": None},
-    {"catalog": "synthetic_env", "tag": "cql_databricks_environment_version", "value": "1", "comment": None},
+    {"catalog": "synthetic_env", "tag": "cql_databricks_environment_version", "value": "2", "comment": None},
     {"catalog": "synthetic_env", "tag": "cql_databricks_environment_default", "value": "true", "comment": None},
     {"catalog": "other_env", "tag": "cql_databricks_environment", "value": "other", "comment": None},
-    {"catalog": "other_env", "tag": "cql_databricks_environment_version", "value": "1", "comment": None}]
+    {"catalog": "other_env", "tag": "cql_databricks_environment_version", "value": "2", "comment": None}]
 
 
 @pytest.fixture

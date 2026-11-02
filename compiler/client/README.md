@@ -79,9 +79,8 @@ Every run is in one environment (`CLIENT-ENVIRONMENT`). An environment is a Unit
 | Schema | Holds |
 |---|---|
 | `data` | One view per FHIR type, named for the type in lower case (`condition`), returning `(__subject_id, __resource)`, and optionally `change_log` |
-| `terminology` | The view `valueset(valueset_id, system, code, version)` |
-| `knowledge` | The views `library` and `measure` |
-| `data_store`, `terminology_store`, `knowledge_store` | The tables the views select by default. Optional |
+| `knowledge` | The views `library`, `measure` and `valueset(valueset_id, system, code, version)` |
+| `data_store`, `knowledge_store` | The tables the views select by default. Optional |
 | `results` | Published results |
 | `draft_results` | Each user's own results |
 

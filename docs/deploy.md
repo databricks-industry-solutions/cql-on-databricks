@@ -90,9 +90,9 @@ The script, in order:
 4. Runs `databricks bundle deploy`, which creates the runtime schema and Volume, the Designer's shared
    schema, the default environment's schemas and their schema grants (`DEPLOY-DEFAULT-ENVIRONMENT`,
    `DEPLOY-APP-GRANTS`), the Apps and their permissions, and the `cql-databricks-designer-maintenance` Job.
-   `app_users_group` gets `USE SCHEMA` and `SELECT` on `data`, `terminology`, `knowledge` and `results`, and
+   `app_users_group` gets `USE SCHEMA` and `SELECT` on `data`, `knowledge` and `results`, and
    `USE SCHEMA` and `CREATE TABLE` on `draft_results`; the Designer's service principal gets `USE SCHEMA` and
-   `SELECT` on `knowledge` and `terminology`. The Job's daily schedule deploys paused: unpause it after one run has
+   `SELECT` on `knowledge`. The Job's daily schedule deploys paused: unpause it after one run has
    been checked on the workspace.
 5. Uploads the compiler's JRE and jars, the runtime function jar, and the client and agent wheels to the Volume.
 6. Registers the `cql_*` runtime functions in Unity Catalog (`scripts/deploy/register-uc-udfs.sh`).
@@ -111,7 +111,7 @@ The script, in order:
     `DEPLOY-ENVIRONMENT-TAG-POLICIES`), so only you and `admins` can tag a catalog an environment or the default.
     Creating a tag policy needs a workspace admin, unless an account admin changed who may.
 13. Fills the default environment's schemas (`scripts/deploy/provision-examples.py`, `DEPLOY-DEFAULT-ENVIRONMENT`):
-    the example measures and value sets in `knowledge_store` and `terminology_store`, through the import; the
+    the example measures and value sets in `knowledge_store`, through the import; the
     synthetic small population in `data_store`; the views over them; and the catalog tags. Then the two grants the
     bundle can't make: `USE CATALOG` on `uc_catalog` to `app_users_group`, and `USE SCHEMA` and `MANAGE` on
     `draft_results` to the maintenance principal.
@@ -220,8 +220,8 @@ own skips registration when `warehouse_id` is empty; `scripts/deploy/deploy.sh` 
 ## Users
 
 The Apps act as the signed-in user, so users need their own grants. The deploy grants `app_users_group`
-`CAN_USE` on the Apps and, in the default environment, `USE CATALOG`, `SELECT` on `data`, `terminology`, `knowledge`
-and `results`, and `USE SCHEMA` and `CREATE TABLE` on `draft_results` (`DEPLOY-DEFAULT-ENVIRONMENT`). No user gets
+`CAN_USE` on the Apps and, in the default environment, `USE CATALOG`, `SELECT` on `data`, `knowledge` and
+`results`, and `USE SCHEMA` and `CREATE TABLE` on `draft_results` (`DEPLOY-DEFAULT-ENVIRONMENT`). No user gets
 `SELECT` on `draft_results`: each reads only the tables they own (`RUN-CLIENT-DRAFT-RESULTS`). Grant the same group:
 
 | On | Grant | Why |
@@ -255,12 +255,12 @@ user consents again, calls that need the new scope fail. Restarting the App does
 Each App has its own service principal. Everything the Apps read about a user's data and results, they read as the
 user. The Designer's principal reads only the environments' knowledge it holds in memory (`KNOWLEDGE-LAKE-DIRECT`).
 The deploy grants both principals `USE CATALOG` on `uc_catalog`, and the bundle grants the Designer's `SELECT` on its
-`knowledge` and `terminology` (`DEPLOY-APP-GRANTS`), and never a catalog-wide `SELECT`, which `draft_results` would inherit. It doesn't
+`knowledge` (`DEPLOY-APP-GRANTS`), and never a catalog-wide `SELECT`, which `draft_results` would inherit. It doesn't
 grant them:
 
 - `CAN_USE` on the SQL warehouse. Grant it, unless the warehouse already allows `users`.
 - Anything in another environment's catalog. Grant the Designer's principal `USE CATALOG` there and `SELECT` on
-  `knowledge` and `terminology`, or the Designer can't show that environment's libraries.
+  `knowledge`, or the Designer can't show that environment's libraries.
 
 `databricks apps get <app> -o json` shows an App's `service_principal_client_id`.
 

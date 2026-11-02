@@ -160,7 +160,7 @@ class _KnowledgeSpark:
         if "information_schema.catalog_tags" in statement:
             return _Rows([{"catalog": "k", "tag": tag, "value": value, "comment": None}
                           for tag, value in (("cql_databricks_environment", "env"),
-                                             ("cql_databricks_environment_version", "1"),
+                                             ("cql_databricks_environment_version", "2"),
                                              ("cql_databricks_environment_default", "true"))])
         if "measure_url" in statement:
             assert "`k`.`knowledge`.`measure`" in statement

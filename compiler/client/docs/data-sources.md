@@ -25,7 +25,7 @@ changed (load time, commit time, `meta.lastUpdated`), never a clinical date. Del
 
 ## Value sets and knowledge
 
-Value-set expansions are the environment's `terminology.valueset` view, and libraries its `knowledge.library` and
+Value-set expansions are the environment's `knowledge.valueset` view, and libraries its `knowledge.library` and
 `knowledge.measure` views. The import (`CONTENT-IMPORT-MEASURES`) writes their store tables.
 
 ## Environments this repository ships

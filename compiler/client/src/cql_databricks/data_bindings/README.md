@@ -20,7 +20,7 @@ and imports measures into an environment. It is the `cql_databricks.data_binding
 
 An environment is a catalog (`CLIENT-ENVIRONMENT`). Its knowledge is the published views `knowledge.library` and
 `knowledge.measure`, each with `url`, `version` and `resource` (`DATA-ENVIRONMENT-LAYOUT`). Its value sets are the
-published view `terminology.valueset(valueset_id, system, code, version)`. Value sets arrive already expanded.
+published view `knowledge.valueset(valueset_id, system, code, version)`. Value sets arrive already expanded.
 Nothing here computes an expansion. Tables may have more columns than these.
 
 No schema is searched for and no tag is read. `ContentResolver` names the environment's `knowledge` schema and
@@ -40,8 +40,7 @@ use the same code. Every statement sent to a SQL warehouse goes through `warehou
 ## Importing measures
 
 `cql_databricks.data_bindings.measure_import.import_measures` (`CONTENT-IMPORT-MEASURES`) writes measures and
-libraries into the `knowledge_store` schema and value sets into the `terminology_store` schema of the environment in
-the catalog the caller names. It takes FHIR `Measure`, `Library` and `ValueSet` resources (or Bundles) and value-set code rows the
+libraries and value sets into the `knowledge_store` schema of the environment in the catalog the caller names. It takes FHIR `Measure`, `Library` and `ValueSet` resources (or Bundles) and value-set code rows the
 caller has read. It reads no file and fetches nothing. The `import-quality-measures` skill is how a user brings
 content to it (`CONTENT-IMPORT-SKILL`), and the deploy loads `examples/` through it (`scripts/deploy/shipped_sources`).
 It needs a Spark session, so `cql_databricks.data_bindings` does not import it.

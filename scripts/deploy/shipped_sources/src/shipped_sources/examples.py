@@ -13,7 +13,7 @@ What it reads, and where each part lands in the stores of the environment in ``<
   in ``knowledge_store.measure``. A library is a measure in the catalog only when a ``Measure`` references it
   (``CONTENT-MEASURE-LIBRARY-LINK``), so each one names its library's canonical URL.
 - ``examples/valuesets/*.ndjson`` — value-set expansion rows ``{valueset_id, system, code, display}``, in
-  ``terminology_store.valueset``. Every value set a library declares must have codes here.
+  ``knowledge_store.valueset``. Every value set a library declares must have codes here.
 - ``examples/data/<Type>.ndjson`` — the synthetic population small (``DATA-SYNTH-SMALL``), in ``data_store``
   (``population.land``).
 

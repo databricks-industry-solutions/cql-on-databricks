@@ -212,8 +212,8 @@ def load(spark: SparkSession, result: TransformResult, *,
     schema (``knowledge_store`` in an environment, `DATA-ENVIRONMENT-LAYOUT`).
     Together they produce ``<catalog>.<schema>.measure``, etc.
 
-    ValueSet expansions are written to ``valueset_schema``, which may be the authority schema or a
-    terminology schema of its own (`DATA-ENVIRONMENT-LAYOUT`).
+    ValueSet expansions are written to ``valueset_schema`` (``knowledge_store`` in an environment,
+    `DATA-ENVIRONMENT-LAYOUT`).
     """
     _ensure_schema(spark, catalog, authority_schema)
     counts: dict[str, int] = {}
@@ -240,7 +240,7 @@ def load(spark: SparkSession, result: TransformResult, *,
 
 def ensure_valueset_table(spark: SparkSession, *, catalog: str | None,
                           valueset_schema: str) -> str:
-    """Ensure the ``valueset`` table exists in the terminology schema (empty if no
+    """Ensure the ``valueset`` table exists in ``valueset_schema`` (empty if no
     expansions loaded yet).  Returns the fully-qualified table name.  Allows a Knowledge
     Location to point to it immediately."""
     _ensure_schema(spark, catalog, valueset_schema)

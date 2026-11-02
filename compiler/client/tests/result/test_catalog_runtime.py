@@ -23,7 +23,7 @@ WRITER = writer_digest(OWNER)
 #: RUN-CLIENT-DRAFT-RESULTS — the synthetic environment the public calls run in, and where a private run writes.
 from cql_databricks.resolvers.environment import Environment  # noqa: E402
 
-ENVIRONMENT = Environment(name="synthetic", catalog="synthetic_catalog", version="1")
+ENVIRONMENT = Environment(name="synthetic", catalog="synthetic_catalog", version="2")
 DRAFT = ("synthetic_catalog", "draft_results")
 
 

@@ -12,10 +12,10 @@ from agent.service.tests.durable_fixture import RESULT_SET, reference
 
 #: CLIENT-ENVIRONMENT — the catalog tags the caller can see: a default environment and one other.
 TAGS = [{"catalog": "synthetic", "tag": "cql_databricks_environment", "value": "synthetic", "comment": None},
-        {"catalog": "synthetic", "tag": "cql_databricks_environment_version", "value": "1", "comment": None},
+        {"catalog": "synthetic", "tag": "cql_databricks_environment_version", "value": "2", "comment": None},
         {"catalog": "synthetic", "tag": "cql_databricks_environment_default", "value": "true", "comment": None},
         {"catalog": "other_cat", "tag": "cql_databricks_environment", "value": "other", "comment": None},
-        {"catalog": "other_cat", "tag": "cql_databricks_environment_version", "value": "1", "comment": None}]
+        {"catalog": "other_cat", "tag": "cql_databricks_environment_version", "value": "2", "comment": None}]
 
 
 class Runner:

@@ -196,7 +196,7 @@ def test_a_volume_folder_and_value_set_json_answer_as_the_environment(spark, env
     from databricks.sdk import WorkspaceClient
 
     from cql_databricks.resolvers import FolderTerminologyResolver, VolumeDataResolver
-    from cql_databricks.resolvers.environment import TERMINOLOGY
+    from cql_databricks.resolvers.environment import KNOWLEDGE
 
     _, env, _ = environment
     files = WorkspaceClient().files
@@ -204,7 +204,7 @@ def test_a_volume_folder_and_value_set_json_answer_as_the_environment(spark, env
         rows = spark.sql(f"SELECT to_json(__resource) AS j FROM {scratch['schema']}.{fhir_type.lower()}").collect()
         body = "\n".join(json.dumps(_fhir(json.loads(r["j"]), fhir_type)) for r in rows)
         files.upload(f"{scratch['volume']}/fhir/{fhir_type}.ndjson", io.BytesIO(body.encode()), overwrite=True)
-    codes = spark.sql(f"SELECT system, code FROM {env.schema(TERMINOLOGY)}.valueset WHERE valueset_id = '{VALUE_SET}'"
+    codes = spark.sql(f"SELECT system, code FROM {env.schema(KNOWLEDGE)}.valueset WHERE valueset_id = '{VALUE_SET}'"
                       ).collect()
     value_set = {"resourceType": "ValueSet", "url": VALUE_SET,
                  "expansion": {"contains": [{"system": r["system"], "code": r["code"]} for r in codes]}}

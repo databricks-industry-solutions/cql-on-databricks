@@ -33,7 +33,7 @@ class Content:
         return "synthetic.knowledge"
 
 
-ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="1")
+ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="2")
 
 
 class Compiler:
@@ -82,10 +82,10 @@ def test_preparation_binds_actual_addresses_typed_period_and_include_closure_onc
     assert request.cql == ROOT and request.elm == ""
     assert request.parameters == {}
     assert request.measurement_period == ("2026-01-01", "2026-12-31")
-    # BIND-PUBLISHED-VIEW: the environment's data and terminology views, by rule, with their identities.
+    # BIND-PUBLISHED-VIEW: the environment's data and knowledge views, by rule, with their identities.
     assert request.data == {"rule": {"schema": "synthetic.data", "identity": "synthetic.data"}}
-    assert request.terminology == {"rule": [{"table": "synthetic.terminology.valueset",
-                                              "identity": "synthetic.terminology"}]}
+    assert request.terminology == {"rule": [{"table": "synthetic.knowledge.valueset",
+                                              "identity": "synthetic.knowledge"}]}
     assert request.udf_schema == "synthetic_runtime.runtime"
     assert len(request.deps) == 1 and request.deps[0].name == "Helper"
     assert request.deps[0].cql == INCLUDE and not request.deps[0].elm
@@ -95,7 +95,7 @@ def test_preparation_binds_actual_addresses_typed_period_and_include_closure_onc
     # SVC-COMPILE-BATCH: one compile and no describe; no value set, so no digest query.
     assert len(compiler.requests) == 1 and compiler.described == []
     # RUN-CLIENT-DRAFT-RESULTS: CQL text is never the environment's own content.
-    assert prepared.identities == {"data": "synthetic.data", "terminology": "synthetic.terminology",
+    assert prepared.identities == {"data": "synthetic.data", "terminology": "synthetic.knowledge",
                                    "knowledge": "cql"}
     assert prepared.request["environment"] == "synthetic-population" and "data_source" not in prepared.request
 
@@ -136,7 +136,7 @@ def test_a_value_set_used_completes_the_fingerprint_in_one_query():
 
     def digesting(digest):
         def runner(statement, params=None):
-            assert "sha2(" in statement and "`synthetic`.`terminology`.`valueset`" in statement
+            assert "sha2(" in statement and "`synthetic`.`knowledge`.`valueset`" in statement
             return [{"layer": 0, "valueset_id": "urn:vs:a", "digest": digest}]
         return runner
 

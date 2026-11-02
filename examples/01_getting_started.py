@@ -292,7 +292,7 @@ print("populations of HypertensionBPControl:", measure.populations())
 # MAGIC | Compiler Service endpoint | looked up in the workspace App registry by name |
 # MAGIC | Authentication | your ambient identity, exchanged for an App token (RFC 8693) |
 # MAGIC | The `cql_*` operator catalog | read out of `system.information_schema.routines` |
-# MAGIC | FHIR data / value sets | the default environment: the catalog tagged `cql_databricks_environment_default`, whose `data` and `terminology` views are read by name — only when the CQL retrieves data |
+# MAGIC | FHIR data / value sets | the default environment: the catalog tagged `cql_databricks_environment_default`, whose `data` views and `knowledge.valueset` view are read by name — only when the CQL retrieves data |
 # MAGIC
 # MAGIC Each is overridable (`connect(app_name=…, environment=…, data=…, terminology=…)`) — but you have to *want*
 # MAGIC to.

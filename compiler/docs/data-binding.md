@@ -120,7 +120,7 @@ else the rule. A run in an environment sends only rules, and makes one compiler 
 ```json
 {
   "data": {"rule": {"schema": "acme.data", "identity": "acme.data"}},
-  "terminology": {"rule": [{"table": "acme.terminology.valueset", "identity": "acme.terminology"}]},
+  "terminology": {"rule": [{"table": "acme.knowledge.valueset", "identity": "acme.knowledge"}]},
   "knowledge": ["<dependency ELM>", {"cql": "…", "name": "Helpers", "version": "1.0.0"}],
   "runtime": {"schema": "acme.runtime"}
 }

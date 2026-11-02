@@ -49,37 +49,37 @@ def _tags(*catalogs):
 class EnvironmentResolverTest(unittest.TestCase):
     def test_environments_are_found_in_one_query_of_catalog_tags(self):
         """CLIENT-ENVIRONMENT: the name, layout version and default tags; the description is the comment."""
-        run = _Runner(_tags(("cql_main", "synthetic-population-small", "1", "true", "Example measures"),
-                            ("cql_large", "synthetic-population-large", "1", None, None),
-                            ("other", None, "1", None, None)))
+        run = _Runner(_tags(("cql_main", "synthetic-population-small", "2", "true", "Example measures"),
+                            ("cql_large", "synthetic-population-large", "2", None, None),
+                            ("other", None, "2", None, None)))
         resolver = EnvironmentResolver(run)
         self.assertEqual([e.name for e in resolver.environments()],
                          ["synthetic-population-large", "synthetic-population-small"])
         default = resolver.default()
         self.assertEqual((default.catalog, default.version, default.description),
-                         ("cql_main", "1", "Example measures"))
+                         ("cql_main", "2", "Example measures"))
         self.assertEqual(resolver.get("synthetic-population-large").catalog, "cql_large")
         resolver.default()
         self.assertEqual(len(run.statements), 1, "the environments are read once")
 
     def test_two_defaults_or_none_fail_naming_what_was_found(self):
         """CLIENT-ENVIRONMENT-RESOLVER: never a guess."""
-        two = EnvironmentResolver(_Runner(_tags(("a", "one", "1", "true", None), ("b", "two", "1", "TRUE", None))))
+        two = EnvironmentResolver(_Runner(_tags(("a", "one", "2", "true", None), ("b", "two", "2", "TRUE", None))))
         with self.assertRaises(EnvironmentLookupError) as caught:
             two.default()
         self.assertIn("a, b", str(caught.exception))
-        none = EnvironmentResolver(_Runner(_tags(("a", "one", "1", None, None))))
+        none = EnvironmentResolver(_Runner(_tags(("a", "one", "2", None, None))))
         with self.assertRaises(EnvironmentLookupError) as caught:
             none.default()
         self.assertIn(DEFAULT_TAG, str(caught.exception))
         self.assertIn("one (a)", str(caught.exception))
 
     def test_a_name_not_found_or_doubled_fails(self):
-        resolver = EnvironmentResolver(_Runner(_tags(("a", "one", "1", "true", None))))
+        resolver = EnvironmentResolver(_Runner(_tags(("a", "one", "2", "true", None))))
         with self.assertRaises(EnvironmentLookupError) as caught:
             resolver.get("two")
         self.assertIn("one", str(caught.exception))
-        doubled = EnvironmentResolver(_Runner(_tags(("a", "one", "1", None, None), ("b", "one", "1", None, None))))
+        doubled = EnvironmentResolver(_Runner(_tags(("a", "one", "2", None, None), ("b", "one", "2", None, None))))
         with self.assertRaises(EnvironmentLookupError):
             doubled.environments()
 
@@ -89,21 +89,21 @@ class EnvironmentResolverTest(unittest.TestCase):
         with self.assertRaises(EnvironmentLookupError) as caught:
             resolver.default()
         self.assertIn("'9'", str(caught.exception))
-        self.assertIn("reads 1", str(caught.exception))
+        self.assertIn("reads 2", str(caught.exception))
 
     def test_an_environments_resolvers_bind_its_published_views(self):
         """BIND-PUBLISHED-VIEW, DATA-ENVIRONMENT-LAYOUT: by rule, by standard name; a catalog that needs quoting
         is quoted."""
         resolver = EnvironmentResolver(_Runner())
-        env = Environment(name="e", catalog="cql_main", version="1")
+        env = Environment(name="e", catalog="cql_main", version="2")
         self.assertEqual(resolver.data(env).rule(), "cql_main.data")
         terminology = resolver.terminology(env)
-        self.assertEqual(terminology.rule(), TableRelation(name="cql_main.terminology.valueset"))
-        self.assertEqual(terminology.store, "cql_main.terminology_store.valueset")
+        self.assertEqual(terminology.rule(), TableRelation(name="cql_main.knowledge.valueset"))
+        self.assertEqual(terminology.store, "cql_main.knowledge_store.valueset")
         knowledge = resolver.knowledge(env)
         self.assertEqual((knowledge.store, knowledge.view), (("cql_main", "knowledge_store"),
                                                              ("cql_main", "knowledge")))
-        self.assertEqual(Environment(name="e", catalog="my-cat", version="1").schema("data"), "`my-cat`.data")
+        self.assertEqual(Environment(name="e", catalog="my-cat", version="2").schema("data"), "`my-cat`.data")
 
 
 class DataResolverTest(unittest.TestCase):

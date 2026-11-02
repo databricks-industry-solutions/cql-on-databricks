@@ -14,9 +14,9 @@ from cql_databricks_designer.routes import environments as routes
 
 
 def _environments(user: str) -> list[Environment]:
-    return [Environment(name="example", catalog="example_cat", version="1", default=True,
+    return [Environment(name="example", catalog="example_cat", version="2", default=True,
                         description="Synthetic patients"),
-            Environment(name=f"team_{user}", catalog=f"{user}_cat", version="1")]
+            Environment(name=f"team_{user}", catalog=f"{user}_cat", version="2")]
 
 
 class _Users:
@@ -42,9 +42,9 @@ def test_each_user_sees_their_own_environments_cached_until_their_reload():
     cache = routes.EnvironmentCache(users.load, lambda: users.current)
     client = _client(cache)
     listed = client.get("/api/environments").json()
-    assert listed == [{"name": "example", "catalog": "example_cat", "version": "1", "default": True,
+    assert listed == [{"name": "example", "catalog": "example_cat", "version": "2", "default": True,
                        "description": "Synthetic patients"},
-                      {"name": "team_a", "catalog": "a_cat", "version": "1", "default": False}]
+                      {"name": "team_a", "catalog": "a_cat", "version": "2", "default": False}]
     client.get("/api/environments")
     users.current = "b@example.com"
     assert [e["name"] for e in client.get("/api/environments").json()] == ["example", "team_b"]
@@ -58,10 +58,10 @@ def test_each_user_sees_their_own_environments_cached_until_their_reload():
 
 #: CLIENT-ENVIRONMENT — the catalog tags the App's principal can see.
 TAGS = [{"catalog": "example_cat", "tag": "cql_databricks_environment", "value": "example", "comment": None},
-        {"catalog": "example_cat", "tag": "cql_databricks_environment_version", "value": "1", "comment": None},
+        {"catalog": "example_cat", "tag": "cql_databricks_environment_version", "value": "2", "comment": None},
         {"catalog": "example_cat", "tag": "cql_databricks_environment_default", "value": "true", "comment": None},
         {"catalog": "other_cat", "tag": "cql_databricks_environment", "value": "other", "comment": None},
-        {"catalog": "other_cat", "tag": "cql_databricks_environment_version", "value": "1", "comment": None}]
+        {"catalog": "other_cat", "tag": "cql_databricks_environment_version", "value": "2", "comment": None}]
 
 
 def test_content_is_held_per_environment_and_none_is_the_default():
