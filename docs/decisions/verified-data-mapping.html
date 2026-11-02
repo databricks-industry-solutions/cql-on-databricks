@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Verified Data Mapping</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Serif:wght@500;600&display=swap">
+<style>
+/* Layout: a design memo. One reading column (~68ch); figures, tables and examples break out to 1120px. */
+:root {
+  --bg: #f4f6f5;
+  --surface: #ffffff;
+  --fg: #16201c;
+  --muted: #56645e;
+  --line: #c9d2cd;
+  --accent: #0d6b59;        /* the recommended path */
+  --accent-soft: #dcefe9;
+  --gate: #8a5a00;          /* a check or boundary */
+  --gate-soft: #f6ead2;
+  --warn: #a8372b;          /* a failure */
+  --warn-soft: #f7e1dd;
+  --ok: #1f7a4a;
+  --ok-soft: #dff1e6;
+  --font-display: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --step--1: 0.8125rem;
+  --step-0: 1rem;
+  --step-1: 1.1875rem;
+  --step-2: 1.5rem;
+  --step-3: 2.125rem;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101513; --surface: #171e1b; --fg: #e3eae6; --muted: #9aa8a1; --line: #33403a;
+    --accent: #52c4a8; --accent-soft: #163a31; --gate: #e2ad4f; --gate-soft: #3a2e16;
+    --warn: #f08a7c; --warn-soft: #3d1f1b; --ok: #6fd39b; --ok-soft: #173525;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101513; --surface: #171e1b; --fg: #e3eae6; --muted: #9aa8a1; --line: #33403a;
+  --accent: #52c4a8; --accent-soft: #163a31; --gate: #e2ad4f; --gate-soft: #3a2e16;
+  --warn: #f08a7c; --warn-soft: #3d1f1b; --ok: #6fd39b; --ok-soft: #173525;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 400 var(--step-0)/1.6 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 48px 72px;
+}
+main { display: grid; gap: 60px; max-width: 1120px; margin: 0 auto; }
+section { display: grid; gap: 18px; min-width: 0; }
+.prose { max-width: 68ch; display: grid; gap: 14px; }
+.prose p { margin: 0; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; text-wrap: balance; margin: 0; line-height: 1.2; }
+h1 { font-size: var(--step-3); letter-spacing: -0.01em; }
+h2 { font-size: var(--step-2); }
+h3 { font-size: var(--step-1); font-weight: 500; }
+.eyebrow { font: 500 var(--step--1)/1.3 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+code { font-family: var(--font-mono); font-size: 0.9em; }
+.lede { font-size: var(--step-1); max-width: 64ch; margin: 0; }
+.small { font-size: var(--step--1); color: var(--muted); max-width: 80ch; margin: 0; }
+
+header.top { display: grid; gap: 14px; max-width: 76ch; }
+.status { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font: 500 var(--step--1)/1 var(--font-mono); padding: 6px 9px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); background: var(--surface); }
+.chip.id { color: var(--accent); border-color: var(--accent); }
+
+/* the two parts */
+.parts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.part { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 18px 20px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.part .eyebrow { color: var(--accent); }
+.part ul { margin: 0; padding-left: 1.1em; display: grid; gap: 5px; font-size: 0.95rem; }
+.joint { grid-column: 1 / -1; margin: 0; border: 1px dashed var(--accent); border-radius: 6px; padding: 12px 16px; font-size: 0.95rem; }
+.joint b { color: var(--accent); font-weight: 600; }
+
+.constraints { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.constraint { border-top: 2px solid var(--fg); padding-top: 10px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.constraint b { font-family: var(--font-mono); font-weight: 500; font-size: var(--step--1); color: var(--muted); }
+.constraint p { margin: 0; }
+.constraint .answer { color: var(--accent); font-weight: 500; }
+
+figure { margin: 0; display: grid; gap: 10px; min-width: 0; }
+.fig-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; }
+.fig-scroll svg { display: block; width: 100%; height: auto; color: var(--fg); }
+.fig-wide svg { min-width: 880px; }
+.fig-sets svg { min-width: 620px; max-width: 760px; margin: 0 auto; }
+figcaption { font-size: var(--step--1); color: var(--muted); max-width: 80ch; }
+
+/* SVG classes, themed through tokens */
+.b-strong { fill: var(--surface); stroke: var(--fg); stroke-width: 1.2; }
+.b-accent { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+.b-gate { fill: var(--gate-soft); stroke: var(--gate); stroke-width: 1.4; }
+.b-set { fill: var(--bg); stroke: var(--fg); stroke-width: 1.2; }
+.t { fill: var(--fg); font: 500 13px var(--font-body); }
+.t-s { fill: var(--muted); font: 400 11.5px var(--font-body); }
+.t-m { fill: var(--fg); font: 400 12px var(--font-mono); }
+.t-head { fill: var(--muted); font: 500 11px var(--font-mono); letter-spacing: 0.06em; }
+.t-head-accent { fill: var(--accent); font: 500 11px var(--font-mono); letter-spacing: 0.06em; }
+.t-ok { fill: var(--ok); font: 500 11.5px var(--font-body); }
+.t-warn { fill: var(--warn); font: 500 11.5px var(--font-body); }
+.t-lab { fill: var(--muted); font: 400 11px var(--font-mono); }
+.a { stroke: var(--fg); stroke-width: 1.3; fill: none; }
+.a-gate { stroke: var(--gate); stroke-width: 1.5; fill: none; }
+.dot-ok { fill: var(--ok); }
+.dot-warn { fill: var(--warn); }
+
+/* check pair example */
+.check { background: var(--surface); border: 1px solid var(--gate); border-radius: 6px; overflow: hidden; min-width: 0; }
+.check-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 10px 16px; background: var(--gate-soft); color: var(--gate); font: 500 var(--step--1)/1.3 var(--font-mono); }
+.sides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.side { padding: 14px 16px; display: grid; gap: 8px; align-content: start; min-width: 0; border-top: 1px solid var(--line); }
+.side + .side { border-left: 1px solid var(--line); }
+.side h3 { font-size: 1rem; }
+.side .via { font-size: var(--step--1); color: var(--muted); margin: 0; }
+pre { margin: 0; font: 400 12px/1.55 var(--font-mono); white-space: pre; overflow-x: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; }
+.meta { display: grid; grid-template-columns: 11em minmax(0, 1fr); margin: 0; border-top: 1px solid var(--line); }
+.meta dt, .meta dd { margin: 0; padding: 9px 16px; border-bottom: 1px solid var(--line); }
+.meta dt { font: 500 var(--step--1)/1.5 var(--font-mono); color: var(--muted); }
+.meta dd { font-size: 0.925rem; min-width: 0; }
+.meta dt:last-of-type, .meta dd:last-of-type { border-bottom: 0; }
+.verdict { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: baseline; font-variant-numeric: tabular-nums; }
+.verdict b { font: 500 1rem var(--font-mono); }
+.pill { display: inline-block; font: 500 11px/1 var(--font-mono); letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 6px; border-radius: 3px; }
+.pill.fail { color: var(--warn); background: var(--warn-soft); }
+.pill.pass { color: var(--ok); background: var(--ok-soft); }
+.pill.gap { color: var(--gate); background: var(--gate-soft); }
+.pill.none { color: var(--muted); background: var(--bg); border: 1px solid var(--line); }
+
+/* tables */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+.table-wrap table { min-width: 680px; }
+th, td { text-align: left; vertical-align: top; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+thead th { font: 500 var(--step--1)/1.3 var(--font-mono); color: var(--muted); letter-spacing: 0.04em; background: var(--bg); }
+tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
+tbody th { font-weight: 500; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td p { margin: 0; color: var(--muted); }
+.why-not tbody th, .rules tbody th { font-family: var(--font-display); font-size: 1rem; width: 28%; }
+
+.bounds { display: grid; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; }
+.bar { position: relative; height: 26px; background: var(--bg); border: 1px solid var(--line); border-radius: 3px; }
+.bar .range { position: absolute; top: 0; bottom: 0; background: var(--accent-soft); border-left: 2px solid var(--accent); border-right: 2px solid var(--accent); }
+.scale { display: flex; justify-content: space-between; font: 400 11px var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--surface); }
+.tool { padding: 14px 16px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); display: grid; gap: 6px; align-content: start; min-width: 0; }
+.tool:nth-child(3n) { border-right: 0; }
+.tool:nth-last-child(-n+3) { border-bottom: 0; }
+.tool b { font-family: var(--font-display); font-weight: 500; font-size: 1.05rem; }
+.tool ul { margin: 0; padding-left: 1.1em; display: grid; gap: 4px; font-size: 0.9rem; color: var(--muted); }
+
+.numbers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.num-card { border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 4px; align-content: start; }
+.num-card b { font: 500 var(--step-2)/1.1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.num-card span { font-size: var(--step--1); color: var(--muted); }
+
+.open { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 24px; }
+.open div { display: grid; gap: 4px; align-content: start; min-width: 0; }
+.open h3 { font-size: 1rem; overflow-wrap: anywhere; }
+.open p { margin: 0; color: var(--muted); font-size: 0.925rem; }
+
+footer { max-width: 76ch; font-size: var(--step--1); color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 820px) {
+  .parts, .constraints, .sides, .tools, .open { grid-template-columns: minmax(0, 1fr); }
+  .numbers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .side + .side { border-left: 0; }
+  .tool { border-right: 0; }
+  .tool:nth-last-child(-n+3) { border-bottom: 1px solid var(--line); }
+  .tool:last-child { border-bottom: 0; }
+  .meta { grid-template-columns: minmax(0, 1fr); }
+  .meta dt { padding-bottom: 0; border-bottom: 0; }
+  .meta dd { padding-top: 2px; }
+}
+@media (max-width: 760px) {
+  body { padding-block: 28px 48px; }
+  main { gap: 44px; }
+  :root { --step-3: 1.75rem; --step-2: 1.3rem; }
+}
+</style>
+</head>
+<body>
+<main>
+
+<header class="top">
+  <div class="status">
+    <span class="chip">Proposal</span><span class="chip">Not built</span><span class="chip">2026-11-02</span>
+    <span class="chip id">DATA-MODEL-SUBSET</span><span class="chip id">DATA-MAPPING-VERIFY</span>
+  </div>
+  <h1>Verified data mapping</h1>
+  <p class="lede">The compiler knows all of the FHIR it supports. Each customer publishes the part their data fills, through SQL that AI writes and a person approves. Paired checks prove the mapping: a CQL answer and a direct SQL answer must name the same patients.</p>
+</header>
+
+<section aria-labelledby="h-parts">
+  <h2 id="h-parts">Two changes on the roadmap</h2>
+  <div class="parts">
+    <article class="part">
+      <span class="eyebrow">DATA-MODEL-SUBSET</span>
+      <h3>Implementers own the shape</h3>
+      <ul>
+        <li>The compiler checks CQL against a superset: the FHIR R4 type graph for the supported resources, with no loop cuts.</li>
+        <li>A published view returns any subset of it, never an extra field.</li>
+        <li>Publish records the environment's shape. A compile gets it in its request, so it stays offline.</li>
+        <li>A real FHIR path the shape leaves out fails the compile, naming the path. It never reads as null.</li>
+      </ul>
+    </article>
+    <article class="part">
+      <span class="eyebrow">DATA-MAPPING-VERIFY</span>
+      <h3>Mappings are generated and proven</h3>
+      <ul>
+        <li>AI drafts SQL views or Lakeflow pipelines and explains them. A person approves, in a pull request.</li>
+        <li>Ground-truth checks pair a CQL expression with an independent SQL query over the source.</li>
+        <li>A check passes when both return the same patients, not only the same count.</li>
+        <li>Skills and tools for Genie Code and the agent, an App, and prebaked workflows.</li>
+      </ul>
+    </article>
+    <p class="joint"><b>Where they meet:</b> the published shape is the coverage map. "Is this path mapped here?" and "will this CQL compile here?" are the same question, and every "not in this environment" error is the next mapping task.</p>
+  </div>
+</section>
+
+<section aria-labelledby="h-constraints">
+  <h2 id="h-constraints">What the design had to respect</h2>
+  <div class="constraints">
+    <div class="constraint">
+      <b>Nobody hand-codes transforms</b>
+      <p>The user guides, AI drafts, a person reviews.</p>
+      <p class="answer">AI writes plain SQL and explains it in plain language. Reviewers read the explanation and the check results.</p>
+    </div>
+    <div class="constraint">
+      <b>Transforms get messy</b>
+      <p>Patches pile up: a legacy feed, a clinic's odd codes.</p>
+      <p class="answer">SQL can be as messy as the data needs. The checks catch what a patch breaks.</p>
+    </div>
+    <div class="constraint">
+      <b>CQL declares its model</b>
+      <p><code>using QICore '4.1.1'</code> fixes the meaning of every path.</p>
+      <p class="answer">The compiler always runs against that model. Views fill a subset of it. No third model sits in between.</p>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="h-shape">
+  <h2 id="h-shape">How a path is checked</h2>
+  <figure class="fig-sets">
+    <div class="fig-scroll">
+      <svg viewBox="0 0 700 420" role="img" aria-label="Nested sets. The outer set is the FHIR R4 type graph, the compiler's superset. Inside it, the environment's shape is what the published views return. A path inside the shape compiles. A real FHIR path outside the shape fails the compile as not in this environment. A path outside FHIR fails as not a FHIR path. A view column outside the superset makes publish refuse the view.">
+        <rect class="b-set" x="20" y="20" width="640" height="330" rx="10"/>
+        <text class="t-head" x="40" y="46">FHIR R4 TYPE GRAPH · THE COMPILER'S SUPERSET</text>
+        <rect class="b-accent" x="60" y="80" width="330" height="236" rx="8"/>
+        <text class="t-head-accent" x="78" y="104">THIS ENVIRONMENT'S SHAPE</text>
+        <text class="t-s" x="78" y="121">what its published views return</text>
+
+        <circle class="dot-ok" cx="94" cy="166" r="6"/>
+        <text class="t-m" x="108" y="164">Observation.valueQuantity</text>
+        <text class="t-ok" x="108" y="181">compiles, typed against the shape</text>
+
+        <circle class="dot-ok" cx="94" cy="232" r="6"/>
+        <text class="t-m" x="108" y="230">Condition.code.coding.code</text>
+        <text class="t-ok" x="108" y="247">compiles</text>
+
+        <circle class="dot-warn" cx="430" cy="166" r="6"/>
+        <text class="t-m" x="444" y="164">Condition.clinicalStatus</text>
+        <text class="t-warn" x="444" y="181">fails: not in this environment</text>
+        <text class="t-s" x="444" y="197">add it to the view, as nulls</text>
+        <text class="t-s" x="444" y="212">if there is no data</text>
+
+        <circle class="dot-warn" cx="430" cy="276" r="6"/>
+        <text class="t-m" x="444" y="274">Patient.extension.extension</text>
+        <text class="t-warn" x="444" y="291">fails: not in this environment</text>
+
+        <circle class="dot-warn" cx="40" cy="384" r="6"/>
+        <text class="t-m" x="54" y="382">Observation.result</text>
+        <text class="t-warn" x="54" y="399">fails: not a FHIR path</text>
+
+        <rect class="dot-warn" x="414" y="376" width="12" height="12"/>
+        <text class="t-m" x="436" y="382">legacy_flag, a view column</text>
+        <text class="t-warn" x="436" y="399">publish refuses the view</text>
+      </svg>
+    </div>
+    <figcaption>Circles are paths some CQL reads; the square is a column a view tries to publish. The compiler walks the type graph, which is finite even where FHIR's types loop, so it needs no cuts. Physical depth is whatever the views return. Today's cut shape (<code>FhirShape</code>) becomes the default shape the stock reshape writes.</figcaption>
+  </figure>
+  <div class="prose">
+    <p>Pruning already works this way at the top level. <code>passes.RetrieveDemand</code> lists the fields a library navigates, and the SQL back end treats that list as the contract a narrow mount is built to (<code>EMIT-SQL-RETRIEVE-DEMAND-BOUND</code>). The change takes demand down to full paths, so one analysis gives pruning, the shape check and data requirements. The shape's hash joins a result's identity, so a changed view never reuses an old score.</p>
+  </div>
+</section>
+
+<section aria-labelledby="h-flow">
+  <h2 id="h-flow">How a mapping is made and proven</h2>
+  <figure class="fig-wide">
+    <div class="fig-scroll">
+      <svg viewBox="0 0 1100 380" role="img" aria-label="Customer tables are read by an AI draft step in Genie Code or the agent, which writes SQL views or pipelines with an explanation into a pull request. Approved, they are published with the subset check, which records the shape and its hash. The compiler inlines the environment views. A check pair runs the CQL side through the views and the compiler, and the SQL side straight over the customer tables. The two patient sets are compared, and the comparison goes back to the pull request as evidence.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+        </defs>
+        <text class="t-head" x="20" y="36">MAKE</text>
+        <text class="t-head" x="20" y="276">PROVE</text>
+
+        <rect class="b-strong" x="20" y="56" width="150" height="58" rx="4"/>
+        <text class="t" x="34" y="80">Customer tables</text><text class="t-s" x="34" y="98">OMOP, own, or FHIR</text>
+
+        <rect class="b-accent" x="210" y="56" width="180" height="58" rx="4"/>
+        <text class="t" x="224" y="80">AI drafts</text><text class="t-s" x="224" y="98">SQL, with an explanation</text>
+
+        <rect class="b-strong" x="430" y="56" width="170" height="58" rx="4"/>
+        <text class="t" x="444" y="80">Pull request</text><text class="t-s" x="444" y="98">a person approves</text>
+
+        <rect class="b-gate" x="640" y="56" width="170" height="58" rx="4"/>
+        <text class="t" x="654" y="80">Publish</text><text class="t-s" x="654" y="98">subset check, shape + hash</text>
+
+        <rect class="b-accent" x="850" y="56" width="230" height="58" rx="4"/>
+        <text class="t" x="864" y="80">Environment views</text><text class="t-s" x="864" y="98">STRUCT, a subset of FHIR</text>
+
+        <line class="a" x1="170" y1="85" x2="206" y2="85" marker-end="url(#ar)"/>
+        <line class="a" x1="390" y1="85" x2="426" y2="85" marker-end="url(#ar)"/>
+        <line class="a" x1="600" y1="85" x2="636" y2="85" marker-end="url(#ar)"/>
+        <line class="a" x1="810" y1="85" x2="846" y2="85" marker-end="url(#ar)"/>
+
+        <rect class="b-strong" x="850" y="168" width="230" height="58" rx="4"/>
+        <text class="t" x="864" y="192">Compiler</text><text class="t-s" x="864" y="210">superset, plus the shape from publish</text>
+        <line class="a" x1="965" y1="114" x2="965" y2="164" marker-end="url(#ar)"/>
+        <text class="t-lab" x="972" y="144">inlined</text>
+
+        <rect class="b-strong" x="640" y="292" width="170" height="58" rx="4"/>
+        <text class="t" x="654" y="316">CQL side</text><text class="t-s" x="654" y="334">through views and compiler</text>
+        <polyline class="a" points="850,197 725,197 725,288" marker-end="url(#ar)"/>
+        <text class="t-lab" x="736" y="190">patients</text>
+
+        <rect class="b-strong" x="210" y="292" width="180" height="58" rx="4"/>
+        <text class="t" x="224" y="316">SQL side</text><text class="t-s" x="224" y="334">same question, over the source</text>
+        <polyline class="a" points="95,114 95,321 206,321" marker-end="url(#ar)"/>
+        <text class="t-lab" x="104" y="306">patients</text>
+
+        <rect class="b-gate" x="430" y="292" width="170" height="58" rx="4"/>
+        <text class="t" x="444" y="316">Compare</text><text class="t-s" x="444" y="334">same patients, by stratum</text>
+        <line class="a" x1="390" y1="321" x2="426" y2="321" marker-end="url(#ar)"/>
+        <line class="a" x1="640" y1="321" x2="604" y2="321" marker-end="url(#ar)"/>
+
+        <line class="a-gate" x1="515" y1="292" x2="515" y2="118" marker-end="url(#ar)"/>
+        <text class="t-lab" x="524" y="210">evidence</text>
+      </svg>
+    </div>
+    <figcaption>The two sides of a check reach the patients by different routes. The CQL side goes through the mapping and the compiler; the SQL side goes straight to the source. Agreement is evidence the mapping is right for that question. Every check re-runs on each change and after each data refresh.</figcaption>
+  </figure>
+</section>
+
+<section aria-labelledby="h-check">
+  <h2 id="h-check">A check pair, and a failure it catches</h2>
+  <article class="check" aria-label="Example check pair">
+    <div class="check-head"><span>check · active-diabetes-2026</span><span>Example on synthetic figures</span></div>
+    <div class="sides">
+      <div class="side">
+        <h3>CQL side</h3>
+        <p class="via">Runs through the published views and the compiler.</p>
+<pre>define "Active Diabetes":
+  exists ([Condition: "Diabetes"] C
+    where C.clinicalStatus ~ "active"
+      and (C.onset as dateTime) before end of "Period")</pre>
+      </div>
+      <div class="side">
+        <h3>SQL side</h3>
+        <p class="via">Written by the customer's analyst, over OMOP.</p>
+<pre>SELECT DISTINCT co.person_id
+FROM   omop.condition_occurrence co
+JOIN   omop.concept c ON c.concept_id = co.condition_source_concept_id
+JOIN   check_codes.diabetes v
+       ON v.vocabulary = c.vocabulary_id AND v.code = c.concept_code
+WHERE  co.condition_start_date &lt; DATE'2027-01-01'
+  AND  coalesce(co.condition_end_date, DATE'9999-12-31') &gt;= DATE'2026-01-01'</pre>
+      </div>
+    </div>
+    <dl class="meta">
+      <dt>ground truth</dt><dd>A person: the analyst who owns the diabetes registry report</dd>
+      <dt>codes</dt><dd>Both sides use the same expansion of the Diabetes value set</dd>
+      <dt>result</dt><dd><div class="verdict"><span class="pill fail">Fails</span><span>CQL <b>4,212</b></span><span>SQL <b>4,230</b></span><span>only in SQL <b>18</b></span><span>only in CQL <b>0</b></span></div></dd>
+      <dt>diagnosis</dt><dd>The 18 patients have a diabetes row that ended in January 2026. The view maps an end date to <code>abatement</code> with status <code>resolved</code>, so the CQL side drops them. The SQL side counts anyone active at any time in the year. The mapping is right and the check asks a different question. The analyst narrows the SQL to "active at the end of the period", and the check passes.</dd>
+    </dl>
+  </article>
+  <p class="small">A failure can sit in the mapping, in the check or in the compiler. A compiler gap found this way gets a minimal conformance test with its fix, under the repo's existing rule.</p>
+</section>
+
+<section aria-labelledby="h-trust">
+  <h2 id="h-trust">Making the checks worth trusting</h2>
+  <div class="table-wrap">
+    <table class="rules">
+      <thead><tr><th>Rule</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><th>Compare patient sets, not counts</th><td><p>Two errors can cancel in a count. A set difference names the patients to look at.</p></td></tr>
+        <tr><th>Record where the SQL came from</th><td><p>A person, an existing report, or an AI session that never saw the mapping. If one AI writes both sides from the same misunderstanding, they agree and are both wrong.</p></td></tr>
+        <tr><th>Same codes on both sides</th><td><p>A check states its value-set expansion. Otherwise a mismatch is about terminology, not mapping.</p></td></tr>
+        <tr><th>Synthetic patients and real data</th><td><p>Hand-made source records with known answers give exact tests on every change. Checks on real data run in the customer's workspace, as the caller.</p></td></tr>
+        <tr><th>Show what no check covers</th><td><p>The compiler knows which paths a check's CQL reads, so the tools list paths that are mapped but unverified.</p></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section aria-labelledby="h-quality">
+  <h2 id="h-quality">Coverage and quality, per path</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Path</th><th>In the shape</th><th>Checks</th><th class="num">Filled</th><th class="num">Codes in value sets</th></tr></thead>
+      <tbody>
+        <tr><td><code>Condition.code</code></td><td><span class="pill pass">Yes</span></td><td><span class="pill pass">3 pass</span></td><td class="num">100%</td><td class="num">96%</td></tr>
+        <tr><td><code>Condition.clinicalStatus</code></td><td><span class="pill pass">Yes</span></td><td><span class="pill pass">1 pass</span></td><td class="num">98%</td><td class="num">n/a</td></tr>
+        <tr><td><code>Observation.code</code></td><td><span class="pill pass">Yes</span></td><td><span class="pill pass">2 pass</span></td><td class="num">100%</td><td class="num">94%</td></tr>
+        <tr><td><code>Observation.valueQuantity</code></td><td><span class="pill pass">Yes</span></td><td><span class="pill none">None</span></td><td class="num">82%</td><td class="num">n/a</td></tr>
+        <tr><td><code>MedicationRequest.dosageInstruction</code></td><td><span class="pill gap">No</span></td><td><span class="pill none">None</span></td><td class="num">n/a</td><td class="num">n/a</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="bounds">
+    <h3>Is it good enough?</h3>
+    <p class="small">Unmapped local codes are shown as their effect on a score. Run the measure once with them counted in the value set and once with them out: the rate lies between the two. Here, 61% to 68%, and mapping the top three local codes closes most of the gap.</p>
+    <div class="bar" role="img" aria-label="Rate between 61 and 68 percent on a 40 to 90 percent scale">
+      <div class="range" style="left: 42%; width: 14%"></div>
+    </div>
+    <div class="scale"><span>40%</span><span>50%</span><span>60%</span><span>70%</span><span>80%</span><span>90%</span></div>
+  </div>
+  <p class="small">Every figure in this section is an example on synthetic data.</p>
+</section>
+
+<section aria-labelledby="h-tools">
+  <h2 id="h-tools">The tooling</h2>
+  <div class="tools">
+    <div class="tool"><b>Genie Code skills</b><ul><li>Map a path from where the user says it lives</li><li>Write a check pair</li><li>Diagnose a failed check down to source rows</li><li>Explain a view in plain language</li></ul></div>
+    <div class="tool"><b>Tools</b><ul><li>The paths a CQL expression reads</li><li>Unverified and missing paths</li><li>Run a check pair and diff the patient sets</li><li>Publish views; create a pipeline</li></ul></div>
+    <div class="tool"><b>The mapping App</b><ul><li>Paths by status: missing, mapped, verified, failing</li><li>Checks and their history</li><li>Drill into a failure, patient by patient</li><li>Approve and publish versions</li></ul></div>
+    <div class="tool"><b>Workflows</b><ul><li>Onboard a source</li><li>Add a measure</li><li>Close a gap an ad-hoc question hit</li><li>Re-run every check after a refresh, as a Lakeflow Job</li></ul></div>
+    <div class="tool"><b>Prebaked content</b><ul><li>Stock checks for OMOP, whose SQL is generic</li><li>The same check templates for other schemas</li><li>Code mappings as ConceptMaps (<code>DATA-CROSSWALK</code>)</li></ul></div>
+    <div class="tool"><b>Unstructured notes</b><ul><li><code>ai_extract</code> driven by data requirements</li><li>Rows with provenance, in a separate source</li><li>Always materialized; scores shown with and without</li></ul></div>
+  </div>
+  <p class="small">Mappings live in a bundle in git. Views are the default; a pipeline materializes a mapping that is too slow as a view, or that needs Python or AI functions.</p>
+</section>
+
+<section aria-labelledby="h-alts">
+  <h2 id="h-alts">Considered and set aside</h2>
+  <div class="table-wrap">
+    <table class="why-not">
+      <thead><tr><th>Option</th><th>Why not</th></tr></thead>
+      <tbody>
+        <tr><th>Keep one fixed shape with cuts</th><td><p>Data beyond a cut can't be read, and widening the shape takes a release.</p></td></tr>
+        <tr><th>VARIANT for every resource</th><td><p>A view building VARIANT pruned nothing and ran 2.5 times slower. Typing a whole record at the mount crashed the warehouse. Wrong types surface while a measure runs.</p></td></tr>
+        <tr><th>An internal canonical model</th><td><p>CQL declares QI-Core, so a second translation is needed, and its meaning can drift.</p></td></tr>
+        <tr><th>A mapping language of our own</th><td><p>AI explains SQL more readably than a new language, and nobody wants to learn one.</p></td></tr>
+        <tr><th>FHIR StructureMap as the runtime</th><td><p>It runs resource by resource in a mapping engine, with no pushdown into source tables. ConceptMap stays, for codes.</p></td></tr>
+        <tr><th>Genie Code alone</th><td><p>It writes the SQL well, but without checks nothing proves it, and nothing stops a patch from breaking a measure. Here it is the drafting engine.</p></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section aria-labelledby="h-evidence">
+  <h2 id="h-evidence">Measured</h2>
+  <div class="numbers">
+    <div class="num-card"><b>1.23 s</b><span>A view building STRUCT records from relational tables. It pruned an unused source column.</span></div>
+    <div class="num-card"><b>3.14 s</b><span>The same view building VARIANT. It pruned none.</span></div>
+    <div class="num-card"><b>0.39 s</b><span>The same query on a materialized STRUCT table.</span></div>
+    <div class="num-card"><b>4.44 s</b><span>A view that collects codings per row. Mappings like this should be pipelines.</span></div>
+  </div>
+  <p class="small">SQL warehouse, 10M synthetic rows, 2026-11-02. Nothing else on this page is measured.</p>
+</section>
+
+<section aria-labelledby="h-open">
+  <h2 id="h-open">Open before building</h2>
+  <div class="open">
+    <div><h3><code>DEC-MODEL-SUPERSET-BOUND</code></h3><p>Which part of FHIR R4 the superset holds: resource types, extension value types, extensions on elements and primitives, and <code>contained</code>.</p></div>
+    <div><h3><code>DEC-MAPPING-HOME</code></h3><p>A lens in the Designer or its own App, and where mappings, checks and their run history are stored.</p></div>
+    <div><h3>Nested demand</h3><p>The field-demand gap on nested elements is fixed first; then demand goes from fields to full paths.</p></div>
+  </div>
+</section>
+
+<footer>Both changes are rows in <code>docs/roadmap.md</code>, with the requirements each would amend. Neither is built, and no requirement is amended yet.</footer>
+
+</main>
+</body>
+</html>
