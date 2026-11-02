@@ -58,7 +58,6 @@ The agent explains and assembles. Acting on patients stays downstream (`APP-CLIN
 | ID | Question |
 |---|---|
 | `DEC-ADHOC-COMPUTE-TYPES` | Which compute types ad-hoc runs support, each proven by conformance on that type |
-| `DEC-RESOURCE-VARIANT` | Should `__resource` be a `VARIANT` the compiler reads with typed paths from the model, instead of a typed struct (`DATA-MODEL-STATIC-STRUCT`)? For: any FHIR JSON publishes with `parse_json`, there is no nesting cap, sparse data costs nothing, and plans carry no wide structs. Against or unknown: per-row cost unless the variant is shredded, pushdown on variant paths, the `cql_*` functions that take structs, and conformance on the new encoding. Next: a spike running an authored measure on the synthetic population in both encodings, on serverless and a SQL warehouse, comparing time, bytes scanned and plan size |
 
 ## Known compiler gaps
 
@@ -78,7 +77,7 @@ wrong answer with no error.
 | Choice element off a union define | A choice-typed fluent function reading `onset` on a define that unions two condition profiles, read by another query, fails in Spark with `FIELD_NOT_FOUND` `onset` | `LANG-CHOICE-MODEL` | The union is written inside the query that reads it |
 | Returned date-time offset | A define holding a date-time computed from the offset-less measurement period returns no offset; the reference returns `+00:00` | `LANG-DATETIME-OFFSET` | The flu season is a function, not a define |
 | Field demand off a nested element | The field-demand analysis files a field read off a nested element under the element's type (`Extension`, `Observation.Component`) instead of the resource's. It happens for `Patient.birthsex` and for `"A Define".component` on a define holding one resource. `MaterializePolicySpec` catches it. A demand-bounded mount or a typed-subset binding check could then drop the field, and the value would be null with no error | `EMIT-SQL-RETRIEVE-DEMAND-BOUND` | Supplemental sex reads `Patient.gender`, not the birth sex extension. Blood pressure components are read through a query alias over the readings |
-| Nested extensions | US Core race and ethnicity are nested extensions, which the data model drops (`extension` is kept at resource level only) | `DATA-MODEL-SCHEMA` | The supplemental data reports gender and payer only |
+| Race and ethnicity through QI-Core | The data model keeps US Core race and ethnicity, an extension nested one level (`DATA-MODEL-SCHEMA`), but no conformance test reads them through the QI-Core `Patient.race` and `Patient.ethnicity` elements yet | `DATA-MODEL-SCHEMA` | The supplemental data reports gender and payer only |
 | String functions | `Upper(...)` and string concatenation with `+` fail at Normalize (`UnknownExpr`) | None yet | Not used |
 
 Published measures ran during development. Whether they use any of these forms is checked outside this

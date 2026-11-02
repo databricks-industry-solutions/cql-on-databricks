@@ -3,8 +3,8 @@
 How the compiler represents the FHIR R4 data model: a static, typed Spark schema derived at build time.
 The compiler never asks Spark for a schema while it compiles.
 
-Requirements here: `DATA-MODEL-SEAM`, `DATA-MODEL-SCHEMA`, `DATA-MODEL-STATIC-STRUCT`,
-`DATA-NO-EMPTY-STRUCT`, `TYPE-FHIR-MODEL`, `BUILD-FHIR-CODEGEN`, `DATA-SCHEMA-CONTRACT`,
+Requirements here: `DATA-MODEL-SEAM`, `DATA-MODEL-SCHEMA`, `DATA-MODEL-CUTS`, `DATA-PATH-IN-SCHEMA`,
+`DATA-MODEL-STATIC-STRUCT`, `DATA-NO-EMPTY-STRUCT`, `TYPE-FHIR-MODEL`, `BUILD-FHIR-CODEGEN`, `DATA-SCHEMA-CONTRACT`,
 `TYPE-OFFLINE-COMPILE`, `ARCH-RESOURCE-HANDLE`, `ARCH-RETRIEVE-PROJECT`. They implement
 `ARCH-NO-RUNTIME-SCHEMA`.
 
@@ -15,8 +15,8 @@ at build time from the model's published definitions.
 
 The generated artifact, `sema.generated.FhirR4Model`, is plain data: resources, their elements, and each
 element's type, cardinality and choice slots. It has no Spark or FHIR library dependency. Hand-written code
-maps it to the `CqlType` lattice (`sema/FhirModel.scala`) and to a Spark `StructType`
-(`sema/FhirSchema.scala`).
+maps it to the `CqlType` lattice (`sema/FhirModel.scala`), to the shape the data model keeps
+(`sema/FhirShape.scala`, also Spark-free) and to a Spark `StructType` (`sema/FhirSchema.scala`).
 
 The compiler has no runtime FHIR (HAPI) dependency. HAPI is used only on the test and reference side
 (`compiler/cqf`, `compiler/conformance`).
@@ -49,31 +49,67 @@ extensions, such as us-core-sex for `Patient.sex`, are modeled by hand (`FhirMod
 
 ## 4. Schema conventions — `DATA-MODEL-SCHEMA`
 
+The schema is FHIR R4 JSON with some fields left out. Nothing is moved or renamed, so any FHIR JSON reads into
+it, and a field it leaves out is dropped on read. There is no depth cap: every element of every modeled type is
+present at any depth, except where a rule below leaves it out.
+
 | FHIR shape | Spark encoding | Notes |
 |---|---|---|
 | primitive | JSON-native scalar | `boolean` → `boolean`; `integer`, `positiveInt`, `unsignedInt` → `long`; `decimal` → `double`; string-backed types (`string`, `code`, `uri`, `date`, `dateTime`, `instant`, `time` and others) → `string`. Values convert at use (`ToDate` to a temporal struct, a quantity value to `decimal(28,8)`) |
 | `0..*` | `array<element>` | Otherwise the bare element type. Code membership reads this to decide single or list (`DATA-SCHEMA-CONTRACT`) |
 | `value[x]` | one typed slot per type | `valueQuantity`, `valueString`, `valueCodeableConcept`, as in FHIR JSON. Navigation picks the slot by the declared type. There is no merged `value` field |
-| extensions | resource level only | `extension` is a bounded struct: `url` plus one slot per open value type. It is dropped from nested structs. `contained` and `modifierExtension` are dropped |
-| nesting | capped at `data.fhir_max_nesting_level` (default 5) | Bounds recursion through self-referential types. Elements past the cap are dropped; navigating past the cap gives null |
+| a type loop | cut at a fixed edge | `DATA-MODEL-CUTS`, below |
+| `extension` | on resources only | An Extension is `url`, one slot per open value type, and `extension`, one nested level whose entries have no `extension`. Extensions on other elements, and on primitives (`_birthDate`), are left out |
+| `modifierExtension` | on resources and backbone elements | On a resource it has the nested Extension shape. On a backbone element it keeps `url` only, so a reader can see that one is present |
+| `contained` | left out | FHIR forbids nesting contained resources, so it is not a loop; it would add every resource type's width |
 
-### 4.1 No empty structs — `DATA-NO-EMPTY-STRUCT`
+The open value types are `boolean`, `integer`, `decimal`, `string`, `code`, `uri`, `url`, `canonical`,
+`dateTime`, `date`, `time`, `instant`, `Coding`, `CodeableConcept`, `Quantity`, `Period`, `Reference` and
+`Identifier` (`FhirShape.OpenValueTypes`). Each slot is a full datatype, so all 50 of FHIR's would make one
+extension wider than a resource. Adding a type is a one-line change.
 
-A complex type whose children are all dropped at the cap would leave an empty `STRUCT<>`. It is omitted
-instead (`FhirSchema.nestedStruct`). Navigating into it would give null anyway, and table formats reject
-an empty struct column.
+`FhirShape` holds these rules. `FhirSchema` renders its shape as Spark types, and the compile service serves
+the result from `/resource-schema` (`SVC-RESOURCE-SCHEMA`).
 
-### 4.2 A static struct — `DATA-MODEL-STATIC-STRUCT`
+### 4.1 Loop cuts — `DATA-MODEL-CUTS`
+
+With extensions and `contained` set aside, the FHIR R4 types our resources reach have one loop:
+`Reference.identifier → Identifier.assigner → Reference`. It is cut at `Identifier.assigner`: there a Reference
+is `{reference, type, display}`, with no `identifier`. A Reference keeps its identifier everywhere else. An
+Extension's `extension` is the second cut: a nested extension has no `extension`.
+
+Every other datatype has exactly one shape, whatever its depth. The cuts are a committed list,
+`FhirShape.Cuts`. Building a shape fails on a loop that is not in the list, naming its edge, so a resource whose
+model brings a new loop (`Questionnaire.item.item`, for one) needs an entry before it can be modeled.
+
+### 4.2 Paths outside the data model — `DATA-PATH-IN-SCHEMA`
+
+Navigating to an element FHIR R4 defines but the data model leaves out fails the compile, naming the rule:
+`Identifier.assigner.identifier`, an extension on an element or a primitive, an extension nested two levels,
+a value of a backbone `modifierExtension`, or `contained`. It never reads as null or fails when the SQL runs.
+
+`passes.SchemaPaths` follows each navigation from where it starts (a retrieve, a query alias, a `let` or a
+define) through the shape, so it sees a cut where the cut lands. It runs on every compile, before lowering. An
+element FHIR does not define, such as a profile element or a primitive's `.value`, is left to lowering.
+
+### 4.3 No empty structs — `DATA-NO-EMPTY-STRUCT`
+
+A complex type that keeps no fields is omitted instead of written as an empty `STRUCT<>`
+(`FhirShape.shapeOf`). Table formats reject an empty struct column.
+
+### 4.4 A static struct — `DATA-MODEL-STATIC-STRUCT`
 
 Resources are typed structs, not `VARIANT` or JSON strings. CQL navigation reads a few fields from each
-resource, which suits typed columns and column pruning. The nesting cap limits the dynamic tail (open
-extensions, self-referential chains); it is a coverage limit, not a speed trade.
+resource, and a struct stores each field as its own column, so a query reads only those columns. The compiler
+types every path from the model either way, and a struct lets the reshape check refuse a wrong type at publish
+instead of a measure meeting it at run time. [docs/decisions/resource-schema.md](../../docs/decisions/resource-schema.md)
+records the comparison.
 
 `VARIANT` appears in one place: the retrieve function's `parameters MAP<STRING, VARIANT>` argument
 (`BIND-EXPLICIT-PARAMS`). The heterogeneous-choice `VARIANT` encoding is retired
 (`EMIT-SQL-VARIANT-CHOICE`).
 
-### 4.3 Demand-pruned resources — `ARCH-RETRIEVE-PROJECT`, `ARCH-RESOURCE-HANDLE`
+### 4.5 Demand-pruned resources — `ARCH-RETRIEVE-PROJECT`, `ARCH-RESOURCE-HANDLE`
 
 A resource carried through the plan is wide at analysis time, before Catalyst can prune columns. Two
 mechanisms narrow it. Both use the static model, never a runtime schema read.

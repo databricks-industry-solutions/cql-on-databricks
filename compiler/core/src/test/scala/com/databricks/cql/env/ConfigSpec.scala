@@ -75,7 +75,6 @@ class ConfigSpec extends AnyFunSuite {
       "lower.cte_defs",
       "lower.project_fuse",
       "lower.retrieve_views",
-      "data.fhir_max_nesting_level",
       "bind.gap_lenient"))
   }
 

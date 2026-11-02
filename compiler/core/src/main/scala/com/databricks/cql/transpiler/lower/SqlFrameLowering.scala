@@ -2,7 +2,7 @@ package com.databricks.cql.transpiler.lower
 
 import com.databricks.cql.error.UnsupportedNode
 import com.databricks.cql.ir.{Case => CqlCase, _}
-import com.databricks.cql.passes.{ChoiceDemand, Materialize, RetrieveDemand, RetrieveReads, Schedule, TypeEncoding}
+import com.databricks.cql.passes.{ChoiceDemand, Materialize, RetrieveDemand, RetrieveReads, Schedule, SchemaPaths, TypeEncoding}
 import com.databricks.cql.sema.FhirModel
 import com.databricks.cql.spark.SystemColumns
 import com.databricks.cql.transpiler.emit.SqlExpr._
@@ -75,6 +75,8 @@ object SqlFrameLowering {
   def lower(lib: Library, env0: SqlEvalEnv, target: Option[String] = None): SqlLoweredLibrary = {
     val tctx   = TypeEncoding.ctxOf(lib)
     val typeOf: Expr => CqlType = e => TypeEncoding.typeOf(e, tctx)
+    // DATA-PATH-IN-SCHEMA: an element the data model leaves out fails here, not when the SQL runs.
+    SchemaPaths.check(lib, typeOf)
     // Thread the pure-IR materialization-policy inputs from the single source (`passes.Materialize`),
     // and the het-`Choice` demand (ARCH-RESOURCE-HANDLE) from `passes.ChoiceDemand` — both Spark-free.
     // DATA-RETRIEVE-BARRIER-OPT: the FILTERED reads to give their own object, under the optional

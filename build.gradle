@@ -179,12 +179,37 @@ tasks.register('clientTest', Exec) {
     commandLine venvPython.path, '-m', 'unittest', 'discover', '-s', 'tests', '-t', '.'
 }
 
+// CONTENT-IMPORTER-FHIR-SCHEMAS: the shipped sources' resource-schemas.json is the compiler's `dumpResourceSchemas`
+// output, committed, so the synthetic population lands in the shape the compiler reads (DATA-MODEL-SCHEMA).
+// `checkResourceSchemas` fails when the two differ; `updateResourceSchemas` refreshes the shipped copy.
+def shippedResourceSchemas = file('scripts/deploy/shipped_sources/src/shipped_sources/resource-schemas.json')
+def dumpedResourceSchemas = { project(':compiler:server').layout.buildDirectory.file('resource-schemas.json').get().asFile }
+tasks.register('updateResourceSchemas', Copy) {
+    group = 'distribution'
+    description = 'Copy the compiler\'s resource schemas into the shipped sources.'
+    dependsOn ':compiler:server:dumpResourceSchemas'
+    from { dumpedResourceSchemas() }
+    into shippedResourceSchemas.parentFile
+}
+tasks.register('checkResourceSchemas') {
+    group = 'verification'
+    description = 'Fail when the shipped resource schemas differ from the compiler\'s.'
+    dependsOn ':compiler:server:dumpResourceSchemas'
+    doLast {
+        if (dumpedResourceSchemas().getText('UTF-8') != shippedResourceSchemas.getText('UTF-8')) {
+            throw new GradleException("CONTENT-IMPORTER-FHIR-SCHEMAS: ${shippedResourceSchemas} differs from the " +
+                "compiler's resource schemas — run ./gradlew updateResourceSchemas and commit the result")
+        }
+    }
+}
+
 tasks.register('checkAll') {
     group = 'verification'
-    description = 'The gate: neutrality wall + every project\'s tests + the client tests.'
+    description = 'The gate: neutrality wall + every project\'s tests + the client tests + the shipped schemas.'
     dependsOn 'checkNeutrality'
     dependsOn subprojects.collect { "${it.path}:test" }
     dependsOn 'clientTest'
+    dependsOn 'checkResourceSchemas'
 }
 
 // Aggregate entry point for generating every system's API docs.

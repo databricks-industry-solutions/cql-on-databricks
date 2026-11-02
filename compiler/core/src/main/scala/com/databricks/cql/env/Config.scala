@@ -120,14 +120,6 @@ final case class Config(
       * byte-unchanged). Validated diff-clean vs the Java reference (CONF-GATE-SELFDIFF). Set
       * `-Dcqldatabricks.retrieveViews=false` to force per-use inlining. */
     retrieveViews: Boolean = true,
-    /** DATA-MODEL-SCHEMA section 4.5 (`compiler/docs/data-model.md`). The maximum FHIR nesting depth the
-      * static schema projects (mirrors Pathling's `maxNestingLevel`); a complex element at/beyond the
-      * cap is dropped (navigation past it → null), which bounds recursion through self-referential
-      * types and keeps the schema finite. The explicit-schema read (`DataProvider`) and lowering MUST
-      * use the SAME cap, so this is the single source for both. The default MUST equal
-      * `FhirSchema.DefaultMaxNesting` (kept as a bare literal here so `Config` stays Spark-free — the
-      * engine core loads without the `compileOnly` Spark classpath). */
-    fhirMaxNestingLevel: Int = 5,
     /** BIND-CAPABILITY-OVERLAP: OFF by default. When true, a `DEMAND − AVAILABLE` binding-coverage gap is
       * treated as a `null` field instead of a loud bind-time error — re-enabling SILENT gaps, so it is
       * opt-in and labeled as such (CORE-NO-SILENT-MISLOWER is the default). */
@@ -157,7 +149,6 @@ final case class Config(
     "lower.cte_defs"                        -> cteDefs.toString,
     "lower.project_fuse"                    -> projectFuse.toString,
     "lower.retrieve_views"                  -> retrieveViews.toString,
-    "data.fhir_max_nesting_level"           -> fhirMaxNestingLevel.toString,
     "bind.gap_lenient"                      -> bindingGapLenient.toString
   )
 }
@@ -255,8 +246,6 @@ object Config {
       cteDefs = bool("lower.cte_defs", base.cteDefs),
       projectFuse = bool("lower.project_fuse", base.projectFuse),
       retrieveViews = bool("lower.retrieve_views", base.retrieveViews),
-      fhirMaxNestingLevel = overrides.get("data.fhir_max_nesting_level")
-        .flatMap(v => scala.util.Try(v.toInt).toOption).getOrElse(base.fhirMaxNestingLevel),
       bindingGapLenient = bool("bind.gap_lenient", base.bindingGapLenient)
     )
   }

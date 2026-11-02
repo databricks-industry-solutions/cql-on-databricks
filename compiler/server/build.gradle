@@ -84,9 +84,9 @@ sourceSets.main.resources.srcDir(ucVersionDir)
 tasks.named('processResources') { dependsOn 'writeUcCompilerVersion' }
 
 // Dump the canonical __resource mount DDL for every modeled FHIR resource type (SVC-RESOURCE-SCHEMA).
-// ON-DEMAND, into this project's build directory. The loader's importer owns its own copy of these schemas
-// (CONTENT-IMPORTER-FHIR-SCHEMAS, DEC-CONTENT-FEATURE) and is no longer written by this task: the retrieve UDTF is the adaptation layer,
-// so the two may drift without breaking a run. Diff against loader/importer when the FHIR model changes.
+// ON-DEMAND, into this project's build directory. The shipped sources commit a copy of this output
+// (CONTENT-IMPORTER-FHIR-SCHEMAS): the root `checkResourceSchemas` fails when they differ, and `updateResourceSchemas`
+// refreshes the copy.
 tasks.register('dumpResourceSchemas', JavaExec) {
     group = 'distribution'
     description = 'Dump resource-schema DDLs to build/resource-schemas.json (SVC-RESOURCE-SCHEMA).'

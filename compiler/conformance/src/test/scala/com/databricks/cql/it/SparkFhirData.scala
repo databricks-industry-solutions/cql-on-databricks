@@ -15,8 +15,7 @@ import org.apache.spark.sql.{Column, DataFrame, SparkSession, functions => F}
   * The subject-reference id (DATA-SUBJECT-KEY) is promoted with `substring_index` — the segment
   * after the last `/` of `"Patient/<id>"` — a cheap top-level projection rather than a per-row
   * `regexp_extract` in the hot path. (The production ingest-time/partitioned key is deferred.) */
-final class SparkFhirData(spark: SparkSession, dataDir: String,
-                          maxNesting: Int = FhirSchema.DefaultMaxNesting) extends DataProvider {
+final class SparkFhirData(spark: SparkSession, dataDir: String) extends DataProvider {
 
   // DATA-RETRIEVE-VIEW: mount the resource frame as the single `(__subject_id, __resource)` schema
   // contract — the subject key plus the resource packed into one struct ([[ResourceStruct.of]]). The
@@ -28,12 +27,12 @@ final class SparkFhirData(spark: SparkSession, dataDir: String,
   override def retrieve(fhirType: String, hints: RetrieveHints = RetrieveHints.none): DataFrame =
     rawRetrieve(fhirType, hints.project).select(
       subjectKeyExpr(fhirType).as(SystemColumns.SubjectId),
-      ResourceStruct.of(fhirType, maxNesting, hints.project).as(SystemColumns.Resource))
+      ResourceStruct.of(fhirType, hints.project).as(SystemColumns.Resource))
 
   /** DATA-SCHEMA-CONTRACT: read with the EXPLICIT model-derived schema (FhirSchema) — LAZY (no inference
     * action, the enabler for the offline-compile gate, TYPE-OFFLINE-COMPILE) and schema-complete (every
     * model element present, absent → null) so lowering reads schema from the model, never the frame.
-    * `maxNesting` MUST match the lowering side (`Config.fhirMaxNestingLevel`). An unmodeled type has no
+    * An unmodeled type has no
     * static schema → fall back to inference (never hit by the corpus). The flat read `retrieve` packs
     * into the `__resource` struct via [[ResourceStruct.of]].
     *
@@ -43,7 +42,7 @@ final class SparkFhirData(spark: SparkSession, dataDir: String,
     * subject key and identity. */
   private def rawRetrieve(fhirType: String, keep: Option[Set[String]] = None): DataFrame =
     if (FhirSchema.isModeled(fhirType)) {
-      val full = FhirSchema.rawResourceSchema(fhirType, maxNesting)
+      val full = FhirSchema.rawResourceSchema(fhirType)
       val schema = keep match {
         case Some(fields) =>
           // A context-less type (LANG-REFERENCE-FOLLOW, e.g. Medication) has no subject reference — don't
@@ -66,7 +65,7 @@ final class SparkFhirData(spark: SparkSession, dataDir: String,
     * reshape reads them: `subject`, else `patient`, else `beneficiary` (`Coverage`). Only the ones `fhirType`
     * declares. */
   private def subjectRefFields(fhirType: String): Seq[String] = {
-    val declared = FhirSchema.rawResourceSchema(fhirType, maxNesting).fieldNames.toSet
+    val declared = FhirSchema.rawResourceSchema(fhirType).fieldNames.toSet
     FhirModel.SubjectReferenceFields.filter(declared)
   }
 

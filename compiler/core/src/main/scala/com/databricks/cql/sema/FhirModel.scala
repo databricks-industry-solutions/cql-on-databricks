@@ -99,6 +99,11 @@ object FhirModel {
       if (e.isList) ListType(base) else base
     }
 
+  /** The FHIR type name of element or typed slot `path` on (localized) FHIR type `typeName` (`Observation`,
+    * `code` → `CodeableConcept`; `valueQuantity` → `Quantity`; `birthDate` → `date`), if modeled. */
+  def elementType(typeName: String, path: String): Option[String] =
+    elementsOf(localName(typeName)).find(_.name == path).map(_.fhirType)
+
   /** The CqlType of a value[x] typed SLOT (`Dosage.DoseAndRate` `doseQuantity` → `Quantity`,
     * `Observation` `valueQuantity` → `Quantity`). [[navType]] deliberately does NOT resolve a choice
     * base OR its slots (so a bare `.value` routes through the `As`/`Is` path); this resolves a
@@ -188,7 +193,7 @@ object FhirModel {
         case _        => None
       }
 
-  // -- Profiled extensions (DATA-MODEL-SCHEMA section 4.4) --------------------
+  // -- Profiled extensions (DATA-MODEL-SCHEMA) -------------------------------
 
   /** Hand-modeled PROFILED extensions: a CLOSED allow-list of extension URLs → the declared FHIR type
     * of their `value[x]`. Base FHIR XSD does not carry profile extension definitions (out of XSD scope,

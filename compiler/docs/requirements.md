@@ -162,8 +162,10 @@ The compiler's requirements, including its client (`cql-databricks`). Requiremen
 | `DATA-SCHEMA-CONTRACT` | Lowering reads schema from `Encoding(typeOf(node))`, never a live frame. | `data-format.md` |
 | `DATA-MODEL-SEAM` | External data models resolve through one generic seam; FHIR R4 is first implementation. | `data-model.md` |
 | `DATA-MODEL-STATIC-STRUCT` | Demand-hot fields extracted to typed columns; whole-body/het-Choice payload rides flat-STRUCT carrier. | `data-model.md` |
-| `DATA-MODEL-SCHEMA` | Model→Spark encoding: primitives → scalars; `0..*` → array; `value[x]` → one typed slot per type; extensions → closed allow-list. | `data-model.md` |
-| `DATA-NO-EMPTY-STRUCT` | A complex type truncating to zero fields at nesting cap is omitted, not emitted as field-less `STRUCT<>`. | `data-model.md` |
+| `DATA-MODEL-SCHEMA` | The schema is FHIR R4 JSON with fields left out, never moved or renamed, and no depth cap: primitives → scalars; `0..*` → array; `value[x]` → one typed slot per type; `extension` on resources only, one nested level, one slot per open value type; `modifierExtension` the nested shape on a resource, `url` only on a backbone; `contained` left out. | `data-model.md` |
+| `DATA-MODEL-CUTS` | Each type loop is cut at one committed edge, where the target type loses the field that closes the loop: `Identifier.assigner` (a Reference without `identifier`) and `Extension.extension`. Every other datatype has one shape. A loop not in the list fails the schema build, naming the edge. | `data-model.md` |
+| `DATA-PATH-IN-SCHEMA` | Navigating to an element FHIR R4 defines but the data model leaves out fails the compile, naming the rule; the check follows each navigation from where it starts, so it sees a cut where it lands. | `data-model.md` |
+| `DATA-NO-EMPTY-STRUCT` | A complex type that keeps no fields is omitted, not emitted as field-less `STRUCT<>`. | `data-model.md` |
 
 ## TYPE — FHIR result typing & static schema
 
