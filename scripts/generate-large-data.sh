@@ -13,18 +13,27 @@
 # A 250,000-patient cohort is 560 to 900 MB of NDJSON, uploaded gzipped as 10 to 18 MB; one takes about 3.5 to 5
 # minutes end to end.
 #
-# Usage: scripts/generate-large-data.sh [--measure <measure>]...   (default: every cohort in the recipe)
+# The population is an environment of its own, in its own catalog, never the default (DATA-SYNTH-LARGE): --catalog
+# names it, and must not be uc_catalog. --users-group reads it and --designer-app's principal reads its knowledge.
+#
+# Usage: scripts/generate-large-data.sh --catalog <catalog> --users-group <group> --designer-app <app> \
+#          [--measure <measure>]...   (default: every cohort in the recipe)
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 venv_py="$here/.venv/bin/python"
 recipe="$here/loader/synthesizer/recipes/synthetic-large.json"
 . "$here/scripts/lib/synth-fixtures.sh"
 
-only=()
+usage="usage: $0 --catalog <catalog> --users-group <group> --designer-app <app> [--measure <measure>]..."
+only=(); catalog=""; users_group=""; designer_app=""
 while [ $# -gt 0 ]; do case "$1" in
-  --measure) [ $# -ge 2 ] || { echo "usage: $0 [--measure <measure>]..." >&2; exit 2; }; only+=("$2"); shift 2;;
-  *) echo "usage: $0 [--measure <measure>]..." >&2; exit 2;;
+  --measure) [ $# -ge 2 ] || { echo "$usage" >&2; exit 2; }; only+=("$2"); shift 2;;
+  --catalog) [ $# -ge 2 ] || { echo "$usage" >&2; exit 2; }; catalog="$2"; shift 2;;
+  --users-group) [ $# -ge 2 ] || { echo "$usage" >&2; exit 2; }; users_group="$2"; shift 2;;
+  --designer-app) [ $# -ge 2 ] || { echo "$usage" >&2; exit 2; }; designer_app="$2"; shift 2;;
+  *) echo "$usage" >&2; exit 2;;
 esac; done
+[ -n "$catalog" ] && [ -n "$users_group" ] && [ -n "$designer_app" ] || { echo "$usage" >&2; exit 2; }
 
 [ -x "$venv_py" ] || { echo "ERROR: venv absent — run: scripts/setup.sh" >&2; exit 1; }
 [ -f "$here/databricks.local.yml" ] || { echo "ERROR: databricks.local.yml not found — see docs/deploy.md" >&2; exit 1; }
@@ -66,7 +75,8 @@ print(fixture_dir(sys.argv[1]))' "$measure")"
   "$venv_py" -m cql_databricks_synth verify --elm "$fixtures" --valuesets "$fixtures" --out "$scratch"
   echo "==> $measure: landing…"
   "$here/scripts/with-local-env.sh" "$venv_py" "$here/loader/scripts/synthetic-population/load.py" \
-    --ndjson-dir "$scratch" --cohort "$measure"
+    --ndjson-dir "$scratch" --cohort "$measure" --catalog "$catalog" --users-group "$users_group" \
+    --designer-app "$designer_app"
   rm -rf "$scratch"
 done
 

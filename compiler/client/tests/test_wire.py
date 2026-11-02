@@ -41,19 +41,19 @@ class ClosureWireTests(unittest.TestCase):
         """The long-standing `deps` form — an array of ELM JSON strings — is unchanged, so a closure
         resolved to ELM is wire-identical to a hand-built request."""
         dep = LibrarySource(name="CommonHelpers", version="2.0.000", elm='{"library":{}}')
-        self.assertEqual(CompileRequest(elm="{}", deps=(dep,)).to_json()["deps"], ['{"library":{}}'])
+        self.assertEqual(CompileRequest(elm="{}", deps=(dep,)).to_json()["knowledge"], ['{"library":{}}'])
 
     def test_a_cql_only_dependency_ships_as_an_object_carrying_its_identity(self):
         """A pure-Python caller cannot translate, so it ships CQL and the service translates. The name
         and version ride along so a service-side diagnostic can say WHICH library failed."""
         dep = LibrarySource(name="Exclusions", version="6.18.000", cql="library Exclusions version '6.18.000'")
-        entry = CompileRequest(elm="{}", deps=(dep,)).to_json()["deps"][0]
+        entry = CompileRequest(elm="{}", deps=(dep,)).to_json()["knowledge"][0]
         self.assertEqual(entry, {"cql": "library Exclusions version '6.18.000'",
                                  "name": "Exclusions", "version": "6.18.000"})
 
     def test_a_mixed_closure_ships_both_forms_in_one_array(self):
         deps = (LibrarySource(name="A", elm='{"a":1}'), LibrarySource(name="B", cql="library B"))
-        entries = CompileRequest(elm="{}", deps=deps).to_json()["deps"]
+        entries = CompileRequest(elm="{}", deps=deps).to_json()["knowledge"]
         self.assertEqual(entries[0], '{"a":1}')
         self.assertEqual(entries[1]["cql"], "library B")
 
@@ -61,7 +61,7 @@ class ClosureWireTests(unittest.TestCase):
         """A FHIR `Library` resource often carries both; ELM is the interchange form, so it wins and the
         service does no redundant translation."""
         dep = LibrarySource(name="Both", elm='{"library":{}}', cql="library Both")
-        self.assertEqual(CompileRequest(elm="{}", deps=(dep,)).to_json()["deps"], ['{"library":{}}'])
+        self.assertEqual(CompileRequest(elm="{}", deps=(dep,)).to_json()["knowledge"], ['{"library":{}}'])
 
     def test_a_CQL_root_takes_each_dependencys_CQL_even_when_it_also_has_ELM(self):
         """The form depends on the ROOT, not only on what the dependency carries. A CQL root must be
@@ -69,40 +69,21 @@ class ClosureWireTests(unittest.TestCase):
         leaves the root's `include` unresolvable ("Could not load source for library …") even though the
         ELM was right there."""
         dep = LibrarySource(name="Both", version="1.0.0", elm='{"library":{}}', cql="library Both")
-        entry = CompileRequest(cql="library Root", deps=(dep,)).to_json()["deps"][0]
+        entry = CompileRequest(cql="library Root", deps=(dep,)).to_json()["knowledge"][0]
         self.assertEqual(entry["cql"], "library Both")
 
     def test_a_CQL_root_still_ships_an_ELM_ONLY_dependency_as_ELM(self):
         """Nothing else can be done for it — and it is still linkable, just not a translation source."""
         dep = LibrarySource(name="ElmOnly", elm='{"library":{}}')
-        self.assertEqual(CompileRequest(cql="library Root", deps=(dep,)).to_json()["deps"],
+        self.assertEqual(CompileRequest(cql="library Root", deps=(dep,)).to_json()["knowledge"],
                          ['{"library":{}}'])
 
 
-class SourcesWireTests(unittest.TestCase):
-    def test_valueset_table_rides_in_sources_where_the_service_actually_reads_it(self):
-        """The silent no-op this fixes: the client resolved `valueset_table` into
-        `overrides["terminology.valueset_table"]`, which NOTHING on the service reads — the compiler's
-        `Config.resolve` ignores unknown keys and the real knob is `sources.valuesets.table`. So
-        `.valueset_table("x")` configured nothing at all and failed silently."""
-        body = CompileRequest(elm="{}", terminology_table="cat.sch.valuesets").to_json()
-        self.assertEqual(body["sources"]["valuesets"], {"table": "cat.sch.valuesets"})
-
-    def test_udf_schema_rides_in_sources_too(self):
+class RuntimeWireTests(unittest.TestCase):
+    def test_udf_schema_rides_in_runtime(self):
+        """EMIT-UDF-QUALIFY: the schema of the `cql_*` functions is `runtime.schema` on the wire."""
         body = CompileRequest(elm="{}", udf_schema="acme.runtime").to_json()
-        self.assertEqual(body["sources"]["udfs"], {"schema": "acme.runtime"})
-
-    def test_retrieve_bindings_and_the_reserved_entries_coexist(self):
-        body = CompileRequest(elm="{}", terminology_table="c.s.vs",
-                              sources={"Condition": {"function": "retrieve_condition",
-                                                     "catalog": "main"}}).to_json()
-        self.assertEqual(body["sources"]["Condition"],
-                         {"function": "retrieve_condition", "catalog": "main"})
-        self.assertEqual(body["sources"]["valuesets"], {"table": "c.s.vs"})
-
-    def test_a_binding_without_a_function_is_dropped(self):
-        body = CompileRequest(elm="{}", sources={"Condition": {"catalog": "main"}}).to_json()
-        self.assertNotIn("sources", body)
+        self.assertEqual(body["runtime"], {"schema": "acme.runtime"})
 
 
 class ObjectPrefixWireTests(unittest.TestCase):

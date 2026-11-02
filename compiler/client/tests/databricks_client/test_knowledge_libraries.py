@@ -12,7 +12,7 @@ from cql_databricks.compiler.knowledge_libraries import (FolderThenKnowledge, Kn
                                                          from_knowledge)
 from cql_databricks.compiler.libraries import FileLibraryProvider, LibraryRef, LibraryResolutionError, LibrarySource
 from cql_databricks.compiler.session_libraries import SessionLibraryProvider
-from cql_databricks.data_bindings import KNOWLEDGE_TAG, CatalogScope, Corpus, Library, TaggedSchema
+from cql_databricks.data_bindings import KNOWLEDGE_TAG, Corpus, Library, TaggedSchema
 
 DEV = TaggedSchema(KNOWLEDGE_TAG, "dev", "acme_dev", "cql", 0)
 SHARED = TaggedSchema(KNOWLEDGE_TAG, "quality_measures", "acme_shared", "quality_measures", 1)
@@ -43,9 +43,9 @@ LIBRARIES = [
 
 
 class _Content:
-    """The resolver as the provider uses it: a loaded corpus and the scopes it came from."""
+    """The resolver as the provider uses it: a loaded corpus and the environment's catalog."""
 
-    scopes = (CatalogScope("acme_dev", "cql"), CatalogScope("acme_shared"))
+    catalog = "acme_shared"
 
     def __init__(self, libraries=LIBRARIES):
         self._corpus = Corpus(lambda *a: [], [DEV, SHARED], libraries)
@@ -90,11 +90,11 @@ class KnowledgeLibraryProviderTest(unittest.TestCase):
             ("Helpers", "1.0.0", "acme_dev.cql"), ("Common", "1.0.0", "acme_shared.quality_measures"),
             ("FHIRHelpers", "4.0.1", "acme_shared.quality_measures")])
 
-    def test_an_include_no_scope_holds_fails_naming_the_scopes(self):
-        with self.assertRaisesRegex(LibraryResolutionError, "acme_dev.cql, acme_shared"):
+    def test_an_include_the_knowledge_lacks_fails_naming_the_environments_knowledge(self):
+        with self.assertRaisesRegex(LibraryResolutionError, "acme_shared.knowledge"):
             self.knowledge.resolve(LibraryRef("Missing"))
         draft = LibrarySource("Draft", "1", cql=_cql("Draft", "1", ("Missing", "1.0.0")))
-        with self.assertRaisesRegex(LibraryResolutionError, "needs Missing 1.0.0.*acme_dev.cql, acme_shared"):
+        with self.assertRaisesRegex(LibraryResolutionError, "needs Missing 1.0.0.*acme_shared.knowledge"):
             self.knowledge.closure(draft)
 
     def test_search_lists_each_library_once(self):

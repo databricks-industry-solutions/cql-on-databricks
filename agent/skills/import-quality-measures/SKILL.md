@@ -84,74 +84,61 @@ Every value set the libraries declare (`needed`) must have codes, in this import
 
 ## 5. Choose where it goes
 
-The user must be able to write the target, and CQL on Databricks must be able to find it. Look before you
-propose:
+Measures go into an environment: a catalog tagged `cql_databricks_environment`, whose `knowledge_store` and
+`terminology_store` tables its `knowledge` and `terminology` views select. The import writes those two store
+schemas. List the environments the user can see, and what they can do in each store:
 
 ```sql
--- Schemas that already hold measures or value sets for CQL on Databricks
-SELECT catalog_name, schema_name, tag_name, tag_value
-FROM system.information_schema.schema_tags
-WHERE tag_name IN ('cql_databricks_knowledge', 'cql_databricks_terminology');
+-- Environments: one row per tag of each catalog tagged as one
+SELECT catalog_name, tag_name, tag_value
+FROM system.information_schema.catalog_tags
+WHERE tag_name IN ('cql_databricks_environment', 'cql_databricks_environment_default');
 
--- What you can do in each schema (your own grants and your groups')
+-- What you can do in each store schema (your own grants and your groups')
 SELECT catalog_name, schema_name, collect_set(privilege_type) AS privileges
 FROM system.information_schema.schema_privileges
-WHERE grantee = current_user() OR is_account_group_member(grantee)
-GROUP BY ALL;
-
--- Schemas you own, and catalogs where you can create a schema
-SELECT catalog_name, schema_name FROM system.information_schema.schemata
-WHERE schema_owner = current_user() OR is_account_group_member(schema_owner);
-SELECT catalog_name, collect_set(privilege_type) AS privileges
-FROM system.information_schema.catalog_privileges
-WHERE grantee = current_user() OR is_account_group_member(grantee)
+WHERE schema_name IN ('knowledge_store', 'terminology_store')
+  AND (grantee = current_user() OR is_account_group_member(grantee))
 GROUP BY ALL;
 ```
 
-A target works when the user owns the schema, or has `USE CATALOG`, `USE SCHEMA`, `CREATE TABLE`, `MODIFY`,
-`SELECT` and `APPLY TAG` on it (`ALL PRIVILEGES` covers them). Privileges granted on the catalog apply to its
-schemas too. With `CREATE SCHEMA` on a catalog they can make a new schema, which they then own.
-
-The deployment finds measures only in its catalog scopes, a list of catalogs its deployer set. A target outside
-them loads, but the Apps won't see it. Catalogs that already hold tagged knowledge schemas (the first query) are
-likely in scope. Ask the user which catalogs the deployment uses, and say if they aren't sure. Propose one or two targets, with the reason, and let the user choose. Value
-sets may share a terminology schema apart from the measures (`terminology_schema=`), so several measure sets keep
-one copy of each value set. Re-importing replaces a value set's codes whole, and merges measures and libraries
-on their canonical URL and version.
+An import works when the user can write both stores: `USE CATALOG`, `USE SCHEMA`, `CREATE TABLE`, `MODIFY` and
+`SELECT` on `knowledge_store` and `terminology_store` (`ALL PRIVILEGES` covers them). Propose the environment, with
+the reason, and let the user choose. The default environment is the one the Designer and Genie use unless someone
+picks another. Re-importing replaces a value set's codes whole, and merges measures and libraries on their canonical
+URL and version.
 
 ## 6. Dry run, then import
 
 ```python
 from cql_databricks.data_bindings.measure_import import import_measures
 
-summary = import_measures(spark, resources, codes=codes, catalog="<catalog>", schema="<schema>",
-                          terminology_schema=None, source="<a short name for where this came from>",
-                          dry_run=True)
+summary = import_measures(spark, resources, codes=codes, catalog="<the environment's catalog>",
+                          source="<a short name for where this came from>", dry_run=True)
 summary
 ```
 
 The function checks everything before it writes, and an `ImportContentError` lists every problem at once: a
 measure naming a library that isn't there, a value set without codes, a value set that still needs expanding.
-Fix them with the user, then run again. When the dry run is clean, show the summary, confirm the target, and run
-the same call without `dry_run`.
+Fix them with the user, then run again. When the dry run is clean, show the summary, confirm the environment, and
+run the same call without `dry_run`.
 
 ## 7. Check it
 
 ```python
 from cql_databricks.compiler import connect
 
-client = connect(spark, catalog_scopes=["<catalog>"], valueset_table="<catalog>.<terminology schema>.valueset")
+client = connect(spark, environment="<the environment's name>")
 query = client.cql(library="<the measure's library name>")
 query.populations()   # compiles the library with its includes, and lists the measure's populations
 ```
 
-If the user wants numbers, run it over a data source they choose:
+If the user wants numbers, run it over the environment's data:
 `query.with_measurement_period("<start>", "<end>").exec()`.
 
 Report what was imported: the measures, the libraries, how many value sets, and anything skipped. Then
 explain how the rest of the deployment sees it:
 
-- In notebooks, `cql(library=...)` finds the libraries straight away, within the catalog scopes.
-- Runs that don't name `valueset_table` read value sets from the knowledge views in the runtime schema, the
-  schema of the Volume you found in step 2. The views pick up a new terminology schema when their owner rebinds
-  them: the Designer's Bind action, or the next deploy. Until then, pass `valueset_table` as above.
+- In notebooks, `cql(library=...)` in that environment finds the libraries straight away.
+- The Designer shows them in that environment's catalog after its knowledge is reloaded, or the App restarts.
+- Genie and the agent's tools see them when it is the default environment.

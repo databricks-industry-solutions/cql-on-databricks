@@ -75,8 +75,9 @@ def _client(monkeypatch):
     monkeypatch.setattr(knowledge, "forwarded_identity", lambda: ("token", "a@example.org"))
     app = FastAPI()
     content = _Content()
-    app.include_router(knowledge.router(content=content, warehouse=lambda: "wh"))
-    app.include_router(designer.router(content=content))
+    contents = SimpleNamespace(get=lambda name: content, reload=lambda: None)
+    app.include_router(knowledge.router(contents=contents))
+    app.include_router(designer.router(contents=contents))
     return TestClient(app)
 
 

@@ -47,7 +47,7 @@ def _library(name, version, source, store):
 
 
 class _Content:
-    scopes = ("k",)
+    catalog = "k"
 
     def __init__(self, libraries, stores):
         self._corpus = Corpus(lambda *a: [], list(stores), libraries)
@@ -145,7 +145,7 @@ class ResolveAtLocationTests(unittest.TestCase):
         files = _MemoryFiles({"/W/CMS1/cql/Measure-1.0.0.cql": MEASURE})
         r = resolve(lonely, library="Measure", location="folder:/W/CMS1", files=files)
         self.assertEqual(sorted(u.name for u in r.unresolved), ["Common", "Helpers"])
-        self.assertIn("is not in the folder /W/CMS1 or any tagged knowledge source", r.unresolved_messages()[0])
+        self.assertIn("is not in the folder /W/CMS1 or the environment's knowledge", r.unresolved_messages()[0])
         with self.assertRaisesRegex(ResolutionError, "includes not in the folder /W/CMS1"):
             r.require_complete()
 

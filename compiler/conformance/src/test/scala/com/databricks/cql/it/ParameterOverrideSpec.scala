@@ -24,7 +24,7 @@ final class ParameterOverrideSpec extends AnyFunSuite {
 
   private def compile(parameters: Map[String, String]): String =
     CompileService.compileSql(
-      CompileRequest(cql = Some(cql), parameters = parameters), hasTerminology = false).script
+      CompileRequest(cql = Some(cql), parameters = parameters)).script
 
   test("raw CQL text is translated and compiled to SQL (BUILD-CLIENT-SESSION)") {
     val script = compile(Map.empty)
@@ -52,8 +52,7 @@ final class ParameterOverrideSpec extends AnyFunSuite {
         |""".stripMargin
     val script = CompileService.compileSql(
       CompileRequest(cql = Some(cqlWithPeriod),
-        parameters = Map("Measurement Period" -> "Interval[@2026-01-01, @2026-12-31]")),
-      hasTerminology = false).script
+        parameters = Map("Measurement Period" -> "Interval[@2026-01-01, @2026-12-31]"))).script
     assert(script.contains("2026"), s"the override interval bound should be inlined; got:\n$script")
     assert(!script.contains("2000"), s"the default interval should NOT survive; got:\n$script")
   }
@@ -61,8 +60,7 @@ final class ParameterOverrideSpec extends AnyFunSuite {
   private def compileWith(source: String, parameters: Map[String, String],
                           session: Map[String, String]): String =
     CompileService.compileSql(
-      CompileRequest(cql = Some(source), parameters = parameters, sessionParameters = session),
-      hasTerminology = false).script
+      CompileRequest(cql = Some(source), parameters = parameters, sessionParameters = session)).script
 
   test("a session parameter binds a library that declares it (BUILD-CLIENT-SESSION-PARAMETERS)") {
     val script = compileWith(cql, Map.empty, Map("Threshold" -> "555"))

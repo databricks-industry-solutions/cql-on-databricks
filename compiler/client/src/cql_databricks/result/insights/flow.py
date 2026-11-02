@@ -169,7 +169,7 @@ def cohort_flow(
     draft: str,
     gates: list[GateRequest],
     closure: "ClosureSource",
-    patient_function: str | None,
+    patient_relation: str | None,
     results_catalog: str,
     execute: Execute,
 ) -> CohortFlow:
@@ -225,7 +225,7 @@ def cohort_flow(
         needs_binding = not (gate.base and gate.base_library)
         if (gate.criteria
                 and all(resolved(k) is not None for k in needed)
-                and not (needs_binding and not patient_function)):
+                and not (needs_binding and not patient_relation)):
             usable.append(gate)
         else:
             omitted.append(gate.stage)
@@ -234,7 +234,7 @@ def cohort_flow(
     if usable:
         ctes, cte_of = _subject_ctes(usable, resolved, columns, suffix)
         if any(not (g.base and g.base_library) for g in usable):
-            ctes.insert(0, _evaluated_cte(patient_function))
+            ctes.insert(0, _evaluated_cte(patient_relation))
         sql = _crosstab(usable, cte_of, ctes)
         rows = execute(sql) or []
         built = _read_rows(usable, rows)
@@ -251,15 +251,14 @@ def cohort_flow(
 EVALUATED = "s_all"
 
 
-def _evaluated_cte(patient_function: str | None) -> str:
-    """The evaluated cohort, from the bound Patient retrieve (`BIND-RETRIEVE-UDF`).
+def _evaluated_cte(patient_relation: str | None) -> str:
+    """The evaluated cohort, from the environment's Patient view (`BIND-PUBLISHED-VIEW`).
 
-    THE DATA SOURCE IS THE POPULATION. The call passes no argument: a retrieve's rows depend only on its
-    arguments and its data source (`EMIT-ROOT-INDEPENDENT`), and a measure's population is chosen by
-    choosing its data source (`DATA-CONFORMANCE-MEASURE-SELECT`).
+    THE ENVIRONMENT'S DATA IS THE POPULATION: a retrieve's rows depend only on its request and the data it is bound to
+    (`EMIT-ROOT-INDEPENDENT`), and a measure's population is chosen by choosing its environment (`CLIENT-ENVIRONMENT`).
     """
     return (f"{EVALUATED} AS (SELECT DISTINCT {SUBJECT_ID} "
-            f"FROM {patient_function}())")
+            f"FROM {patient_relation})")
 
 
 def _caveat(omitted: list[str]) -> str | None:

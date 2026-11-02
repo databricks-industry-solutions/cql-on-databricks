@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 #: What the standalone App publishes: the agent's data tools, its research tools and the skill pair
 #: (APP-PER-FEATURE, SVC-MCP-TOOLS amended 2026-10-29).
-EXPECTED_TOOLS = {"list_data_sources", "list_tables", "get_output", "query_data",
+EXPECTED_TOOLS = {"list_tables", "get_output", "query_data",
                   "get_freshness", "list_skills", "get_skill",
                   "list_definitions", "get_definition", "list_value_sets", "value_sets_with_code",
                   "find_results", "get_population_summary", "check_cql", "run_cql", "compare_cql"}

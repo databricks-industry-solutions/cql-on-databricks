@@ -82,7 +82,6 @@ object SqlFrameLowering {
     // byte-identical for every existing caller.
     val reads = RetrieveReads.selected(lib, env0.config)
     val env = env0.copy(
-      defineParameters = com.databricks.cql.passes.ParameterScope.of(lib),
       reuseCounts    = Materialize.reuseCounts(lib),
       skipUnfiltered = Materialize.skipUnfilteredNames(lib, env0.config),
       choiceDemand   = ChoiceDemand.analyze(lib, typeOf),

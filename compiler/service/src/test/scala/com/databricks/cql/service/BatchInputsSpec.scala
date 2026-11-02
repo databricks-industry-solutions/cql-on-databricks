@@ -19,36 +19,25 @@ final class BatchInputsSpec extends AnyFunSuite {
       ("DateTime", "2026-01-01", "2026-12-31", "Interval[@2026-01-01T00:00:00.000, @2026-12-31T23:59:59.999]"),
       ("DateTime", "2026-01-01T12:34:56.000", "2026-12-31", "Interval[@2026-01-01T12:34:56.000, @2026-12-31T23:59:59.999]"),
       ("Date", "2026-01-01T12:34:56.000", "2026-12-31", "Interval[@2026-01-01, @2026-12-31]"))) {
-      val req = CompileRequest(cql = Some(source(t)), durable = true)
-      val batch = CompileService.compilePipeline(req.copy(measurementPeriod = Some(start -> end)), false)
-      val explicit = CompileService.compilePipeline(req.copy(parameters = Map("Measurement Period" -> expected)), false)
+      val req = CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, cql = Some(source(t)), durable = true)
+      val batch = CompileService.compilePipeline(req.copy(measurementPeriod = Some(start -> end)))
+      val explicit = CompileService.compilePipeline(req.copy(parameters = Map("Measurement Period" -> expected)))
       assert(batch == explicit, t)
     }
   }
 
   test("SVC-COMPILE-BATCH: undeclared periods are inert, unsupported declarations and conflicts fail") {
-    val req = CompileRequest(cql = Some("library NoPeriod version '1'\ndefine Output: 7"), durable = true)
+    val req = CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, cql = Some("library NoPeriod version '1'\ndefine Output: 7"), durable = true)
     val bounds = Some("2026-01-01" -> "2026-12-31")
-    assert(CompileService.compilePipeline(req.copy(measurementPeriod = bounds), false) ==
-      CompileService.compilePipeline(req, false))
+    assert(CompileService.compilePipeline(req.copy(measurementPeriod = bounds)) ==
+      CompileService.compilePipeline(req))
     val unsupported = intercept[IllegalArgumentException] {
-      CompileService.compilePipeline(req.copy(cql = Some(source("Integer")), measurementPeriod = bounds), false)
+      CompileService.compilePipeline(req.copy(cql = Some(source("Integer")), measurementPeriod = bounds))
     }
     assert(unsupported.getMessage.contains("Interval<DateTime> or Interval<Date>"))
     intercept[IllegalArgumentException] {
       CompileService.compilePipeline(req.copy(measurementPeriod = bounds,
-        parameters = Map("Measurement Period" -> "1")), false)
-    }
-  }
-
-  test("SVC-COMPILE-BATCH: caller metadata maps canonical types and rejects malformed layouts") {
-    val d = DataSourceRoutines("synthetic", "source", Seq("retrieve_patient", "retrieve_patient_ids", "helper"))
-    val resolved = BatchInputs.prepare(CompileRequest(dataSource = Some(d)))
-    assert(resolved.sources("Patient").function == "retrieve_Patient")
-    assert(resolved.sources("Patient").catalog.contains("synthetic.source"))
-    for (routines <- Seq(Seq("retrieve_unknown"), Seq("helper"), Seq("retrieve_patient_ids"),
-      Seq("retrieve_patient", "retrieve_encounter_ids"))) {
-      intercept[IllegalArgumentException] { BatchInputs.prepare(CompileRequest(dataSource = Some(d.copy(routines = routines)))) }
+        parameters = Map("Measurement Period" -> "1")))
     }
   }
 
@@ -60,10 +49,10 @@ final class BatchInputsSpec extends AnyFunSuite {
     assert(result.root.errors.isEmpty)
     assert(result.dependencies.map(s => ujson.read(s)("library")("identifier")("id").str).toSet == Set("Common", "Helper"))
     assert(result.dependencies.size == 2)
-    val req = CompileRequest(cql = Some(root), depCql = Seq(common, helper), durable = true)
+    val req = CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, cql = Some(root), depCql = Seq(common, helper), durable = true)
     val elmReq = req.copy(cql = None, elmJson = CqlToElmCli.translateText(root, Seq(common, helper)).elmJson.get,
       depCql = Seq.empty, deps = Seq(common, helper).map(s => CqlToElmCli.translateText(s, Seq(common, helper)).elmJson.get))
-    assert(CompileService.compilePipeline(req, false) == CompileService.compilePipeline(elmReq, false))
+    assert(CompileService.compilePipeline(req) == CompileService.compilePipeline(elmReq))
   }
 
   test("SVC-COMPILE-BATCH: a closure of only FHIRHelpers does not introduce pruning (LANG-FHIRHELPERS-FROM-CONTENT)") {
@@ -74,9 +63,9 @@ final class BatchInputsSpec extends AnyFunSuite {
                  |define Other: 7
                  |""".stripMargin
     val elm = CqlToElmCli.translateText(root, Seq(FhirHelpersCql.text)).elmJson.get
-    val req = CompileRequest(cql = Some(root), depCql = Seq(FhirHelpersCql.text), durable = true)
-    assert(CompileService.compilePipeline(req, false) ==
-      CompileService.compilePipeline(req.copy(cql = None, elmJson = elm), false))
-    assert(CompileService.compilePipeline(req, false).datasets.exists(_.define == "Other"))
+    val req = CompileRequest(data = TestBindings.Data, terminology = TestBindings.Terminology, cql = Some(root), depCql = Seq(FhirHelpersCql.text), durable = true)
+    assert(CompileService.compilePipeline(req) ==
+      CompileService.compilePipeline(req.copy(cql = None, elmJson = elm)))
+    assert(CompileService.compilePipeline(req).datasets.exists(_.define == "Other"))
   }
 }

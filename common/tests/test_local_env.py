@@ -18,7 +18,6 @@ _RESOLVED = {
     "workspace": {"host": "https://example.cloud.databricks.com", "profile": "p1"},
     "variables": {
         "uc_catalog": {"value": "cat"},
-        "designer_results_catalog": {"value": "cat_designer"},
         "designer_catalog": {"value": "cat_shared"},
         "warehouse_id": {"value": "wh1"},
     },
@@ -52,7 +51,6 @@ def test_maps_bundle_to_env(repo):
         "DATABRICKS_HOST": "https://example.cloud.databricks.com",
         "DATABRICKS_CONFIG_PROFILE": "p1",
         "UC_CATALOG": "cat", "CONTENT_CATALOG": "cat", "CQL_RUNTIME_CATALOG": "cat",
-        "CQL_DESIGNER_RESULTS_CATALOG": "cat_designer",
         "CQL_DESIGNER_CATALOG": "cat_shared",
         "WAREHOUSE_ID": "wh1",
     }

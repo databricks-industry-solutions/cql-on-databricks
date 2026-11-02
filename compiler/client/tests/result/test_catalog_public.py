@@ -1,4 +1,5 @@
-"""RUN-CLIENT-REQUEST-REOPEN — real public runtime over synthetic catalog transports."""
+"""RUN-CLIENT-REQUEST-REOPEN, RUN-CLIENT-DRAFT-RESULTS — real public runtime over synthetic catalog transports, in a
+synthetic environment."""
 from __future__ import annotations
 
 from dataclasses import replace
@@ -9,17 +10,22 @@ import pytest
 
 from cql_databricks.result import durable
 from cql_databricks.result.selection_reading import open_selection, selection_address
-from test_catalog_runtime import DESTINATION, CatalogRunner
+from cql_databricks.compiler.environment import Environment
+from test_catalog_runtime import CatalogRunner
+
+#: RUN-CLIENT-DRAFT-RESULTS — a private run writes the environment's draft_results.
+ENVIRONMENT = Environment(name="synthetic", catalog="synthetic_catalog", version="1")
+DESTINATION = ("synthetic_catalog", "draft_results")
 from test_durable_plan import identity, plan
 
 
 @pytest.fixture
 def calculation():
     """RUN-CLIENT-CATALOG-CHECKPOINTS — only the warehouse boundary is synthetic."""
-    run = CatalogRunner()
+    run = CatalogRunner(destination=DESTINATION)
     compiled = plan()
     query = SimpleNamespace(compile_pipeline=lambda **options: compiled)
-    settings = dict(run=run, destination=DESTINATION, session_id="synthetic")
+    settings = dict(run=run, environment=ENVIRONMENT, session_id="synthetic")
     return SimpleNamespace(run=run, query=query, compiled=compiled, settings=settings)
 
 
@@ -33,7 +39,8 @@ def test_public_compute_reuse_and_readonly_reopen(calculation):
     assert first.selection.selection_id == reopened.selection.selection_id
     assert [o.decision for o in reopened.outcomes] == ["reused", "reused"]
     assert all(sql.startswith("SELECT") for sql, _ in c.run.calls)
-    assert len(c.run.calls) == 2  # Tags, columns; no principal, index or physical probes.
+    # The principal, its own tables here and in the environment's results, columns; no index or physical probes.
+    assert len(c.run.calls) == 4
     assert "VERSION AS OF" not in reopened.sql("Output")
     assert "cql_result_" not in reopened.sql("Output")  # RUN-CLIENT-TABLE-NAMES
 
@@ -86,14 +93,24 @@ def test_address_checks_compiler_request_and_current_results(calculation):
         open_selection(address, query=c.query, run=c.run)
 
 
-def test_a_reader_resolves_published_results_by_name_without_writes(calculation):
-    """RUN-CLIENT-PUBLISHED, RUN-CLIENT-RESULT-IDENTITY — who published a result is not part of finding it."""
+def test_results_takes_only_a_published_calculation(calculation):
+    """RUN-CLIENT-DRAFT-RESULTS — a query that may bind cells, folders, volumes or DataFrames is refused before it
+    computes; a calculation of a library from the environment's knowledge is written to results and reopened."""
     c = calculation
-    first = durable.materialize(c.query, "Output", purpose="published", **c.settings)
-    c.run.calls.clear()
-    resolved = durable.resolve_results(c.query, "Output", **c.settings)
+    with pytest.raises(PermissionError, match="only published results"):
+        durable.materialize(c.query, "Output", purpose="published", **c.settings)
+    assert not c.run.writes
+    from cql_databricks.result.calculation import PreparedCalculation
+
+    published = PreparedCalculation("Synthetic", "1", "synthetic", ("Output",), c.compiled, published=True)
+    run = CatalogRunner(destination=("synthetic_catalog", "results"))
+    settings = dict(c.settings, run=run)
+    first = durable.materialize(published, "Output", purpose="published", **settings)
+    assert {o.result.artifact.table[1] for o in first.outcomes} == {"results"}
+    run.calls.clear()
+    resolved = durable.resolve_results(published, "Output", purpose="published", **settings)
     assert resolved.results["Output"].result == first.results["Output"].result
-    assert all(sql.startswith("SELECT") for sql, _ in c.run.calls)
+    assert all(sql.startswith("SELECT") for sql, _ in run.calls)
 
 
 @pytest.mark.parametrize("removed", ["population", "publisher", "bindings_revision", "data_as_of"])

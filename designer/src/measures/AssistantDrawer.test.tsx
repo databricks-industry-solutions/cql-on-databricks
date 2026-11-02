@@ -20,7 +20,6 @@ const SELECTION = {
   library: "ExampleMeasure",
   version: "1.0.0",
   define: "Denominator",
-  dataSourceId: "ds-1",
   periodStart: "2026-01-01",
   periodEnd: "2026-12-31",
 };

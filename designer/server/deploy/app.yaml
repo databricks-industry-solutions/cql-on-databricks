@@ -39,10 +39,6 @@ env:
   - name: "CQL_RUNTIME_CATALOG"
     value: "__CQL_RUNTIME_CATALOG__"
 
-  # RUN-CLIENT-PRIVATE-PROVISIONING — the catalog holding the Designer's per-user result schemas.
-  - name: "CQL_DESIGNER_RESULTS_CATALOG"
-    value: "__CQL_DESIGNER_RESULTS_CATALOG__"
-
   # APP-RUN-LOG, DEC-RUN-LOG-LOCATION — the catalog of the shared `designer` schema the run log is written to.
   - name: "CQL_DESIGNER_CATALOG"
     value: "__CQL_DESIGNER_CATALOG__"
@@ -50,10 +46,6 @@ env:
   # APP-RUN-LOG — the deployed build (source revision), recorded on every run log row.
   - name: "CQL_APP_VERSION"
     value: "__CQL_APP_VERSION__"
-
-  # CLIENT-DISCOVERY-SCOPE — the ordered catalog scopes discovery reads (the client's own session setting).
-  - name: "CQL_DATABRICKS_CATALOG_SCOPES"
-    value: "__CQL_DATABRICKS_CATALOG_SCOPES__"
 
   # The serverless SQL warehouse the content resolver and the drawer's tools read through.
   - name: "WAREHOUSE_ID"

@@ -48,7 +48,8 @@ export interface ResultSetAddress {
   targets: string[];
   computed_since: string | null;
   calculation?: {
-    data_source: string;
+    /** CLIENT-ENVIRONMENT — the environment the calculation ran in. */
+    environment: string;
     runtime_catalog: string;
     runtime_schema: string;
     library?: string;
@@ -96,26 +97,19 @@ export interface WarehouseList {
   warehouses: WarehouseRecord[];
 }
 
-/** DATA-SOURCE-UC-TAG — a Data Source (the Compute picker). Hand-mirrors
- *  `cql_databricks/compiler/data_source.DataSource.to_dict()`. A data source is a UC schema tagged
- *  `cql_databricks_data_source = <name>` (`DEC-DATA-SOURCE-UC-TAG`); the compiler checks its layout and
- *  reads its bindings out of it. Read-only: a source is declared by tagging its schema, not by a record
- *  this App stores. `id` is the tag's value, and so is `name`. */
-export interface DataSourceRecord {
-  id: string;
+/** DOC-ENVIRONMENT-PICKER — an environment the picker offers (`GET /api/environments`). Hand-mirrors
+ *  `routes/environments.py`'s record. An environment is a Unity Catalog catalog tagged
+ *  `cql_databricks_environment = <name>` (`CLIENT-ENVIRONMENT`); read-only here, declared by tagging the catalog.
+ *  `name` is the tag's value and the environment's identifier on every request. */
+export interface EnvironmentRecord {
   name: string;
-  /** DATA-SOURCE-DESCRIPTION — one sentence about the DATA: the schema's own comment. Absent when the
-   *  schema has none; the pickers then show no subtitle rather than assembling one out of the record's
-   *  other fields. */
-  description?: string;
   catalog: string;
-  schema: string;
-  /** BIND-RETRIEVE-UDF — one entry per FHIR type, the `retrieve_<Type>` UDTF found in the schema. */
-  dataBindings: Record<string, { function: string }>;
-  /** DATA-CHANGE-LOG — the schema's `change_data_log` relation (`data_type`, `updated_at`), when it has
-   *  one. Absent means the source makes no claim about its data, which is what stops it being
-   *  scheduled (`RUN-SCHEDULE-CURRENCY`). */
-  changeDataLog?: string;
+  /** The layout version the catalog says it follows. */
+  version: string;
+  /** True on the one environment a run with nothing picked uses. */
+  default: boolean;
+  /** One sentence about the environment: the catalog's comment. Absent when it has none. */
+  description?: string;
 }
 
 /** RUN-PROGRESS-TASKS — one definition of the run's closure, as `/api/run-stream` reports it.
@@ -164,7 +158,7 @@ export interface RunStage {
   /** Error message (stage=error). */
   error?: string;
   /** The run's identity (stage=done). `draft` is RUN-ADDRESS-BY-LIBRARY's key. */
-  identity?: { library: string; version: string; dataSource: string; draft: string };
+  identity?: { library: string; version: string; environment: string; draft: string };
   /** RUN-CLIENT-REQUEST-REOPEN — per-output reuse decisions (stage=done). */
   outcomes?: RunOutcome[];
 }
@@ -208,7 +202,7 @@ export interface DefineResultEntry {
   status: string;
 }
 
-/** PIPE-PRE-COMPUTED — pre-computed results for a (library, version, data_source).
+/** PIPE-PRE-COMPUTED — pre-computed results for a (library, version, environment).
  *  Returned by `GET /api/results`.
  *
  *  NO FUNNEL ON THE WIRE (`SPEC-ATTRITION`). It is derived from these counts by `funnelFromCounts()`,
@@ -229,7 +223,7 @@ export interface PreComputedResults {
 export interface LibraryIdentity {
   library: string;
   version: string;
-  dataSource: string;
+  environment: string;
 }
 
 // ── APP-DATA-PROFILE — one define's data profile (`insights/model.py`) ─────────────────────────

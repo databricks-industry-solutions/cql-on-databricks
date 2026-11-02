@@ -1,26 +1,25 @@
-"""BIND-PROVIDER-REQUEST: a run's providers, turned into the compile request's ``data`` and ``terminology``.
+"""BIND-CALL-SITE: a run's resolvers, turned into the compile request's ``data`` and ``terminology``.
 
-The client asks ``describe`` for the retrieves the compiled CQL makes (`BIND-RETRIEVE-REQUEST`), asks the data
-provider once for each, and sends the relations keyed by retrieve id. A table or function relation is sent by
-name; a function's parameters are read from the catalog (`BIND-NAMED-ARGS`). A volume or DataFrame relation is
-checked (`BIND-SCHEMA-CHECK`), reshaped (`BIND-RESHAPE`) and registered as a temporary view on the session that
-runs the SQL, under a name the client owns (`BIND-RELATION`). A DataFrame on a SQL warehouse run fails before
-the run, naming the provider. Nothing is materialized.
+A resolver that binds by rule is sent as its rule; one that binds per site is asked for each call site ``describe``
+reports (`BIND-RETRIEVE-REQUEST`), and its answers are sent by site id. A table relation is sent by name. A volume or
+DataFrame relation is checked (`BIND-SCHEMA-CHECK`), reshaped (`BIND-RESHAPE`) and registered as a temporary view on
+the session that runs the SQL, under a name the client owns (`BIND-RELATION`). A DataFrame on a SQL warehouse run
+fails before the run, naming the resolver. Nothing is materialized.
 
-Part of the client core: SQL goes through the caller's :class:`~cql_databricks.data_bindings.runner.SqlRunner`,
-and nothing here imports Spark or a platform SDK.
+Part of the client core: SQL goes through the caller's :class:`~cql_databricks.data_bindings.runner.SqlRunner`, and
+nothing here imports Spark or a platform SDK.
 """
 from __future__ import annotations
 
 import hashlib
 import logging
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from typing import Any
 
 from . import reshape
-from .roles import (DataFrameRelation, DataProvider, FunctionRelation, Relation, Retrieve, RetrieveRequest,
-                    TableRelation, TerminologySource, ValueSetRef, VolumeRelation, terminology_relations)
+from .resolvers import (CallSite, DataFrameRelation, DataResolver, Relation, TableRelation, TerminologyResolver,
+                        VolumeRelation, layers)
 
 log = logging.getLogger(__name__)
 
@@ -28,10 +27,7 @@ log = logging.getLogger(__name__)
 #: (`CLIENT-SESSION-RESET`).
 VIEW_PREFIX = "__cqlrel_"
 
-#: BIND-NAMED-ARGS: the request fields a function relation may declare, by name.
-REQUEST_FIELDS = frozenset(f.name for f in fields(RetrieveRequest))
-
-#: The value-set relation's columns (`CLIENT-TERMINOLOGY-PROVIDER`).
+#: The value-set relation's columns (`CLIENT-TERMINOLOGY-RESOLVER`).
 TERMINOLOGY_COLUMNS = ("valueset_id", "version", "system", "code")
 
 #: The fields of a FHIR ``ValueSet`` the terminology view reads: two levels of ``expansion.contains``.
@@ -39,74 +35,86 @@ _VALUESET_DDL = ("url STRING, version STRING, expansion STRUCT<contains: ARRAY<S
                  "contains: ARRAY<STRUCT<system: STRING, code: STRING>>>>>")
 
 
-_PARAMETERS = """
-SELECT r.routine_name AS routine, p.parameter_name AS parameter, p.ordinal_position AS position,
-       p.parameter_default AS dflt
-  FROM system.information_schema.routines r
-  LEFT JOIN system.information_schema.parameters p
-    ON p.specific_catalog = r.specific_catalog AND p.specific_schema = r.specific_schema
-   AND p.specific_name = r.specific_name
- WHERE r.routine_catalog = :catalog AND r.routine_schema = :schema
-"""
-
-
-class ProviderError(RuntimeError):
-    """A provider cannot serve the run: a missing type, a DataFrame on a warehouse, a function parameter no
-    request field supplies. Raised before the run, never swallowed."""
+class ResolverError(RuntimeError):
+    """A resolver cannot serve the run: a missing type, a DataFrame on a warehouse. Raised before the run, never
+    swallowed."""
 
 
 @dataclass(frozen=True, kw_only=True)
-class BoundProviders:
-    """What one compile binds: the request's ``data`` and ``terminology`` on the wire, whether its results may be
-    kept and reused (`CLIENT-PROVIDER-IDENTITY`), and the temporary views registered for it."""
-    data: dict[str, dict[str, Any]] = field(default_factory=dict)
-    terminology: list[dict[str, Any]] = field(default_factory=list)
+class BoundResolvers:
+    """What one compile binds: the request's ``data`` and ``terminology`` on the wire, whether its results may be kept
+    and reused (`CLIENT-RESOLVER-IDENTITY`), the terminology relations a kept result's value-set digest reads, and the
+    temporary views registered for it."""
+    data: dict[str, Any] = field(default_factory=dict)
+    terminology: dict[str, Any] = field(default_factory=dict)
     reusable: bool = True
+    terminology_tables: tuple[str, ...] = ()
     views: tuple[str, ...] = ()
 
 
-def bind(retrieves: Sequence[Retrieve], value_sets: Sequence[ValueSetRef], *,
-         data: DataProvider | None, terminology: TerminologySource | None, run,
-         schemas: Callable[[Sequence[str]], Mapping[str, Any]], spark=None) -> BoundProviders:
-    """BIND-PROVIDER-REQUEST: the relations for one compile.
+def binds_by_rule(data: DataResolver | None, terminology: TerminologyResolver | None) -> bool:
+    """BIND-CALL-SITE: whether every resolver binds by rule, so the compile needs no ``describe`` first."""
+    return (data is None or data.rule() is not None) and (terminology is None or terminology.rule() is not None)
 
-    ``run`` is the SQL runner of the session that runs the compiled SQL; ``spark`` is that session when it is a
-    Spark session, and None on a SQL warehouse. ``schemas`` returns the model's
-    :class:`~.providers.ResourceSchema` per FHIR type (`CLIENT-RESOURCE-SCHEMA`), for the reshape."""
+
+def bind(sites: Sequence[CallSite] | None, *, data: DataResolver | None, terminology: TerminologyResolver | None,
+         run, schemas: Callable[[Sequence[str]], Mapping[str, Any]], spark=None) -> BoundResolvers:
+    """BIND-CALL-SITE: the request's ``data`` and ``terminology`` for one compile.
+
+    ``sites`` are the call sites ``describe`` reported, or None when every resolver binds by rule. ``run`` is the SQL
+    runner of the session that runs the compiled SQL; ``spark`` is that session when it is a Spark session, and None
+    on a SQL warehouse. ``schemas`` returns the model's :class:`~.providers.ResourceSchema` per FHIR type
+    (`CLIENT-RESOURCE-SCHEMA`), for the reshape."""
     views: list[str] = []
-    relations: dict[str, dict[str, Any]] = {}
-    if retrieves:
-        if data is None:
-            types = sorted({r.request.fhir_type for r in retrieves})
-            raise ProviderError(f"the CQL retrieves {', '.join(types)}, and the run has no data provider")
-        served = {t.lower() for t in data.types()}
-        missing = sorted({r.request.fhir_type for r in retrieves if r.request.fhir_type.lower() not in served})
-        if missing:
-            raise ProviderError(f"{data} does not serve {', '.join(missing)}, which the CQL retrieves "
-                                f"(CLIENT-DATA-PROVIDER); it serves {', '.join(sorted(data.types())) or 'nothing'}")
-        answered = {r.id: data.retrieve(r.request) for r in retrieves}
-        parameters = _function_parameters(run, sorted({rel.name for rel in answered.values()
-                                                       if isinstance(rel, FunctionRelation)}))
+    wired_data: dict[str, Any] = {}
+    if data is not None:
         identity = data.identity()
-        for rid, relation in answered.items():
-            relations[rid] = {**_wire(relation, data, run, spark, schemas, views, parameters), "identity": identity}
-    layers: list[dict[str, Any]] = []
+        if data.rule() is not None:
+            wired_data = {"rule": {"schema": data.rule(), "identity": identity}}
+        else:
+            retrieves = [s for s in _sites(sites) if s.kind == CallSite.RETRIEVE]
+            served = data.types()
+            if served is not None:
+                lowered = {t.lower() for t in served}
+                missing = sorted({s.request.fhir_type for s in retrieves if s.request.fhir_type.lower() not in lowered})
+                if missing:
+                    raise ResolverError(f"{data} does not serve {', '.join(missing)}, which the CQL retrieves "
+                                        f"(CLIENT-DATA-RESOLVER); it serves {', '.join(sorted(served)) or 'nothing'}")
+            wired_data = {"sites": {s.id: {**_wire(data.retrieve(s), data, run, spark, schemas, views),
+                                           "identity": identity} for s in retrieves}}
+    elif sites and any(s.kind == CallSite.RETRIEVE for s in sites):
+        types = sorted({s.request.fhir_type for s in sites if s.kind == CallSite.RETRIEVE})
+        raise ResolverError(f"the CQL retrieves {', '.join(types)}, and the run has no data resolver")
+    wired_terminology: dict[str, Any] = {}
+    tables: list[str] = []
     if terminology is not None:
         identity = terminology.identity()
-        for relation in terminology_relations(terminology.expansions(list(value_sets))):
-            wired = _terminology_wire(relation, terminology, run, spark, views)
-            layers.append({**wired, "identity": identity})
+
+        def wire(answer) -> list[dict[str, Any]]:
+            out = [{**_terminology_wire(r, terminology, run, spark, views), "identity": identity} for r in layers(answer)]
+            tables.extend(entry["table"] for entry in out)
+            return out
+        rule = terminology.rule()
+        if rule is not None:
+            wired_terminology = {"rule": wire(rule)}
+        else:
+            wired_terminology = {"sites": {s.id: wire(terminology.expansions(s))
+                                           for s in _sites(sites) if s.kind == CallSite.VALUE_SET}}
     reusable = data.reusable if data is not None else True
-    return BoundProviders(data=relations, terminology=layers, reusable=reusable, views=tuple(views))
+    return BoundResolvers(data=wired_data, terminology=wired_terminology, reusable=reusable,
+                          terminology_tables=tuple(dict.fromkeys(tables)), views=tuple(views))
 
 
-def _wire(relation: Relation, provider, run, spark, schemas, views: list[str],
-          parameters: Mapping[str, list[str]]) -> dict[str, Any]:
+def _sites(sites: Sequence[CallSite] | None) -> Sequence[CallSite]:
+    if sites is None:
+        raise ResolverError("a resolver that binds per site needs the call sites describe reports (BIND-CALL-SITE)")
+    return sites
+
+
+def _wire(relation: Relation, provider, run, spark, schemas, views: list[str]) -> dict[str, Any]:
     """One data relation as the request carries it."""
     if isinstance(relation, TableRelation):
         return {"table": relation.name}
-    if isinstance(relation, FunctionRelation):
-        return {"function": relation.name, "parameters": parameters[relation.name]}
     if isinstance(relation, VolumeRelation):
         schema = schemas([relation.fhir_type])[relation.fhir_type]
         view = _view_name("volume", relation.path, relation.fhir_type, relation.layout)
@@ -116,7 +124,7 @@ def _wire(relation: Relation, provider, run, spark, schemas, views: list[str],
         return {"table": view}
     if isinstance(relation, DataFrameRelation):
         if spark is None:
-            raise ProviderError(f"{provider} returned a DataFrame for {relation.fhir_type}, and a SQL warehouse "
+            raise ResolverError(f"{provider} returned a DataFrame for {relation.fhir_type}, and a SQL warehouse "
                                 f"cannot read a DataFrame (BIND-RELATION): publish the data to a table, or run on "
                                 f"Spark")
         schema = schemas([relation.fhir_type])[relation.fhir_type]
@@ -130,7 +138,7 @@ def _wire(relation: Relation, provider, run, spark, schemas, views: list[str],
         run(f"CREATE OR REPLACE TEMPORARY VIEW {reshape.quote_name(view)} AS {sql}")
         views.extend([source, view])
         return {"table": view}
-    raise ProviderError(f"{provider} returned {relation!r}, which is not a relation (BIND-RELATION)")
+    raise ResolverError(f"{provider} returned {relation!r}, which is not a relation (BIND-RELATION)")
 
 
 def _terminology_wire(relation: Relation, source, run, spark, views: list[str]) -> dict[str, Any]:
@@ -142,9 +150,9 @@ def _terminology_wire(relation: Relation, source, run, spark, views: list[str]) 
                  f"read_files({reshape._literal(relation.path)}, format => 'text', wholeText => true))")
         bare = run(f"SELECT `vs`.`url` AS url FROM {files} WHERE `vs`.`expansion`.`contains` IS NULL")
         if bare:
-            raise ProviderError(f"value sets with no expansion, only compose, in {relation.path}: "
+            raise ResolverError(f"value sets with no expansion, only compose, in {relation.path}: "
                                 f"{', '.join(sorted(str(r['url']) for r in bare))}; expand them first "
-                                f"(CLIENT-TERMINOLOGY-PROVIDER)")
+                                f"(CLIENT-TERMINOLOGY-RESOLVER)")
         view = _view_name("valuesets", source.identity(), relation.path)
         run(f"CREATE OR REPLACE TEMPORARY VIEW {reshape.quote_name(view)} AS "
             f"SELECT `vs`.`url` AS valueset_id, `vs`.`version` AS version, `c`.`system` AS system, "
@@ -156,49 +164,14 @@ def _terminology_wire(relation: Relation, source, run, spark, views: list[str]) 
         return {"table": view}
     if isinstance(relation, DataFrameRelation):
         if spark is None:
-            raise ProviderError(f"{source} returned a DataFrame of value sets, and a SQL warehouse cannot read a "
+            raise ResolverError(f"{source} returned a DataFrame of value sets, and a SQL warehouse cannot read a "
                                 f"DataFrame (BIND-RELATION)")
         view = _view_name("valuesets", source.identity(), str(id(relation.frame)))
         relation.frame.select(*TERMINOLOGY_COLUMNS).createOrReplaceTempView(view)
         views.append(view)
         return {"table": view}
-    raise ProviderError(f"{source} returned {relation!r}; a terminology relation is a table, a view or a DataFrame "
-                        f"(CLIENT-TERMINOLOGY-PROVIDER)")
-
-
-def _function_parameters(run, names: Sequence[str]) -> dict[str, list[str]]:
-    """BIND-NAMED-ARGS: each function's parameters that name a request field, in declared order, read from
-    ``information_schema`` in one query per schema. A parameter that names no request field must have a
-    default and is left to it; a function that is not there, or a parameter with no default that no request
-    field supplies, fails here."""
-    by_schema: dict[tuple[str, str], list[str]] = {}
-    for name in names:
-        parts = name.split(".")
-        if len(parts) != 3:
-            raise ProviderError(f"a function relation is named catalog.schema.function, not {name!r}")
-        by_schema.setdefault((parts[0], parts[1]), []).append(name)
-    out: dict[str, list[str]] = {}
-    for (catalog, schema), wanted in by_schema.items():
-        rows = run(_PARAMETERS, {"catalog": catalog, "schema": schema})
-        declared: dict[str, list[tuple[int, str, Any]]] = {}
-        for row in rows:
-            entries = declared.setdefault(row["routine"].lower(), [])
-            if row["parameter"] is not None:
-                entries.append((int(row["position"]), row["parameter"], row["dflt"]))
-        for name in wanted:
-            routine = name.split(".")[2].lower()
-            if routine not in declared:
-                raise ProviderError(f"function {name} is not in {catalog}.{schema}, or you cannot see it")
-            kept = []
-            for _, parameter, default in sorted(declared[routine]):
-                if parameter.lower() in REQUEST_FIELDS:
-                    kept.append(parameter.lower())
-                elif default is None:
-                    raise ProviderError(
-                        f"function {name} declares parameter {parameter}, which names no retrieve request field "
-                        f"({', '.join(sorted(REQUEST_FIELDS))}) and has no default (BIND-NAMED-ARGS)")
-            out[name] = kept
-    return out
+    raise ResolverError(f"{source} returned {relation!r}; a terminology relation is a table, a view or a DataFrame "
+                        f"(CLIENT-TERMINOLOGY-RESOLVER)")
 
 
 def _view_name(*parts: str) -> str:

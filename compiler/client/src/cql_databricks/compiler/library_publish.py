@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from cql_databricks.data_bindings import ContentResolver, SqlRunner
+from cql_databricks.data_bindings.tags import KNOWLEDGE_TAG, TaggedSchema
 from cql_databricks.data_bindings.measure_import.knowledge_merge import SINGLE_ROW, knowledge_merge_sql
 
 from .folder_content import folder_library_resource, folder_measure
@@ -86,17 +87,18 @@ class _Candidate:
 
 
 def publish_folder_library(content: ContentResolver, files: LibraryFiles, folder: str, name: str, version: str, *,
-                           store: tuple[str, str], run: SqlRunner, translate: Translate, base: str,
-                           lineage: str = "publish") -> PublishSummary:
-    """Publish library ``name`` ``version`` from ``folder`` into the tagged knowledge ``store`` ``(catalog, schema)``.
+                           store: tuple[str, str], view: tuple[str, str], run: SqlRunner, translate: Translate,
+                           base: str, lineage: str = "publish") -> PublishSummary:
+    """Publish library ``name`` ``version`` from ``folder`` into the knowledge ``store`` ``(catalog, schema)``, whose
+    tables the published ``view`` schema's ``library`` and ``measure`` views select (`BIND-PUBLISHED-VIEW`).
 
-    ``content`` resolves includes not in the folder from tagged knowledge; ``files`` reads the folder; ``run`` reads
-    and writes the store, as its identity; ``translate`` compiles (`resolve.Translate`); ``base`` is the canonical
-    base for a library whose folder holds no ``Library`` JSON with a URL."""
+    ``content`` resolves includes not in the folder from the environment's knowledge; ``files`` reads the folder;
+    ``run`` reads and writes the store, as its identity; ``translate`` compiles (`resolve.Translate`); ``base`` is the
+    canonical base for a library whose folder holds no ``Library`` JSON with a URL. After the writes it reads the
+    written libraries back through ``view`` once; one the view does not show fails the publish."""
     folder = folder.rstrip("/")
-    target = next((s for s in content.knowledge_sources() if (s.catalog, s.schema) == tuple(store)), None)
-    if target is None:
-        raise PublishRefused(f"{'.'.join(store)} is not a tagged knowledge store")
+    target = TaggedSchema(tag=KNOWLEDGE_TAG, name="store", catalog=store[0], schema=store[1])
+    published = TaggedSchema(tag=KNOWLEDGE_TAG, name="published", catalog=view[0], schema=view[1])
     where = f"{target.catalog}.{target.schema}"
     resolution = resolve(content, library=name, version=version, location=f"folder:{folder}", files=files)
     missing = resolution.unresolved_messages()
@@ -139,7 +141,24 @@ def publish_folder_library(content: ContentResolver, files: LibraryFiles, folder
             summary = PublishSummary(where, (*done, failed, *rest))
             raise PublishFailed(f"{c.name} {c.version} was not published: {e}", summary) from e
         done.append(PublishedLibrary(c.name, c.version, c.url, PUBLISHED, tuple(rows)))
-    return PublishSummary(where, tuple(done))
+    summary = PublishSummary(where, tuple(done))
+    missing = _not_visible(run, published, [c for c in candidates if c.changed])
+    if missing:
+        raise PublishFailed(f"{published.catalog}.{published.schema}.library does not show {', '.join(missing)}, just "
+                            f"written to {where}: the view does not select the store (BIND-PUBLISHED-VIEW)", summary)
+    return summary
+
+
+def _not_visible(run: SqlRunner, published, written: list[_Candidate]) -> list[str]:
+    """BIND-PUBLISHED-VIEW: the libraries just written that one read of the published ``library`` view does not
+    show."""
+    if not written:
+        return []
+    pairs = " OR ".join(f"(url = :u{i} AND version = :v{i})" for i in range(len(written)))
+    params = {k: v for i, c in enumerate(written) for k, v in ((f"u{i}", c.url), (f"v{i}", c.version))}
+    shown = {(r["url"], r["version"]) for r in run(f"SELECT url, version FROM {published.table('library')} "
+                                                   f"WHERE {pairs}", params)}
+    return [f"{c.name} {c.version}" for c in written if (c.url, c.version) not in shown]
 
 
 def _candidate(files: LibraryFiles, folder: str, name: str, version: str, cql: str, base: str, *,

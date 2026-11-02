@@ -202,7 +202,7 @@ def load(spark: SparkSession, result: TransformResult, *,
     """Write a TransformResult into the authority's schema.  Returns row counts per table.
 
     ``catalog`` is the UC catalog; ``authority_schema`` is the content
-    schema (``example_measures`` for the examples).
+    schema (``knowledge_store`` in an environment, `DATA-ENVIRONMENT-LAYOUT`).
     Together they produce ``<catalog>.<schema>.measure``, etc.
 
     ValueSet expansions are written to ``valueset_schema``, which may be the authority schema or a
@@ -244,28 +244,3 @@ def ensure_valueset_table(spark: SparkSession, *, catalog: str | None,
         _enable_delta_features(spark, fqtn)
         log.info("created empty valueset table %s", fqtn)
     return fqtn
-
-
-def tag_loaded(spark: SparkSession, *, catalog: str | None,
-               knowledge: tuple[str, str] | None,
-               terminology: tuple[str, str] | None) -> list[str]:
-    """CONTENT-IMPORT-TARGET-TAG — declare loaded schemas so data-bindings finds them by tag.
-
-    ``knowledge`` and ``terminology`` are ``(schema, tag value)``; None skips that one. A schema is a
-    knowledge source once tagged ``cql_databricks_knowledge`` (``library`` + ``measure``) and a
-    terminology source once tagged ``cql_databricks_terminology`` (``valueset``). Returns the statements
-    run. Tags are a Unity Catalog feature, so a load with no catalog (local Spark) cannot be tagged, and
-    asking it to be is an error rather than a load nobody can find.
-    """
-    from cql_databricks.data_bindings import KNOWLEDGE_TAG, TERMINOLOGY_TAG, tag_statement
-
-    wanted = [(KNOWLEDGE_TAG, knowledge), (TERMINOLOGY_TAG, terminology)]
-    wanted = [(tag, target) for tag, target in wanted if target is not None]
-    if wanted and not catalog:
-        raise ValueError("tagging needs a Unity Catalog catalog; this load has none (--no-catalog). "
-                         "A schema with no tag is invisible to data-bindings.")
-    statements = [tag_statement(tag, name, catalog, schema) for tag, (schema, name) in wanted]
-    for statement in statements:
-        log.info("tag: %s", statement)
-        spark.sql(statement)
-    return statements

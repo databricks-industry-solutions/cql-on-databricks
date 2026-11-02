@@ -97,7 +97,7 @@ class _State:
         return list(self._defines.get(library_id, []))
 
 
-PATIENT_FN = "acme.conformance.retrieve_Patient"
+PATIENT_VIEW = "acme.data.patient"
 MEASURE = "ExampleMeasure"
 DEPENDENCY = "ExampleDependency"
 UNMATERIALIZED = "ExampleUnmaterialized"
@@ -159,7 +159,7 @@ def _build(rows=None, gates=None, **overrides):
         library=MEASURE, version="1.0.0",
         data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
         gates=gates if gates is not None else [ENTRY_GATE],
-        closure=StateClosure(_State()), patient_function=PATIENT_FN,
+        closure=StateClosure(_State()), patient_relation=PATIENT_VIEW,
         results_catalog=CATALOG, execute=_execute(),
     )
     kwargs.update(overrides)
@@ -177,7 +177,7 @@ def _captured_sql(gates=None) -> str:
             library=MEASURE, version="1.0.0",
             data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
             gates=gates if gates is not None else [ENTRY_GATE],
-            closure=StateClosure(_State()), patient_function=PATIENT_FN,
+            closure=StateClosure(_State()), patient_relation=PATIENT_VIEW,
             results_catalog=CATALOG, execute=_execute())
     execute.assert_called_once()
     return execute.call_args.args[1]
@@ -222,7 +222,7 @@ def test_one_statement_for_every_gate_however_many_there_are():
         cohort_flow(
             library=MEASURE, version="1.0.0", data_source_id=DATA_SOURCE,
             period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
-            gates=[ENTRY_GATE, EXCLUSION_GATE], closure=StateClosure(_State()), patient_function=PATIENT_FN,
+            gates=[ENTRY_GATE, EXCLUSION_GATE], closure=StateClosure(_State()), patient_relation=PATIENT_VIEW,
             results_catalog=CATALOG, execute=_execute())
     execute.assert_called_once()
 
@@ -394,7 +394,7 @@ def test_a_base_less_gate_enters_from_the_EVALUATED_cohort_not_the_stage_itself(
     # would have rendered a confident set of zeroes, and every fixture with hand-written counts would
     # have kept agreeing with itself.
     sql = _captured_sql(gates=[ENTRY_GATE])
-    assert f"FROM {PATIENT_FN}(" in sql
+    assert f"FROM {PATIENT_VIEW})" in sql
     assert "s_all AS (SELECT DISTINCT __subject_id" in sql
     # The entering cohort of g_0 is the evaluated set; the stage is joined only to answer `reached`.
     g0 = re.search(r"g_0 AS \((.*?)\),\nk_0", sql, re.S).group(1)
@@ -413,21 +413,21 @@ def test_a_gate_WITH_a_base_enters_from_that_population_and_needs_no_binding():
     g0 = re.search(r"g_0 AS \((.*?)\),\nk_0", sql, re.S).group(1)
     assert f"FROM {entering} b" in g0          # the declared base is the entering cohort
     assert f"LEFT JOIN {stage} st" in g0       # the stage is joined only to answer `reached`
-    assert PATIENT_FN not in sql               # nothing needed the evaluated cohort
+    assert PATIENT_VIEW not in sql               # nothing needed the evaluated cohort
 
 
 def test_the_binding_call_names_no_measure():
     # EMIT-ROOT-INDEPENDENT, DATA-CONFORMANCE-MEASURE-SELECT — the data source is the population, so the
     # evaluated cohort is the bound Patient retrieve called with no argument.
     sql = _captured_sql(gates=[ENTRY_GATE])
-    assert f"FROM {PATIENT_FN}())" in sql
+    assert f"FROM {PATIENT_VIEW})" in sql
     assert "library" not in sql
 
 
 def test_a_base_less_gate_is_omitted_when_the_source_has_no_patient_binding():
     # With no binding there is no cohort for those subjects to have departed FROM, so the figure cannot
     # be stated — the same reason an unlocatable criterion omits a gate.
-    flow = _build(rows=[], gates=[ENTRY_GATE], patient_function=None)
+    flow = _build(rows=[], gates=[ENTRY_GATE], patient_relation=None)
     assert flow.gates == []
     assert flow.omitted == ["Initial Population"]
 
@@ -435,5 +435,5 @@ def test_a_base_less_gate_is_omitted_when_the_source_has_no_patient_binding():
 def test_a_based_gate_still_works_without_a_patient_binding():
     rows = _rows_for(0, entered=42_318, reached=3_904, passed=38_414, multiple=392,
                      criteria=[(1_486, 1_204), (902, 861)])
-    flow = _build(rows=rows, gates=[EXCLUSION_GATE], patient_function=None)
+    flow = _build(rows=rows, gates=[EXCLUSION_GATE], patient_relation=None)
     assert [g.stage for g in flow.gates] == ["Denominator Exclusions"]

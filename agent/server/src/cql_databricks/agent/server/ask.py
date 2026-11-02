@@ -27,6 +27,8 @@ from fastmcp import FastMCP
 
 from cql_databricks_common import config
 
+from .wiring import in_environment
+
 log = logging.getLogger("cql_databricks.agent.server.ask")
 
 #: How many model turns may call tools before an answer is required. An uncapped loop against a
@@ -53,7 +55,6 @@ PROVENANCE_BY_TOOL: dict[str, str] = {
     "get_output": "engine",
     "query_data": "derived",
     "get_specification": "context",
-    "list_data_sources": "context",
     "list_tables": "context",
     "get_freshness": "context",
     "list_skills": "context",
@@ -95,22 +96,21 @@ class Selection:
     #: RUN-ADDRESS-LOCATION — where the library is read: ``store:<catalog>.<schema>`` or ``folder:<path>``.
     location: str | None = None
     define: str | None = None
-    data_source_id: str | None = None
     period_start: str | None = None
     period_end: str | None = None
     result_set: dict[str, Any] | None = None
 
-    #: What those identifiers are CALLED — the measure's title and the data source's name, exactly as
+    #: What those identifiers are CALLED — the measure's title and the environment's name, exactly as
     #: the screen prints them. NOT tool arguments, and sent in their own block for that reason: the
     #: rule above is that the selection prefills arguments, and a title is not an argument to anything.
     #:
     #: They earn their place because an identifier is not a name a clinician recognises. Without them
-    #: the assistant either says "HypertensionBPControl" and "synthetic-population-small" at a reader
-    #: who calls those things *Hypertension: BP Control* and *the example patients*, or it
-    #: spends a tool round-trip resolving what the screen already had on it. `list_data_sources` can
-    #: resolve the source, so this is an economy for the drawer rather than the only route.
+    #: the assistant says "HypertensionBPControl" at a reader who calls it *Hypertension: BP Control*, or it
+    #: spends a tool round-trip resolving what the screen already had on it. The environment is not an
+    #: argument: the drawer passes it to :func:`ask_events`, which runs every tool in it
+    #: (`AGENT-DEFAULT-ENVIRONMENT`); its name is here only so the answer can say whose data it read.
     measure_title: str | None = None
-    data_source_name: str | None = None
+    environment_name: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """The ARGUMENT half — the values a tool call may be filled from."""
@@ -119,7 +119,6 @@ class Selection:
             "version": self.version,
             "location": self.location,
             "define": self.define,
-            "data_source_id": self.data_source_id,
             "period_start": self.period_start,
             "period_end": self.period_end,
             "result_set": self.result_set,
@@ -129,7 +128,7 @@ class Selection:
     def labels(self) -> dict[str, str]:
         """The LABEL half — what to call those things when talking to the reader."""
         pairs = {"measure_title": self.measure_title,
-                 "data_source_name": self.data_source_name}
+                 "environment_name": self.environment_name}
         return {k: v for k, v in pairs.items() if v}
 
     @classmethod
@@ -140,12 +139,11 @@ class Selection:
             version=data.get("version"),
             location=data.get("location"),
             define=data.get("define"),
-            data_source_id=data.get("dataSourceId") or data.get("data_source_id"),
             period_start=data.get("periodStart") or data.get("period_start"),
             period_end=data.get("periodEnd") or data.get("period_end"),
             result_set=data.get("resultSet") or data.get("result_set"),
             measure_title=data.get("measureTitle") or data.get("measure_title"),
-            data_source_name=data.get("dataSourceName") or data.get("data_source_name"))
+            environment_name=data.get("environmentName") or data.get("environment_name"))
 
 
 @dataclass
@@ -330,8 +328,11 @@ def _system_messages(selection: Selection, instructions: str) -> list[dict[str, 
     return messages
 
 
-def _call_tool(server: FastMCP, name: str, arguments: dict[str, Any]) -> tuple[str, Invocation]:
-    """Dispatch one call through the MCP server IN PROCESS, and record what it was.
+def _call_tool(server: FastMCP, name: str, arguments: dict[str, Any],
+               environment: str | None = None) -> tuple[str, Invocation]:
+    """Dispatch one call through the MCP server IN PROCESS, in ``environment`` (`AGENT-DEFAULT-ENVIRONMENT`), and
+    record what it was. The environment is bound around this one call, not across the loop: a streaming
+    response runs each step in its own copy of the request context.
 
     A failed tool call is returned to the MODEL as its result rather than raised
     (`KNOWLEDGE-FAIL-LOUD` governs answers, and this is not the answer yet): a define that has never
@@ -343,7 +344,8 @@ def _call_tool(server: FastMCP, name: str, arguments: dict[str, Any]) -> tuple[s
     invocation = Invocation(tool=name, arguments=arguments,
                             provenance=PROVENANCE_BY_TOOL.get(name, "context"))
     try:
-        result = asyncio.run(server.call_tool(name, arguments))
+        with in_environment(environment):
+            result = asyncio.run(server.call_tool(name, arguments))
     except Exception as e:  # noqa: BLE001 — handed to the model as a result; see the docstring
         log.info("APP-ASSISTANT: tool %s failed: %s", name, e)
         invocation.error = str(e)
@@ -361,7 +363,7 @@ def _call_tool(server: FastMCP, name: str, arguments: dict[str, Any]) -> tuple[s
 
 
 def ask_events(question: str, *, server: FastMCP, selection: Selection | None = None,
-               history: list[dict[str, Any]] | None = None,
+               history: list[dict[str, Any]] | None = None, environment: str | None = None,
                client: Any = None, endpoint: str | None = None) -> Iterator[dict[str, Any]]:
     """The loop, **as a stream of events** — and the one implementation of it.
 
@@ -378,6 +380,9 @@ def ask_events(question: str, *, server: FastMCP, selection: Selection | None = 
     Events are ``tool`` (one invocation completed) then exactly one ``answer``. ``client`` and
     ``endpoint`` are injected for the reason the warehouse is in the service's `data.py`: testable against a fake
     completion rather than a workspace and a metered model.
+
+    ``environment`` is the one the Designer has picked (`DOC-ENVIRONMENT-PICKER`); every tool runs in it, and None
+    runs them in the default (`AGENT-DEFAULT-ENVIRONMENT`). The model never sees it as an argument.
     """
     client = client or serving_client()
     endpoint = endpoint or config.assistant_endpoint()
@@ -404,7 +409,7 @@ def ask_events(question: str, *, server: FastMCP, selection: Selection | None = 
 
         for call in calls:
             arguments = json.loads(call.function.arguments or "{}")
-            content, invocation = _call_tool(server, call.function.name, arguments)
+            content, invocation = _call_tool(server, call.function.name, arguments, environment)
             invocations.append(invocation)
             messages.append({"role": "tool", "tool_call_id": call.id, "content": content})
             yield {"type": "tool", "invocation": invocation.to_dict()}

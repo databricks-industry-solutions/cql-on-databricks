@@ -14,9 +14,3 @@ def _reset_workspace_client():
     reset_client()
     yield
     reset_client()
-
-
-@pytest.fixture
-def catalog_scopes(monkeypatch):
-    """CLIENT-DISCOVERY-SCOPE — the deployment's catalog scopes, which the App needs before it builds its resolver."""
-    monkeypatch.setenv("CQL_DATABRICKS_CATALOG_SCOPES", "synthetic_dev.cql,synthetic_shared")

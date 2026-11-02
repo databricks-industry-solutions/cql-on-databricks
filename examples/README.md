@@ -1,6 +1,6 @@
 # examples — notebooks and content
 
-Seven notebooks and three content directories that show how to run a CQL measure. They are published to `/Shared/CqlDatabricks/examples` in your workspace. See [`../README.md`](../README.md) for details on each notebook.
+Eight notebooks and three content directories that show how to run a CQL measure. They are published to `/Shared/CqlDatabricks/examples` in your workspace. See [`../README.md`](../README.md) for details on each notebook.
 
 The content directories are **your responsibility in a real deployment** — not part of the product:
 

@@ -15,7 +15,8 @@ from typing import Literal
 
 from cql_databricks.data_bindings.runner import RunningStatement, SqlRunner, background_runner, start_statement
 
-from ._catalog_completion import Completion, CompletionWriter, discover, discover_in_sources, result_table_name
+from ._catalog_completion import (WRITER_DIGITS, Completion, CompletionWriter, discover, discover_in_sources,
+                                  result_table_name, writer_digest)
 from ._durable import (CompletedResult, Definition, Outcome, ResultsUnavailable, _destination, _hash, _json,
                        _selected, _text, _utc)
 from ._durable_delta import table_sql
@@ -83,15 +84,21 @@ def _step(definition: Definition, **fields) -> StepRecord:
                       define=origin.get("define") or definition.key, **fields)
 
 
-def table_name(definition: Definition) -> str:
-    """RUN-CLIENT-TABLE-NAMES — the library and define from compiler metadata, plus fingerprint digits.
+def table_name(definition: Definition, writer: str) -> str:
+    """RUN-CLIENT-TABLE-NAMES — the library and define from compiler metadata, the fingerprint digits, and the digest
+    ``writer`` of the identity that writes it (`RUN-CLIENT-RESULT-OWNERSHIP`).
 
     A materialized retrieve has no define name; its compiler key names it instead.
     """
     origin = json.loads(definition.origin_json)
     if not origin.get("library"):
         raise ValueError(f"definition {definition.key!r} has no library in its compiler metadata")
-    return result_table_name(origin["library"], origin.get("define") or definition.key, definition.fingerprint)
+    return result_table_name(origin["library"], origin.get("define") or definition.key, definition.fingerprint, writer)
+
+
+def _stem(name: str) -> str:
+    """A result table name without its writer's digest."""
+    return name[:-(WRITER_DIGITS + 1)]
 
 
 def _result(completion: Completion) -> CompletedResult:
@@ -144,7 +151,7 @@ class _Compute:
     after: frozenset[str]
 
 
-def execute(plan: PreparedPlan, targets: Sequence[str], *, destination: tuple[str, str], run: SqlRunner,
+def execute(plan: PreparedPlan, targets: Sequence[str], *, destination: tuple[str, str], run: SqlRunner, owner: str,
             mode: str = "skip_if_computed", computed_since: datetime | None = None,
             read_only: bool = False, on_step: StepObserver | None = None, on_plan: PlanObserver | None = None,
             on_start: StartObserver | None = None, sources: Sequence[tuple[str, str]] = (),
@@ -161,10 +168,13 @@ def execute(plan: PreparedPlan, targets: Sequence[str], *, destination: tuple[st
     in its one session (``start_statement``); on any other runner, one at a time. The first failure cancels
     every statement still running and starts nothing more.
 
-    CLIENT-DISCOVERY-SCOPE — ``sources`` are the other result scopes, ``(catalog, schema)`` in order. A define
-    the destination holds no reusable result for reuses the first one they hold under the same name (one more
-    lookup), with no owner or publisher check: the scopes are the trust boundary. Every write goes to
-    ``destination``.
+    RUN-CLIENT-RESULT-OWNERSHIP — ``owner`` is the principal that writes: every table is named with its digest, and
+    only tables it owns are reused. ``sources`` are the environment's other result schemas, ``(catalog, schema)`` in
+    order. A define the destination holds no reusable result for reuses the first one ``owner`` owns there under the
+    same name (one more lookup). Every write goes to ``destination``. Two runs of one identity computing one result
+    write the same rows to the same table, so just before each write, and again if the write fails, the result is
+    looked up once more, and reused if another run finished it: a collision costs duplicate work, never a wrong
+    result or a failed run. That is one more lookup per computed define, and one per failed one.
 
     Pass the SAME explicit cutoff when retrying a failed refresh. A missing cutoff for recompute
     starts a new refresh; no hidden session index remembers it. Readers never execute on a miss.
@@ -189,15 +199,29 @@ def execute(plan: PreparedPlan, targets: Sequence[str], *, destination: tuple[st
     planned = _selected(plan.definitions, targets)
     if on_plan is not None:
         on_plan(tuple(definition.key for definition in planned))
-    names = {definition.key: table_name(definition) for definition in planned}
-    found = discover(run, destination, {definition.fingerprint: names[definition.key] for definition in planned})
+    writer = writer_digest(owner)
+    names = {definition.key: table_name(definition, writer) for definition in planned}
+    found = discover(run, destination, {definition.fingerprint: names[definition.key] for definition in planned},
+                     owner=owner)
     sources = [source for source in dict.fromkeys(sources) if source != destination]
     reusable = sorted(names[definition.key] for definition in planned if definition.reusable)
-    elsewhere = discover_in_sources(run, sources, reusable) if sources else {}
+    elsewhere = discover_in_sources(run, sources, reusable, owner=owner) if sources else {}
     outcomes: dict[str, Outcome] = {}
     artifacts: dict[str, CurrentArtifact] = {}
     computes: dict[str, _Compute] = {}
     submitted: set[tuple[str, str, str]] = set()
+
+    def done_meanwhile(compute: _Compute) -> Completion | None:
+        """RUN-CLIENT-RESULT-OWNERSHIP — the result ``compute`` writes, if another run of ``owner`` has finished it
+        since the first lookup and it may be reused."""
+        if not compute.definition.reusable:
+            return None
+        hit = discover(run, destination, {compute.definition.fingerprint: compute.table[2]}, owner=owner)
+        completion = hit[compute.definition.fingerprint].completion if compute.definition.fingerprint in hit else None
+        if completion is None or (computed_since is not None and completion.computed_at < computed_since):
+            return None
+        _matching(compute.definition, completion)
+        return completion
 
     def reused(definition: Definition, completion: Completion, reason: str) -> None:
         outcomes[definition.key] = Outcome(definition=definition.key, decision="reused", reason=reason,
@@ -246,13 +270,15 @@ def execute(plan: PreparedPlan, targets: Sequence[str], *, destination: tuple[st
             computes[definition.key] = _Compute(definition, reason, table, existing is not None, statement,
                                                 frozenset(key for key in definition.reads if key in computes))
         _compute(computes, run=run, writer=writer, outcomes=outcomes, submitted=submitted, on_step=on_step,
-                 on_start=on_start, parallelism=parallelism)
+                 on_start=on_start, parallelism=parallelism, done_meanwhile=done_meanwhile, reused=reused)
     return _columns(run, tuple(outcomes[definition.key] for definition in planned))
 
 
 def _compute(computes: Mapping[str, _Compute], *, run: SqlRunner, writer: CompletionWriter,
              outcomes: dict[str, Outcome], submitted: set[tuple[str, str, str]], on_step: StepObserver | None,
-             on_start: StartObserver | None, parallelism: int) -> None:
+             on_start: StartObserver | None, parallelism: int,
+             done_meanwhile: Callable[[_Compute], Completion | None],
+             reused: Callable[[Definition, Completion, str], None]) -> None:
     """RUN-CLIENT-PARALLEL-DEFINES — run ``computes`` in dependency order, up to ``parallelism`` at once.
 
     A definition starts once every definition in its ``after`` has finished. One thread does it all: it starts every
@@ -260,6 +286,9 @@ def _compute(computes: Mapping[str, _Compute], *, run: SqlRunner, writer: Comple
     about 5 s pass, and a finished one answers at once, so the polls are the run's only wait. The first failure is
     reported, every statement still running is cancelled and reported, and the failure is raised; nothing more
     starts.
+
+    RUN-CLIENT-RESULT-OWNERSHIP — just before a definition's statement starts, and when it fails, ``done_meanwhile``
+    looks its result up again; one another run finished is ``reused`` instead of written, or instead of failing.
     """
     waiting = list(computes)
     running: dict[str, tuple[RunningStatement, datetime]] = {}  # in the order they were last polled
@@ -279,6 +308,14 @@ def _compute(computes: Mapping[str, _Compute], *, run: SqlRunner, writer: Comple
             on_step(_step(compute.definition, decision="computed", reason=compute.reason, table=compute.table,
                           statement=compute.statement, started_at=started, ended_at=datetime.now(timezone.utc)))
 
+    def finished_elsewhere(key: str, when: str) -> bool:
+        completion = done_meanwhile(computes[key])
+        if completion is None:
+            return False
+        reused(computes[key].definition, completion, f"completed by another run of yours {when}")
+        finished.add(key)
+        return True
+
     def failed(key: str, started: datetime, error: BaseException) -> None:
         nonlocal cause
         cause = f"{key} failed"
@@ -294,6 +331,8 @@ def _compute(computes: Mapping[str, _Compute], *, run: SqlRunner, writer: Comple
             writer.check()
             for key in [k for k in waiting if computes[k].after <= finished][:parallelism - len(running)]:
                 waiting.remove(key)
+                if finished_elsewhere(key, "before this one wrote it"):
+                    continue
                 compute = computes[key]
                 if compute.replaces:
                     writer.invalidate(compute.table)
@@ -303,6 +342,8 @@ def _compute(computes: Mapping[str, _Compute], *, run: SqlRunner, writer: Comple
                 try:
                     running[key] = (start_statement(run, compute.statement), started)
                 except Exception as error:
+                    if finished_elsewhere(key, "while this one wrote it"):
+                        continue
                     failed(key, started, error)
                     raise
             if not running:
@@ -312,6 +353,8 @@ def _compute(computes: Mapping[str, _Compute], *, run: SqlRunner, writer: Comple
             try:
                 done = statement.poll()
             except Exception as error:
+                if finished_elsewhere(key, "while this one wrote it"):
+                    continue
                 failed(key, started, error)
                 raise
             if done:
@@ -380,7 +423,8 @@ class CatalogSelection:
             result = records[definition.key]
             artifact = result.artifact
             if (not isinstance(artifact, CurrentArtifact) or not artifact.schema_ddl
-                    or result.fingerprint != definition.fingerprint or artifact.table[2] != table_name(definition)):
+                    or result.fingerprint != definition.fingerprint
+                    or _stem(artifact.table[2]) != _stem(table_name(definition, '0' * WRITER_DIGITS))):
                 raise ValueError("selection identity or descriptors do not match")
             if self.computed_since is not None and result.completed_at < self.computed_since:
                 raise ValueError("selection contains a result computed before computed_since")

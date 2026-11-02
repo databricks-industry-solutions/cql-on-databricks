@@ -5,6 +5,7 @@
 // Browse/Home/Detail components are unchanged.
 
 import { cachedGet, cachedPost, mutate, postKey, peek } from "./data-cache.ts";
+import { currentEnvironment, withEnvironment } from "./environment.ts";
 import type { Category, Definition, Status } from "./catalog.ts";
 import type { MeasureMetricsDto } from "./measures/specMetrics.ts";
 import type { CohortFlowDto, FlowGateRequest } from "./measures/specFlow.ts";
@@ -12,7 +13,8 @@ import type { DefineProfile, ResultSetAddress } from "./wire.ts";
 
 /** RUN-CLIENT-REQUEST-REOPEN — compilation request context belongs in the POST body. */
 export interface ResultReadScope {
-  dataSourceId: string;
+  /** DOC-ENVIRONMENT-PICKER — the environment the calculation ran in. */
+  environment: string;
   periodStart?: string;
   periodEnd?: string;
   draft?: string;
@@ -69,17 +71,19 @@ export function toDefinition(r: LibraryRecordDto): Definition {
   };
 }
 
-/** RUN-ADDRESS-LOCATION — `url` read at `location`. A folder is never served from the page's cache: the
- *  server's revision tracks tagged knowledge, and a workspace file changes without moving it. */
-function readAt<T>(url: string, location: string | null | undefined,
+/** RUN-ADDRESS-LOCATION — `url` read at `location`, in the picked environment (`DOC-ENVIRONMENT-PICKER`). A folder
+ *  is never served from the page's cache: the server's revision tracks the environment's knowledge, and a workspace
+ *  file changes without moving it. */
+function readAt<T>(path: string, location: string | null | undefined,
                    parse: (res: Response) => Promise<T>): Promise<T> {
+  const url = withEnvironment(path);
   if (!location) return cachedGet(url, parse);
   const at = `${url}${url.includes("?") ? "&" : "?"}location=${encodeURIComponent(location)}`;
   return location.startsWith("folder:") ? fetch(at).then(parse) : cachedGet(at, parse);
 }
 
-/** Fetch definitions by querying UC Knowledge Source tables directly (KNOWLEDGE-LAKE-DIRECT), or those at one
- *  location (RUN-ADDRESS-LOCATION): one tagged store, or one folder. */
+/** Fetch the definitions in the picked environment's knowledge (KNOWLEDGE-LAKE-DIRECT), or those at one
+ *  location (RUN-ADDRESS-LOCATION): the environment's knowledge, or one folder. */
 export async function fetchDefinitions(location?: string | null): Promise<Definition[]> {
   return readAt("/api/libraries/discover", location, async (res) => {
     if (!res.ok) throw new Error(`library discover failed: ${res.status}`);
@@ -99,14 +103,15 @@ export async function fetchLibrarySource(name: string, version: string, location
     });
 }
 
-/** DOC-OPEN-SAVE — where a library can be opened from: the tagged stores, and folders to browse from. */
+/** DOC-OPEN-SAVE — where a library can be opened from: the picked environment's knowledge, and folders to browse
+ *  from. */
 export interface Locations {
   stores: { location: string; catalog: string; schema: string }[];
   folders: { location: string; label: string }[];
 }
 
 export async function fetchLocations(): Promise<Locations> {
-  const res = await fetch("/api/locations");
+  const res = await fetch(withEnvironment("/api/locations"));
   if (!res.ok) throw new Error(`locations failed: ${res.status}`);
   return (await res.json()) as Locations;
 }
@@ -592,7 +597,9 @@ export type SaveOutcome =
 export async function saveLibrary(body: SaveBody): Promise<SaveOutcome> {
   // `mutate`: a store save moves the server's revision, which must clear what the page cached from that store.
   const res = await mutate("/api/libraries/save", {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    method: "POST", headers: { "content-type": "application/json" },
+    // DOC-ENVIRONMENT-PICKER — includes the folder does not hold resolve in the picked environment.
+    body: JSON.stringify({ ...body, environment: currentEnvironment() }),
   });
   const answer = await res.json().catch(() => ({})) as Record<string, unknown>;
   if (res.ok) return { kind: "saved", ...(answer as Omit<Extract<SaveOutcome, { kind: "saved" }>, "kind">) };
@@ -615,13 +622,14 @@ export type PublishOutcome =
   | { kind: "published"; summary: PublishSummary }
   | { kind: "refused" | "failed"; error: string; summary: PublishSummary | null };
 
-/** DOC-PUBLISH — publish the folder library at `location` into the tagged store `store` (`catalog.schema`), as the
- *  signed-in user. */
-export async function publishLibrary(body: { location: string; name: string; version: string; store: string }):
+/** DOC-PUBLISH — publish the folder library at `location` into the picked environment's knowledge store, as the
+ *  signed-in user (`DOC-ENVIRONMENT-PICKER`). */
+export async function publishLibrary(body: { location: string; name: string; version: string }):
     Promise<PublishOutcome> {
   // `mutate`: publishing moves the server's revision, which must clear what the page cached from the store.
   const res = await mutate("/api/libraries/publish", {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...body, environment: currentEnvironment() }),
   });
   const answer = await res.json().catch(() => ({})) as Record<string, unknown>;
   if (res.ok) return { kind: "published", summary: answer as unknown as PublishSummary };
@@ -646,7 +654,8 @@ export type CreateOutcome = Exclude<SaveOutcome, { kind: "stale" }>;
 export async function createLibrary(body: NewBody): Promise<CreateOutcome> {
   // `mutate`: a library created in a store moves the server's revision, which must clear the cached catalog.
   const res = await mutate("/api/libraries/new", {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...body, environment: currentEnvironment() }),
   });
   const answer = await res.json().catch(() => ({})) as Record<string, unknown>;
   if (res.ok) return { kind: "saved", ...(answer as Omit<Extract<SaveOutcome, { kind: "saved" }>, "kind">) };

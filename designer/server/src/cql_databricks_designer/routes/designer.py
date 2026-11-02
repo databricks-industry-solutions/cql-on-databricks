@@ -30,20 +30,21 @@ from fastapi.responses import JSONResponse
 from ..assistant_tools import specification_document
 
 from .. import sample_deck
-from cql_databricks.data_bindings import ContentResolver
+from cql_databricks_designer.data_bindings import EnvironmentContents
 
 from cql_databricks_designer.dto import TranslateRequest
 
 log = logging.getLogger("cql_databricks_designer")
 
 
-def router(*, content: ContentResolver) -> APIRouter:
+def router(*, contents: EnvironmentContents) -> APIRouter:
 
 
     router = APIRouter()
 
     @router.get("/api/libraries/{name}/{version}/specification")
-    def library_specification(name: str, version: str, location: str | None = None) -> JSONResponse:
+    def library_specification(name: str, version: str, location: str | None = None,
+                              environment: str | None = None) -> JSONResponse:
         # The Specification's PROSE for a library: the Summary, and the what/why/how-to-read triple
         # per define, keyed library-qualified so the client can join it onto the structure it derives
         # from the ELM (SPEC-DOCUMENT). Structure, metrics and the Appendix are NOT here — they are
@@ -58,7 +59,7 @@ def router(*, content: ContentResolver) -> APIRouter:
         # `get_specification` must return exactly what this route returns, or one define reads one
         # way to a person and another way to an agent — which is the drift the whole tool surface
         # exists to prevent. The independent-failure behaviour above moved with it, unchanged.
-        document = specification_document(name, version, content=content, location=location)
+        document = specification_document(name, version, content=contents.get(environment), location=location)
         if document is None:
             return JSONResponse(status_code=404,
                                 content={"error": f"No Specification for {name}@{version}"})

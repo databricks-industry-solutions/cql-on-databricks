@@ -57,31 +57,16 @@ def _as_dict(row):
     return as_dict() if callable(as_dict) else dict(row)
 
 
-def _run_mounts(spark, mounts_sql: str) -> None:
-    """Run the external retrieve/value-set MOUNT script (the runtime contract the SQL path assumes,
-    EMIT-SQL-EXECUTE): the ``retrieve_<Type>`` / ``valuesets`` tables the compiled script references. The
-    script (the harness's ``SparkFhirData.mountsSql``) is ``;\\n``-terminated statements with one-line JSON
-    VALUES, so we split on ``;\\n`` and run each (comment/blank lines dropped — ``spark.sql`` takes one
-    statement at a time)."""
-    for chunk in mounts_sql.split(";\n"):
-        code = "\n".join(line for line in chunk.splitlines()
-                         if line.strip() and not line.strip().startswith("--"))
-        if code.strip():
-            spark.sql(code)
-
-
 def run_e2e(spark, provider, elm: str, targets, context: str = "Unfiltered",
-            mounts_sql=None, conf=None) -> dict:
-    """The client loop, factored out of ``main`` so it is unit-testable with fakes (no pyspark): mount the
-    runtime contract, then ``load_library(elm)`` → ``cql(target)`` per target, and assemble
+            conf=None) -> dict:
+    """The client loop, factored out of ``main`` so it is unit-testable with fakes (no pyspark):
+    ``load_library(elm)`` → ``cql(target)`` per target, and assemble
     ``{subject -> {define -> value}}``. ``targets`` is define names (empty/None → the whole assembled
     frame). ``conf`` is passed to ``load_library`` (``None`` → read the active Spark conf; a test passes
     ``{}`` to stay pyspark-free)."""
     from cql_databricks.compiler import cql, load_library
 
     library = load_library(elm=elm, provider=provider, context=context, conf=conf)
-    if mounts_sql:
-        _run_mounts(spark, mounts_sql)
 
     out: dict = {}
     names = [t.strip() for t in (targets or []) if t.strip()]
@@ -117,10 +102,6 @@ def main(argv=None) -> int:
     ap.add_argument("--targets", default=None,
                     help="comma-separated defines to build one-by-one; omit for the whole frame")
     ap.add_argument("--context", default="Unfiltered", help="the CQL context")
-    # SQL is the deploy substrate (PIPE-RUNTIME-COMPILE/EXEC-SQL-BACKEND). --mounts provides the
-    # retrieve_<Type>/valuesets views the compiled script references before compiling.
-    ap.add_argument("--mounts", default=None,
-                    help="path to the external mount SQL script the SQL path runs before compiling")
     args = ap.parse_args(argv)
 
     from pyspark.sql import SparkSession
@@ -128,15 +109,11 @@ def main(argv=None) -> int:
 
     with open(args.elm, "r", encoding="utf-8") as f:
         elm = f.read()
-    mounts_sql = None
-    if args.mounts:
-        with open(args.mounts, "r", encoding="utf-8") as f:
-            mounts_sql = f.read()
 
     spark = SparkSession.builder.remote(args.remote).getOrCreate()
     provider = RemoteProvider(args.endpoint)  # NoAuth by default (localhost host)
     targets = args.targets.split(",") if args.targets else None
-    out = run_e2e(spark, provider, elm, targets, context=args.context, mounts_sql=mounts_sql)
+    out = run_e2e(spark, provider, elm, targets, context=args.context)
 
     json.dump(out, sys.stdout)
     sys.stdout.flush()

@@ -31,8 +31,19 @@ class _Content:
         return self._corpus
 
 
+class _Contents:
+    """DOC-ENVIRONMENT-PICKER — one environment's content, whichever environment is asked for."""
+
+    def __init__(self, content):
+        self.content, self.asked = content, []
+
+    def get(self, name):
+        self.asked.append(name)
+        return self.content
+
+
 def test_the_designer_contributes_exactly_get_specification():
-    tools = assistant_tools.designer_tools(content=_Content(_Corpus()))
+    tools = assistant_tools.designer_tools(contents=_Contents(_Content(_Corpus())))
     assert tools.names() == ["get_specification"]
 
 
@@ -47,9 +58,8 @@ def test_the_tool_serves_the_same_composition_as_the_route(monkeypatch):
                         lambda library, version, *, content, location=None: calls.append((library, version)) or {"ok": 1})
     server = create_mcp(warehouse=lambda sql: None,
                         reference_for=lambda address, define: None, computed_for=lambda address: [],
-                        data_sources=lambda: [],
                         research=Research(**{name: _unused for name in Research.__dataclass_fields__}),
-                        contributed=assistant_tools.designer_tools(content=_Content(_Corpus())))
+                        contributed=assistant_tools.designer_tools(contents=_Contents(_Content(_Corpus()))))
     asyncio.run(server.call_tool("get_specification", {"library": "ExampleMeasure", "version": "0.0.001"}))
     assert calls == [("ExampleMeasure", "0.0.001")]
 

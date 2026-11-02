@@ -5,17 +5,17 @@ RUN-CLIENT-SESSION-REUSE — every tool reads on the signed-in user's held wareh
 """
 from __future__ import annotations
 
-from types import SimpleNamespace
+import contextvars
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 from fastmcp import FastMCP
 
 from cql_databricks.compiler.compile_shim import CqlDatabricksCompileProvider
-from cql_databricks.compiler.config import resolve_catalog_scopes
+from cql_databricks.compiler.environment import Environment, EnvironmentResolver
 from cql_databricks.compiler.location import Location
 from cql_databricks.compiler.workspace_files import WorkspaceLibraryFiles
 from cql_databricks.compiler.resolve import resolve
-from cql_databricks.compiler.tagged import TaggedResolver
-from cql_databricks.data_bindings import ContentResolver
 from cql_databricks.result import ResultsUnavailable, run_inline
 from cql_databricks.result.insights import parse_scoring
 from cql_databricks.result.selection_reading import SelectedOutput, open_selection
@@ -32,6 +32,36 @@ from .registry import ToolRegistry
 
 #: The most value-set hits ``value_sets_with_code`` reads; a code in more is a code to narrow by system.
 CODE_HIT_LIMIT = 500
+
+#: AGENT-DEFAULT-ENVIRONMENT — the environment the Designer's drawer passes for one request; unset everywhere else,
+#: so Genie and MCP clients run in the default. A ``ContextVar`` for the reason ``workspace._forwarded`` is one: the
+#: drawer dispatches tools in process, and no tool takes the environment as an argument.
+_environment: contextvars.ContextVar[str | None] = contextvars.ContextVar("cql_databricks_agent_environment",
+                                                                         default=None)
+
+
+@contextmanager
+def in_environment(name: str | None) -> Iterator[None]:
+    """AGENT-DEFAULT-ENVIRONMENT, DOC-ENVIRONMENT-PICKER — run the tools called inside in the environment ``name``,
+    the one the Designer has picked; None is the default."""
+    token = _environment.set(name)
+    try:
+        yield
+    finally:
+        _environment.reset(token)
+
+
+def current_environment() -> str | None:
+    """AGENT-DEFAULT-ENVIRONMENT — the environment the drawer bound for this tool call, or None for the default. For a
+    contributed tool (`AGENT-TOOL-REGISTRY`) that reads the environment's content its own way."""
+    return _environment.get()
+
+
+def tool_environment(run) -> tuple[EnvironmentResolver, Environment]:
+    """AGENT-DEFAULT-ENVIRONMENT — the environment the tools run in, the drawer's, else the default, found as the
+    caller through ``run`` in one query (`CLIENT-ENVIRONMENT-RESOLVER`), with the resolver that found it."""
+    environments = EnvironmentResolver(run)
+    return environments, environments.resolve(_environment.get())
 
 
 def user_files() -> WorkspaceLibraryFiles:
@@ -57,36 +87,30 @@ def assistant_server(*, contributed: ToolRegistry | None = None) -> FastMCP:
         return list(selected(address).results)
 
     def selected(address: dict):
+        """RUN-CLIENT-REQUEST-REOPEN — a selection reopens in the environment its calculation ran in."""
         run = runner()
-        return open_selection(address, run=run, content=ContentResolver(lambda: run, resolve_catalog_scopes()),
+        named = (address.get("calculation") or {}).get("environment")
+        if not named:
+            raise ValueError("the result-set address names no environment; reopen it from its calculation request")
+        environments = EnvironmentResolver(run)
+        return open_selection(address, run=run, content=environments.content(environments.get(named)),
                               compiler=compile_provider(config.compiler_endpoint(), config.compiler_token()),
                               files=user_files())
 
     def warehouse(sql):
         return runner().rows(sql)
 
-    def sources():
-        run = runner()
-        content = ContentResolver(lambda: run, resolve_catalog_scopes())
-        result = []
-        for schema in content.data_source_schemas():
-            rows = run("SELECT comment FROM system.information_schema.schemata "
-                       "WHERE catalog_name = :catalog AND schema_name = :schema",
-                       {"catalog": schema.catalog, "schema": schema.schema})
-            if len(rows) != 1:
-                raise PermissionError(f"cannot read source schema metadata for {schema.name!r}")
-            result.append(SimpleNamespace(id=schema.name, name=schema.name, description=rows[0]["comment"]))
-        return result
-
     return create_mcp(warehouse=warehouse, reference_for=reference, computed_for=computed,
-                      data_sources=sources, research=research(runner), contributed=contributed)
+                      research=research(runner), contributed=contributed)
 
 
 def research(runner) -> Research:
     """AGENT-DEFINITION-DISCOVERY, AGENT-SAVED-RESULTS, AGENT-INLINE-EXPERIMENTS — the research tools'
-    collaborators, each a read or an inline run on the signed-in user's held session (`SEC-OBO`)."""
-    def content(run) -> ContentResolver:
-        return ContentResolver(lambda: run, resolve_catalog_scopes())
+    collaborators, each a read or an inline run on the signed-in user's held session (`SEC-OBO`), in the
+    environment the tools run in (`AGENT-DEFAULT-ENVIRONMENT`)."""
+    def content(run):
+        environments, environment = tool_environment(run)
+        return environments.content(environment)
 
     def compiler():
         return compile_provider(config.compiler_endpoint(), config.compiler_token())
@@ -102,11 +126,10 @@ def research(runner) -> Research:
         return content(runner()).corpus()
 
     def code_lookup(code: str, system: str | None):
-        """AGENT-VALUE-SET-LOOKUP, CLIENT-DEFAULT-RESOLVER: the tagged terminology in scope, as the caller."""
+        """AGENT-VALUE-SET-LOOKUP, BIND-PUBLISHED-VIEW: the environment's terminology view, as the caller."""
         run = runner()
-        terminology = TaggedResolver(content(run), run).terminology()
-        if terminology is None:
-            raise RuntimeError("no schema tagged cql_databricks_terminology is in scope, so no value set holds a code")
+        environments, environment = tool_environment(run)
+        terminology = environments.terminology(environment)
         hits = terminology.find_code(code, system)[:CODE_HIT_LIMIT]
         return [(hit.id, getattr(hit, "system", None) or system, code) for hit in hits]
 
@@ -117,12 +140,14 @@ def research(runner) -> Research:
                 "ok": result["ok"] and not resolution.unresolved,
                 "diagnostics": [*resolution.unresolved_messages(), *result["diagnostics"]]}
 
-    def inline(cql: str, data_source: str, period, location: str | None = None):
+    def inline(cql: str, period, location: str | None = None):
         run = runner()
         catalog, schema = runtime()
-        return run_inline(content=content(run), run=run, compiler=CqlDatabricksCompileProvider(compiler()),
-                          data_source=data_source, cql=cql, runtime_catalog=catalog, runtime_schema=schema,
-                          period=period, location=location, files=user_files() if location else None)
+        environments, environment = tool_environment(run)
+        return run_inline(content=environments.content(environment), run=run,
+                          compiler=CqlDatabricksCompileProvider(compiler()), environment=environment, cql=cql,
+                          runtime_catalog=catalog, runtime_schema=schema, period=period, location=location,
+                          files=user_files() if location else None)
 
     def scoring_for(library: str, version: str, location: str | None = None) -> str | None:
         at = Location.parse(location) if location else None
@@ -133,11 +158,10 @@ def research(runner) -> Research:
     def saved() -> SavedResultsEnv:
         run = runner()
         catalog, schema = runtime()
-        scopes = tuple(s for s in (resolve_catalog_scopes() or []) if s.count(".") == 1)
-        return SavedResultsEnv(run=run, content=content(run), compiler=compiler(),
-                               private_catalog=config.designer_results_catalog(), runtime_catalog=catalog,
-                               runtime_schema=schema, result_scopes=scopes, scoring_for=scoring_for,
-                               files=user_files())
+        environments, environment = tool_environment(run)
+        return SavedResultsEnv(run=run, content=environments.content(environment), compiler=compiler(),
+                               environment=environment, runtime_catalog=catalog, runtime_schema=schema,
+                               scoring_for=scoring_for, files=user_files())
 
     return Research(corpus=corpus, code_lookup=code_lookup, translate=translate, inline=inline,
                     scoring_for=scoring_for, saved=saved, files=user_files)

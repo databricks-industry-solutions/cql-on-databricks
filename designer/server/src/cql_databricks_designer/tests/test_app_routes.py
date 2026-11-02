@@ -30,8 +30,6 @@ from unittest import mock
 
 import pytest
 
-#: CLIENT-DISCOVERY-SCOPE — building the App resolves the deployment's catalog scopes.
-pytestmark = pytest.mark.usefixtures("catalog_scopes")
 
 # The API surface, frozen. `(path, methods)` -> the handler that must serve it.
 #
@@ -57,9 +55,8 @@ EXPECTED: dict[tuple[str, str], str] = {
     ("/api/libraries/{name}/{version}/source", "GET"): "library_source",
     ("/api/libraries/{name}/{version}/data-requirements", "GET"): "library_data_requirements",
     ("/api/libraries/resolve", "POST"): "resolve_libraries",
-    # Read-only since CARVE-CONTENT: a source is a tagged UC schema, declared by tagging it.
-    ("/api/knowledge-sources", "GET"): "list_knowledge_sources",
-    ("/api/knowledge-sources/reload", "POST"): "reload_knowledge_sources",
+    # KNOWLEDGE-LAKE-DIRECT — forget the held environments and their corpora.
+    ("/api/knowledge/reload", "POST"): "reload_knowledge",
     # --- designer: the Specification document and its derivations ---------------------------
     ("/api/libraries/{name}/{version}/specification", "GET"): "library_specification",
     # DOC-OPEN-SAVE — save a library where it was opened, as the signed-in user.
@@ -75,12 +72,10 @@ EXPECTED: dict[tuple[str, str], str] = {
     # --- compiler proxy ---------------------------------------------------------------------
     ("/api/translate", "POST"): "translate",
     ("/api/modeled-types", "GET"): "modeled_types",
-    # --- data sources and the knowledge-view Bind (`routes/data_sources.py`, as the signed-in user) ----
-    # DATA-SOURCE-UC-TAG — read-only: a data source is a tagged schema, not a record.
-    ("/api/data-sources", "GET"): "list_data_sources",
-    ("/api/data-sources/{source_id}", "GET"): "get_data_source",
-    ("/api/data-sources/reload", "POST"): "reload_data_sources",
-    ("/api/data-bindings/bind", "POST"): "bind_all",
+    # --- environments (`routes/environments.py`, as the signed-in user) ----------------------------
+    # DOC-ENVIRONMENT-PICKER — read-only: an environment is a tagged catalog, not a record.
+    ("/api/environments", "GET"): "list_environments",
+    ("/api/environments/reload", "POST"): "reload_environments",
     # --- runs on SDP and their results, the Designer's own (`routes/runs.py`, DESIGNER-RUNS-SDP) ----------
     ("/api/run", "POST"): "run_measure",
     ("/api/run-stream", "POST"): "run_measure_stream",

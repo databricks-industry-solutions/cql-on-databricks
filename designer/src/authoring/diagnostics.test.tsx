@@ -40,7 +40,7 @@ describe("translate transport", () => {
     // APP-SPEC-MODEL — compiling the include closure is opt-in, so a plain diagnostics translate
     // does not pay for it.
     expect(JSON.parse((call[1] as RequestInit).body as string))
-      .toEqual({ cql: "define \"X\": 1", includes: [], include_elm: false, location: null });
+      .toEqual({ cql: "define \"X\": 1", includes: [], include_elm: false, location: null, environment: null });
   });
 
   it("asks for the compiled include closure when includeElm is set (APP-SPEC-MODEL)", async () => {

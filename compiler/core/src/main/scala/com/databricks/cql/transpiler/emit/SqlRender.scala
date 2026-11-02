@@ -55,7 +55,6 @@ object SqlRender {
     case SqlRel.AliasRel(r, _) => renderRel(r, indent)
     case lv: SqlRel.LateralView => Indent * indent + "SELECT * FROM " + fromText(lv, indent)
     case j: SqlRel.Join     => Indent * indent + "SELECT * FROM " + fromText(j, indent)
-    case tf: SqlRel.TableFunc => Indent * indent + "SELECT * FROM " + fromText(tf, indent)
   }
 
   private def renderSelect(s: SqlRel.Select, indent: Int): String = {
@@ -80,7 +79,6 @@ object SqlRender {
     * parenthesized and indented; an [[SqlRel.AliasRel]] supplies the required derived-table alias. */
   private def fromText(rel: SqlRel, indent: Int): String = rel match {
     case SqlRel.TableRef(n)      => qualifiedIdent(n)
-    case SqlRel.TableFunc(fn, args, catalog) => s"${qualifiedName(catalog, fn)}(${args.map(expr).mkString(", ")})"
     case SqlRel.AliasRel(r, a)   => s"${fromAtom(r, indent)} AS ${quoteIdent(a)}"
     case SqlRel.Join(l, r, kind, on, using) =>
       val onTxt = on.map(c => s" ON ${expr(c)}")
@@ -97,7 +95,6 @@ object SqlRender {
   /** A relation used as a FROM atom: parenthesized, indented subquery. */
   private def fromAtom(rel: SqlRel, indent: Int): String = rel match {
     case SqlRel.TableRef(n) => qualifiedIdent(n)
-    case tf: SqlRel.TableFunc => fromText(tf, indent)
     case _ =>
       val pad = Indent * indent
       s"(\n${renderRel(rel, indent + 1)}\n$pad)"
@@ -142,7 +139,6 @@ object SqlRender {
     case SqlExpr.Struct(fields) =>
       val args = fields.flatMap { case (n, v) => Seq(s"'${n.replace("'", "''")}'", expr(v)) }
       s"named_struct(${args.mkString(", ")})"
-    case SqlExpr.NamedArg(name, value) => s"$name => ${expr(value)}"
     case SqlExpr.Over(fn, part, ord) =>
       val p = if (part.isEmpty) "" else part.map(expr).mkString("PARTITION BY ", ", ", "")
       val o = if (ord.isEmpty) "" else ord.map(sortKey).mkString("ORDER BY ", ", ", "")
@@ -172,7 +168,6 @@ object SqlRender {
         s.having.map(sizeOf).getOrElse(0L) + s.orderBy.map(k => sizeOf(k.expr) + 8L).sum + 12L
     case SqlRel.UnionAll(parts)    => parts.map(sizeOf).sum + parts.size * 12L
     case SqlRel.TableRef(n)        => n.length + 16L
-    case SqlRel.TableFunc(fn, args, catalog) => fn.length + catalog.map(_.length + 1L).getOrElse(0L) + args.map(a => sizeOf(a) + 2L).sum + 20L
     case SqlRel.OneRow             => 10L
     case SqlRel.AliasRel(r, a)     => sizeOf(r) + a.length + 6L
     case SqlRel.LateralView(in, g, ta, cols, _) => sizeOf(in) + sizeOf(g) + ta.length + cols.map(_.length + 4L).sum + 20L
@@ -192,7 +187,6 @@ object SqlRender {
     case SqlExpr.Lambda(ps, body)  => ps.map(_.length + 2L).sum + sizeOf(body) + 6L
     case SqlExpr.Struct(fields)    => fields.map { case (n, v) => n.length + sizeOf(v) + 16L }.sum + 14L
     case SqlExpr.Over(fn, p, o)    => sizeOf(fn) + p.map(sizeOf).sum + o.map(k => sizeOf(k.expr) + 8L).sum + 20L
-    case SqlExpr.NamedArg(n, v)    => n.length + sizeOf(v) + 4L
   }
 
   // ---------------------------------------------------------------- structural dependency scan
@@ -211,7 +205,6 @@ object SqlRender {
 
   def tableRefs(rel: SqlRel): Set[String] = rel match {
     case SqlRel.TableRef(n)                     => Set(n)
-    case SqlRel.TableFunc(fn, _, _)             => Set(fn)
     case SqlRel.OneRow                          => Set.empty
     case s: SqlRel.Select                       => tableRefs(s.from)
     case SqlRel.UnionAll(parts)                 => parts.flatMap(tableRefs).toSet
@@ -237,13 +230,6 @@ object SqlRender {
     * non-simple segments backticked). A bare simple name like `valuesets` passes through unquoted. */
   private def qualifiedIdent(name: String): String =
     name.split('.').map(quoteIdent).mkString(".")
-
-  /** A (possibly catalog-qualified) function name for a [[SqlRel.TableFunc]] call: each dotted segment
-    * of the optional `catalog` plus the function name is independently quoted, so a namespaced binding
-    * (`acme.fhir.retrieve_observation`) renders safely and a bare convention name (`retrieve_Encounter`)
-    * stays unquoted. */
-  private def qualifiedName(catalog: Option[String], fn: String): String =
-    (catalog.toSeq.flatMap(_.split('.').toSeq) :+ fn).map(quoteIdent).mkString(".")
 
   private val Reserved: Set[String] = Set(
     "SELECT", "FROM", "WHERE", "GROUP", "ORDER", "BY", "HAVING", "JOIN", "INNER", "OUTER", "LEFT",

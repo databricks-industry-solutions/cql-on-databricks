@@ -71,7 +71,7 @@ def define_profile(
     eval_id: str,
     draft: str,
     closure: "ClosureSource",
-    patient_function: str | None,
+    patient_relation: str | None,
     results_catalog: str,
     execute: Execute,
 ) -> DefineProfile:
@@ -111,7 +111,7 @@ def define_profile(
     )
     top = _top_values(ref, relation_cols, eval_id=suffix, execute=execute)
     strata = _subject_strata(
-        ref, relation_cols, patient_function=patient_function, period_start=period_start, eval_id=suffix,
+        ref, relation_cols, patient_relation=patient_relation, period_start=period_start, eval_id=suffix,
         execute=execute)
 
     # The profile is WHOLLY DERIVED. `provenance` reflects that without qualification, so the pane
@@ -217,7 +217,7 @@ def _top_values(ref: RelationRef, columns: dict[str, str], *, eval_id: str,
             for r in rows]
 
 
-def _subject_strata(ref: RelationRef, columns: dict[str, str], *, patient_function: str | None,
+def _subject_strata(ref: RelationRef, columns: dict[str, str], *, patient_relation: str | None,
                     period_start: str | None,
                     eval_id: str, execute: Execute) -> list[Stratum]:
     """Sex and age band over the subjects this define is TRUE of.
@@ -233,7 +233,7 @@ def _subject_strata(ref: RelationRef, columns: dict[str, str], *, patient_functi
     selected.
     """
 
-    if not patient_function:
+    if not patient_relation:
         return []
     col = value_column(columns)
     met = met_expr(col, columns.get(col) if col else None)
@@ -266,7 +266,7 @@ def _subject_strata(ref: RelationRef, columns: dict[str, str], *, patient_functi
     out: list[Stratum] = []
     for sid, label, dimension, expression, note in cuts:
         sql = (f"SELECT {expression} AS bin, COUNT(DISTINCT p.{SUBJECT_ID}) AS n "
-               f"FROM {patient_function}() p "
+               f"FROM {patient_relation} p "
                f"JOIN ({subjects_sql}) d ON d.{SUBJECT_ID} = p.{SUBJECT_ID} "
                f"GROUP BY 1 ORDER BY n DESC")
         rows = execute(sql) or []

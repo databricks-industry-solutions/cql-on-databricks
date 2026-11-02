@@ -46,7 +46,7 @@ function renderPane(selected: Selection | null) {
       metrics={null} live={false}
       // A scope is what makes the pane fetch a profile; with one set the fetch is in flight for the
       // whole of a synchronous test, which is exactly the state the first case is about.
-      scope={{ dataSourceId: "test-deck" }}
+      scope={{ environment: "test-deck" }}
       funnel={null} />,
   );
 }

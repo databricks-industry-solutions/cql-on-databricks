@@ -1,6 +1,6 @@
 library FhirTerminologyLayers version '1.0.0'
 
-// BIND-PROVIDER-REQUEST, CLIENT-PROVIDER-OVERLAY: a value set is read from the FIRST terminology relation
+// BIND-CALL-SITE, CLIENT-RESOLVER-OVERLAY: a value set is read from the FIRST terminology relation
 // that holds it, so a development layer replaces a published set rather than merging with it. The harness
 // gives the compile two layers. "Diabetes" (first by id) is in both: the first holds its expansion
 // (73211009), the second every code of both sets. "Type Two" is only in the second (44054006).

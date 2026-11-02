@@ -22,31 +22,31 @@ import org.scalatestplus.junit.JUnitRunner
 final class OfflineCompileSpec extends AnyFunSuite {
 
   /** Lower `c` to a SQL script entirely server-free (no `SparkSession` exists in this method) and return
-    * the rendered script text. Value-set libraries pass `hasTerminology = true` so the `valuesets` mount
-    * is referenced; it is a compile-time flag, not a live provider. */
-  private def lowerOffline(c: Differential.Case, hasTerminology: Boolean): String = {
+    * the rendered script text. It binds placeholder relations (`SqlEvalEnv.describing`, BIND-CALL-SITE): names,
+    * not live providers. */
+  private def lowerOffline(c: Differential.Case): String = {
     val lib = Differential.buildLibrary(c)
     val config = Differential.withConditionalUnion(c.library, Differential.withGrainFirst(c.library, Config.defaults))
-    val env = SqlEvalEnv(c.context, config, terminology = hasTerminology)
+    val env = SqlEvalEnv(c.context, config).describing
     val lowered = SqlFrameLowering.lower(Optimize.run(lib, config), env)
     lowered.script.statements.map(SqlRender.render).mkString(";\n\n")
   }
 
-  // The lowering needs no data adapter — retrieves lower to `retrieve_<Type>` view references, never to
+  // The lowering needs no data adapter — retrieves lower to references of their bound relations, never to
   // actual rows — so the cases carry NO DataProvider/TerminologyProvider (there is no session to build one).
   private def fhirCase(library: String): Differential.Case =
     Differential.Case(library, Context.Patient)
 
   Corpus.measureDefs.foreach { md =>
   test(s"${md.library} typing + lowering perform ZERO Spark round-trips (TYPE-OFFLINE-COMPILE)") {
-    val tree = lowerOffline(Corpus.offlineCase(md), hasTerminology = true)
+    val tree = lowerOffline(Corpus.offlineCase(md))
     assert(tree.nonEmpty, "lowered script should render server-free")
     assert(tree.linesIterator.size > 5, s"expected a non-trivial lowered script, got:\n$tree")
   }
   }
 
   test("a FHIR retrieve + value[x] + terminology fixture lowers with ZERO round-trips (FhirNumerator)") {
-    val tree = lowerOffline(fhirCase("FhirNumerator"), hasTerminology = true)
+    val tree = lowerOffline(fhirCase("FhirNumerator"))
     assert(tree.nonEmpty, "lowered script should render server-free")
   }
 
@@ -55,7 +55,7 @@ final class OfflineCompileSpec extends AnyFunSuite {
   // types from the static model, so these MUST lower with no session too.
   for (fixture <- Seq("FhirChoiceUnionResources", "FhirConditionalUnionHet", "FhirChoiceResourcePrimitive")) {
     test(s"heterogeneous Choice lowers with ZERO round-trips ($fixture, TYPE-OFFLINE-COMPILE)") {
-      val tree = lowerOffline(fhirCase(fixture), hasTerminology = true)
+      val tree = lowerOffline(fhirCase(fixture))
       assert(tree.nonEmpty, "lowered script should render server-free")
     }
   }

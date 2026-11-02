@@ -182,7 +182,11 @@ object Differential {
   /** Build the normalized engine library for a case (PROC-DRY): a multi-library measure is flattened
     * (link) and pruned to its population slice before the single-library pipeline runs; a self-contained
     * fixture loads its ELM directly. */
-  def buildLibrary(c: Case): Library = {
+  def buildLibrary(c: Case): Library = Pipeline().normalize(loadedLibrary(c))
+
+  /** `c`'s library loaded, linked and with its parameter overrides applied, BEFORE `normalize` inlines
+    * parameters: the library a parameter scope is read from (`BIND-RETRIEVE-REQUEST`). */
+  def loadedLibrary(c: Case): Library = {
     val loaded = c.link match {
       case Some(ls) =>
         val root = Pipeline().load(Paths.read(Paths.elm(c.library)))
@@ -190,6 +194,6 @@ object Differential {
       case None =>
         Pipeline().load(Paths.read(Paths.elm(c.library)))
     }
-    Pipeline().normalize(CompileService.applyParameterOverrides(loaded, c.parameters))
+    CompileService.applyParameterOverrides(loaded, c.parameters)
   }
 }

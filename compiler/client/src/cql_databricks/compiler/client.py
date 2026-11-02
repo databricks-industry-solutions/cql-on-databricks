@@ -34,20 +34,16 @@ class CqlClient:
 
     def __init__(self, conf: Dict[str, str], *, provider: Optional[CompileProvider] = None,
                  spark=None, endpoint: Optional[str] = None,
-                 sources: Optional[Dict[str, Dict[str, str]]] = None,
                  library_provider: Optional[LibraryProvider] = None, binder=None, session_scope=None):
         self._conf = dict(conf)
         self._spark = spark
-        # BIND-MANIFEST: the session's retrieve binding table (fhirType -> {function, catalog?}), carried
-        # to the compiler on every call so a bound retrieve lowers to its UDTF (BIND-RETRIEVE-UDF).
-        self._sources = {t: dict(b) for t, b in (sources or {}).items()}
         # Resolve the provider ONCE at build time (a single server — KISS), so every call reuses it.
         self._provider = provider or resolve_provider(self._conf, endpoint=endpoint)
         # BUILD-LIBRARY-PROVIDER: the library SOURCE seam, likewise resolved once. `None` is legitimate —
         # a session that only binds inline CQL needs no source; the loud failure comes at first use.
         self._library_provider = (library_provider if library_provider is not None
                                   else resolve_library_provider(self._conf))
-        # CLIENT-EXEC-DISCOVERY: chooses the data each compile binds to, or None for the convention.
+        # BIND-CALL-SITE: binds each compile's call sites, or None for a client that binds nothing.
         self._binder = binder
         # SVC-NOTEBOOK-SESSION-SCOPE: the session library header-less CQL joins, or None for a client whose
         # every string is its own library.
@@ -92,7 +88,7 @@ class CqlClient:
     def cql(self, source: Union[Library, str, None] = None, *, resource: Optional[str] = None,
             cql: Optional[str] = None, elm: Optional[str] = None, library: Optional[str] = None,
             context: Optional[str] = None, data_model: Optional[str] = None, spark=None,
-            engine: Optional[str] = None, data_source: Optional[str] = None,
+            engine: Optional[str] = None,
             recompute: Optional[bool] = None) -> CqlQuery:
         """Bind ``source`` against this session and return a lazy :class:`~.cql.CqlQuery` handle
         (`PIPE-RUNTIME-COMPILE`). ``source`` is a raw CQL / ELM STRING, a packaged ``resource`` path
@@ -105,17 +101,17 @@ class CqlClient:
         :class:`~.libraries.LibraryProvider` and ships its resolved ``include`` closure with the compile —
         the only form that makes a real multi-library eCQM work.
 
-        ``engine``, ``data_source`` and ``recompute`` override the session's for this one query
+        ``engine`` and ``recompute`` override the session's for this one query
         (EVALUATOR-CLIENT-EVALUATE); a session that set them once passes none of them."""
         lib = self._bind(source, resource=resource, cql=cql, elm=elm, library=library, context=context,
-                         data_model=data_model, engine=engine, data_source=data_source, recompute=recompute)
+                         data_model=data_model, engine=engine, recompute=recompute)
         return CqlQuery(lib, spark=spark or self._spark)
 
     def with_library(self, resource: Optional[str] = None, *, cql: Optional[str] = None,
                      elm: Optional[str] = None, library: Optional[str] = None,
                      context: Optional[str] = None,
                      data_model: Optional[str] = None, engine: Optional[str] = None,
-                     data_source: Optional[str] = None, recompute: Optional[bool] = None) -> Library:
+                     recompute: Optional[bool] = None) -> Library:
         """Bind and return the immutable :class:`~.library.Library` value object directly (the interchange
         form the SDP path holds), resolving provider/context/data-model/overrides from this session
         (`BUILD-RESOLVE`). Most callers want :meth:`cql` (the runnable handle) instead.
@@ -125,12 +121,12 @@ class CqlClient:
         ``Patient``."""
         return load_library(resource, cql=cql, elm=elm, library=library, conf=self._conf,
                             provider=self._provider, library_provider=self._library_provider,
-                            context=context, data_model=data_model, sources=self._sources,
-                            engine=engine, data_source=data_source, recompute=recompute,
+                            context=context, data_model=data_model,
+                            engine=engine, recompute=recompute,
                             binder=self._binder)
 
     def _bind(self, source, *, resource, cql, elm, library, context, data_model,
-              engine=None, data_source=None, recompute=None) -> Library:
+              engine=None, recompute=None) -> Library:
         """Coerce ``source`` + explicit body kwargs to a bound :class:`~.library.Library`. A ``Library`` is
         returned as-is; otherwise a STRING is classified — a ``…​.cql`` / ``…​.elm.json`` / ``…​.json`` path is a
         ``resource``, a leading ``{`` is ``elm``, anything else is raw ``cql`` text.
@@ -147,8 +143,8 @@ class CqlClient:
                 "cql() got both a source and library=; pass one. A library NAME goes in library=, "
                 "a CQL/ELM string or resource path goes in the positional source.")
         if source is not None and not isinstance(source, str):
-            if engine is not None or data_source is not None or recompute is not None:
-                raise TypeError("engine/data_source/recompute apply to a source STRING; a bound Library "
+            if engine is not None or recompute is not None:
+                raise TypeError("engine/recompute apply to a source STRING; a bound Library "
                                 "carries its own")
             return source  # an already-bound Library value object (or a duck-typed one) — used as-is
         if resource is None and cql is None and elm is None and library is None:
@@ -165,9 +161,9 @@ class CqlClient:
             # SVC-NOTEBOOK-SESSION-SCOPE: header-less CQL is a fragment of the session library.
             return self._session_scope.join(cql, self._provider, lambda text: self.with_library(
                 resource, cql=text, context=context, data_model=data_model, engine=engine,
-                data_source=data_source, recompute=recompute))
+                recompute=recompute))
         return self.with_library(resource, cql=cql, elm=elm, library=library, context=context,
-                                 data_model=data_model, engine=engine, data_source=data_source,
+                                 data_model=data_model, engine=engine,
                                  recompute=recompute)
 
     def describe(self, library: Union[Library, CqlQuery], *,
@@ -193,7 +189,6 @@ class CqlClientBuilder:
         self._session_scope = None
         self._spark = None
         self._endpoint: Optional[str] = None
-        self._sources: Dict[str, Dict[str, str]] = {}
         self._binder = None
 
     def _set(self, key: str, value: Optional[str]) -> "CqlClientBuilder":
@@ -290,47 +285,16 @@ class CqlClientBuilder:
         library's rows. Pass ``"auto"`` to derive a stable prefix from each library's own identity."""
         return self._set(config.CONF_OBJECT_PREFIX, prefix)
 
-    def data_catalog(self, name: str) -> "CqlClientBuilder":
-        """The data catalog/namespace carried to the compiler (host bakes the concrete tables). The
-        preferred, model-neutral name (pairs with :meth:`data_model`); the carried override key stays
-        ``data.fhir_catalog`` until multi-model lands (`ARCH-DATAMODEL-TRAIT`)."""
-        return self._set(config.CONF_FHIR_CATALOG, name)
-
-    def fhir_catalog(self, name: str) -> "CqlClientBuilder":
-        """Deprecated alias of :meth:`data_catalog` (kept for compatibility)."""
-        return self._set(config.CONF_FHIR_CATALOG, name)
-
-    def valueset_table(self, name: str) -> "CqlClientBuilder":
-        """The conformed value-set expansion table carried to the compiler (`BIND-TERMINOLOGY-TABLE`), as
-        a fully-qualified name. Sent in `sources.valuesets.table`, where the service reads it."""
-        return self._set(config.CONF_VALUESET_TABLE, name)
-
     def udf_schema(self, schema: str) -> "CqlClientBuilder":
         """Qualify every emitted `cql_*` UDF call as ``<schema>.cql_fn(…)`` (`EMIT-UDF-QUALIFY`) — needed
         when the session's search path does not include the schema the opaque-UDF catalog was registered
         in. Unset emits bare names."""
         return self._set(config.CONF_UDF_SCHEMA, schema)
 
-    # -- retrieve binding (BIND-RETRIEVE-UDF / BIND-MANIFEST) -------------------------------------
-    def source_binding(self, fhir_type: str, function: str,
-                       catalog: Optional[str] = None) -> "CqlClientBuilder":
-        """Bind a FHIR resource type to the SQL UDTF that retrieves it (`BIND-MANIFEST`): the compiler
-        emits ``FROM [catalog.]<function>(<8 explicit args>)`` for ``[<fhir_type>]`` retrieves (the sole mount
-        contract, `BIND-RETRIEVE-UDF`; the signature is `BIND-EXPLICIT-PARAMS`, see
-        :data:`cql_databricks.compiler.runtime.RETRIEVE_PARAMS`). An unmapped type falls back to the convention ``retrieve_<Type>``.
-        Accumulates across calls. On Databricks the functions are precreated UC functions
-        (`BIND-UC-PRECREATE`); in a session, ``mount`` registers them (`CLIENT-SESSION-MOUNT`)."""
-        entry = {"function": function}
-        if catalog is not None:
-            entry["catalog"] = catalog
-        self._sources[fhir_type] = entry
-        return self
-
     def data_binder(self, binder) -> "CqlClientBuilder":
-        """Choose the data each compile binds to with ``binder``, a :class:`~.binding.DataBinder`
-        (`CLIENT-EXEC-DISCOVERY`). It is asked at compile time, with the types the library retrieves. A type
-        bound by :meth:`source_binding` is the client's explicit choice, so with any set the binder is not
-        asked. Unset, an unbound type compiles to the convention ``retrieve_<Type>``."""
+        """Bind each compile's call sites with ``binder``, a :class:`~.resolver_binder.ResolverBinder`
+        (`CLIENT-RESOLVERS`, `BIND-CALL-SITE`). Unset, nothing is bound: CQL that retrieves nothing compiles, and a
+        retrieve or a value-set membership fails, naming its site."""
         self._binder = binder
         return self
 
@@ -350,10 +314,6 @@ class CqlClientBuilder:
         """Which engine runs this session's queries: ``local`` (the default: this session's compute, nothing
         kept) or ``evaluator`` (the evaluator's compute; results kept and reused). Never a fallback."""
         return self._set(config.CONF_ENGINE, name)
-
-    def data_source(self, source_id: str) -> "CqlClientBuilder":
-        """The data source the evaluator engine runs against (a ``cql_databricks_data_source`` tag value)."""
-        return self._set(config.CONF_DATA_SOURCE, source_id)
 
     def measurement_period(self, start: str, end: str) -> "CqlClientBuilder":
         """The session's measurement period, bound in every query whose library declares one
@@ -389,5 +349,5 @@ class CqlClientBuilder:
 
     def build(self) -> CqlClient:
         return CqlClient(self._conf, provider=self._provider, spark=self._spark, endpoint=self._endpoint,
-                         sources=self._sources, library_provider=self._library_provider, binder=self._binder,
+                         library_provider=self._library_provider, binder=self._binder,
                          session_scope=self._session_scope)

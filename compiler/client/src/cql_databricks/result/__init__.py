@@ -8,16 +8,14 @@ the caller. A result is found by its table name, which carries its fingerprint, 
 from ._catalog_runtime import PlanObserver, StepObserver, StepRecord
 from .calculation import PreparedCalculation, prepare_calculation
 from .inline import InlineRun, run_inline
-from .durable import (MaterializedResults, ResultsUnavailable, archive_session, materialize, open_result_set,
+from .durable import (MaterializedResults, caller, destination_of, ResultsUnavailable, archive_session, materialize, open_result_set,
                       resolve_results, search_results)
-from .private import PrivateDestination, ensure_private_destination, find_private_destination
 from .reference import ResultReference
 # CLIENT-RESULT-STORE: kept results, in Delta.
-from .store import DeltaResultStore
+from .store import DeltaResultResolver
 
-__all__ = ["ResultReference", "DeltaResultStore",
+__all__ = ["ResultReference", "DeltaResultResolver",
            "MaterializedResults", "ResultsUnavailable", "archive_session", "materialize", "open_result_set",
            "resolve_results", "search_results",
-           "PrivateDestination", "ensure_private_destination", "find_private_destination",
            "PreparedCalculation", "prepare_calculation", "PlanObserver", "StepObserver", "StepRecord",
            "InlineRun", "run_inline"]

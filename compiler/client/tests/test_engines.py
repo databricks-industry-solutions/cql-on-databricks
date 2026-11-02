@@ -48,7 +48,7 @@ class _RecordingEngine:
 
 
 def _builder(provider):
-    return CqlClient.builder().provider(provider).data_catalog("fhir").spark(_FakeSpark())
+    return CqlClient.builder().provider(provider).spark(_FakeSpark())
 
 
 class EngineSettingTests(unittest.TestCase):
@@ -56,7 +56,7 @@ class EngineSettingTests(unittest.TestCase):
         patcher = mock.patch.dict(os.environ, {}, clear=False)
         patcher.start()
         self.addCleanup(patcher.stop)
-        for key in (config.ENV_ENGINE, config.ENV_DATA_SOURCE, config.ENV_MEASUREMENT_PERIOD,
+        for key in (config.ENV_ENGINE, config.ENV_MEASUREMENT_PERIOD,
                     config.ENV_RECOMPUTE):
             os.environ.pop(key, None)
 
@@ -66,29 +66,28 @@ class EngineSettingTests(unittest.TestCase):
         self.assertEqual(lib.engine, "local")
 
     def test_a_session_sets_every_engine_setting_once(self):
-        client = (_builder(_FakeProvider()).engine("evaluator").data_source("conformance")
+        client = (_builder(_FakeProvider()).engine("evaluator")
                   .measurement_period("2026-01-01", "2026-12-31").recompute().build())
         lib = client.with_library(cql=CQL)
-        self.assertEqual((lib.engine, lib.data_source, lib.measurement_period, lib.recompute),
-                         ("evaluator", "conformance", ("2026-01-01", "2026-12-31"), True))
+        self.assertEqual((lib.engine, lib.measurement_period, lib.recompute),
+                         ("evaluator", ("2026-01-01", "2026-12-31"), True))
 
     def test_a_call_overrides_the_session(self):
-        client = _builder(_FakeProvider()).engine("evaluator").data_source("conformance").build()
-        lib = client.with_library(cql=CQL, engine="local", data_source="other", recompute=False)
-        self.assertEqual((lib.engine, lib.data_source, lib.recompute), ("local", "other", False))
+        client = _builder(_FakeProvider()).engine("evaluator").build()
+        lib = client.with_library(cql=CQL, engine="local", recompute=False)
+        self.assertEqual((lib.engine, lib.recompute), ("local", False))
 
     def test_the_environment_is_a_tier(self):
         os.environ[config.ENV_ENGINE] = "evaluator"
-        os.environ[config.ENV_DATA_SOURCE] = "from-env"
         lib = _builder(_FakeProvider()).build().with_library(cql=CQL)
-        self.assertEqual((lib.engine, lib.data_source), ("evaluator", "from-env"))
+        self.assertEqual(lib.engine, "evaluator")
 
     def test_the_spark_conf_reaches_a_built_client(self):
         """BUILD-RESOLVE — a built client's own settings sit over the Spark conf; they no longer replace it."""
         with mock.patch("cql_databricks.compiler.library._spark_conf",
-                        return_value={config.CONF_ENGINE: "evaluator", config.CONF_DATA_SOURCE: "from-conf"}):
-            lib = _builder(_FakeProvider()).data_source("from-session").build().with_library(cql=CQL)
-        self.assertEqual((lib.engine, lib.data_source), ("evaluator", "from-session"))
+                        return_value={config.CONF_ENGINE: "evaluator", config.CONF_RECOMPUTE: "true"}):
+            lib = _builder(_FakeProvider()).recompute(False).build().with_library(cql=CQL)
+        self.assertEqual((lib.engine, lib.recompute), ("evaluator", False))
 
 
 class SessionPeriodTests(unittest.TestCase):
@@ -120,7 +119,7 @@ class SessionPeriodTests(unittest.TestCase):
 
 class DispatchTests(unittest.TestCase):
     def _query(self, **builder):
-        b = _builder(_FakeProvider()).engine("evaluator").data_source("conformance")
+        b = _builder(_FakeProvider()).engine("evaluator")
         if "period" in builder:
             b = b.measurement_period(*builder["period"])
         return b.build().cql(CQL)
@@ -131,9 +130,8 @@ class DispatchTests(unittest.TestCase):
             frame = self._query(period=("2026-01-01", "2026-12-31")).exec("Numerator")
         self.assertEqual(frame, "frame:Numerator")
         (request,) = engine.requests
-        self.assertEqual((request.cql, list(request.targets), request.data_source, request.measurement_period,
-                          request.recompute), (CQL, ["Numerator"], "conformance", ("2026-01-01", "2026-12-31"),
-                                               False))
+        self.assertEqual((request.cql, list(request.targets), request.measurement_period, request.recompute),
+                         (CQL, ["Numerator"], ("2026-01-01", "2026-12-31"), False))
 
     def test_several_targets_return_a_dict_and_recompute_rides_along(self):
         engine = _RecordingEngine()

@@ -1,17 +1,18 @@
-"""CLIENT-KNOWLEDGE-PROVIDER: the knowledge sources the client ships, and the one closure walk over them.
+"""CLIENT-KNOWLEDGE-RESOLVER: the knowledge resolvers the client ships, and the one closure walk over them.
 
-| Source | Holds | A store |
+| Resolver | Holds | A store |
 |---|---|---|
-| :class:`SessionCells` | the libraries ``%%cql`` cells declared in this Spark session (`SVC-NOTEBOOK-CELL-LIBRARY`) | no |
-| :class:`LibraryFolder` | every library in a ``/Workspace`` or ``/Volumes`` folder, at any depth (`RUN-ADDRESS-LOCATION`) | no |
-| :class:`DeltaKnowledge` | tagged knowledge in the caller's catalog scopes, or one tagged store (`CLIENT-DEFAULT-RESOLVER`) | yes, given a store |
+| :class:`CellsKnowledgeResolver` | the libraries ``%%cql`` cells declared in this Spark session (`SVC-NOTEBOOK-CELL-LIBRARY`) | no |
+| :class:`FolderKnowledgeResolver` | every library in a ``/Workspace`` or ``/Volumes`` folder, at any depth (`RUN-ADDRESS-LOCATION`) | no |
+| :class:`TableKnowledgeResolver` | an environment's ``knowledge`` views (`CLIENT-ENVIRONMENT`) | yes, given its store |
 
-A source only answers lookups. The include closure is walked in one place, :func:`library_provider`, which turns
-a source, or an ``Overlay`` chain of them (`CLIENT-PROVIDER-OVERLAY`), into the client core's
+A resolver only answers lookups. The include closure is walked in one place, :func:`library_provider`, which turns a
+resolver, or an ``Overlay`` chain of them (`CLIENT-RESOLVER-OVERLAY`), into the client core's
 :class:`~.libraries.LibraryProvider`. The order of ``SVC-NOTEBOOK-LIBRARY-FOLDER`` is the chain
-``Overlay(SessionCells, Overlay(LibraryFolder, DeltaKnowledge))``: a folder library's includes resolve from its
-folder, sibling-first, then from tagged knowledge; a library from tagged knowledge resolves its includes there
-alone. Any other source's includes resolve from it and the layers after it.
+``Overlay(CellsKnowledgeResolver, Overlay(FolderKnowledgeResolver, TableKnowledgeResolver))``: a folder library's
+includes resolve from its folder, sibling-first, then from the environment's knowledge; a library from the
+environment's knowledge resolves its includes there alone (`CLIENT-KNOWLEDGE-INCLUDES`). Any other resolver's includes
+resolve from it and the layers after it.
 """
 from __future__ import annotations
 
@@ -22,11 +23,11 @@ from typing import Any
 
 from .libraries import (FileLibraryProvider, LibraryFiles, LibraryProvider, LibraryRef, LibraryResolutionError,
                         LibrarySource, LocalLibraryFiles, includes_of)
-from .roles import KnowledgeSource, KnowledgeStore, Overlay
+from .resolvers import IncludeSite, KnowledgeResolver, KnowledgeStore, Overlay
 
 
-class SessionCells(KnowledgeSource):
-    """CLIENT-KNOWLEDGE-PROVIDER: the libraries the ``%%cql`` cells of ``spark``'s session declared (the active
+class CellsKnowledgeResolver(KnowledgeResolver):
+    """CLIENT-KNOWLEDGE-RESOLVER: the libraries the ``%%cql`` cells of ``spark``'s session declared (the active
     session when None), kept in the session record (`CLIENT-SESSION-STATE`). ``cells`` replaces the record with a
     plain mapping, for a caller with no Spark session."""
 
@@ -45,7 +46,7 @@ class SessionCells(KnowledgeSource):
     def identity(self) -> str:
         return "cells"
 
-    def library(self, name: str, version: str | None) -> LibrarySource | None:
+    def library(self, name: str, version: str | None, site: IncludeSite | None = None) -> LibrarySource | None:
         source = self.provider.source(name)
         return source if source is not None and (version is None or source.version == version) else None
 
@@ -56,8 +57,8 @@ class SessionCells(KnowledgeSource):
         return self.provider.declared()
 
 
-class LibraryFolder(KnowledgeSource):
-    """CLIENT-KNOWLEDGE-PROVIDER: every library in a folder (`RUN-ADDRESS-LOCATION`), read through ``files``: the
+class FolderKnowledgeResolver(KnowledgeResolver):
+    """CLIENT-KNOWLEDGE-RESOLVER: every library in a folder (`RUN-ADDRESS-LOCATION`), read through ``files``: the
     local filesystem by default, or the Workspace API as the signed-in user."""
 
     def __init__(self, path: str, *, files: LibraryFiles | None = None) -> None:
@@ -68,7 +69,7 @@ class LibraryFolder(KnowledgeSource):
     def identity(self) -> str:
         return f"folder:{self.path}"
 
-    def library(self, name: str, version: str | None) -> LibrarySource | None:
+    def library(self, name: str, version: str | None, site: IncludeSite | None = None) -> LibrarySource | None:
         try:
             return self.provider.resolve(LibraryRef(name, version))
         except LibraryResolutionError:
@@ -91,7 +92,7 @@ class LibraryFolder(KnowledgeSource):
 
 @dataclass(frozen=True, kw_only=True)
 class FolderClosure:
-    """What :meth:`DeltaKnowledge.publish` writes: library ``name`` ``version`` in ``folder``, with the folder
+    """What :meth:`TableKnowledgeResolver.publish` writes: library ``name`` ``version`` in ``folder``, with the folder
     includes that changed (`CLIENT-PUBLISH`). ``translate`` compiles each; ``base`` is the canonical base for a
     library whose folder has no ``Library`` URL."""
     folder: str
@@ -102,18 +103,21 @@ class FolderClosure:
     base: str
 
 
-class DeltaKnowledge(KnowledgeStore):
-    """CLIENT-KNOWLEDGE-PROVIDER: tagged knowledge, read through ``content`` (a
-    :class:`~cql_databricks.data_bindings.ContentResolver`), in its catalog scopes, earliest scope first. With
-    ``store``, ``(catalog, schema)``, it reads and publishes that one tagged store alone, through ``run``, as
-    ``run``'s identity."""
+class TableKnowledgeResolver(KnowledgeStore):
+    """CLIENT-KNOWLEDGE-RESOLVER: an environment's knowledge, read through ``content`` (a
+    :class:`~cql_databricks.data_bindings.ContentResolver` over the environment, `CLIENT-ENVIRONMENT`). With ``store``
+    and ``view``, each ``(catalog, schema)``, it is a store: :meth:`publish` writes ``store``'s tables through ``run``,
+    as ``run``'s identity, and reads the libraries back through ``view`` (`BIND-PUBLISHED-VIEW`)."""
 
-    def __init__(self, content: Callable[[], Any], *, store: tuple[str, str] | None = None, run=None) -> None:
-        if store is not None and run is None:
-            raise ValueError("a knowledge store is written through a SQL runner: pass run=")
+    def __init__(self, content: Callable[[], Any], *, store: tuple[str, str] | None = None,
+                 view: tuple[str, str] | None = None, run=None) -> None:
+        if store is not None and (run is None or view is None):
+            raise ValueError("a knowledge store is written through a SQL runner and read back through its view: pass "
+                             "run= and view=")
         self._content_factory = content
         self._content = None
         self.store = tuple(store) if store else None
+        self.view = tuple(view) if view else None
         self._run = run
 
     @property
@@ -129,27 +133,24 @@ class DeltaKnowledge(KnowledgeStore):
         return KnowledgeLibraryProvider(lambda: self.content)
 
     def identity(self) -> str:
-        return "knowledge:" + (".".join(self.store) if self.store else ",".join(str(s) for s in self.content.scopes))
+        return f"knowledge:{self.content.catalog}"
 
-    def library(self, name: str, version: str | None) -> LibrarySource | None:
+    def library(self, name: str, version: str | None, site: IncludeSite | None = None) -> LibrarySource | None:
         from .knowledge_libraries import _source
 
-        corpus = self.content.corpus()
-        found = corpus.library_in(self.store, name, version) if self.store else corpus.library(name, version)
+        found = self.content.corpus().library(name, version)
         return _source(found) if found is not None else None
 
     def measure(self, url: str, version: str | None) -> Mapping[str, Any] | None:
         corpus = self.content.corpus()
         for lib in corpus.libraries:
             if lib.measure and lib.measure[0] == url and (version is None or lib.measure[1] == version):
-                return corpus.measure_resource(lib.name, lib.version, store=self.store)
+                return corpus.measure_resource(lib.name, lib.version)
         return None
 
     def libraries(self) -> Iterable[LibraryRef]:
         seen, out = set(), []
         for lib in self.content.corpus().libraries:
-            if self.store and (lib.knowledge.catalog, lib.knowledge.schema) != self.store:
-                continue
             if (lib.name, lib.version) not in seen:
                 seen.add((lib.name, lib.version))
                 out.append(LibraryRef(lib.name, lib.version))
@@ -160,35 +161,36 @@ class DeltaKnowledge(KnowledgeStore):
         from .library_publish import publish_folder_library
 
         if self.store is None:
-            raise ValueError("publish needs one store: DeltaKnowledge(content, store=(catalog, schema), run=...)")
+            raise ValueError("publish needs a store: TableKnowledgeResolver(content, store=..., view=..., run=...)")
         return publish_folder_library(self.content, closure.files, closure.folder, closure.name, closure.version,
-                                      store=self.store, run=self._run, translate=closure.translate,
+                                      store=self.store, view=self.view, run=self._run, translate=closure.translate,
                                       base=closure.base)
 
 
-def library_provider(source: KnowledgeSource) -> LibraryProvider:
-    """CLIENT-KNOWLEDGE-PROVIDER: ``source`` as the client core's library provider, which walks the include
-    closure. The shipped order (cells, folder, tagged knowledge) keeps its rules; any other source's includes
-    resolve from it and the layers after it."""
+def library_provider(source: KnowledgeResolver) -> LibraryProvider:
+    """CLIENT-KNOWLEDGE-RESOLVER: ``source`` as the client core's library provider, which walks the include
+    closure. The shipped order (cells, folder, the environment's knowledge) keeps its rules; any other resolver's
+    includes resolve from it and the layers after it."""
     from .knowledge_libraries import FolderThenKnowledge
 
     layers = _layers(source)
-    shipped = (len(layers) in (2, 3) and isinstance(layers[-1], DeltaKnowledge) and layers[-1].store is None
-               and isinstance(layers[-2], LibraryFolder) and (len(layers) == 2 or isinstance(layers[0], SessionCells)))
+    shipped = (len(layers) in (2, 3) and isinstance(layers[-1], TableKnowledgeResolver)
+               and isinstance(layers[-2], FolderKnowledgeResolver)
+               and (len(layers) == 2 or isinstance(layers[0], CellsKnowledgeResolver)))
     if shipped:
         chain = FolderThenKnowledge(layers[-2].provider, layers[-1].provider)
         if len(layers) == 2:
             return chain
         return layers[0].with_fallthrough(chain)
-    if len(layers) == 2 and isinstance(layers[0], SessionCells) and isinstance(layers[1], DeltaKnowledge) \
-            and layers[1].store is None:
+    if len(layers) == 2 and isinstance(layers[0], CellsKnowledgeResolver) \
+            and isinstance(layers[1], TableKnowledgeResolver):
         return layers[0].with_fallthrough(FolderThenKnowledge(None, layers[1].provider))
     if len(layers) == 1 and hasattr(layers[0], "provider"):
         return layers[0].provider
     return _Layered(layers)
 
 
-def _layers(source: KnowledgeSource) -> list[KnowledgeSource]:
+def _layers(source: KnowledgeResolver) -> list[KnowledgeResolver]:
     if isinstance(source, Overlay):
         return _layers(source.dev) + _layers(source.base)
     return [source]
@@ -198,7 +200,7 @@ class _Layered(LibraryProvider):
     """Any chain of knowledge sources: a library comes from the first layer that holds it, and its includes
     from that layer and the ones after it."""
 
-    def __init__(self, layers: list[KnowledgeSource]) -> None:
+    def __init__(self, layers: list[KnowledgeResolver]) -> None:
         self._layers = layers
 
     def _find(self, ref: LibraryRef, start: int = 0) -> tuple[int, LibrarySource]:

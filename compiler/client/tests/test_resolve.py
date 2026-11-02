@@ -1,13 +1,13 @@
-"""BUILD-RESOLVE-COMPILE — the one resolution every compiler caller uses: the closure, the data source, the ELM.
+"""BUILD-RESOLVE-COMPILE — the one resolution every compiler caller uses: the closure and the ELM.
 
 Needs `cql_databricks.data_bindings` (shipped by this distribution since BINDINGS-INTO-CLIENT) and its SDK
 dependency; skipped where only the stdlib and this package's source are on the path."""
 import unittest
 
 try:
-    from cql_databricks.data_bindings import DATA_SOURCE_TAG, KNOWLEDGE_TAG, Corpus, Library, TaggedSchema
+    from cql_databricks.data_bindings import KNOWLEDGE_TAG, Corpus, Library, TaggedSchema
     from cql_databricks.compiler.resolve import (ResolutionError, is_published, require_translated, resolve,
-                                                 resolve_data_source, translate_includes, translate_root)
+                                                 translate_includes, translate_root)
 except ImportError:  # pragma: no cover - the stdlib-only fallback of scripts/test.sh
     Corpus = None
 
@@ -25,17 +25,13 @@ def _library(name, version, source):
 
 
 class _Content:
-    scopes = ("cat",)
+    catalog = "cat"
 
-    def __init__(self, libraries, data_sources=()):
+    def __init__(self, libraries):
         self._corpus = Corpus(lambda *a: [], [KNOWLEDGE], libraries)
-        self._data_sources = list(data_sources)
 
     def corpus(self):
         return self._corpus
-
-    def data_source_schemas(self):
-        return self._data_sources
 
 
 def _content(*extra):
@@ -62,8 +58,8 @@ class ResolveTests(unittest.TestCase):
     def test_gaps_are_reported_or_refused_by_the_caller(self):
         r = resolve(_Content([_library("Root", "1.0.0", ROOT), _library("Base", "1.0.0", BASE)]), library="Root")
         self.assertEqual(r.unresolved_messages(),
-                         ['Included library "Mid" version 2.0.0 is not in any tagged knowledge source.'])
-        with self.assertRaisesRegex(ResolutionError, "Root: includes not in any tagged knowledge source: Mid 2.0.0"):
+                         ["Included library \"Mid\" version 2.0.0 is not in the environment's knowledge."])
+        with self.assertRaisesRegex(ResolutionError, "Root: includes not in the environment's knowledge: Mid 2.0.0"):
             r.require_complete()
 
     def test_a_pinned_version_the_corpus_lacks_is_unresolved(self):
@@ -87,22 +83,8 @@ class ResolveTests(unittest.TestCase):
             resolve(_content(), library="Root", cql=ROOT)
         with self.assertRaisesRegex(ResolutionError, "exactly one"):
             resolve(_content())
-        with self.assertRaisesRegex(ResolutionError, r"Nope \(newest\) is not in any tagged knowledge source"):
+        with self.assertRaisesRegex(ResolutionError, r"Nope \(newest\) is not in the environment's knowledge"):
             resolve(_content(), library="Nope")
-
-    def test_the_data_source_is_its_tag_value(self):
-        source = TaggedSchema(tag=DATA_SOURCE_TAG, name="synthetic 1M", catalog="cat", schema="pop")
-        content = _Content([], data_sources=[source])
-
-        def run(statement, params=None):
-            if "information_schema.routines" in statement:
-                self.assertEqual(params, {"catalog": "cat", "schema": "pop"})
-                return [{"routine_name": "retrieve_patient"}]
-            return []
-        layout = resolve_data_source(content, run, "synthetic 1M", ["Patient"])
-        self.assertEqual(dict(layout.bindings), {"Patient": "cat.pop.retrieve_Patient"})
-        with self.assertRaisesRegex(ResolutionError, "no data source is tagged 'production' in catalog scopes cat; known: synthetic 1M"):
-            resolve_data_source(content, run, "production", ["Patient"])
 
 
 @unittest.skipIf(Corpus is None, "cql_databricks.data_bindings is not importable")

@@ -8,10 +8,6 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from fastapi import FastAPI
-import pytest
-
-#: CLIENT-DISCOVERY-SCOPE — building the App resolves the deployment's catalog scopes.
-pytestmark = pytest.mark.usefixtures("catalog_scopes")
 
 
 def test_every_deployment_binds_the_identity():

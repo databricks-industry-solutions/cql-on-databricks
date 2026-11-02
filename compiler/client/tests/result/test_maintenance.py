@@ -1,4 +1,5 @@
-"""RUN-CLIENT-MAINTENANCE — synthetic expiry, scope and optimistic-refresh behavior."""
+"""RUN-CLIENT-MAINTENANCE, RUN-CLIENT-DRAFT-RESULTS — synthetic expiry, scope and optimistic-refresh behavior over an
+environment's ``draft_results``."""
 from __future__ import annotations
 
 import json
@@ -7,25 +8,24 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from cql_databricks.result._catalog_completion import FORMAT, Completion, result_table_name
-from cql_databricks.result.maintenance import maintain_private_results
-from cql_databricks.result.private import PrivateDestination
+from cql_databricks.result._catalog_completion import FORMAT, Completion, result_table_name, writer_digest
+from cql_databricks.result.maintenance import maintain_draft_results
 
 
 NOW = datetime(2026, 10, 10, tzinfo=timezone.utc)
-CATALOG = "synthetic_private"
+CATALOG = "synthetic_environment"
 
 
 def completion(owner="synthetic-alice", index=1, age=8):
     fingerprint = f"{index:016x}" * 4
-    return Completion(table=(*PrivateDestination(CATALOG, owner).destination,
-                             result_table_name("Synthetic", "Output", fingerprint)),
+    return Completion(table=(CATALOG, "draft_results",
+                             result_table_name("Synthetic", "Output", fingerprint, writer_digest(owner))),
                       fingerprint=fingerprint, computed_at=NOW - timedelta(days=age))
 
 
 def row(item, owner="synthetic-alice"):
     return dict(table_catalog=item.table[0], table_schema=item.table[1], table_name=item.table[2],
-                schema_owner=owner, tags_json=json.dumps(item.tags()))
+                tags_json=json.dumps(item.tags()))
 
 
 class Catalog:
@@ -42,10 +42,11 @@ class Catalog:
 
     def __call__(self, sql, params=None):
         self.calls.append((sql, params))
-        if sql.startswith("SELECT catalog_owner"):
-            return [{"catalog_owner": self.owner}] if self.visible else []
+        if sql.startswith("SELECT schema_owner"):
+            assert params == {"schema": "draft_results"}
+            return [{"schema_owner": self.owner}] if self.visible else []
         if sql.startswith("SELECT privilege_type"):
-            assert "information_schema`.`catalog_privileges" in sql and "privilege_type = 'MANAGE'" in sql
+            assert "information_schema`.`schema_privileges" in sql and "privilege_type = 'MANAGE'" in sql
             return [{"privilege_type": "MANAGE"}] if params["principal"] in self.managers else []
         if sql == "SELECT current_user() AS principal":
             return [{"principal": self.principal}]
@@ -63,7 +64,7 @@ class Catalog:
 
 
 def maintain(runner, **changes):
-    return maintain_private_results(**dict(run=runner, catalog=CATALOG,
+    return maintain_draft_results(**dict(run=runner, catalog=CATALOG,
         now=NOW) | changes)
 
 
@@ -77,8 +78,7 @@ def test_preview_finds_expired_results_across_users_without_data_scans():
     assert report.cutoff == NOW - timedelta(days=7)
     assert len(catalog.calls) == 3
     sql, params = catalog.calls[-1]
-    for fragment in ("information_schema`.`schemata", "information_schema`.`table_tags",
-                     "t.table_owner = s.schema_owner", "t.table_type = 'MANAGED'",
+    for fragment in ("information_schema`.`table_tags", "t.table_schema = :schema", "t.table_type = 'MANAGED'",
                      "metadata['cql_result_state'] = 'complete'", "CAST(:cutoff AS TIMESTAMP)"):
         assert fragment in sql
     assert params["cutoff"] == report.cutoff.isoformat(timespec="microseconds")
@@ -93,7 +93,7 @@ def test_expiry_drops_only_rechecked_results_and_does_not_change_grants_or_vacuu
         report = maintain(catalog, dry_run=False)
     assert report.deleted == (item.table,) and not report.dry_run
     assert not report.changed
-    assert "Expired private result" in caplog.text
+    assert "Expired draft result" in caplog.text
     mutations = [sql for sql, _ in catalog.calls if not sql.startswith(("SELECT", "WITH"))]
     assert mutations == ["DROP TABLE IF EXISTS " + ".".join(f"`{part}`" for part in item.table)]
 
@@ -123,8 +123,8 @@ def test_batch_limit_reports_backlog_without_introducing_a_storage_cap():
     assert catalog.calls[-1][0].endswith("LIMIT 2")
 
 
-def test_shared_catalog_never_deletes_tables_outside_private_schemas():
-    """RUN-CLIENT-PRIVATE-PROVISIONING — a single-catalog deployment scopes by private schema, not catalog."""
+def test_an_environment_never_loses_tables_outside_draft_results():
+    """RUN-CLIENT-DRAFT-RESULTS — maintenance scopes by the draft schema, not the catalog."""
     item = completion()
     published = replace(item, table=(CATALOG, "published_measure", item.table[2]))
     catalog = Catalog((published, "synthetic-alice"))
@@ -134,7 +134,7 @@ def test_shared_catalog_never_deletes_tables_outside_private_schemas():
 
 
 def test_owner_or_direct_manage_grant_is_required_for_cross_user_coverage():
-    """RUN-CLIENT-MAINTENANCE — refuse a partial-visibility scan; no catalog marker is required."""
+    """RUN-CLIENT-MAINTENANCE — refuse a partial-visibility scan of the draft schema."""
     catalog = Catalog()
     catalog.principal = "synthetic-alice"
     with pytest.raises(PermissionError, match="needs MANAGE"):
@@ -145,8 +145,8 @@ def test_owner_or_direct_manage_grant_is_required_for_cross_user_coverage():
     assert not any(sql.startswith("WITH") for sql, _ in catalog.calls)
 
 
-def test_deployment_granted_maintenance_principal_sweeps_without_owning_the_catalog():
-    """RUN-CLIENT-MAINTENANCE — the administrator owns the catalog; our principal holds MANAGE."""
+def test_deployment_granted_maintenance_principal_sweeps_without_owning_the_schema():
+    """RUN-CLIENT-MAINTENANCE — the deploy owns the draft schema; our principal holds MANAGE on it."""
     item = completion()
     catalog = Catalog((item, "synthetic-alice"))
     catalog.owner = "synthetic-admin"

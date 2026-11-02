@@ -4,7 +4,7 @@ import com.databricks.cql.env.{Config, Context}
 import com.databricks.cql.ir.{CqlType, Expr, ExpressionDef, ExpressionRef, Library}
 import com.databricks.cql.passes.{BuildInfo, Optimize, Pipeline, RetrieveCatalog, RetrieveDemand, TypeEncoding}
 import com.databricks.cql.spark.SystemColumns
-import com.databricks.cql.transpiler.lower.{RetrieveCall, SqlEvalEnv, SqlFrameLowering}
+import com.databricks.cql.transpiler.lower.{CallSite, SqlEvalEnv, SqlFrameLowering}
 
 /** A NEUTRAL, pipeline-agnostic description of a CQL library's compiled graph (PHASE-10). This repo does
   * not generate a pipeline — it DESCRIBES one: an external pipeline (e.g. the parameterized SDP in the
@@ -56,11 +56,10 @@ final case class LibraryGraph(
       * [[retrieveDemand]], a retrieve that navigates no field (`exists [Encounter]`) is listed too, so a
       * caller knows exactly which data a run needs, and that a library listing none needs no data. */
     retrieveTypes: Seq[String] = Seq.empty,
-    /** BIND-PROVIDER-REQUEST: each retrieve the compiled SQL makes, with its id and request, in first-seen order.
-      * The client asks its data provider for each and binds the relations by id. Read off the same lowering as
-      * everything else here, so the ids are the ones the compile looks up. */
-    retrieves: Seq[RetrieveCall] = Seq.empty,
-    /** BIND-PROVIDER-REQUEST: every value set the linked library declares, `(id, version)`, distinct by id and
+    /** BIND-CALL-SITE: every call site the compiled SQL binds, retrieves and value-set references, with its id
+      * and context, in first-seen order. */
+    sites: Seq[CallSite] = Seq.empty,
+    /** BIND-CALL-SITE: every value set the linked library declares, `(id, version)`, distinct by id and
       * sorted, so the client asks its terminology source for exactly these. */
     valueSets: Seq[(String, Option[String])] = Seq.empty)
 
@@ -76,16 +75,14 @@ final case class LibraryGraph(
   * function, so they cannot drift (the proto cost model and the SQL classifier previously could). */
 object LibraryDescribe {
 
-  /** Describe `elm` under the injected environment. `hasTerminology` reports whether value-set expansion
-    * views are mounted (the SQL analog of an injected `TerminologyProvider`); `overrides`/`grainFirst`
-    * must match the deploy config so the boundary set the runtime re-lowers against is the one here. */
+  /** Describe `elm` under the injected environment. `overrides`/`grainFirst` must match the deploy config so the
+    * boundary set the runtime re-lowers against is the one here. */
   def describe(elm: String,
                context: Context = Context.Patient,
-               hasTerminology: Boolean = false,
                overrides: Map[String, String] = Map.empty,
                grainFirst: Boolean = false,
                terminologyVersion: Option[String] = None): LibraryGraph =
-    describe(Pipeline().load(elm), context, hasTerminology, overrides, grainFirst, terminologyVersion)
+    describe(Pipeline().load(elm), context, overrides, grainFirst, terminologyVersion)
 
   /** Describe an already-LOADED library — the seam used after [[com.databricks.cql.passes.LibraryLinker]]
     * flattens a multi-library measure into one self-contained library (`BUILD-COMPILE-LINK`), so the service
@@ -93,7 +90,6 @@ object LibraryDescribe {
     * runs the front end; the rest is identical to the ELM-string entry. */
   def describe(lib0: Library,
                context: Context,
-               hasTerminology: Boolean,
                overrides: Map[String, String],
                grainFirst: Boolean,
                terminologyVersion: Option[String]): LibraryGraph = {
@@ -101,9 +97,11 @@ object LibraryDescribe {
     val config = Config.resolve(overrides).copy(materializeBoundaries = None, grainFirst = grainFirst)
     val lib = Pipeline().normalize(lib0)
     val optimized = Optimize.run(lib, config)
-    // BIND-PROVIDER-REQUEST: describe runs before the client binds terminology, so a membership test lowers
-    // here whatever the host has; nothing describe returns depends on the value-set relation.
-    val env = SqlEvalEnv(context, config, terminology = true)
+    // BIND-CALL-SITE: describe runs before the client binds anything, so it lowers over placeholder relations;
+    // nothing describe returns depends on a relation. The parameter scope is read off the library before
+    // parameters are inlined (BIND-RETRIEVE-REQUEST).
+    val env = SqlEvalEnv(context, config,
+      defineParameters = com.databricks.cql.passes.ParameterScope.of(lib0)).describing
     val lowered = SqlFrameLowering.lower(optimized, env)
 
     val nodes = lowered.names
@@ -136,7 +134,7 @@ object LibraryDescribe {
     // contract (BIND-DESCRIBE-RETRIEVES) stays unpublished; only the types have a consumer.
     val retrieveTypes = RetrieveCatalog.analyze(optimized).retrieves.map(_.resourceType).distinct.sorted
     LibraryGraph(nodes, deps, boundaries, materialized, BuildInfo.version, terminologyVersion, encoding, demand,
-      defineKinds = kinds, retrieveTypes = retrieveTypes, retrieves = env.retrieveCalls.values.toSeq,
+      defineKinds = kinds, retrieveTypes = retrieveTypes, sites = env.callSites.values.toSeq,
       valueSets = optimized.valueSets.groupBy(_.id).map { case (id, defs) => id -> defs.flatMap(_.version).headOption }
         .toSeq.sortBy(_._1))
   }

@@ -1,16 +1,15 @@
-"""Guarded LIVE tests of the providers (CLIENT-DATA-PROVIDER, CLIENT-DEFAULT-RESOLVER, CLIENT-TERMINOLOGY-PROVIDER,
-BIND-PROVIDER-REQUEST, BIND-RELATION), as the caller.
+"""Guarded LIVE tests of the resolvers (CLIENT-ENVIRONMENT-RESOLVER, CLIENT-DATA-RESOLVER, CLIENT-TERMINOLOGY-RESOLVER,
+BIND-CALL-SITE, BIND-PUBLISHED-VIEW, BIND-RELATION), as the caller.
 
-On a SQL warehouse, the paths the Designer and the agent's MCP tools run (`CLIENT-DEFAULT-RESOLVER`): an inline run
-through ``run_inline`` (the agent's ``run_cql``), a code lookup through the tagged terminology (its
-``value_sets_with_code``), and a durable preparation and materialization (the Designer's run) into a scratch schema.
-On serverless Spark, one run on each shipped data provider: the tagged data source, tables, functions, a volume
-folder and DataFrames, and value sets from a volume folder.
+On a SQL warehouse, the paths the Designer and the agent's MCP tools run in an environment (`CLIENT-ENVIRONMENT`): an
+inline run through ``run_inline`` (the agent's ``run_cql``), a code lookup through the environment's terminology (its
+``value_sets_with_code``), and a durable preparation and materialization into the environment's ``draft_results`` (the
+Designer's run), then the same run reused. On serverless Spark, one run on each shipped data resolver: the
+environment's views, tables, a volume folder and DataFrames, and value sets from a volume folder.
 
-Every run reads the tagged data source named by ``CQL_DATABRICKS_LIVE_DATA_SOURCE`` (default
-``synthetic-population-small``) and its scratch copies; scratch objects live in a schema of
-``CQL_DATABRICKS_PUBLISH_CATALOG`` created and dropped here. The value set is the example measures' synthetic
-diabetes set.
+Every run is in the environment ``CQL_DATABRICKS_ENVIRONMENT`` names, else the default one; scratch copies of its
+Patient and Condition views live in a schema of ``CQL_DATABRICKS_PUBLISH_CATALOG`` created and dropped here. The
+value set is the example measures' synthetic diabetes set.
 
 SKIPS unless the live prerequisites are present. ``scripts/test.sh integration`` sets them all, and fails the run if
 this skips: CQL_DATABRICKS_LIVE=1, DATABRICKS_SERVERLESS=1 with Databricks auth (DATABRICKS_CONFIG_PROFILE);
@@ -28,11 +27,12 @@ ENDPOINT = os.environ.get("CQL_DATABRICKS_ENDPOINT")
 TOKEN = os.environ.get("CQL_DATABRICKS_TOKEN")
 CATALOG = os.environ.get("CQL_DATABRICKS_PUBLISH_CATALOG")
 WAREHOUSE = os.environ.get("CQL_DATABRICKS_WAREHOUSE_ID")
-SOURCE = os.environ.get("CQL_DATABRICKS_LIVE_DATA_SOURCE", "synthetic-population-small")
+ENVIRONMENT = os.environ.get("CQL_DATABRICKS_ENVIRONMENT") or None
 VALUE_SET = "http://example.org/fhir/ValueSet/diabetes"
 CODE = ("http://hl7.org/fhir/sid/icd-10-cm", "E10.9")
+TYPES = ("Patient", "Condition")
 
-CQL = f"""library ProvidersLive version '0.0.1'
+CQL = f"""library ResolversLive version '0.0.1'
 using FHIR version '4.0.1'
 include FHIRHelpers version '4.0.1' called FHIRHelpers
 valueset "Diabetes": '{VALUE_SET}'
@@ -45,7 +45,7 @@ pytestmark = pytest.mark.skipif(
     os.environ.get("CQL_DATABRICKS_LIVE", "").strip().lower() not in {"1", "true", "yes", "on"}
     or not (ENDPOINT and TOKEN and CATALOG and WAREHOUSE),
     reason="set CQL_DATABRICKS_LIVE=1, CQL_DATABRICKS_ENDPOINT, CQL_DATABRICKS_TOKEN, CQL_DATABRICKS_PUBLISH_CATALOG and "
-           "CQL_DATABRICKS_WAREHOUSE_ID (scripts/test.sh integration sets them) to run the live provider tests")
+           "CQL_DATABRICKS_WAREHOUSE_ID (scripts/test.sh integration sets them) to run the live resolver tests")
 
 
 def _compiler():
@@ -63,10 +63,13 @@ def warehouse():
 
 
 @pytest.fixture(scope="module")
-def content(warehouse):
-    from cql_databricks.data_bindings import ContentResolver
+def environment(warehouse):
+    """CLIENT-ENVIRONMENT-RESOLVER: the environment the run is in, its resolver and its content, found as the caller."""
+    from cql_databricks.compiler import EnvironmentResolver
 
-    return ContentResolver(lambda: warehouse, [CATALOG])
+    environments = EnvironmentResolver(warehouse)
+    env = environments.resolve(ENVIRONMENT)
+    return environments, env, environments.content(env)
 
 
 @pytest.fixture(scope="module")
@@ -77,151 +80,129 @@ def spark():
 
 
 @pytest.fixture(scope="module")
-def scratch(warehouse, content):
-    """A schema holding copies of the source's Patient and Condition on the contract, and a volume, dropped after."""
-    from cql_databricks.compiler.tagged import TaggedResolver
+def scratch(warehouse, environment):
+    """A schema holding copies of the environment's Patient and Condition views, and a volume, dropped after."""
+    from cql_databricks.compiler.environment import DATA
 
-    source = TaggedResolver(content, warehouse).data(SOURCE)
-    schema = f"cqlproviders_{uuid.uuid4().hex[:10]}"
+    _, env, _ = environment
+    schema = f"cqlresolvers_{uuid.uuid4().hex[:10]}"
     target = f"`{CATALOG}`.`{schema}`"
-    warehouse(f"CREATE SCHEMA {target} COMMENT 'provider live test scratch; safe to drop'")
+    warehouse(f"CREATE SCHEMA {target} COMMENT 'resolver live test scratch; safe to drop'")
     try:
-        for fhir_type in ("Patient", "Condition"):
-            relation = source.retrieve(_request(fhir_type)).name
-            call = relation + "()" if type(source.retrieve(_request(fhir_type))).__name__ == "FunctionRelation" else relation
-            warehouse(f"CREATE TABLE {target}.`{fhir_type.lower()}` AS SELECT __subject_id, __resource FROM {call}")
+        for fhir_type in TYPES:
+            warehouse(f"CREATE TABLE {target}.`{fhir_type.lower()}` AS SELECT __subject_id, __resource "
+                      f"FROM {env.schema(DATA)}.{fhir_type.lower()}")
         warehouse(f"CREATE VOLUME {target}.`files`")
-        yield {"schema": f"{CATALOG}.{schema}", "volume": f"/Volumes/{CATALOG}/{schema}/files", "source": source}
+        yield {"schema": f"{CATALOG}.{schema}", "volume": f"/Volumes/{CATALOG}/{schema}/files"}
     finally:
         warehouse(f"DROP SCHEMA IF EXISTS {target} CASCADE")
-
-
-def _request(fhir_type):
-    from cql_databricks.compiler.roles import RetrieveRequest
-
-    return RetrieveRequest(fhir_type=fhir_type)
-
-
-def _counts(rows):
-    return {k: int(v) for k, v in rows.items()}
 
 
 # ------------------------------------------------------------------ warehouse: the Designer and the agent
 
 
-def test_an_inline_run_reads_the_tagged_source_and_terminology(warehouse, content):
-    """CLIENT-INLINE-WAREHOUSE, CLIENT-DEFAULT-RESOLVER: the agent's run_cql, as the caller."""
+def test_an_inline_run_reads_the_environments_views(warehouse, environment):
+    """CLIENT-INLINE-WAREHOUSE, BIND-PUBLISHED-VIEW: the agent's run_cql, as the caller."""
     from cql_databricks.result import run_inline
 
-    with run_inline(content=content, run=warehouse, compiler=_compiler(), data_source=SOURCE, cql=CQL,
+    _, env, content = environment
+    with run_inline(content=content, run=warehouse, compiler=_compiler(), environment=env, cql=CQL,
                     runtime_catalog=CATALOG, period=("2026-01-01", "2026-12-31")) as run:
         counts = run.counts()
     assert counts["Initial Population"] > 0
     assert 0 < counts["Numerator"] < counts["Initial Population"]
 
 
-def test_a_code_is_found_in_the_tagged_terminology(warehouse, content):
+def test_a_code_is_found_in_the_environments_terminology(environment):
     """AGENT-VALUE-SET-LOOKUP: the agent's value_sets_with_code."""
-    from cql_databricks.compiler.tagged import TaggedResolver
-
-    hits = TaggedResolver(content, warehouse).terminology().find_code(CODE[1], CODE[0])
+    environments, env, _ = environment
+    hits = environments.terminology(env).find_code(CODE[1], CODE[0])
     assert VALUE_SET in {h.id for h in hits}
     assert all(h.system == CODE[0] for h in hits)
 
 
-def test_a_durable_run_keeps_results_under_the_providers_identity(warehouse, content, scratch):
-    """CLIENT-PROVIDER-IDENTITY, CLIENT-RESULT-STORE: the Designer's run, then the same run reused."""
+def test_a_draft_run_is_kept_then_reused_by_its_owner(warehouse, environment):
+    """RUN-CLIENT-DRAFT-RESULTS, RUN-CLIENT-RESULT-OWNERSHIP: the Designer's run, then the same run reused."""
     from cql_databricks.result import materialize, prepare_calculation
 
-    def run():
-        prepared = prepare_calculation(content=content, run=warehouse, compiler=_compiler(), data_source=SOURCE,
-                                       cql=CQL, runtime_catalog=CATALOG, period=("2026-01-01", "2026-12-31"))
-        return materialize(prepared, *prepared.targets, run=warehouse,
-                           destination=tuple(scratch["schema"].split(".")), catalog_scopes=[scratch["schema"]])
+    _, env, content = environment
 
-    first = run()
-    assert {o.decision for o in first.outcomes} == {"computed"}
+    def run():
+        prepared = prepare_calculation(content=content, run=warehouse, compiler=_compiler(), environment=env,
+                                       cql=CQL, runtime_catalog=CATALOG, period=("2026-01-01", "2026-12-31"))
+        return materialize(prepared, *prepared.targets, run=warehouse, environment=env, purpose="private")
+
+    run()
     again = run()
     assert {o.decision for o in again.outcomes} == {"reused"}
 
 
-# ------------------------------------------------------------------ Spark: each shipped provider
+# ------------------------------------------------------------------ Spark: each shipped data resolver
 
 
-def _client(spark, content, data, terminology=None):
+def _exec(spark, environment, data, terminology):
+    """CLIENT-RESOLVERS: ``CQL`` run with ``data`` and ``terminology``, its libraries from the environment's knowledge."""
     from cql_databricks.compiler import CqlClient
-    from cql_databricks.compiler.knowledge_providers import DeltaKnowledge, library_provider
-    from cql_databricks.compiler.provider_binder import ProviderBinder
+    from cql_databricks.compiler.knowledge_resolvers import library_provider
+    from cql_databricks.compiler.resolver_binder import ResolverBinder
     from cql_databricks.data_bindings import spark_runner
 
+    environments, env, content = environment
     compiler = _compiler()
-    binder = ProviderBinder(data=data, terminology=terminology, run=lambda: spark_runner(spark), spark=spark,
+    binder = ResolverBinder(data=data, terminology=terminology, run=lambda: spark_runner(spark), spark=spark,
                             schemas=compiler.resource_schemas)
-    return (CqlClient.builder().provider(compiler).spark(spark).udf_schema(f"{CATALOG}.runtime")
-            .library_provider(library_provider(DeltaKnowledge(lambda: content))).data_binder(binder).build())
-
-
-def _exec(spark, content, data, terminology=None):
-    query = _client(spark, content, data, terminology).cql(CQL)
-    frames = query.exec("Initial Population", "Numerator")
+    client = (CqlClient.builder().provider(compiler).spark(spark).udf_schema(f"{CATALOG}.runtime")
+              .library_provider(library_provider(environments.knowledge(env, content))).data_binder(binder).build())
+    frames = client.cql(CQL).exec("Initial Population", "Numerator")
     return {name: frame.filter("__val").count() for name, frame in frames.items()}
 
 
 @pytest.fixture(scope="module")
-def expected(spark, content, warehouse):
-    from cql_databricks.compiler.tagged import TaggedResolver
-
-    resolver = TaggedResolver(content, warehouse)
-    counts = _exec(spark, content, resolver.data(SOURCE), resolver.terminology())
+def expected(spark, environment):
+    """The counts over the environment's own views, which every other resolver must reproduce."""
+    environments, env, _ = environment
+    counts = _exec(spark, environment, environments.data(env), environments.terminology(env))
     assert counts["Initial Population"] > 0 and counts["Numerator"] > 0
-    return counts, resolver.terminology(), content
+    return counts
 
 
-def test_tables_answer_as_the_tagged_source(spark, scratch, expected):
-    from cql_databricks.compiler.data_providers import Tables
+def test_tables_answer_as_the_environment(spark, environment, scratch, expected):
+    from cql_databricks.compiler import TableDataResolver
 
-    counts, terminology, content = expected
-    tables = Tables({t: f"{scratch['schema']}.{t.lower()}" for t in ("Patient", "Condition")})
-    assert _exec(spark, content, tables, terminology) == counts
-
-
-def test_functions_answer_as_the_tagged_source(spark, scratch, expected):
-    from cql_databricks.compiler.data_providers import Functions
-
-    counts, terminology, content = expected
-    source = scratch["source"]
-    functions = Functions({t: f"{source.catalog}.{source.schema}.retrieve_{t.lower()}" for t in ("Patient", "Condition")})
-    assert _exec(spark, content, functions, terminology) == counts
+    environments, env, _ = environment
+    tables = TableDataResolver({t: f"{scratch['schema']}.{t.lower()}" for t in TYPES})
+    assert _exec(spark, environment, tables, environments.terminology(env)) == expected
 
 
-def test_dataframes_answer_as_the_tagged_source_and_are_never_kept(spark, scratch, expected):
-    from cql_databricks.compiler.data_providers import Frames
+def test_dataframes_answer_as_the_environment_and_are_never_kept(spark, environment, scratch, expected):
+    from cql_databricks.compiler import DataFrameDataResolver
 
-    counts, terminology, content = expected
-    frames = Frames({t: spark.table(f"{scratch['schema']}.{t.lower()}") for t in ("Patient", "Condition")})
-    assert _exec(spark, content, frames, terminology) == counts
+    environments, env, _ = environment
+    frames = DataFrameDataResolver({t: spark.table(f"{scratch['schema']}.{t.lower()}") for t in TYPES})
+    assert not frames.reusable
+    assert _exec(spark, environment, frames, environments.terminology(env)) == expected
 
 
-def test_a_volume_folder_and_value_set_json_answer_as_the_tagged_source(spark, scratch, expected):
-    """BIND-RELATION, CLIENT-TERMINOLOGY-PROVIDER: FHIR JSON and a ValueSet in a volume, read with read_files."""
+def test_a_volume_folder_and_value_set_json_answer_as_the_environment(spark, environment, scratch, expected):
+    """BIND-RELATION, CLIENT-TERMINOLOGY-RESOLVER: FHIR NDJSON and a ValueSet in a volume, read with read_files."""
     from databricks.sdk import WorkspaceClient
 
-    from cql_databricks.compiler.data_providers import VolumeFolder
-    from cql_databricks.compiler.terminology_providers import ValueSetFolder
+    from cql_databricks.compiler import FolderTerminologyResolver, VolumeDataResolver
+    from cql_databricks.compiler.environment import TERMINOLOGY
 
-    counts, _, content = expected
+    _, env, _ = environment
     files = WorkspaceClient().files
-    for fhir_type in ("Patient", "Condition"):
+    for fhir_type in TYPES:
         rows = spark.sql(f"SELECT to_json(__resource) AS j FROM {scratch['schema']}.{fhir_type.lower()}").collect()
         body = "\n".join(json.dumps(_fhir(json.loads(r["j"]), fhir_type)) for r in rows)
         files.upload(f"{scratch['volume']}/fhir/{fhir_type}.ndjson", io.BytesIO(body.encode()), overwrite=True)
-    codes = spark.sql(f"SELECT system, code FROM {CATALOG}.example_measures.valueset WHERE valueset_id = '{VALUE_SET}'"
+    codes = spark.sql(f"SELECT system, code FROM {env.schema(TERMINOLOGY)}.valueset WHERE valueset_id = '{VALUE_SET}'"
                       ).collect()
     value_set = {"resourceType": "ValueSet", "url": VALUE_SET,
                  "expansion": {"contains": [{"system": r["system"], "code": r["code"]} for r in codes]}}
     files.upload(f"{scratch['volume']}/vs/diabetes.json", io.BytesIO(json.dumps(value_set).encode()), overwrite=True)
-    assert _exec(spark, content, VolumeFolder(f"{scratch['volume']}/fhir", types=["Patient", "Condition"]),
-                 ValueSetFolder(f"{scratch['volume']}/vs")) == counts
+    assert _exec(spark, environment, VolumeDataResolver(f"{scratch['volume']}/fhir", types=list(TYPES)),
+                 FolderTerminologyResolver(f"{scratch['volume']}/vs")) == expected
 
 
 def _fhir(resource, fhir_type):

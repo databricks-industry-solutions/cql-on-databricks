@@ -5,8 +5,10 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 
+from cql_databricks.compiler.environment import LAYOUT_VERSION, Environment
+
 from .calculation import prepare_calculation
-from .durable import MaterializedResults, ResultsUnavailable, open_result_set
+from .durable import MaterializedResults, ResultsUnavailable, destination_of, open_result_set
 from .insights.evaluation import ClosureLibrary, SelectedLibrary
 from .reading import TableDefine
 from .results import Execute, PinnedRelation, count_relations, relation_columns
@@ -49,16 +51,23 @@ def open_selection(address: dict, *, run, query=None, content=None, compiler=Non
     if purpose is not None and purpose != address["purpose"]:
         raise PermissionError("private and published result requests have separate lifecycles")
     cutoff = datetime.fromisoformat(address["computed_since"]) if address["computed_since"] is not None else None
+    request = address.get("calculation")
+    # RUN-CLIENT-DRAFT-RESULTS: the address's destination is its environment's schema for its purpose.
+    environment = Environment(name=(request or {}).get("environment") or destination[0], catalog=destination[0],
+                              version=LAYOUT_VERSION)
+    if tuple(destination) != destination_of(environment, address["purpose"]):
+        raise ValueError("a result-set address names its environment's results or draft_results")
     if query is None:
-        request = address.get("calculation")
         if not isinstance(request, dict) or content is None or compiler is None:
             raise ValueError("reopening requires the calculation request and compiler/content transports")
-        allowed = {"data_source", "runtime_catalog", "runtime_schema", "library", "version", "cql", "period", "targets",
-                   "location"}
+        allowed = {"environment", "runtime_catalog", "runtime_schema", "library", "version", "cql", "period",
+                   "targets", "location"}
         if request.keys() - allowed:
             raise ValueError("unsupported calculation request fields")
-        query = prepare_calculation(content=content, compiler=compiler, run=run, files=files, **request)
-    results = open_result_set(query, *address["targets"], destination=tuple(destination), run=run,
+        fields = {k: v for k, v in request.items() if k != "environment"}
+        query = prepare_calculation(content=content, compiler=compiler, run=run, files=files,
+                                    environment=environment, **fields)
+    results = open_result_set(query, *address["targets"], environment=environment, run=run,
                               session_id=address["session_id"], purpose=address["purpose"], computed_since=cutoff)
     if results.selection.request_hash != address["request_hash"]:
         raise ResultsUnavailable("the calculation request changed; recompute before reopening results")
@@ -95,7 +104,7 @@ class SelectedOutput:
 class SelectionClosure:
     """RUN-CLIENT-RESULT-SETS — adapt compiler metadata, never discover a closure from latest tables.
 
-    Pass the selection ID as the derivation's eval_id and the calculation's data source as data_source_id. The draft
+    Pass the selection ID as the derivation's eval_id and the calculation's environment name as data_source_id. The draft
     argument is an explicit presentation label, not a storage address or an authorization credential.
     Existing derivation algorithms are shared with legacy callers during migration.
     """
@@ -104,7 +113,8 @@ class SelectionClosure:
         self.results = results
         self.root = root
         self.draft = draft
-        self.data_source = (results.request or {}).get("data_source")
+        #: CLIENT-ENVIRONMENT: the environment the calculation ran in, which the derivations key their closure by.
+        self.environment = (results.request or {}).get("environment")
         self.libraries: dict[str, ClosureLibrary] = {}
         outcomes = {outcome.definition: outcome for outcome in results.selection.outcomes}
         for definition in results.selection.definitions:
@@ -128,7 +138,7 @@ class SelectionClosure:
 
     def closure(self, data_source_id: str, eval_id: str, *, root: str, draft: str) -> dict[str, ClosureLibrary]:
         """RUN-CLIENT-RESULT-SETS — refuse a different scope/session instead of selecting current records."""
-        if (data_source_id != self.data_source or eval_id != self.results.selection.selection_id
+        if (data_source_id != self.environment or eval_id != self.results.selection.selection_id
                 or root != self.root or draft != self.draft):
             raise ValueError("derivation request does not match the complete selection")
         self.results.selection.validate(self.results._backend)

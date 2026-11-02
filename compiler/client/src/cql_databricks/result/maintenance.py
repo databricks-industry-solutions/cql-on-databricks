@@ -1,4 +1,5 @@
-"""RUN-CLIENT-MAINTENANCE — expire completed private results across users, using UC tags.
+"""RUN-CLIENT-MAINTENANCE — expire completed draft results across users, in an environment's ``draft_results``,
+using UC tags (`RUN-CLIENT-DRAFT-RESULTS`).
 
 The deploy owns the daily Job that calls this (`databricks.yml`, `scripts/jobs/maintenance.py`) and the
 principal it runs as (`scripts/deploy/maintenance_principal.py`).
@@ -18,7 +19,11 @@ from cql_databricks.data_bindings.runner import SqlRunner
 from ._catalog_completion import Completion, FORMAT, NAME_RLIKE, TAGS, _literal
 from ._durable import _utc
 from ._durable_delta import table_sql
-from .private import PrivateDestination, SCHEMA_FORMAT, _principal, _text
+from ._durable import _text
+from .durable import caller
+
+#: RUN-CLIENT-DRAFT-RESULTS — the one schema maintenance expires in.
+DRAFT_SCHEMA = "draft_results"
 
 
 log = logging.getLogger(__name__)
@@ -38,34 +43,22 @@ class MaintenanceReport:
 
 
 def _scope(run: SqlRunner, catalog: str) -> None:
-    """RUN-CLIENT-PRIVATE-PROVISIONING — the catalog may be shared with source and published data.
-
-    Scope comes from the private schema marker, the owner-derived schema name and caller-owned
-    managed result tables, never from the catalog alone.
-    """
-    _text(catalog, "private catalog")
-    _authority(run, catalog)
-
-
-def _authority(run: SqlRunner, catalog: str) -> None:
-    """RUN-CLIENT-MAINTENANCE — ownership or a direct MANAGE grant covers every user's schema.
-
-    MANAGE on a catalog is inherited by its schemas and tables and allows deleting objects the
-    principal does not own. Deployment grants it to the maintenance principal. Never claim a
-    complete sweep when information_schema may hide other users' tables.
-    """
-    principal = _principal(run)
-    rows = run(f"SELECT catalog_owner FROM {table_sql((catalog, 'information_schema', 'catalogs'))} "
-               "WHERE catalog_name = :catalog", {"catalog": catalog})
+    """RUN-CLIENT-MAINTENANCE — only the environment's ``draft_results``, where the maintenance principal must hold
+    ``MANAGE`` (or own the schema) to drop every user's tables; never the catalog's other schemas."""
+    _text(catalog, "environment catalog")
+    principal = caller(run)
+    rows = run(f"SELECT schema_owner FROM {table_sql((catalog, 'information_schema', 'schemata'))} "
+               "WHERE schema_name = :schema", {"schema": DRAFT_SCHEMA})
     if len(rows) != 1:
-        raise PermissionError(f"private catalog '{catalog}' is missing or not visible to the maintenance principal")
-    if rows[0].get("catalog_owner") == principal:
+        raise PermissionError(f"{catalog}.{DRAFT_SCHEMA} is missing or not visible to the maintenance principal")
+    if rows[0].get("schema_owner") == principal:
         return
-    rows = run(f"SELECT privilege_type FROM {table_sql((catalog, 'information_schema', 'catalog_privileges'))} "
-               "WHERE catalog_name = :catalog AND grantee = :principal AND privilege_type = 'MANAGE'",
-               {"catalog": catalog, "principal": principal})
+    rows = run(f"SELECT privilege_type FROM {table_sql((catalog, 'information_schema', 'schema_privileges'))} "
+               "WHERE schema_name = :schema AND grantee = :principal AND privilege_type = 'MANAGE'",
+               {"schema": DRAFT_SCHEMA, "principal": principal})
     if not rows:
-        raise PermissionError("maintenance principal needs MANAGE on the private catalog for cross-user coverage")
+        raise PermissionError(f"the maintenance principal needs MANAGE on {catalog}.{DRAFT_SCHEMA} to expire every "
+                              "user's results (RUN-CLIENT-MAINTENANCE)")
 
 
 def _expired(run: SqlRunner, catalog: str, cutoff: datetime, limit: int,
@@ -73,8 +66,7 @@ def _expired(run: SqlRunner, catalog: str, cutoff: datetime, limit: int,
     """RUN-CLIENT-MAINTENANCE — one bounded catalog query, including ownership and completion tags."""
     tags = table_sql((catalog, "information_schema", "table_tags"))
     tables = table_sql((catalog, "information_schema", "tables"))
-    schemas = table_sql((catalog, "information_schema", "schemata"))
-    params = {"catalog": catalog, "schema_format": SCHEMA_FORMAT, "format": FORMAT,
+    params = {"catalog": catalog, "schema": DRAFT_SCHEMA, "format": FORMAT,
               "cutoff": cutoff.isoformat(timespec="microseconds")}
     selection = ""
     if selected is not None:
@@ -82,20 +74,17 @@ def _expired(run: SqlRunner, catalog: str, cutoff: datetime, limit: int,
         selection = (" AND named_struct('schema', t.table_schema, 'table', t.table_name) IN "
                      "(SELECT explode(from_json(:selected, 'ARRAY<STRUCT<schema:STRING,table:STRING>>')))")
     rows = run(
-        "WITH candidates AS (SELECT t.table_catalog, t.table_schema, t.table_name, s.schema_owner, "
+        "WITH candidates AS (SELECT t.table_catalog, t.table_schema, t.table_name, "
         "map_from_entries(collect_list(named_struct('key', g.tag_name, 'value', g.tag_value))) AS metadata "
-        f"FROM {tables} t JOIN {schemas} s ON s.catalog_name = t.table_catalog "
-        "AND s.schema_name = t.table_schema "
+        f"FROM {tables} t "
         f"JOIN {tags} g ON g.catalog_name = t.table_catalog AND g.schema_name = t.table_schema "
         "AND g.table_name = t.table_name "
-        "WHERE t.table_catalog = :catalog AND s.comment = :schema_format "
-        "AND t.table_schema = concat('cql_private_', sha2(s.schema_owner, 256)) "
-        "AND t.table_owner = s.schema_owner AND t.table_type = 'MANAGED' "
+        "WHERE t.table_catalog = :catalog AND t.table_schema = :schema AND t.table_type = 'MANAGED' "
         "AND lower(t.data_source_format) = 'delta' "
         f"AND t.table_name RLIKE '{NAME_RLIKE}' "
         f"AND g.tag_name IN ({', '.join(_literal(tag) for tag in TAGS)})" + selection +
-        " GROUP BY t.table_catalog, t.table_schema, t.table_name, s.schema_owner) "
-        "SELECT table_catalog, table_schema, table_name, schema_owner, to_json(metadata) AS tags_json "
+        " GROUP BY t.table_catalog, t.table_schema, t.table_name) "
+        "SELECT table_catalog, table_schema, table_name, to_json(metadata) AS tags_json "
         "FROM candidates WHERE metadata['cql_result_format'] = :format "
         "AND metadata['cql_result_state'] = 'complete' "
         "AND CAST(metadata['cql_computed_at'] AS TIMESTAMP) <= CAST(:cutoff AS TIMESTAMP) "
@@ -105,7 +94,7 @@ def _expired(run: SqlRunner, catalog: str, cutoff: datetime, limit: int,
     requested = {item.table for item in selected} if selected is not None else None
     for row in rows:
         table = (row["table_catalog"], row["table_schema"], row["table_name"])
-        if (table[:2] != PrivateDestination(catalog, row["schema_owner"]).destination
+        if (table[:2] != (catalog, DRAFT_SCHEMA)
                 or table in seen or (requested is not None and table not in requested)):
             raise PermissionError("maintenance discovery returned duplicate or out-of-scope tables")
         item = Completion.from_tags(table, json.loads(row["tags_json"]))
@@ -116,12 +105,12 @@ def _expired(run: SqlRunner, catalog: str, cutoff: datetime, limit: int,
     return tuple(found)
 
 
-def maintain_private_results(*, run: SqlRunner, catalog: str, retention_days: int = 7, limit: int = 1000, dry_run: bool = True,
+def maintain_draft_results(*, run: SqlRunner, catalog: str, retention_days: int = 7, limit: int = 1000, dry_run: bool = True,
                              now: datetime | None = None) -> MaintenanceReport:
     """RUN-CLIENT-MAINTENANCE — seven-day computation-age expiry, configurable by deployment.
 
-    Only marked, successfully completed, user-owned managed Delta results qualify. Pending/untagged
-    writes, foreign objects and published results are excluded. Reopening a result does not extend
+    Only successfully completed managed Delta results in ``catalog``'s ``draft_results`` qualify, whoever owns them.
+    Pending/untagged writes, foreign objects and published results are excluded. Reopening a result does not extend
     its retention. No VACUUM, reference index, DESCRIBE, row count or ownership/grant change.
 
     No quiet window or session pin is required. A final tag check skips observed refreshes, but UC
@@ -146,7 +135,7 @@ def maintain_private_results(*, run: SqlRunner, catalog: str, retention_days: in
                 continue
             run(f"DROP TABLE IF EXISTS {table_sql(item.table)}")
             deleted.append(item.table)
-            log.info("Expired private result %s fingerprint=%s computed_at=%s",
+            log.info("Expired draft result %s fingerprint=%s computed_at=%s",
                      table_sql(item.table), item.fingerprint, item.computed_at.isoformat())
     return MaintenanceReport(catalog, cutoff, candidates, tuple(deleted), tuple(changed),
                              len(found) > limit, dry_run)

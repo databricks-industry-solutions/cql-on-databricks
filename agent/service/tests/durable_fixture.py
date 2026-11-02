@@ -14,7 +14,7 @@ def reference():
         columns=[("__subject_id", "string"), ("__val", "boolean")],
         origin={"library": "Synthetic", "version": "1", "define": "Output"},
         completed=SimpleNamespace(completed_at=datetime(2026, 1, 1, tzinfo=timezone.utc)),
-        results=SimpleNamespace(request={"data_source": "synthetic"}, selection=SimpleNamespace(
+        results=SimpleNamespace(request={"environment": "synthetic"}, selection=SimpleNamespace(
             request_hash=RESULT_SET["request_hash"], purpose="published", computed_since=None,
             targets={"Synthetic.Output": "output"},
             session_id=RESULT_SET["session_id"], selection_id=RESULT_SET["selection_id"],

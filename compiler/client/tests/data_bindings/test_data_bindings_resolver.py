@@ -13,9 +13,9 @@ from types import SimpleNamespace
 import pytest
 
 from cql_databricks.data_bindings import (
-    DATA_SOURCE_TAG, KNOWLEDGE_TAG, TERMINOLOGY, TERMINOLOGY_TAG, ContentResolver, LibraryId, ResolverError, TaggedSchema,
+    KNOWLEDGE_TAG, TERMINOLOGY, TERMINOLOGY_TAG, ContentResolver, LibraryId, ResolverError, TaggedSchema,
     check_layout, compare_versions, load_corpus, parse_identity, parse_includes,
-    WarehouseSession, background_runner, parse_resource_types, parse_value_sets, start_statement, tag_statement,
+    WarehouseSession, background_runner, parse_resource_types, parse_value_sets, start_statement,
     warehouse_session)
 from cql_databricks.data_bindings import corpus as corpus_module
 
@@ -80,15 +80,6 @@ def test_identity_falls_back_to_url_tail_and_fhir_version(cql):
 
 
 # --- Tags -----------------------------------------------------------------------------------------
-
-def test_tag_statement_quotes_identifiers_and_refuses_a_quote_in_the_value():
-    assert tag_statement(KNOWLEDGE_TAG, "cms", "main", "quality_measures") == (
-        "ALTER SCHEMA `main`.`quality_measures` SET TAGS ('cql_databricks_knowledge' = 'cms')")
-    with pytest.raises(ResolverError):
-        tag_statement(KNOWLEDGE_TAG, "o'brien", "main", "quality_measures")
-
-
-# --- Layout ---------------------------------------------------------------------------------------
 
 def test_layout_check_names_every_gap_at_once():
     schema = TaggedSchema(TERMINOLOGY_TAG, "terminology", "main", "terminology")
@@ -207,38 +198,30 @@ def test_corpus_sql_is_portable():
 # --- ContentResolver ------------------------------------------------------------------------------
 
 def test_resolver_builds_its_runner_lazily_and_caches_until_reload():
+    """CLIENT-ENVIRONMENT — one environment's knowledge view, read by its standard name with no tag search."""
     built = []
     runner = _knowledge_runner()
-    runner.answers.insert(0, ("schema_tags", _tags(KNOWLEDGE_TAG, ("main", "quality_measures", "cms"))))
 
     def factory():
         built.append(1)
         return runner
 
-    content = ContentResolver(factory, ["main"])
+    content = ContentResolver(factory, "main", "example")
     assert built == []
     first = content.corpus()
     assert content.corpus() is first and built == [1]
+    assert not any("schema_tags" in sql or "information_schema" in sql for sql, _ in runner.calls)
+    assert [s.fqn for s in first.sources] == ["`main`.`knowledge`"]
     content.reload()
     assert content.corpus() is not first
 
 
-def test_terminology_sources_are_layout_checked():
-    runner = FakeRunner([("schema_tags", _tags(TERMINOLOGY_TAG, ("main", "terminology", "terminology"))),
-                         ("information_schema.columns", _columns({"valueset": ["valueset_id"]}))])
-    with pytest.raises(ResolverError, match="does not match its layout"):
-        ContentResolver(lambda: runner, ["main"]).terminology_sources()
-
-
-def test_data_source_schemas_are_found_by_their_own_key_and_cached_until_reload():
-    # DATA-SOURCE-UC-TAG — found here, checked by the compiler; so no layout read is issued.
-    runner = FakeRunner([("schema_tags", _tags(DATA_SOURCE_TAG, ("main", "fhir", "fhir_prod")))])
-    content = ContentResolver(lambda: runner, ["main"])
-    first = content.data_source_schemas()
-    assert [(s.tag, s.name, s.fqn) for s in first] == [(DATA_SOURCE_TAG, "fhir_prod", "`main`.`fhir`")]
-    assert content.data_source_schemas() is first and len(runner.calls) == 1
-    content.reload()
-    assert content.data_source_schemas() is not first
+def test_terminology_is_the_environments_view_and_unchecked():
+    """BIND-PUBLISHED-VIEW — nothing checks the layout at run time; a missing view fails the read that needs it."""
+    runner = FakeRunner([])
+    [terminology] = ContentResolver(lambda: runner, "main", "example").terminology_sources()
+    assert (terminology.tag, terminology.name, terminology.fqn) == (TERMINOLOGY_TAG, "example", "`main`.`terminology`")
+    assert runner.calls == []
 
 
 # --- warehouse_session ----------------------------------------------------------------------------

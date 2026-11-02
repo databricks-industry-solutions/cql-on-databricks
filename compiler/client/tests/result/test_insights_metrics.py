@@ -118,7 +118,7 @@ def _build(_subject_rows=((("2713"),),), **overrides):
         library="ExampleMeasure", version="1.0.0",
         data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
         defines=DEFINES, closure=StateClosure(_State()),
-        patient_function="acme.conformance.retrieve_Patient",
+        patient_relation="acme.data.patient",
         results_catalog=CATALOG, execute=_execute(),
     )
     kwargs.update(overrides)
@@ -140,7 +140,7 @@ def _captured_sql() -> str:
             library="ExampleMeasure", version="1.0.0",
             data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
             defines=DEFINES, cohorts=_everyone(DEFINES), closure=StateClosure(_State()),
-            patient_function="acme.conformance.retrieve_Patient",
+            patient_relation="acme.data.patient",
             results_catalog=CATALOG, execute=_execute())
     execute.assert_called_once()
     return execute.call_args.args[1]
@@ -158,10 +158,10 @@ def test_evaluated_total_comes_from_the_patient_binding():
 
 
 def test_the_patient_binding_is_called_with_no_argument():
-    """BIND-RETRIEVE-UDF, EMIT-ROOT-INDEPENDENT — the data source is the population, so the evaluated total is
+    """BIND-PUBLISHED-VIEW, EMIT-ROOT-INDEPENDENT — the data source is the population, so the evaluated total is
     the bound Patient retrieve called with every argument at its default; no argument names a measure."""
     sql = _captured_sql()
-    assert "FROM acme.conformance.retrieve_Patient()" in sql
+    assert "FROM acme.data.patient" in sql
     assert "library" not in sql
     # Fan-out immune like every other count in this module (`relation`): a mount is not one row per
     # subject, and the cohort is a subject count.
@@ -239,7 +239,7 @@ def test_one_define_name_in_two_libraries_resolves_to_two_relations():
             library="ExampleMeasure", version="1.0.0",
             data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
             defines=defines, cohorts=_everyone(defines), closure=StateClosure(_State()),
-            patient_function="acme.conformance.retrieve_Patient",
+            patient_relation="acme.data.patient",
             results_catalog=CATALOG, execute=_execute())
     by_library = {d.library: d.subjects for d in m.defines}
     assert by_library == {"ExampleMeasure": 2,
@@ -262,8 +262,8 @@ def test_no_evaluation_raises_rather_than_returning_an_empty_set():
 
 def test_no_patient_binding_raises_rather_than_reporting_zero_subjects():
     """SPEC-METRIC requires a share's base be STATED, and 0 evaluated subjects is not a base."""
-    with pytest.raises(MetricsUnavailable, match="no Patient data binding"):
-        _build(patient_function=None)
+    with pytest.raises(MetricsUnavailable, match="no Patient view"):
+        _build(patient_relation=None)
 
 
 def test_counts_are_one_evaluation_sets():
@@ -275,7 +275,7 @@ def test_counts_are_one_evaluation_sets():
             library="ExampleMeasure", version="1.0.0",
             data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
             defines=DEFINES, cohorts=_everyone(DEFINES), closure=StateClosure(_State()),
-            patient_function="acme.conformance.retrieve_Patient",
+            patient_relation="acme.data.patient",
             results_catalog=CATALOG, execute=_execute())
     assert count.call_args.kwargs["eval_id"] == SUFFIX
 
@@ -325,7 +325,7 @@ def test_a_cohort_counts_subjects_not_rows():
 def _scored_build(cohorts, rows):
     """`_build` with the cohort statement answered by ``rows`` and the Patient binding by 2,713."""
     def warehouse(_wh, sql):
-        return [["2713"]] if "retrieve_Patient" in sql else rows
+        return [["2713"]] if "data.patient" in sql else rows
     defines = DEFINES[:2]
     with patch("cql_databricks.result.insights.metrics.relation_columns", return_value=COLUMNS), \
          patch("cql_databricks.result.insights.metrics.count_relations", return_value=COUNTS), \
@@ -334,7 +334,7 @@ def _scored_build(cohorts, rows):
             library="ExampleMeasure", version="1.0.0",
             data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
             defines=defines, cohorts=cohorts, closure=StateClosure(_State()),
-            patient_function="acme.conformance.retrieve_Patient",
+            patient_relation="acme.data.patient",
             results_catalog=CATALOG, execute=_execute())
     return m, [c.args[1] for c in execute.call_args_list]
 
@@ -357,7 +357,7 @@ def test_a_scored_define_reports_met_counted_and_its_cohort():
 
 def test_everyone_needs_no_cascade_statement():
     m, statements = _scored_build(_everyone(DEFINES[:2]), [])
-    assert len(statements) == 1 and "retrieve_Patient" in statements[0]
+    assert len(statements) == 1 and "data.patient" in statements[0]
     assert all(d.counted == d.subjects and d.cohort_subjects == 2713 for d in m.defines)
 
 

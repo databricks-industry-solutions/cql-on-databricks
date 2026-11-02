@@ -54,7 +54,7 @@ timestamp is neither source-read time nor proof that the source is unchanged. An
 is required after source data or terminology contents change; these tools do not save one.
 
 **Nothing you do is saved.** You cannot change a measure, save or refresh a result, schedule a run, or
-bind a data source; when asked to, say plainly that you cannot. `run_cql` and `compare_cql` run CQL
+choose what data to run against; when asked to, say plainly that you cannot. `run_cql` and `compare_cql` run CQL
 inline and keep nothing. Their figures are an experiment, never the measure's official result: label
 them so.
 

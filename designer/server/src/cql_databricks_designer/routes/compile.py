@@ -22,15 +22,13 @@ from cql_databricks_common.compiler import CompilerClient
 from cql_databricks_common.compiler import CompilerError
 from cql_databricks_designer.explain.reference_set import build_reference_set
 from cql_databricks.compiler.resolve import ResolutionError, resolve, translate_includes, translate_root
-from cql_databricks.data_bindings import ContentResolver
-
-from cql_databricks_designer.data_bindings import files_for
+from cql_databricks_designer.data_bindings import EnvironmentContents, files_for
 from cql_databricks_designer.dto import TranslateRequest
 
 log = logging.getLogger("cql_databricks_designer")
 
 
-def router(*, compiler: CompilerClient, content: ContentResolver) -> APIRouter:
+def router(*, compiler: CompilerClient, contents: EnvironmentContents) -> APIRouter:
 
     router = APIRouter()
 
@@ -53,7 +51,9 @@ def router(*, compiler: CompilerClient, content: ContentResolver) -> APIRouter:
         # multi-library measures validate as authored. A truly-unresolvable include is surfaced as a diagnostic.
         # RUN-ADDRESS-LOCATION — with a location, includes resolve there first; a folder is read as the signed-in user.
         try:
-            resolution = resolve(content, cql=req.cql or "", location=req.location, files=files_for(req.location))
+            # DOC-ENVIRONMENT-PICKER: the includes not in the location resolve from the picked environment's knowledge.
+            resolution = resolve(contents.get(req.environment), cql=req.cql or "", location=req.location,
+                                 files=files_for(req.location))
         except (ResolutionError, ValueError) as e:
             return JSONResponse(status_code=400, content={"error": str(e)})
         has_explicit_includes = bool(req.includes)

@@ -1,8 +1,10 @@
 """RUN-CLIENT-MIGRATION, RUN-CLIENT-REQUEST-REOPEN — Designer runs and current reads as the caller.
 
 The ``draft`` wire field is a presentation/cache label. The resultSet JSON body carries calculation
-request context for recompilation and tag discovery. RUN-CLIENT-PUBLISHED (amended 2026-10-10): the
-Designer reads only the caller's private results; it never reads Job-published results.
+request context for recompilation and tag discovery. DOC-ENVIRONMENT-PICKER, RUN-CLIENT-DRAFT-RESULTS: every run is
+in the environment the Designer has picked (None is the default), reads its data and terminology with the open
+folder's libraries over its knowledge, and writes its ``draft_results`` as the user. It reuses only the caller's own
+results (`RUN-CLIENT-RESULT-OWNERSHIP`).
 APP-COMPUTE-TARGET: every request may name the SQL warehouse it runs on; none means the deployment's.
 APP-RUN-LOG: every Refresh and Automatic run, completed or failed, is handed to the background run log
 before its last frame is sent.
@@ -26,12 +28,12 @@ from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from cql_databricks.compiler.environment import DATA, Environment, EnvironmentLookupError, EnvironmentResolver
 from cql_databricks.compiler.libraries import LibraryFiles
-from cql_databricks.compiler.resolve import ResolutionError, resolve_data_source
+from cql_databricks.compiler.resolve import ResolutionError
 from cql_databricks.data_bindings import ContentResolver, StatementObserver, WarehouseSession
-from cql_databricks_designer.data_bindings import user_content_resolver, user_workspace_files
-from cql_databricks.result import (ResultsUnavailable, StepRecord, ensure_private_destination,
-                                     find_private_destination, materialize, open_result_set,
+from cql_databricks_designer.data_bindings import user_workspace_files
+from cql_databricks.result import (ResultsUnavailable, StepRecord, materialize, open_result_set,
                                      prepare_calculation)
 from cql_databricks.result.insights.evaluation import MetricsUnavailable
 from cql_databricks.result.insights.flow import GateRequest, cohort_flow as build_cohort_flow
@@ -49,8 +51,8 @@ log = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class CalculationSettings:
-    """RUN-CLIENT-PRIVATE-PROVISIONING — deployment catalog and bounded interactive storage."""
-    private_catalog: str
+    """SVC-CATALOG-LAYOUT, RUN-CLIENT-DRAFT-RESULTS — the runtime schema every environment's runs use, and bounded
+    interactive storage."""
     runtime_catalog: str
     runtime_schema: str = "runtime"
     capacity: int = 10_000
@@ -72,8 +74,6 @@ class CalculationEnv:
     run_context: Callable[[str | None], RunContext]
     run_log: Callable[[RunLogEntry], None]
     warehouses: Callable[[], dict] = lambda: {"default": None, "warehouses": []}
-    #: CLIENT-DISCOVERY-SCOPE — the deployment's catalog scopes, over the signed-in user's runner.
-    content: Callable[[Callable], ContentResolver] = user_content_resolver
     #: RUN-ADDRESS-LOCATION — reads a folder location as the signed-in user; built on the request thread.
     files: Callable[[], LibraryFiles] = user_workspace_files
 
@@ -91,9 +91,10 @@ class ReopenRequest(BaseModel):
     """RUN-CLIENT-REQUEST-REOPEN — the displayed calculation, to reopen read-only. CQL travels in JSON."""
     model_config = {"populate_by_name": True, "extra": "forbid"}
     cql: str
-    #: RUN-ADDRESS-LOCATION — where the library's includes resolve first; None is all of tagged knowledge.
+    #: RUN-ADDRESS-LOCATION — where the library's includes resolve first; None is the environment's knowledge.
     location: str | None = None
-    data_source_id: str = Field(alias="dataSourceId")
+    #: DOC-ENVIRONMENT-PICKER — the environment the calculation ran in; None is the default.
+    environment: str | None = None
     period_start: str | None = Field(default=None, alias="periodStart")
     period_end: str | None = Field(default=None, alias="periodEnd")
     warehouse_id: str | None = Field(default=None, alias="warehouseId")
@@ -105,7 +106,8 @@ class ResultReadRequest(BaseModel):
     result_set: dict = Field(alias="resultSet")
     library: str = ""
     version: str = ""
-    data_source_id: str = Field(alias="dataSourceId")
+    #: DOC-ENVIRONMENT-PICKER — the environment the calculation ran in; None is the default.
+    environment: str | None = None
     period_start: str | None = Field(default=None, alias="periodStart")
     period_end: str | None = Field(default=None, alias="periodEnd")
     draft: str = ""
@@ -184,7 +186,8 @@ class TaskProgress:
         return {"stage": "executing", "status": "running", "tasks": tasks}
 
 
-_REFUSED = (ResolutionError, ResultsUnavailable, MetricsUnavailable, ValueError, PermissionError)
+_REFUSED = (ResolutionError, ResultsUnavailable, MetricsUnavailable, ValueError, PermissionError,
+            EnvironmentLookupError)
 
 
 def router(*, compiler, env: CalculationEnv) -> APIRouter:
@@ -196,13 +199,25 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
         settings: CalculationSettings
         execute: Callable
         run: Callable
+        environment: Environment
         content: ContentResolver
         files: LibraryFiles
 
-    def acting(warehouse: str | None, observer: StatementObserver | None = None) -> Acting:
-        """RUN-CLIENT-SESSION-REUSE — the request's runner and ``Execute`` share the user's held session."""
+        @property
+        def patient(self) -> str:
+            """BIND-PUBLISHED-VIEW — the environment's Patient view, which the demographics and totals read."""
+            return f"{self.environment.schema(DATA)}.patient"
+
+    def acting(warehouse: str | None, environment: str | None,
+               observer: StatementObserver | None = None) -> Acting:
+        """RUN-CLIENT-SESSION-REUSE — the request's runner and ``Execute`` share the user's held session.
+
+        DOC-ENVIRONMENT-PICKER — the environment is found as the user (`CLIENT-ENVIRONMENT-RESOLVER`), and its content
+        is read as the user too."""
         run = env.user_session(warehouse).observed(observer)
-        return Acting(env.settings(), run.rows, run, env.content(run), env.files())
+        environments = EnvironmentResolver(run)
+        picked = environments.resolve(environment)
+        return Acting(env.settings(), run.rows, run, picked, environments.content(picked), env.files())
 
     def counts(results, root, handle, execute):
         counted = selection_counts(results, execute=execute)
@@ -229,15 +244,15 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
         yield {"stage": "compiling", "message": "Resolving and compiling the CQL"}
         compile_started = datetime.now(timezone.utc)
         prepared = prepare_calculation(content=a.content, run=a.run, compiler=compiler,
-            data_source=req.data_source_id, period=period, cql=req.cql,
+            environment=a.environment, period=period, cql=req.cql,
             runtime_catalog=a.settings.runtime_catalog, runtime_schema=a.settings.runtime_schema,
             targets=tuple(req.defines) if req.defines is not None else None,
             location=req.location, files=a.files)
-        recorder.compiled(prepared.library, prepared.version, compile_started)
+        recorder.compiled(prepared.library, prepared.version, compile_started, a.environment.name)
         session = _session(instance, prepared.library, prepared.version, prepared.population, period, req.location)
-        private = ensure_private_destination(a.settings.private_catalog, run=a.run)
         yield {"stage": "executing", "status": "running", "message": "Computing or reusing completed results"}
-        results = materialize(prepared, *prepared.targets, run=a.run, destination=private,
+        # RUN-CLIENT-DRAFT-RESULTS: a Designer run writes the environment's draft_results, as the user.
+        results = materialize(prepared, *prepared.targets, run=a.run, environment=a.environment, purpose="private",
                               session_id=session, capacity=a.settings.capacity,
                               mode="recompute" if req.recompute else "skip_if_computed",
                               computed_since=req.computed_since, on_plan=progress.planned, on_start=progress.started,
@@ -248,7 +263,7 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
         """RUN-CLIENT-REQUEST-REOPEN — one payload for a finished run and a reopened selection."""
         handle = _handle(instance, results.selection.selection_id)
         return {"identity": {"library": prepared.library, "version": prepared.version,
-                             "dataSource": prepared.population, "draft": handle},
+                             "environment": prepared.population, "draft": handle},
                 "resultSet": selection_address(results),
                 "results": counts(results, prepared.library, handle, a.execute),
                 "outcomes": [{"definition": o.definition, "decision": o.decision, "reason": o.reason,
@@ -266,8 +281,6 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
 
         RUN-PROGRESS-TASKS — ``emit`` receives the progress frames sent while the definitions run."""
         try:
-            if not req.data_source_id:
-                raise ValueError("data_source_id is required — select a Data Source.")
             for event in run_events(req, a, instance, recorder, TaskProgress(emit)):
                 if event["stage"] == "done":
                     logged(recorder, None)
@@ -286,10 +299,10 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
         (SEC-OBO), so the run's statements run warm after the user's first."""
         try:
             overrides = req.overrides or {}
-            recorder = RunRecorder(context=env.run_context(req.warehouse_id), data_source=req.data_source_id,
+            recorder = RunRecorder(context=env.run_context(req.warehouse_id), environment=req.environment,
                                    period=(overrides.get("periodStart"), overrides.get("periodEnd")),
                                    trigger=req.trigger, mode="recompute" if req.recompute else "skip_if_computed")
-            return acting(req.warehouse_id, recorder.observe), recorder, None
+            return acting(req.warehouse_id, req.environment, recorder.observe), recorder, None
         except Exception as error:
             return None, None, JSONResponse(status_code=503, content={"ok": False, "error": str(error)})
 
@@ -332,26 +345,22 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
         return {"ok": True, "identity": last["identity"], "draft": last["identity"]["draft"],
                 "results": last["results"], "outcomes": last["outcomes"], "resultSet": last["resultSet"]}
 
-    def evaluation(a, name, version, handle, data_source, period, address):
+    def evaluation(a, name, version, handle, period, address):
         results = open_selection(address, run=a.run, content=a.content, compiler=compiler, files=a.files)
         request = results.request
         if not request or list(period) != request["period"]:
             raise ResultsUnavailable("complete selection does not match the requested measurement period")
         closure = SelectionClosure(results, root=name, draft=handle)
-        if closure.data_source != data_source or closure.libraries[name].scope.version != version:
-            raise ResultsUnavailable("complete selection does not match the requested library and population")
+        if closure.environment != a.environment.name or closure.libraries[name].scope.version != version:
+            raise ResultsUnavailable("complete selection does not match the requested library and environment")
         return results, closure
 
-    def options(a, name, version, handle, data_source, period, address):
-        results, closure = evaluation(a, name, version, handle, data_source, period, address)
-        return dict(library=name, version=version, data_source_id=data_source,
+    def options(a, name, version, handle, period, address):
+        results, closure = evaluation(a, name, version, handle, period, address)
+        return dict(library=name, version=version, data_source_id=a.environment.name,
                     period_start=period[0], period_end=period[1], eval_id=results.selection.selection_id,
                     draft=handle, closure=closure, results_catalog=results.selection.destination[0],
                     execute=a.execute)
-
-    def patient_function(a, source):
-        return resolve_data_source(a.content, a.run, source, compiler.resource_types(),
-                                   include_change_logs=False).bindings.get("Patient")
 
     def refused(error):
         return JSONResponse(status_code=409, content={"error": str(error)})
@@ -374,23 +383,21 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
     def reopen(req: ReopenRequest, x_designer_instance: str | None = Header(default=None)):
         """RUN-CLIENT-REQUEST-REOPEN — the caller's own results for exactly this calculation, read-only.
 
-        Never computes, never creates the private schema, never reads another user's or a Job's results
-        (RUN-CLIENT-PUBLISHED, amended 2026-10-10). A miss is an answer (``found: false``), not an error.
+        Never computes and never reads another identity's results (`RUN-CLIENT-RESULT-OWNERSHIP`): it reads the
+        caller's own, in the environment's ``draft_results`` and then its ``results``. A miss is an answer
+        (``found: false``), not an error.
         """
         try:
-            a = acting(req.warehouse_id)
+            a = acting(req.warehouse_id, req.environment)
             period = (req.period_start, req.period_end)
             prepared = prepare_calculation(content=a.content, run=a.run, compiler=compiler,
-                data_source=req.data_source_id, period=period, cql=req.cql,
+                environment=a.environment, period=period, cql=req.cql,
                 runtime_catalog=a.settings.runtime_catalog, runtime_schema=a.settings.runtime_schema,
                 location=req.location, files=a.files)
-            private = find_private_destination(a.settings.private_catalog, run=a.run)
-            if private is None:
-                return {"found": False, "reason": "nothing computed yet"}
             instance = x_designer_instance or ""
             session = _session(instance, prepared.library, prepared.version, prepared.population, period,
                                req.location)
-            results = open_result_set(prepared, *prepared.targets, run=a.run, destination=private,
+            results = open_result_set(prepared, *prepared.targets, run=a.run, environment=a.environment,
                                       session_id=session, purpose="private")
             return {"found": True, **completed(results, prepared, instance, a)}
         except ResultsUnavailable as error:
@@ -402,11 +409,11 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
 
     @router.post("/api/results")
     def get_results(req: ResultReadRequest) -> Any:
-        if not (req.data_source_id and req.library and req.version):
-            return JSONResponse(status_code=400, content={"error": "data_source, library and version are required"})
+        if not (req.library and req.version):
+            return JSONResponse(status_code=400, content={"error": "library and version are required"})
         try:
-            a = acting(req.warehouse_id)
-            results, _ = evaluation(a, req.library, req.version, req.draft, req.data_source_id,
+            a = acting(req.warehouse_id, req.environment)
+            results, _ = evaluation(a, req.library, req.version, req.draft,
                                     (req.period_start, req.period_end), req.result_set)
             return counts(results, req.library, req.draft, a.execute)
         except _REFUSED as error:
@@ -415,22 +422,21 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
     @router.post("/api/libraries/{name}/{version}/defines/{define}/profile")
     def define_profile(name: str, version: str, define: str, req: ResultReadRequest):
         try:
-            a = acting(req.warehouse_id)
-            opts = options(a, name, version, req.draft, req.data_source_id,
-                           (req.period_start, req.period_end), req.result_set)
+            a = acting(req.warehouse_id, req.environment)
+            opts = options(a, name, version, req.draft, (req.period_start, req.period_end), req.result_set)
             return build_define_profile(**opts, define=define, define_library=req.define_library or name,
-                                         patient_function=patient_function(a, req.data_source_id)).to_dict()
+                                         patient_relation=a.patient).to_dict()
         except _REFUSED as error:
             return refused(error)
 
     @router.post("/api/libraries/{name}/{version}/metrics")
     def measure_metrics(name: str, version: str, req: MetricsBody):
         try:
-            a = acting(req.warehouse_id)
-            opts = options(a, name, version, req.draft, req.data_source_id, (req.period_start, req.period_end), req.result_set)
+            a = acting(req.warehouse_id, req.environment)
+            opts = options(a, name, version, req.draft, (req.period_start, req.period_end), req.result_set)
             metrics = build_measure_metrics(**opts, defines=[(d.library, d.name, d.resultType) for d in req.defines],
                                             cohorts={(d.library, d.name): _cohort(d.cohort) for d in req.defines},
-                                            patient_function=patient_function(a, req.data_source_id)).to_dict()
+                                            patient_relation=a.patient).to_dict()
             # RUN-CLIENT-MEASURE-SCORE — the score is the client's, over the root library's populations.
             declared = list(opts["closure"].libraries[name].relations) if name in opts["closure"].libraries else []
             score = selection_score(**opts, scoring=req.scoring, declared=declared) if req.scoring else None
@@ -441,8 +447,8 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
     @router.post("/api/libraries/{name}/{version}/reads")
     def read_metrics(name: str, version: str, req: ReadsBody):
         try:
-            a = acting(req.warehouse_id)
-            opts = options(a, name, version, req.draft, req.data_source_id, (req.period_start, req.period_end), req.result_set)
+            a = acting(req.warehouse_id, req.environment)
+            opts = options(a, name, version, req.draft, (req.period_start, req.period_end), req.result_set)
             return build_read_metrics(**opts, reads=[r.model_dump() for r in req.reads])
         except _REFUSED as error:
             return refused(error)
@@ -450,12 +456,12 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
     @router.post("/api/libraries/{name}/{version}/flow")
     def cohort_flow(name: str, version: str, req: FlowBody):
         try:
-            a = acting(req.warehouse_id)
-            opts = options(a, name, version, req.draft, req.data_source_id, (req.period_start, req.period_end), req.result_set)
+            a = acting(req.warehouse_id, req.environment)
+            opts = options(a, name, version, req.draft, (req.period_start, req.period_end), req.result_set)
             return build_cohort_flow(**opts, gates=[GateRequest(
                 stage=g.stage, stage_library=g.stage_library, base=g.base, base_library=g.base_library,
                 polarity=g.polarity, criteria=[(c.library, c.name) for c in g.criteria]) for g in req.gates],
-                patient_function=patient_function(a, req.data_source_id)).to_dict()
+                patient_relation=a.patient).to_dict()
         except _REFUSED as error:
             return refused(error)
 

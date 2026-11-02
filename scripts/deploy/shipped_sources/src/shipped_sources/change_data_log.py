@@ -5,8 +5,8 @@ A retrieve UDTF exposes no change feed, so the implementer declares change and a
 declaration (`DATA-CONTRACT`). **The customer implements it; this repository implements one for its own
 sources** (Conformance, the Synthetic Populations) as the exemplar, with :func:`change_data_log_ddl`.
 
-The compiler's layout check (`cql_databricks.compiler.data_source`) finds the relation by name; this module holds
-the exemplar DDL the population lander runs for the sources it lands.
+Nothing in an environment's layout reads it (`DATA-ENVIRONMENT-LAYOUT`): the population lander does not create it,
+and this module holds only the exemplar DDL.
 
 **A RELATION, NOT A UDTF, and the reason is what it is asked.** A retrieve UDTF is called per
 retrieve, with a value set, a date window and a library closure, because each call asks about a
@@ -51,7 +51,6 @@ current again. It looks like good hygiene and it is the most expensive mistake a
 """
 from __future__ import annotations
 
-from cql_databricks.compiler.data_source import CHANGE_DATA_LOG
 from cql_databricks.result.relation import literal, quote
 
 #: The two column names the relation must expose. Not configurable: a per-source column mapping
@@ -60,9 +59,8 @@ from cql_databricks.result.relation import literal, quote
 DATA_TYPE_COLUMN = "data_type"
 UPDATED_AT_COLUMN = "updated_at"
 
-#: The conventional relation name this repository's sources use, and the name the compiler's layout check
-#: looks for beside a data source's mounts (`cql_databricks.compiler.data_source.CHANGE_DATA_LOG`).
-CHANGE_DATA_LOG_NAME = CHANGE_DATA_LOG
+#: The conventional relation name.
+CHANGE_DATA_LOG_NAME = "change_data_log"
 
 
 def change_data_log_ddl(view_fqn: str, tables: dict[str, str]) -> str:

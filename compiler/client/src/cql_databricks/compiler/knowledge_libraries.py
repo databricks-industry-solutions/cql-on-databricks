@@ -1,22 +1,22 @@
-"""Tagged knowledge as a library source for ``cql()`` (`CLIENT-KNOWLEDGE-INCLUDES`, `SVC-NOTEBOOK-LIBRARY-FOLDER`).
+"""An environment's knowledge as a library source for ``cql()`` (`CLIENT-KNOWLEDGE-INCLUDES`,
+`SVC-NOTEBOOK-LIBRARY-FOLDER`).
 
 A notebook's ``include`` and ``client.cql(library=...)`` resolve in ONE precedence order:
 
 1. libraries declared by ``%%cql`` cells (`SVC-NOTEBOOK-CELL-LIBRARY`, :mod:`.session_libraries`);
 2. the mounted folder, ``library_path`` (`SVC-NOTEBOOK-LIBRARY-FOLDER`);
-3. tagged knowledge, the schemas tagged ``cql_databricks_knowledge`` inside the session's catalog scopes,
-   earliest scope first (`CLIENT-DISCOVERY-SCOPE`).
+3. the environment's knowledge, its ``knowledge`` views (`CLIENT-ENVIRONMENT`, `BIND-PUBLISHED-VIEW`).
 
-An exact ``(name, version)`` match anywhere in tagged knowledge beats a by-name match; a by-name match takes the
-earliest scope that holds the name, newest version within it. A by-name match is logged.
+An exact ``(name, version)`` match in the knowledge beats a by-name match; a by-name match takes the newest version
+that holds the name. A by-name match is logged.
 
 Knowledge is read through the same ``ContentResolver`` the durable calculations use (`BUILD-RESOLVE-COMPILE`), in
 this session and as this user, and loaded once. So its ``closure()`` is one in-memory walk of the corpus, not a
 round trip per include, as `SVC-NOTEBOOK-LIBRARY-FOLDER` requires of a store that can answer a whole closure.
 
-A published library means what it was published with: the closure of a root that came from tagged knowledge is
-walked in tagged knowledge alone, as a folder root's is walked in its folder (sibling-first). A folder root's
-include that the folder does not hold resolves from tagged knowledge.
+A published library means what it was published with: the closure of a root that came from the environment's
+knowledge is walked in that knowledge alone, as a folder root's is walked in its folder (sibling-first). A folder
+root's include that the folder does not hold resolves from the environment's knowledge.
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from cql_databricks.data_bindings import ContentResolver, Corpus, Library
 from .libraries import (FileLibraryProvider, LibraryProvider, LibraryRef, LibraryResolutionError,
                         LibrarySource, _name_matches, includes_of)
 
-#: The ``origin`` of a library read from tagged knowledge: ``uc://<catalog>.<schema>/<name>|<version>``.
+#: The ``origin`` of a library read from an environment's knowledge: ``uc://<catalog>.<schema>/<name>|<version>``.
 KNOWLEDGE_ORIGIN = "uc://"
 
 
@@ -43,7 +43,7 @@ def _source(library: Library) -> LibrarySource:
 
 
 class KnowledgeLibraryProvider(LibraryProvider):
-    """CLIENT-KNOWLEDGE-INCLUDES — libraries from the tagged knowledge in scope, earliest scope first.
+    """CLIENT-KNOWLEDGE-INCLUDES — libraries from the environment's knowledge.
 
     ``content`` builds the resolver on first use, so a session that never includes a published library never
     reads the catalog."""
@@ -58,27 +58,27 @@ class KnowledgeLibraryProvider(LibraryProvider):
         return self._resolver.corpus()
 
     def _where(self) -> str:
-        return ", ".join(str(scope) for scope in self._resolver.scopes) if self._resolver else "unknown"
+        return f"{self._resolver.catalog}.knowledge" if self._resolver else "unknown"
 
     def resolve(self, ref: LibraryRef) -> LibrarySource:
         corpus = self._corpus()
         library = corpus.library(ref.name, ref.version)
         if library is None:
-            raise LibraryResolutionError(f"cannot resolve CQL library '{ref}': it is not in any tagged knowledge "
-                                         f"source in catalog scopes {self._where()}")
+            raise LibraryResolutionError(f"cannot resolve CQL library '{ref}': it is not in the environment's "
+                                         f"knowledge, {self._where()}")
         return _source(library)
 
     def closure(self, root: LibrarySource) -> List[LibrarySource]:
-        """The closure of ``root`` in tagged knowledge, dependencies first, in one walk of the loaded corpus."""
+        """The closure of ``root`` in the environment's knowledge, dependencies first, in one walk of the loaded corpus."""
         if not root.cql:
-            raise LibraryResolutionError(f"library '{root.name}' has no CQL for tagged knowledge to walk")
+            raise LibraryResolutionError(f"library '{root.name}' has no CQL for the environment's knowledge to walk")
         corpus = self._corpus()
         closure = corpus.resolve_closure(root.cql)
         unresolved = closure.unresolved
         if unresolved:
             missing = ", ".join(f"{ref.name} {ref.version or ''}".strip() for ref in unresolved)
-            raise LibraryResolutionError(f"the include closure of '{root.name}' needs {missing}, which no tagged "
-                                         f"knowledge source in catalog scopes {self._where()} holds")
+            raise LibraryResolutionError(f"the include closure of '{root.name}' needs {missing}, which the "
+                                         f"environment's knowledge, {self._where()}, does not hold")
         return [_source(corpus.library(item.id.name, item.id.version)) for item in closure.includes
                 if item.id.name != root.name]
 
@@ -93,7 +93,8 @@ class KnowledgeLibraryProvider(LibraryProvider):
 
 
 class FolderThenKnowledge(LibraryProvider):
-    """CLIENT-KNOWLEDGE-INCLUDES — the mounted folder (when there is one), then tagged knowledge: one lookup order."""
+    """CLIENT-KNOWLEDGE-INCLUDES — the mounted folder (when there is one), then the environment's knowledge: one lookup
+    order."""
 
     def __init__(self, folder: Optional[LibraryProvider], knowledge: KnowledgeLibraryProvider) -> None:
         self._folder = folder
@@ -114,8 +115,8 @@ class FolderThenKnowledge(LibraryProvider):
 
     def closure(self, root: LibrarySource, *,
                 unresolved: Optional[List[LibraryRef]] = None) -> List[LibrarySource]:
-        """A knowledge root walks tagged knowledge alone. Any other root walks the folder sibling-first, and an
-        include the folder lacks comes from tagged knowledge with its own closure.
+        """A knowledge root walks the environment's knowledge alone. Any other root walks the folder sibling-first, and
+        an include the folder lacks comes from the environment's knowledge with its own closure.
 
         An include neither source holds raises, unless ``unresolved`` is given: then it is appended there and
         the walk goes on, so an editor can report every missing include at once (RUN-ADDRESS-LOCATION)."""

@@ -27,9 +27,7 @@ class CompilerRouterSpec extends AnyFunSuite {
     "library Smoke version '1.0.0'\nusing FHIR version '4.0.1'\ndefine \"One\": 1 + 1\n"
 
   test("RUN-CLIENT-RESULT-IDENTITY: only opt-in pipeline responses carry durable claims and input coordinates") {
-    val request = ujson.Obj("cql" -> smokeCql, "overrides" -> ujson.Obj("materialize.mode" -> "all"),
-      "dataSource" -> ujson.Obj("catalog" -> "synthetic", "schema" -> "source",
-        "routines" -> ujson.Arr("retrieve_Patient")))
+    val request = ujson.Obj("cql" -> smokeCql, "overrides" -> ujson.Obj("materialize.mode" -> "all"))
     val ordinary = post("/compile-pipeline", ujson.write(request))
     assert(ordinary.status == 200)
     val ordinaryRecipes = ujson.read(ordinary.body)("datasets").arr
@@ -90,7 +88,9 @@ class CompilerRouterSpec extends AnyFunSuite {
     val identity = ujson.read(get("/capabilities").body)("compilerVersion").str
     val cql = "library Probe version '1.0.0'\nusing FHIR version '4.0.1'\ncontext Patient\n" +
       "define \"Answer\": true\n"
-    val body = ujson.write(ujson.Obj("cql" -> cql))
+    // BIND-CALL-SITE: the Patient context retrieve binds by rule.
+    val body = ujson.write(ujson.Obj("cql" -> cql,
+      "data" -> ujson.Obj("rule" -> ujson.Obj("schema" -> "acme.data", "identity" -> "acme.data"))))
 
     // A consumer that reads the identity off the compile response and one that reads it off
     // discovery must not be able to disagree about which compiler produced a materialization.

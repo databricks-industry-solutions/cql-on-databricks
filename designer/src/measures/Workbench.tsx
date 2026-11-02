@@ -108,7 +108,7 @@ const nodeIdOf = (e: SpecEntry) => (e.kind === "function" ? `fn:${e.name}` : `de
 
 /** APP-DATA-PROFILE — the evaluation a profile is a fact ABOUT. */
 export interface ProfileScope extends ResultReadScope {
-  dataSourceId: string;
+  environment: string;
   periodStart?: string;
   periodEnd?: string;
   /** RUN-ADDRESS-BY-LIBRARY — the run's draft key, when the CQL run is not the published version. */
@@ -192,7 +192,7 @@ export function useDefineProfile(definitionId: string, entry: SpecEntry | null, 
    *  answer might have: showing the previous define's profile under this one's name is the
    *  two-surfaces-disagreeing failure, but blanking a still-accurate figure because a scheduled run
    *  touched something else is a flash for nothing. So the two cases are told apart explicitly. */
-  const question = `${definitionId}|${entry?.key ?? ""}|${scope?.dataSourceId ?? ""}`
+  const question = `${definitionId}|${entry?.key ?? ""}|${scope?.environment ?? ""}`
     + `|${scope?.periodStart ?? ""}|${scope?.periodEnd ?? ""}`;
   const asked = useRef(question);
 

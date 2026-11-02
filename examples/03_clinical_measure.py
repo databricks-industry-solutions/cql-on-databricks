@@ -75,48 +75,33 @@ print("found   :", sorted(d for d in ("data", "measures")))
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## 2. Mount the data
-# MAGIC The engine lowers every `[Resource]` retrieve to a call on a **table-valued function**,
-# MAGIC `retrieve_<Type>(<8 explicit args>)` — the one mount contract. The arguments
-# MAGIC arrive as compile-time literals (the value set, the date window) so a real binding can prune before
-# MAGIC it reads; a mount that ignores them and returns everything is the correct un-pruned superset, which
-# MAGIC the plan re-filters above the call.
+# MAGIC ## 2. The data: the default environment
+# MAGIC Every run is in one environment: a Unity Catalog catalog whose `data` schema holds one view per FHIR type,
+# MAGIC named for the type (`condition`), each returning two columns: `__subject_id`, the context key, and
+# MAGIC `__resource`, the resource as one struct. The deploy builds the default environment with the patients in
+# MAGIC `data/` beside this notebook, so there is nothing to load here. The engine lowers every `[Resource]` retrieve
+# MAGIC to a read of its view, and the plan filters above it.
 # MAGIC
-# MAGIC `mount` builds those functions over the files, on this Spark session only: nothing is written to a
-# MAGIC catalog, and the mount ends with the session. Two things happen in it and nowhere else, and they are
-# MAGIC the entire adapter:
+# MAGIC The read schema is **the compiler's, not inferred**: each resource has the struct the compiler's FHIR model
+# MAGIC defines (`client.resource_schema("Condition")` shows it). In your own environment the views select your
+# MAGIC governed FHIR tables; the CQL does not change.
 # MAGIC
-# MAGIC - **The context key is promoted to a top-level column** — `__subject_id`, the resource id for
-# MAGIC   `Patient` and the trailing segment of `subject.reference` for everything else. It is the grouping
-# MAGIC   key every set-at-a-time operation joins on, so it is computed once at the boundary rather than
-# MAGIC   parsed per row in the hot path.
-# MAGIC - **The resource is packed into one struct**, `__resource`, carrying `__resource_type` /
-# MAGIC   `__resource_id` for export lineage.
-# MAGIC
-# MAGIC The read schema is **the compiler's, not inferred**: each resource is parsed against the struct the
-# MAGIC compiler's FHIR model defines (`client.resource_schema("Condition")` shows it). A schema read off the
-# MAGIC rows changes when the rows do, and an element absent from every row would silently disappear rather
-# MAGIC than read as null. In a real deployment these are your governed FHIR tables, and the functions are
-# MAGIC precreated Unity Catalog objects in a tagged data source — the CQL does not change.
-# MAGIC
-# MAGIC **Expected output:**
-# MAGIC ```
-# MAGIC Condition    16 rows -> retrieve_Condition__cqlmount
-# MAGIC Encounter    29 rows -> retrieve_Encounter__cqlmount
-# MAGIC Patient      20 rows -> retrieve_Patient__cqlmount
-# MAGIC ```
+# MAGIC **Expected output:** the environment's name and catalog, then one line per type: its row count and the view
+# MAGIC it is read from.
 
 # COMMAND ----------
-from cql_databricks.compiler import mount
+from cql_databricks.compiler import EnvironmentResolver
+from cql_databricks.data_bindings import spark_runner
 
-mounted = mount(spark, str(CONTENT / "data"))
-for t, fn in sorted(mounted.items()):
-    rows = spark.sql(f"SELECT count(*) AS n FROM `{fn}`()").first()["n"]
-    print(f"{t:12} {rows} rows -> {fn}")
+environment = EnvironmentResolver(spark_runner(spark)).default()
+print("environment:", environment.name, "in catalog", environment.catalog)
+for t in ("Condition", "Encounter", "Patient"):
+    view = f"{environment.schema('data')}.{t.lower()}"
+    print(f"{t:12} {spark.table(view).count()} rows -> {view}")
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ### Is the mount live?
+# MAGIC ### Is the data readable?
 # MAGIC Before running a measure over it, one `%%cql` cell asks the data a direct question. This is what
 # MAGIC cells are for: self-contained CQL, no dependencies, answered immediately.
 # MAGIC
@@ -265,7 +250,7 @@ report.display()
 # MAGIC questions behind its exclusions: who was in hospice care during the period?
 # MAGIC
 # MAGIC **Where an `include` is found.** A `%%cql` cell's `include` resolves against earlier cells, then the
-# MAGIC folder in `spark.cqldatabricks.libraryPath`, then the knowledge tagged in your catalog scopes. This
+# MAGIC folder in `spark.cqldatabricks.libraryPath`, then the environment's knowledge. This
 # MAGIC notebook hands its folder to `connect()` only, so the magic's own client cannot see it; the follow-up
 # MAGIC therefore runs the helper library by name with `library=`. Set the conf to the folder and the
 # MAGIC same question works as a `%%cql` cell.

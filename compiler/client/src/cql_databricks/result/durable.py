@@ -2,15 +2,15 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from types import MappingProxyType
 from typing import Literal
 
 from cql_databricks.compiler.cql import CqlQuery
+from cql_databricks.compiler.environment import DRAFT_RESULTS, RESULTS, Environment
 from cql_databricks.data_bindings.runner import SqlRunner, spark_runner
-from cql_databricks.data_bindings.tags import parse_scopes
 
 from ._catalog_reader import CatalogReader
 from ._catalog_completion import Completion, search
@@ -21,8 +21,7 @@ from ._durable_delta import table_sql
 from ._durable_plan import PreparedPlan
 from .calculation import PreparedCalculation
 from .lifecycle import check_capacity
-from .store import DeltaResultStore
-from .private import PrivateDestination, checked_destination
+from .store import DeltaResultResolver
 
 
 log = logging.getLogger(__name__)
@@ -54,7 +53,7 @@ class MaterializedResults:
 
 
 def materialize(query: CqlQuery | PreparedCalculation, *targets: str, spark=None, run: SqlRunner | None = None,
-                destination: tuple[str, str] | PrivateDestination,
+                environment: Environment,
                 mode: Literal["skip_if_computed", "recompute"] = "skip_if_computed",
                 computed_since: datetime | None = None,
                 session_id: str | None = None,
@@ -63,13 +62,14 @@ def materialize(query: CqlQuery | PreparedCalculation, *targets: str, spark=None
                 on_step: StepObserver | None = None,
                 on_plan: PlanObserver | None = None,
                 on_start: StartObserver | None = None,
-                parallelism: int = PARALLEL_DEFINES,
-                catalog_scopes: Iterable[str] | None = None) -> MaterializedResults:
+                parallelism: int = PARALLEL_DEFINES) -> MaterializedResults:
     """RUN-CLIENT-DURABLE, RUN-CLIENT-REUSE — physically compute or reuse the requested closure.
 
-    An explicit result schema must already exist; ``ensure_private_destination`` provisions one
-    automatically and returns a destination with ownership checks against accidental modification of
-    unrelated objects. Source-data, terminology-content and runtime changes are the caller's concern.
+    RUN-CLIENT-DRAFT-RESULTS — results are written in ``environment``: ``purpose="private"``, the default, writes its
+    ``draft_results``; ``purpose="published"`` writes its ``results``, and only for a calculation that binds nothing
+    but the environment's own published content (a :class:`~.calculation.PreparedCalculation` of a library by name);
+    anything else is refused before it computes. Both schemas exist: the deploy creates them.
+    Source-data and runtime changes are the caller's concern.
     RUN-CLIENT-RESULT-IDENTITY — the compiler fingerprints each define from its SQL, parameter values, upstream
     fingerprints and bound data source; the fingerprint names its table. No source-change tracking.
 
@@ -85,33 +85,27 @@ def materialize(query: CqlQuery | PreparedCalculation, *targets: str, spark=None
     RUN-CLIENT-PARALLEL-DEFINES — up to ``parallelism`` define statements run at once, each as soon as the defines
     it reads are done; on a warehouse session they share its one session. The first failure cancels the rest.
 
-    CLIENT-DISCOVERY-SCOPE — a define the destination holds no reusable result for reuses one from the
-    ``catalog.schema`` entries of ``catalog_scopes``, earliest first, under the same table name, so the same
-    calculation. The scopes are the trust boundary: no table-owner or publisher check (DEC-RESULT-SCOPE).
-    Whole-catalog entries and ``*`` are never read for results. Unset, ``catalog_scopes`` is the list
-    ``connect(catalog_scopes=...)`` gave the query's client, else ``CQL_DATABRICKS_CATALOG_SCOPES``. Writes go only
-    to ``destination``.
+    RUN-CLIENT-RESULT-OWNERSHIP — a result belongs to the identity that computed it: every table is named with its
+    digest, and only tables it owns are reused, in the destination and, for a private run, in the environment's
+    ``results``. Another identity's result is never reused.
     """
-    return _run(query, targets, spark=spark, run=run, destination=destination,
+    return _run(query, targets, spark=spark, run=run, environment=environment,
                 mode=mode, session_id=session_id, purpose=purpose,
                 capacity=capacity, computed_since=computed_since, on_step=on_step, on_plan=on_plan,
-                on_start=on_start, parallelism=parallelism, catalog_scopes=catalog_scopes)
+                on_start=on_start, parallelism=parallelism)
 
 
 def resolve_results(query: CqlQuery | PreparedCalculation, *targets: str, spark=None, run: SqlRunner | None = None,
-                    destination: tuple[str, str] | PrivateDestination,
-                    session_id: str | None = None, computed_since: datetime | None = None,
-                    purpose: Literal["private", "published"] = "published",
-                    catalog_scopes: Iterable[str] | None = None) -> MaterializedResults:
-    """RUN-CLIENT-PUBLISHED — read completed results as the reader, without any writes.
+                    environment: Environment, session_id: str | None = None, computed_since: datetime | None = None,
+                    purpose: Literal["private", "published"] = "private") -> MaterializedResults:
+    """RUN-CLIENT-REQUEST-REOPEN — read the caller's own completed results in ``environment``, without any writes.
 
-    Every metadata and artifact read uses the actual caller's grants. A shared destination must grant write
-    access only to its publishers. Missing results fail; readers never calculate on a miss.
-    ``catalog_scopes`` adds result scopes to read from, as for ``materialize``.
+    Every metadata and artifact read uses the actual caller's grants, and only tables the caller owns are read
+    (`RUN-CLIENT-RESULT-OWNERSHIP`). Missing results fail; readers never calculate on a miss.
     """
-    return _run(query, targets, spark=spark, run=run, destination=destination,
+    return _run(query, targets, spark=spark, run=run, environment=environment,
                 mode="skip_if_computed", session_id=session_id, purpose=purpose, capacity=None,
-                computed_since=computed_since, read_only=True, catalog_scopes=catalog_scopes)
+                computed_since=computed_since, read_only=True)
 
 
 def open_result_set(query: CqlQuery | PreparedCalculation, *targets: str, **options) -> MaterializedResults:
@@ -125,13 +119,13 @@ def open_result_set(query: CqlQuery | PreparedCalculation, *targets: str, **opti
     return resolve_results(query, *targets, **options)
 
 
-def archive_session(session_id: str, *, destination: tuple[str, str] | PrivateDestination,
+def archive_session(session_id: str, *, destination: tuple[str, str],
                     spark=None, run: SqlRunner | None = None) -> None:
     """RUN-CLIENT-PORTABLE-HANDLE — a portable reference is released by discarding it in its owner."""
     raise ValueError("portable handles have no server-side session to archive; discard the client reference")
 
 
-def search_results(*, destination: tuple[str, str] | PrivateDestination, spark=None, run: SqlRunner | None = None,
+def search_results(*, destination: tuple[str, str], spark=None, run: SqlRunner | None = None,
                    fingerprint: str | None = None, completed_after: datetime | None = None,
                    limit: int = 100) -> tuple[Completion, ...]:
     """RUN-CLIENT-RESULT-IDENTITY — list completed results in ``destination``, optionally one ``fingerprint``.
@@ -142,28 +136,41 @@ def search_results(*, destination: tuple[str, str] | PrivateDestination, spark=N
     if (spark is None) == (run is None):
         raise ValueError("supply exactly one of spark or run")
     execute = spark_runner(spark) if spark is not None else run
-    destination, _ = checked_destination(destination, execute)
     if (not isinstance(destination, tuple) or len(destination) != 2
             or any(not isinstance(part, str) or not part.strip() for part in destination)):
         raise ValueError("destination must be an explicit (catalog, schema) tuple")
     return search(execute, destination, fingerprint=fingerprint, computed_since=completed_after, limit=limit)
 
 
-def _result_sources(spark, catalog_scopes, destination: tuple[str, str], query=None) -> tuple[tuple[str, str], ...]:
-    """CLIENT-DISCOVERY-SCOPE, DEC-RESULT-SCOPE — the ``catalog.schema`` scopes results are read from, in order,
-    after the destination. A whole catalog is never a result scope: a table owner can hand a table to anyone."""
-    from cql_databricks.compiler.zeroconfig import session_catalog_scopes
-
-    entries = session_catalog_scopes(spark, catalog_scopes, query=query)
-    if entries is None:
-        return ()
-    return tuple(source for source in dict.fromkeys((scope.catalog, scope.schema) for scope in parse_scopes(entries)
-                                                     if scope.schema is not None) if source != destination)
+def destination_of(environment: Environment, purpose: str) -> tuple[str, str]:
+    """RUN-CLIENT-DRAFT-RESULTS — the schema a run of ``purpose`` writes in ``environment``."""
+    if purpose not in ("private", "published"):
+        raise ValueError("purpose must be private or published")
+    return environment.address(RESULTS if purpose == "published" else DRAFT_RESULTS)
 
 
-def _run(query, targets, *, spark, run, destination,
+def caller(run: SqlRunner) -> str:
+    """RUN-CLIENT-RESULT-OWNERSHIP — the principal ``run`` acts as, which owns what it writes."""
+    rows = run("SELECT current_user() AS principal")
+    if not rows or not rows[0]["principal"]:
+        raise PermissionError("the SQL session reports no current user")
+    return rows[0]["principal"]
+
+
+def _published_only(query) -> None:
+    """RUN-CLIENT-DRAFT-RESULTS — ``results`` takes only a calculation of the environment's own published content."""
+    if not isinstance(query, PreparedCalculation) or not query.published:
+        bound = ("a calculation of CQL text or a folder library" if isinstance(query, PreparedCalculation)
+                 else "a query whose knowledge, terminology or data may come from cells, folders, volumes, DataFrames "
+                      "or custom resolvers")
+        raise PermissionError(f"results holds only published results, and this is {bound}: prepare it with "
+                              "prepare_calculation(library=..., version=...) from the environment's knowledge, or "
+                              "materialize it with purpose='private' (RUN-CLIENT-DRAFT-RESULTS)")
+
+
+def _run(query, targets, *, spark, run, environment,
          mode, session_id, purpose, capacity, computed_since, read_only=False, on_step=None, on_plan=None,
-         on_start=None, parallelism=PARALLEL_DEFINES, catalog_scopes=None):
+         on_start=None, parallelism=PARALLEL_DEFINES):
     if (spark is None) == (run is None):
         raise ValueError("supply exactly one of spark or run")
     if capacity is not None and (type(capacity) is not int or capacity < 1):
@@ -175,11 +182,11 @@ def _run(query, targets, *, spark, run, destination,
         if computed_since > datetime.now(timezone.utc):
             raise ValueError("computed_since cannot be in the future")
     execute = spark_runner(spark) if spark is not None else run
-    destination, private = checked_destination(destination, execute)
-    _destination(destination)
-    sources = _result_sources(spark, catalog_scopes, destination, query)
-    if private is not None and purpose == "published":
-        raise PermissionError("automatic private destinations cannot be used for Job publishing")
+    destination = destination_of(environment, purpose)
+    if purpose == "published" and not read_only:
+        _published_only(query)
+    # RUN-CLIENT-RESULT-OWNERSHIP: a private run also reuses the caller's own published results.
+    sources = (environment.address(RESULTS),) if purpose == "private" else ()
     if mode not in ("skip_if_computed", "recompute"):
         raise ValueError(f"unsupported reuse mode {mode!r}")
     if not targets or any(not isinstance(target, str) or not target.strip() for target in targets):
@@ -205,11 +212,15 @@ def _run(query, targets, *, spark, run, destination,
     if mode == "recompute" and computed_since is None:
         computed_since = datetime.now(timezone.utc)
     try:
+        owner = caller(execute)
         if capacity is not None:
-            check_capacity(execute, destination, {table_name(definition) for definition in planned}, capacity)
-        # CLIENT-RESULT-STORE: the run's results are found and written in one Delta store.
-        store = DeltaResultStore(destination, execute, sources)
-        outcomes = _execute(prepared, tuple(selected.values()), destination=store.destination, run=execute,
+            from ._catalog_completion import writer_digest
+
+            check_capacity(execute, destination, {table_name(definition, writer_digest(owner))
+                                                  for definition in planned}, capacity)
+        # CLIENT-RESULT-RESOLVER: the run's results are found and written in the environment, as their owner.
+        store = DeltaResultResolver(destination, execute, sources, owner=owner)
+        outcomes = _execute(prepared, tuple(selected.values()), destination=store.destination, run=execute, owner=owner,
                             mode=mode, computed_since=computed_since, read_only=read_only, on_step=on_step,
                             on_plan=on_plan, on_start=on_start, sources=store.sources, parallelism=parallelism)
         selection = CatalogSelection.completed(session_id, destination, selected, prepared.definitions, outcomes,

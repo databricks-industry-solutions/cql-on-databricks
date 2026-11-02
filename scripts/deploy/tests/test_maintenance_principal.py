@@ -71,7 +71,7 @@ def test_principal_is_created_once_without_secret_and_granted_on_the_catalog():
     (args, kwargs), _ = workspace.grant_calls
     assert args == ("catalog", "synthetic_shared")
     change, = kwargs["changes"]
-    assert change.principal == first and [p.value for p in change.add] == ["USE_CATALOG", "USE_SCHEMA", "MANAGE"]
+    assert change.principal == first and [p.value for p in change.add] == ["USE_CATALOG"]
     (args, kwargs), _ = workspace.permission_calls
     assert args == ("warehouses", "synthetic-wh")
     acl, = kwargs["access_control_list"]
@@ -123,7 +123,7 @@ def test_the_bundle_deploys_one_daily_job_as_the_maintenance_principal():
     parameters = task["spark_python_task"]["parameters"]
     parsed = job_script.parser().parse_args(parameters)
     assert parsed.retention_days == 7 and parsed.apply and parsed.job_run_as
-    assert parsed.private_catalog == "${var.designer_results_catalog}"
+    assert parsed.environment_catalog == "${var.uc_catalog}"
     assert not any("secret" in part or "compiler" in part for part in parameters)
     wheel, = job["environments"][0]["spec"]["dependencies"]
     assert wheel.endswith("/wheels/cql_databricks-${var.client_wheel_version}-py3-none-any.whl")
@@ -152,11 +152,11 @@ def test_job_entry_point_uses_job_identity_and_reports_exact_deletions(monkeypat
     captured = {}
     def maintain(**kwargs):
         captured.update(kwargs)
-        return MaintenanceReport("synthetic_private", datetime(2026, 1, 1, tzinfo=timezone.utc), (),
-                                 deleted=(("synthetic_private", "synthetic_schema", "synthetic_table"),),
+        return MaintenanceReport("synthetic_env", datetime(2026, 1, 1, tzinfo=timezone.utc), (),
+                                 deleted=(("synthetic_env", "draft_results", "synthetic_table"),),
                                  dry_run=False)
-    monkeypatch.setattr(job_script, "maintain_private_results", maintain)
-    command = ["--private-catalog", "synthetic_private", "--warehouse", "synthetic-warehouse", "--apply",
+    monkeypatch.setattr(job_script, "maintain_draft_results", maintain)
+    command = ["--environment-catalog", "synthetic_env", "--warehouse", "synthetic-warehouse", "--apply",
                "--job-run-as"]
     assert job_script.main(command) == 0
     assert captured["run"] is runner and captured["dry_run"] is False

@@ -9,12 +9,12 @@ import pytest
 from cql_databricks.result import durable
 from cql_databricks.result._catalog_reader import CatalogReader
 from cql_databricks.result._catalog_runtime import CurrentArtifact
-from test_catalog_runtime import DESTINATION, CatalogRunner
+from test_catalog_runtime import DESTINATION, DRAFT, ENVIRONMENT, CatalogRunner
 from test_durable_plan import plan
 
 
 def execute(query=None, **kwargs):
-    settings = dict(run=CatalogRunner(), destination=DESTINATION)
+    settings = dict(run=CatalogRunner(), environment=ENVIRONMENT)
     targets = kwargs.pop("targets", ("Output",))
     return durable.materialize(query or SimpleNamespace(compile_pipeline=lambda **opts: plan()),
                                *targets, **(settings | kwargs))
@@ -29,7 +29,7 @@ def test_named_results_and_new_call_share_the_serial_runtime():
     assert first.results["Output"].decision == "computed"
     assert second.results["Output"].decision == "reused"
     assert len(run.writes) == 2
-    assert first.selection.destination == second.selection.destination == DESTINATION
+    assert first.selection.destination == second.selection.destination == DRAFT
     with pytest.raises(TypeError):
         first.results["other"] = first.results["Output"]
 
@@ -38,7 +38,7 @@ def test_named_results_and_new_call_share_the_serial_runtime():
     ({"targets": ()}, "explicit definition targets"),
     ({"targets": ("Output", "Output")}, "duplicate"),
     ({"targets": ("missing",)}, "exactly one"),
-    ({"destination": None}, "explicit"),
+    ({"purpose": "shared"}, "purpose must be private or published"),
     ({"mode": "changed_only"}, "unsupported reuse mode"),
     ({"capacity": 0}, "capacity"), ({"session_id": ""}, "session_id"),
 ])
@@ -101,7 +101,7 @@ def test_published_catalog_errors_never_write(condition):
         raise SqlFailure(condition)
     with pytest.raises(SqlFailure, match=condition):
         durable.resolve_results(SimpleNamespace(compile_pipeline=lambda **opts: plan()), "Output",
-            run=run, destination=DESTINATION)
+            run=run, environment=ENVIRONMENT)
     assert len(calls) == 1 and calls[0].startswith("SELECT")
 
 

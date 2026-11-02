@@ -1,11 +1,12 @@
 """DOC-OPEN-SAVE, DOC-AUTO-SAVE — ``POST /api/libraries/save``: write a library back to the workspace folder it was
 opened from, as the signed-in user; and ``POST /api/libraries/new``: create one (New, Save As) in a workspace folder.
-A tagged store is read-only in the Designer (`DOC-EDITABLE-IN-SCOPE`): both refuse a ``store:`` location. A store
-changes only by ``POST /api/libraries/publish`` (`DOC-PUBLISH`), the client's publish run as the signed-in user
-(`CLIENT-PUBLISH`): 200 with the summary; 400 with it when nothing was written; 502 with it when a write failed
+An environment's knowledge is read-only in the Designer (`DOC-EDITABLE-IN-SCOPE`): both refuse a ``store:`` location.
+It changes only by ``POST /api/libraries/publish`` (`DOC-PUBLISH`), the client's publish into the environment's
+``knowledge_store``, run as the signed-in user (`CLIENT-PUBLISH`): 200 with the summary; 400 with it when nothing was written; 502 with it when a write failed
 after others.
 
-The CQL is compiled first, with its includes resolved at the same location (RUN-ADDRESS-LOCATION), and written either
+The CQL is compiled first, with its includes resolved at the same location and then in the environment the Designer
+has picked (RUN-ADDRESS-LOCATION, `DOC-ENVIRONMENT-PICKER`), and written either
 way: CQL that compiles carries the ELM compiled from it, CQL that does not carries no ELM, so no ELM written
 disagrees with the CQL beside it.
 
@@ -30,6 +31,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from cql_databricks.compiler.environment import KNOWLEDGE, KNOWLEDGE_STORE, EnvironmentLookupError, EnvironmentResolver
 from cql_databricks.compiler.folder_content import folder_library_resource, folder_measure
 from cql_databricks.compiler.libraries import with_identity
 from cql_databricks.compiler.library_publish import PublishFailed, PublishRefused, publish_folder_library
@@ -41,7 +43,7 @@ from cql_databricks_common.compiler import CompilerClient, CompilerError
 from cql_databricks_common.warehouse import user_session
 from cql_databricks_common.workspace import user_client
 
-from ..data_bindings import files_for
+from ..data_bindings import EnvironmentContents, files_for
 from ..save import (NewLibrary, SaveConflict, SaveRefused, SaveRequest, StaleCopies, WorkspaceFolderWriter,
                     check_identity, create_in_folder, measure_copy, save_to_folder,
                     starting_cql, starting_measure)
@@ -58,15 +60,18 @@ class SaveBody(BaseModel):
     base_sha256: str | None = Field(default=None, alias="baseSha256")
     measure: dict | None = None
     delete_stale: list[str] = Field(default_factory=list, alias="deleteStale")
+    #: DOC-ENVIRONMENT-PICKER — the environment whose knowledge resolves includes; None is the default.
+    environment: str | None = None
 
 
 class PublishBody(BaseModel):
-    """DOC-PUBLISH — the folder library to publish, and the tagged store (``catalog.schema``) to publish it into."""
+    """DOC-PUBLISH — the folder library to publish, and the environment whose knowledge store it is published into;
+    None is the default."""
     model_config = {"extra": "forbid"}
     location: str
     name: str
     version: str
-    store: str
+    environment: str | None = None
 
 
 class CopyOf(BaseModel):
@@ -86,15 +91,18 @@ class NewBody(BaseModel):
     kind: Literal["measure", "library"] = "measure"
     cql: str | None = None
     copy_of: CopyOf | None = Field(default=None, alias="copyOf")
+    #: DOC-ENVIRONMENT-PICKER — the environment whose knowledge resolves includes; None is the default.
+    environment: str | None = None
 
 
-def router(*, compiler: CompilerClient, content: ContentResolver, warehouse: Callable[[], str]) -> APIRouter:
+def router(*, compiler: CompilerClient, contents: EnvironmentContents, warehouse: Callable[[], str]) -> APIRouter:
     router = APIRouter()
 
-    def compiled(cql: str, at: Location, location: str, name: str, version: str) -> tuple[str | None, list[str]]:
-        """The ELM of ``cql``, which must declare ``name`` ``version``, with includes resolved at ``at``, and its
-        problems. The ELM is None when there are any."""
-        resolution = resolve(content, cql=cql, location=at, files=files_for(location))
+    def compiled(cql: str, at: Location, location: str, name: str, version: str,
+                 environment: str | None) -> tuple[str | None, list[str]]:
+        """The ELM of ``cql``, which must declare ``name`` ``version``, with includes resolved at ``at`` and then in
+        ``environment``'s knowledge, and its problems. The ELM is None when there are any."""
+        resolution = resolve(contents.get(environment), cql=cql, location=at, files=files_for(location))
         if (resolution.name, resolution.version) != (name, version):
             raise SaveRefused(f"the CQL declares {resolution.name or '(no name)'} "
                               f"{resolution.version or '(no version)'}, not {name} {version}; "
@@ -121,7 +129,7 @@ def router(*, compiler: CompilerClient, content: ContentResolver, warehouse: Cal
     def save_library(body: SaveBody) -> Any:
         def write() -> Any:
             at = _folder(body.location)
-            elm, problems = compiled(body.cql, at, body.location, body.name, body.version)
+            elm, problems = compiled(body.cql, at, body.location, body.name, body.version, body.environment)
             request = SaveRequest(name=body.name, version=body.version, cql=body.cql, base_sha256=body.base_sha256,
                                   measure=body.measure, delete_stale=body.delete_stale)
             saved = save_to_folder(request, at.path, files=files_for(body.location),
@@ -146,11 +154,11 @@ def router(*, compiler: CompilerClient, content: ContentResolver, warehouse: Cal
                 if body.cql is None:
                     raise SaveRefused("Save As sends the CQL it copies")
                 source = body.copy_of
-                original, derived_from = _original(content, source)
+                original, derived_from = _original(contents.get(body.environment), source)
                 new = NewLibrary(body.name, body.version, with_identity(body.cql, body.name, body.version),
                                  measure_copy(original, body.name, body.version, base=base) if original else None,
                                  derived_from=derived_from)
-            elm, problems = compiled(new.cql, at, body.location, new.name, new.version)
+            elm, problems = compiled(new.cql, at, body.location, new.name, new.version, body.environment)
             created = create_in_folder(new, at.path, files=files_for(body.location),
                                        writer=WorkspaceFolderWriter(user_client()), elm=elm, base=base)
             return {**created, "compiled": elm is not None, "diagnostics": problems}
@@ -158,12 +166,16 @@ def router(*, compiler: CompilerClient, content: ContentResolver, warehouse: Cal
 
     @router.post("/api/libraries/publish")
     def publish(body: PublishBody) -> Any:
-        """DOC-PUBLISH — publish the folder library into a tagged store, as the signed-in user, through the client."""
+        """DOC-PUBLISH, BIND-PUBLISHED-VIEW — publish the folder library into the environment's ``knowledge_store``, as
+        the signed-in user, through the client, which reads it back through the environment's ``knowledge`` views."""
         try:
+            content = contents.get(body.environment)
             at = _folder(body.location)
-            catalog, _, schema = body.store.partition(".")
+            run = user_session(warehouse())
+            environment = EnvironmentResolver(run).resolve(body.environment)
             summary = publish_folder_library(content, files_for(body.location), at.path, body.name, body.version,
-                                             store=(catalog, schema), run=user_session(warehouse()),
+                                             store=environment.address(KNOWLEDGE_STORE),
+                                             view=environment.address(KNOWLEDGE), run=run,
                                              translate=compiler.translate, base=config.canonical_base())
         except PublishRefused as e:
             return JSONResponse(status_code=400, content={
@@ -171,11 +183,11 @@ def router(*, compiler: CompilerClient, content: ContentResolver, warehouse: Cal
         except PublishFailed as e:
             content.reload()   # the libraries before the failure were written
             return JSONResponse(status_code=502, content={"error": str(e), "summary": e.summary.to_dict()})
-        except (SaveRefused, ResolutionError, ValueError) as e:
+        except (SaveRefused, ResolutionError, ValueError, EnvironmentLookupError) as e:
             return JSONResponse(status_code=400, content={"error": str(e), "summary": None})
         except CompilerError as e:
             return JSONResponse(status_code=502, content={"error": str(e), "summary": None})
-        # The corpus is held in memory; what reads tagged knowledge next must see what was published.
+        # The corpus is held in memory; what reads the environment's knowledge next must see what was published.
         content.reload()
         return summary.to_dict()
 
@@ -183,11 +195,12 @@ def router(*, compiler: CompilerClient, content: ContentResolver, warehouse: Cal
 
 
 def _folder(location: str) -> Location:
-    """DOC-EDITABLE-IN-SCOPE — the workspace folder at ``location``. A tagged store is published and read-only here."""
+    """DOC-EDITABLE-IN-SCOPE — the workspace folder at ``location``. An environment's knowledge is published and
+    read-only here."""
     at = Location.parse(location)
     if at.kind != "folder":
-        raise SaveRefused(f"{at.path} is a tagged store, which the Designer does not write; save a copy to a "
-                          "workspace folder")
+        raise SaveRefused(f"{at.path} is an environment's published knowledge, which the Designer does not write; save "
+                          "a copy to a workspace folder")
     return at
 
 

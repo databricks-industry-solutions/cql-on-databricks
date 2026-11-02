@@ -15,7 +15,7 @@ CONTEXT = run_log.RunContext(user="synthetic-user", warehouse_id="wh", app_versi
 
 def recorder() -> run_log.RunRecorder:
     ticks = iter(T0 + timedelta(seconds=n) for n in range(100))
-    return run_log.RunRecorder(context=CONTEXT, data_source="synthetic", period=("2026-01-01", "2026-12-31"),
+    return run_log.RunRecorder(context=CONTEXT, environment="synthetic", period=("2026-01-01", "2026-12-31"),
                                trigger="refresh", mode="recompute", clock=lambda: next(ticks))
 
 

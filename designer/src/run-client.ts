@@ -3,7 +3,7 @@
 // RUN-CLIENT-RESULT-SETS — the backend compiles and materializes through the durable client under
 // caller SQL credentials. It returns one complete selection and its counts, never partial outputs.
 
-import type { DataSourceRecord, PreComputedResults, ResultSetAddress, RunOutcome, RunResult,
+import type { EnvironmentRecord, PreComputedResults, ResultSetAddress, RunOutcome, RunResult,
   RunStage, WarehouseList } from "./wire.ts";
 // PERF-CLIENT-REVISION — reads go through the data cache; WRITES go through `mutate`, which reads the
 // revision off the response so a successful write invalidates immediately rather than at the next
@@ -44,15 +44,15 @@ export interface RunOptions {
   computedSince?: string;
   /** Restrict to specific defines; omit to run every define in the library. */
   defines?: string[];
-  /** RUN-CLIENT-IDENTITY — the selected tagged source's actual bindings form the calculation inputs. */
-  dataSourceId?: string;
+  /** DOC-ENVIRONMENT-PICKER — the environment the calculation runs in; omitted means the default. */
+  environment?: string;
   /** PIPE-MEASUREMENT-PERIOD: the measurement period start date (YYYY-MM-DD). */
   periodStart?: string;
   /** PIPE-MEASUREMENT-PERIOD: the measurement period end date (YYYY-MM-DD). */
   periodEnd?: string;
   /** APP-COMPUTE-TARGET — the SQL warehouse to run on; omitted means the deployment's. */
   warehouseId?: string;
-  /** RUN-ADDRESS-LOCATION — where the library's includes resolve first; omitted means all of tagged knowledge. */
+  /** RUN-ADDRESS-LOCATION — where the library's includes resolve first; omitted means the environment's knowledge. */
   location?: string | null;
 }
 
@@ -77,7 +77,7 @@ async function refreshIntent(cql: string, opts: RunOptions) {
   let record: string | undefined;
   let cutoff = opts.computedSince;
   if (pending || opts.recompute || cutoff) {
-    const request = JSON.stringify({ cql, defines: opts.defines, dataSourceId: opts.dataSourceId,
+    const request = JSON.stringify({ cql, defines: opts.defines, environment: opts.environment,
       periodStart: opts.periodStart, periodEnd: opts.periodEnd, location: opts.location ?? null });
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(request));
     const hash = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -97,17 +97,14 @@ async function refreshIntent(cql: string, opts: RunOptions) {
   };
 }
 
-/** DATA-SOURCE-UC-TAG — the Data Sources the Compute dropdown offers: the UC schemas tagged
- *  `cql_databricks_data_source`, each with the `retrieve_<Type>` UDTFs the compiler found in it
- *  (/api/data-sources). API-driven (APP-NO-UI-MOCK); degrades to [] on any failure so the
- *  page still renders. */
-export async function fetchDataSources(): Promise<DataSourceRecord[]> {
-  try {
-    return await cachedGet("/api/data-sources", async (res) =>
-      res.ok ? ((await res.json()) as DataSourceRecord[]) : []);
-  } catch {
-    return [];
-  }
+/** DOC-ENVIRONMENT-PICKER — the environments the compute pill offers: the catalogs tagged
+ *  `cql_databricks_environment` the signed-in user can see (/api/environments). Rejects with the server's
+ *  message: an empty list would hide why the picker is empty. */
+export async function fetchEnvironments(): Promise<EnvironmentRecord[]> {
+  return await cachedGet("/api/environments", async (res) => {
+    if (!res.ok) throw new Error(await errorText(res, "list environments"));
+    return (await res.json()) as EnvironmentRecord[];
+  });
 }
 
 /** SVC-RESOURCE-SCHEMA — the FHIR resource types the engine actually models, so the Data Sources editor offers
@@ -132,7 +129,7 @@ export async function fetchModeledTypes(): Promise<string[]> {
 /** PIPE-PRE-COMPUTED — fetch pre-computed results for one EVALUATION of a library.
  *
  *  THE MEASUREMENT PERIOD IS PART OF THE ADDRESS, not an optional refinement. A results schema is keyed
- *  by `(library, evaluation)` (`PIPE-PER-LIBRARY-SCHEMA`) and the evaluation is the data source plus the
+ *  by `(library, evaluation)` and the evaluation is the environment plus the
  *  period, so the same measure over two years has two result sets. Sending the library and version alone
  *  named a schema no pipeline had ever written to, and this route returned an empty set every time.
  *
@@ -140,13 +137,13 @@ export async function fetchModeledTypes(): Promise<string[]> {
  *  (`funnelFromCounts()`), which is what keeps the document's reported rate and the Analyze lens from
  *  printing two different scores. If nothing has been computed yet, the result set is empty (no error). */
 export async function fetchResults(
-  dataSource: string, library: string, version: string,
+  environment: string, library: string, version: string,
   periodStart?: string, periodEnd?: string, draft?: string, resultSet?: ResultSetAddress,
 ): Promise<PreComputedResults | null> {
   try {
     // RUN-ADDRESS-BY-LIBRARY — a library version's results are its own; a draft's are read by the key its
     // run returned, which is all the Designer knows of where they are.
-    return await cachedPost("/api/results", { dataSourceId: dataSource, library, version,
+    return await cachedPost("/api/results", { environment, library, version,
       periodStart, periodEnd, draft, resultSet }, async (res) =>
       res.ok ? ((await res.json()) as PreComputedResults) : null);
   } catch {
@@ -176,7 +173,7 @@ export async function reopenResults(cql: string, opts: RunOptions): Promise<Reop
   const response = await fetch("/api/reopen", {
     method: "POST",
     headers: { "content-type": "application/json", "x-designer-instance": DESIGNER_INSTANCE_ID },
-    body: JSON.stringify({ cql, dataSourceId: opts.dataSourceId, periodStart: opts.periodStart,
+    body: JSON.stringify({ cql, environment: opts.environment, periodStart: opts.periodStart,
       periodEnd: opts.periodEnd, warehouseId: opts.warehouseId, location: opts.location ?? null }),
   });
   if (!response.ok) throw new Error(await errorText(response, "open results"));
@@ -228,7 +225,7 @@ export async function runMeasure(cql: string, opts: RunCallOptions): Promise<Run
     computed_since: intent.cutoff,
     session_id: DESIGNER_INSTANCE_ID,
     defines: opts.defines,
-    data_source_id: opts.dataSourceId,
+    environment: opts.environment,
     overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
     warehouse_id: opts.warehouseId,
     location: opts.location ?? null,
@@ -281,7 +278,7 @@ export async function runMeasureStreaming(
     computed_since: intent.cutoff,
     session_id: DESIGNER_INSTANCE_ID,
     defines: opts.defines,
-    data_source_id: opts.dataSourceId,
+    environment: opts.environment,
     overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
     warehouse_id: opts.warehouseId,
     trigger: opts.trigger,

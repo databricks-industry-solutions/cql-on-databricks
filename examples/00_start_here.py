@@ -71,8 +71,8 @@
 # MAGIC
 # MAGIC - The measure `include`s a helper library, and the client resolves that closure out of the folder —
 # MAGIC   the setup a real measure needs, since a published measure is rarely one file
-# MAGIC - The one mount contract: every `[Resource]` retrieve lowers to a `retrieve_<Type>` table-valued
-# MAGIC   function, which you bind to your own governed tables
+# MAGIC - The one data contract: every `[Resource]` retrieve reads the environment's view of that type, which
+# MAGIC   selects your own governed tables
 # MAGIC - The per-patient results, then a SQL count — one join and one SQL cell away
 # MAGIC - A `%%cql` follow-up question that `include`s the *same* library the measure uses, so an ad-hoc
 # MAGIC   answer cannot quietly disagree with the report
@@ -91,7 +91,7 @@
 # MAGIC - The neutral define DAG: dependency edges, the cost-chosen materialization boundaries, and the
 # MAGIC   compiler version pin
 # MAGIC - ELM — HL7's standard interchange form for CQL logic
-# MAGIC - The measure's own Spark physical plan, read over stubbed mounts — proof that the whole path is
+# MAGIC - The measure's own Spark physical plan, read over typed stub DataFrames — proof that the whole path is
 # MAGIC   ordinary Spark underneath, and that a plan needs the data contract rather than the data
 # MAGIC
 # MAGIC <a href="$./04_compilation_and_inspection">Open the notebook →</a>
@@ -115,7 +115,7 @@
 # MAGIC ---
 # MAGIC
 # MAGIC ### 06 · Clinical Research: Predicting Blood Pressure Control
-# MAGIC *One CQL cell · SQL · Python · tagged data source, nothing mounted*
+# MAGIC *One CQL cell · SQL · Python · the default environment, nothing loaded*
 # MAGIC
 # MAGIC A research question across three languages: do age, gender, palliative care and dialysis predict whether
 # MAGIC a patient with hypertension has controlled blood pressure?
@@ -126,3 +126,18 @@
 # MAGIC - A Python cell fits a logistic regression, scores it on held-out patients and bootstraps confidence intervals
 # MAGIC
 # MAGIC <a href="$./06_clinical_research">Open the notebook →</a>
+# MAGIC
+# MAGIC ---
+# MAGIC
+# MAGIC ### 07 · Test files in a Volume
+# MAGIC *FHIR NDJSON and value sets in a Volume · nothing loaded or published*
+# MAGIC
+# MAGIC Run CQL over a folder of test files instead of the environment's data: the way a measure is checked against
+# MAGIC known cases before its results are trusted.
+# MAGIC
+# MAGIC - `use_resolvers` points this notebook's `cql()` calls and `%%cql` cells at the folder, for data and value sets
+# MAGIC - FHIR NDJSON, one file per type, read with `read_files` at each run
+# MAGIC - FHIR `ValueSet` JSON with its expansion
+# MAGIC - A published measure from the environment's knowledge, run over the test patients
+# MAGIC
+# MAGIC <a href="$./07_test_files_in_a_volume">Open the notebook →</a>

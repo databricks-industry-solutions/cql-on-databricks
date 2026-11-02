@@ -1,6 +1,7 @@
 package com.databricks.cql.it
 
-import com.databricks.cql.service.{CompileRequest, CompileService, DataSourceRoutines, DatasetRecipe, PipelinePlan}
+import com.databricks.cql.env.{DataBinding, RetrieveRelation, TerminologyBinding}
+import com.databricks.cql.service.{CompileRequest, CompileService, DatasetRecipe, PipelinePlan}
 import org.junit.runner.RunWith
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.junit.JUnitRunner
@@ -32,13 +33,12 @@ final class IncludedReuseSpec extends AnyFunSuite {
         Seq("define \"Every Population\": " + reexports.map { case (own, _) => s"\"$own\"" }.mkString(" and ")))
         .mkString("\n")
 
-    val dataSource = DataSourceRoutines("synthetic", "source", md.resourceTypes.map(t => "retrieve_" + t.toLowerCase))
-
     def compile(root: String, closure: Seq[String]): PipelinePlan =
       CompileService.compilePipeline(CompileRequest(cql = Some(root), depCql = closure, durable = true,
-        measurementPeriod = Some("2026-01-01" -> "2026-12-31"), dataSource = Some(dataSource),
-        terminologyTable = Some("synthetic.runtime.valuesets"), udfSchema = Some("synthetic.runtime")),
-        hasTerminology = true)
+        measurementPeriod = Some("2026-01-01" -> "2026-12-31"),
+        data = Some(DataBinding(Some(DataBinding.Rule("synthetic.data", Some("synthetic.data"))), Map.empty)),
+        terminology = Some(TerminologyBinding(Some(Seq(RetrieveRelation("synthetic.terminology.valueset",
+          Some("synthetic.terminology")))), Map.empty)), udfSchema = Some("synthetic.runtime")))
 
     lazy val alone = compile(measure, deps)
     lazy val included = compile(wrapper, measure +: deps)

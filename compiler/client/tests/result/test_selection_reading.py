@@ -19,7 +19,7 @@ from cql_databricks.result.insights.reads import read_metrics
 from cql_databricks.result.results import PinnedRelation, count_relations, relation_columns, result_relation
 from cql_databricks.result.selection_reading import (SelectedOutput, SelectionClosure, open_selection,
                                                         selection_address, selection_counts)
-from test_catalog_runtime import DESTINATION
+from test_catalog_runtime import DESTINATION, DRAFT, ENVIRONMENT, CatalogRunner
 from test_durable_plan import plan
 
 
@@ -30,8 +30,8 @@ def selected():
     runner = CatalogRunner()
     runner.columns = [("__subject_id", "string"), ("__val", "boolean")]
     compiled = plan()
-    query = SimpleNamespace(compile_pipeline=lambda **kwargs: compiled, request={"data_source": "synthetic-all"})
-    settings = dict(run=runner, destination=DESTINATION, session_id="session")
+    query = SimpleNamespace(compile_pipeline=lambda **kwargs: compiled, request={"environment": "synthetic-all"})
+    settings = dict(run=runner, environment=ENVIRONMENT, session_id="session")
     results = durable.materialize(query, "Base", "Output", **settings)
     return SimpleNamespace(results=results, backend=results._backend, compiled=compiled, runner=runner,
                            query=query, settings=settings)
@@ -139,16 +139,16 @@ def test_metrics_profile_and_flow_share_the_pinned_relation_path(selected):
     reader = Reader(selected.results)
     metrics = measure_metrics(**options(selected), defines=[("Synthetic", "Output", "Boolean")],
                               cohorts={("Synthetic", "Output"): Cohort()},
-                              patient_function="synthetic_source.retrieve_Patient", execute=reader)
+                              patient_relation="synthetic.data.patient", execute=reader)
     assert metrics.defines[0].subjects == 0
     profile = define_profile(**options(selected), define="Output", define_library="Synthetic",
-                             patient_function=None, execute=reader)
+                             patient_relation=None, execute=reader)
     assert profile.values.subjects == 0
     cohort_flow(**options(selected), gates=[GateRequest(stage="Output", stage_library="Synthetic", base="Base",
                                                         base_library="Synthetic", polarity="all",
                                                         criteria=[("Synthetic", "Output")])],
-                patient_function=None, execute=reader)
-    result_queries = [statement for statement in reader.statements if re.search(r"_[0-9a-f]{16}`", statement)]
+                patient_relation=None, execute=reader)
+    result_queries = [statement for statement in reader.statements if re.search(r"_[0-9a-f]{16}_[0-9a-f]{8}`", statement)]
     assert len(result_queries) >= 5
     assert all("VERSION AS OF" not in statement for statement in result_queries)
 

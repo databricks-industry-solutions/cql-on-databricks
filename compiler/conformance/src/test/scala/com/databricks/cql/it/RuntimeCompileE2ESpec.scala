@@ -1,10 +1,8 @@
 package com.databricks.cql.it
 
-import com.databricks.cql.env.{Config, Context}
-import com.databricks.cql.passes.{Optimize, Pipeline}
+import com.databricks.cql.env.Context
 import com.databricks.cql.retrieve.{DataProvider, TerminologyProvider}
 import com.databricks.cql.service.{CompileService, OssCompileHost}
-import com.databricks.cql.transpiler.lower.SqlEvalEnv
 import org.junit.runner.RunWith
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.junit.JUnitRunner
@@ -21,8 +19,7 @@ import java.io.File
   *   2. Front that same [[CompileService]] with the default [[OssCompileHost]] over HTTP (in-process,
   *      as [[CompileHostSpec]] does).
   *   3. Run the Python `client` end-to-end driver as a SEPARATE process on the SQL SUBSTRATE
-  *      (the deploy path, PIPE-RUNTIME-COMPILE/EXEC-SQL-BACKEND): mount the runtime contract
-  *      (`retrieve_<Type>`/`valuesets`, from [[SqlDifferential.mountsSqlFor]]), then `load_library(elm)` →
+  *      (the deploy path, PIPE-RUNTIME-COMPILE/EXEC-SQL-BACKEND): `load_library(elm)` →
   *      `cql(target, format="sql")` through a `RemoteProvider` (HTTP `/compile-sql`) → run the compiled SQL
   *      script via `spark.sql` in ITS OWN session on the SAME Connect server → the result printed as JSON.
   *   4. Assert the client's per-(subject, define) result EQUALS the truth.
@@ -30,7 +27,10 @@ import java.io.File
   * This proves the client + HTTP transport + the SQL runtime-compile path are faithful — the SAME emitter
   * the primary conformance gate ([[SqlDifferentialSpec]]) validates, now driven end-to-end through the
   * client (test-what-you-ship). Lowering CORRECTNESS itself is gated elsewhere ([[SqlDifferentialSpec]]),
-  * so any divergence here is a client/transport/mount fault — the exact surface this gate exists to catch.
+  * so any divergence here is a client/transport fault — the exact surface this gate exists to catch.
+  *
+  * Data-free only: a FHIR case needs the driver to bind its retrieves (`BIND-CALL-SITE`) to relations the
+  * driver's own session can read, which it does not do yet. [[SqlDifferentialSpec]] binds every FHIR case.
   *
   * Skips cleanly (never fails) unless BOTH a Connect server is reachable AND `-Dcqldatabricks.pyClient=<python>`
   * names a Python with pyspark + the `cql_databricks` package importable, mirroring the
@@ -53,15 +53,6 @@ final class RuntimeCompileE2ESpec extends AnyFunSuite {
     runCase("Arithmetic", Context.Unfiltered, data = None, terminology = None)
   }
 
-  /** A FHIR Patient fixture: the compiler needs the sample-data provider to build the retrieve scan. No
-    * materializer → the retrieve inlines a plain `spark.read.json(path)`, so the client's fresh session
-    * re-executes it against the same files (no cross-session temp view). */
-  test("FhirRetrieve: runtime-compiled cql() over a FHIR retrieve self-diffs clean (CONF-GATE-SELFDIFF)") {
-    val spark = SparkConnect.session()
-    runCase("FhirRetrieve", Context.Patient,
-      data = Some(new SparkFhirData(spark, Paths.dataDir.getAbsolutePath)), terminology = None)
-  }
-
   private def runCase(fixture: String, context: Context,
                       data: Option[DataProvider], terminology: Option[TerminologyProvider]): Unit = {
     val py = pyClient.getOrElse(
@@ -70,31 +61,13 @@ final class RuntimeCompileE2ESpec extends AnyFunSuite {
 
     val spark   = SparkConnect.session() // a live server, or a clean skip
     val elmFile = Paths.elm(fixture)
-    val elm     = Paths.read(elmFile)
     val c       = Differential.Case(fixture, context, data, terminology)
 
     // (1) TRUTH — the JVM SQL execution the client (compiling+running the SAME SQL via the service in its
     // own session) must reproduce. Results are back-end/config-agnostic (grain-first + materialization are
     // result-preserving), so this oracle matches the client's compile regardless of config knobs.
-    val config    = Config.resolve(Map.empty)
-    val optimized = Optimize.run(Pipeline().normalize(elm), config)
     val truth: Map[String, Map[String, ujson.Value]] = SqlDifferential.engineResults(spark, c)
     val targets   = truth.headOption.map(_._2.keys.toSeq).getOrElse(Nil)
-
-    // The runtime contract for the SQL substrate (PIPE-RUNTIME-COMPILE/EXEC-SQL-BACKEND): the
-    // retrieve_<Type>/valuesets mounts the compiled script references, as a self-contained SQL script the
-    // client mounts in ITS OWN session before running the compiled script. A scalar/Unfiltered fixture
-    // mounts nothing (empty script → None).
-    val sqlEnv    = SqlEvalEnv(context, config, terminology = terminology.isDefined)
-    val mountsSql = SqlDifferential.mountsSqlFor(c, optimized, sqlEnv)
-    val mountsFile =
-      if (mountsSql.trim.isEmpty) None
-      else {
-        val f = File.createTempFile(s"e2e-mounts-$fixture-", ".sql")
-        f.deleteOnExit()
-        java.nio.file.Files.write(f.toPath, mountsSql.getBytes(java.nio.charset.StandardCharsets.UTF_8))
-        Some(f)
-      }
 
     // (2) The SAME service, fronted by the local host over HTTP (in-process).
     val host = new OssCompileHost(new CompileService(terminology)).start()
@@ -102,7 +75,7 @@ final class RuntimeCompileE2ESpec extends AnyFunSuite {
       // (3) Run the client E2E driver as a separate process (its own Connect session) on the SQL substrate
       // (test-what-you-ship): mount the runtime contract, then compile+execute each define via its own
       // cql("define", format="sql") call — the faithful deploy-path client usage.
-      val client = runClient(py, host.endpoint, SparkConnect.remote, elmFile, context, targets, mountsFile)
+      val client = runClient(py, host.endpoint, SparkConnect.remote, elmFile, context, targets)
 
       // (4) Self-diff: identical subjects, identical defines, identical values.
       assert(client.obj.keySet == truth.keySet,
@@ -120,19 +93,17 @@ final class RuntimeCompileE2ESpec extends AnyFunSuite {
   }
 
   /** Invoke `scripts/e2e_run.py` on the SQL substrate (one `cql("define", format="sql")` per define in
-    * `targets`, after mounting `mountsFile`) and parse its stdout JSON as `{subject -> {define -> value}}`.
+    * `targets`) and parse its stdout JSON as `{subject -> {define -> value}}`.
     * Fails loudly with the captured stderr on a non-zero exit. */
   private def runClient(python: String, endpoint: String, remote: String,
-                        elmFile: File, context: Context, targets: Seq[String],
-                        mountsFile: Option[File]): ujson.Value = {
+                        elmFile: File, context: Context, targets: Seq[String]): ujson.Value = {
     val args = Seq(
       python, driver.getAbsolutePath,
       "--endpoint", endpoint,
       "--remote", remote,
       "--elm", elmFile.getAbsolutePath,
       "--context", context.name,
-      "--targets", targets.mkString(",")) ++
-      mountsFile.toSeq.flatMap(f => Seq("--mounts", f.getAbsolutePath))
+      "--targets", targets.mkString(","))
     val pb = new ProcessBuilder(args: _*)
     pb.directory(clientDir)                       // so `PYTHONPATH=.` finds the cql_databricks package
     pb.environment().put("PYTHONPATH", ".")

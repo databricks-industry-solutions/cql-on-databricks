@@ -1,47 +1,30 @@
-"""DATA-SYNTH-LARGE, SYNTH-SEED-OUT — land synthesized cohorts as the Synthetic Population Large data source.
+"""DATA-SYNTH-LARGE, SYNTH-SEED-OUT — land synthesized cohorts as the Synthetic Population Large environment.
 
-The I/O half of the Patient Data Synthesizer (generation is pure and offline; only this
-step talks to a workspace). It lives in ``scripts/``, not in the synthesizer, because binding a
-population as a data source is the same step a customer runs on their own data, and it is built
-from the shipped sources' seed contract (``DEPLOY-SHIPPED-SOURCES``) and the compiler's mount contract: content writes populations
-and depends on no other feature (``DEC-CONTENT-FEATURE``), so the step that needs those features
-cannot live in content.
+The I/O half of the Patient Data Synthesizer (generation is pure and offline; only this step talks to a workspace).
+It lives in ``scripts/``, not in the synthesizer, because landing a population is the same step a customer runs on
+their own data, and it is built from the shipped sources' lander (``DEPLOY-SHIPPED-SOURCES``).
 
     python loader/scripts/synthetic-population/load.py --ndjson-dir <generate --out dir> --cohort <measure> \
-        [--catalog <catalog>] [--profile <profile>]
+        --catalog <its own catalog> --users-group <group> --designer-app <app> [--profile <profile>]
 
-    python loader/scripts/synthetic-population/load.py --functions-only [--catalog …] [--profile …]
+The large population is an environment of its own, in its own catalog, never the default (``DATA-SYNTH-LARGE``,
+``CLIENT-ENVIRONMENT``): this builds it there (``shipped_sources.environment.build``) with the example measures and
+their value sets in its stores, so the measures run over it, and refuses the deployment's ``uc_catalog``, which is the
+default environment's. Run it with the repository venv, which has ``shipped_sources`` installed. It uploads the
+emitted ``<Type>.ndjson`` bulk-data files to a UC Volume in the environment's ``data_store``, under
+``cohorts/<label>/``, gzipped as ``<Type>.ndjson.gz`` (the synthetic NDJSON shrinks about 38 times, so the upload is
+no longer the slow step), and lands them on the contract ``(__subject_id, __resource)`` (``DATA-CONTRACT``).
 
-``--functions-only`` lands nothing: it re-creates the retrieve functions over the mount tables already
-landed, and creates the ``change_log`` table if it is missing, for when the layout contract moves
-(``DATA-CHANGE-LOG-PERIODS`` added the ``change_log``) and the population itself has not. It also drops the
-``retrieve_<Type>_ids`` twins an earlier load created (``BIND-RETRIEVE-SUBJECT``, retired).
+The population is CUMULATIVE across measures: every load rebuilds each store table from the union of ALL cohort
+directories in the volume, so landing one measure's cohort beside another's yields one population holding both. The
+volume is the source of truth for what is in the population; re-landing a cohort label overwrites exactly that
+cohort's files and nothing else. Cohorts must be generated with distinct seeds — the patient id is
+``pds-<seed>-<ordinal>``, so a reused seed would collide subjects across measures.
 
-Run it with the repository venv, which has ``shipped_sources`` installed. Uploads the emitted ``<Type>.ndjson`` bulk-data files to a UC
-Volume under ``cohorts/<label>/``, gzipped as ``<Type>.ndjson.gz`` (the synthetic NDJSON shrinks about 38 times, so the
-upload is no longer the slow step), reshapes them onto the canonical mount contract
-``(__subject_id, __resource)`` (``DATA-CONTRACT``), and provisions one
-``retrieve_<Type>`` UDTF per type so the source binds through the only supported bind
-path (``BIND-RETRIEVE-UDF``).
-
-The population is CUMULATIVE across measures: every load rebuilds each mount from the
-union of ALL cohort directories in the volume, so landing one measure's cohort beside
-another's yields one population holding both. The volume is the source of truth
-for what is in the population; re-landing a cohort label overwrites exactly that
-cohort's files and nothing else. Cohorts must be generated with distinct seeds — the
-patient id is ``pds-<seed>-<ordinal>``, so a reused seed would collide subjects across
-measures.
-
-Everything structural is the shared population lander's (``shipped_sources.population.land``, ``PROC-DRY``),
-the same one the example patients land through (``DATA-SYNTH-SMALL``): the reshape, the ``__resource`` struct
-from the shipped sources' ``resource-schemas.json``, the empty mounts for types with no rows, the retrieve functions,
-the change logs and the data-source declaration (``DATA-SOURCE-UC-TAG``). This script adds only what is
-particular to a large population: the cohorts live in a UC Volume, and the mounts are rebuilt from all of them.
-
-Terminology is NOT seeded: value sets are global (``DATA-SOURCE-SCOPE``), and every generated code is a verified
-member of the same expansion the run binds (SYNTH-PDS-TERMINOLOGY).
+Everything structural is the shared lander's (``shipped_sources.population.land``, ``PROC-DRY``), the same one the
+example patients land through (``DATA-SYNTH-SMALL``). This script adds only what is particular to a large
+population: the cohorts live in a UC Volume, and the store tables are rebuilt from all of them.
 """
-
 from __future__ import annotations
 
 import argparse
@@ -57,14 +40,6 @@ log = logging.getLogger("synthetic_population.load")
 SEED_VOLUME = "seed"
 #: The one form a cohort's resources and manifest take in the volume (DATA-SYNTH-LARGE).
 GZIP_SUFFIX = ".gz"
-
-
-def _source():
-    from shipped_sources.population import PopulationSource
-    from shipped_sources.sources import (
-        SYNTHETIC_LARGE_DESCRIPTION, SYNTHETIC_LARGE_SCHEMA, SYNTHETIC_LARGE_SOURCE_ID)
-    return PopulationSource(source_id=SYNTHETIC_LARGE_SOURCE_ID, schema=SYNTHETIC_LARGE_SCHEMA,
-                            description=SYNTHETIC_LARGE_DESCRIPTION)
 
 
 def _spark(profile: str | None):
@@ -131,61 +106,63 @@ def _landed_types(cohorts_path: str) -> set[str]:
     return present & set(RESOURCE_TYPES)
 
 
-def functions_only(*, profile: str | None, catalog: str) -> list[str]:
-    """Re-create every type's retrieve functions over the tables already landed, and the change log if it is
-    missing; land nothing, so log nothing."""
-    from cql_databricks.compiler.data_source import CHANGE_LOG, change_log_ddl
-    from shipped_sources.population import RESOURCE_TYPES, provision_functions
+def load(*, profile: str | None, catalog: str, ndjson_dir: str, cohort: str, users_group: str,
+         designer_app: str) -> dict[str, int]:
+    """Land one cohort under ``cohorts/<cohort>/`` and rebuild the environment's store tables from every landed
+    cohort, then its views, tags and grants. Returns per-type row counts (of the whole population)."""
+    from pathlib import Path
 
-    spark = _spark(profile)
-    source = _source()
-    fqns = [provision_functions(spark, catalog, source, fhir_type) for fhir_type in RESOURCE_TYPES]
-    spark.sql(change_log_ddl(catalog, source.schema))
-    return [*fqns, f"{catalog}.{source.schema}.{CHANGE_LOG}"]
-
-
-def load(*, profile: str | None, catalog: str, ndjson_dir: str, cohort: str) -> dict[str, int]:
-    """Land one cohort under ``cohorts/<cohort>/`` and rebuild the cumulative mounts
-    from every landed cohort. Returns per-type row counts (of the whole population)."""
+    from cql_databricks.compiler.environment import DATA_STORE
+    from cql_databricks.data_bindings.runner import spark_runner
+    from cql_databricks_common.workspace import service_principal_client
+    from shipped_sources.environment import build, quote
+    from shipped_sources.examples import import_example_measures
     from shipped_sources.population import land
+    from shipped_sources.sources import SYNTHETIC_LARGE_DESCRIPTION, SYNTHETIC_LARGE_ENVIRONMENT
 
+    designer = service_principal_client().apps.get(designer_app).service_principal_client_id
+    if not designer:
+        raise RuntimeError(f"the App {designer_app} has no service principal")
     spark = _spark(profile)
-    source = _source()
-    schema_fqn = f"{catalog}.{source.schema}"
-    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {schema_fqn}")
-    spark.sql(f"CREATE VOLUME IF NOT EXISTS {schema_fqn}.{SEED_VOLUME}")
+    cohorts_path = f"/Volumes/{catalog}/{DATA_STORE}/{SEED_VOLUME}/cohorts"
+    examples = Path(__file__).resolve().parents[3] / "examples"
 
-    cohorts_path = f"/Volumes/{catalog}/{source.schema}/{SEED_VOLUME}/cohorts"
-    _upload(ndjson_dir, f"{cohorts_path}/{cohort}", _generated_types(ndjson_dir))
-    raw = {fhir_type: spark.read.text(f"{cohorts_path}/*/{fhir_type}.ndjson{GZIP_SUFFIX}")
-           for fhir_type in sorted(_landed_types(cohorts_path))}
-    return land(spark, catalog=catalog, source=source, raw_by_type=raw,
-                valid_from="2026-01-01", valid_to="2026-12-31")
+    def stores() -> dict[str, int]:
+        spark.sql(f"CREATE VOLUME IF NOT EXISTS {quote(catalog, DATA_STORE, SEED_VOLUME)}")
+        _upload(ndjson_dir, f"{cohorts_path}/{cohort}", _generated_types(ndjson_dir))
+        raw = {fhir_type: spark.read.text(f"{cohorts_path}/*/{fhir_type}.ndjson{GZIP_SUFFIX}")
+               for fhir_type in sorted(_landed_types(cohorts_path))}
+        counts = import_example_measures(spark, catalog=catalog, examples=examples)
+        counts.update(land(spark, catalog=catalog, raw_by_type=raw, valid_from="2026-01-01", valid_to="2026-12-31"))
+        return counts
+
+    return build(spark.sql, spark_runner(spark), catalog=catalog, name=SYNTHETIC_LARGE_ENVIRONMENT,
+                 description=SYNTHETIC_LARGE_DESCRIPTION, default=False, load=stores, users=users_group,
+                 content_readers=[designer])
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Land an emitted cohort into the cumulative Synthetic Population Large data source "
+        description="Land an emitted cohort into the cumulative Synthetic Population Large environment "
                     "(one cohort directory per measure).")
-    parser.add_argument("--ndjson-dir",
+    parser.add_argument("--ndjson-dir", required=True,
                         help="the `python -m cql_databricks_synth generate --out` directory")
-    parser.add_argument("--cohort",
+    parser.add_argument("--cohort", required=True,
                         help="cohort directory label in the seed volume (e.g. the measure key); "
                              "re-landing a label replaces exactly that cohort")
-    parser.add_argument("--functions-only", action="store_true",
-                        help="land nothing; re-create the retrieve functions over the landed tables")
-    parser.add_argument("--catalog", default=os.environ.get("UC_CATALOG"),
-                        help="UC catalog (default: $UC_CATALOG, set from databricks.local.yml by "
-                             "scripts/with-local-env.sh)")
+    parser.add_argument("--catalog", required=True,
+                        help="the environment's own catalog; never uc_catalog, the default environment's")
+    parser.add_argument("--users-group", required=True,
+                        help="the account group that reads the environment (app_users_group)")
+    parser.add_argument("--designer-app", required=True,
+                        help="the Designer App, whose service principal reads the environment's knowledge")
     parser.add_argument("--profile",
                         help="~/.databrickscfg profile (default: databricks.local.yml, then "
                              "DATABRICKS_CONFIG_PROFILE)")
     args = parser.parse_args(argv)
-    if not args.functions_only and not (args.ndjson_dir and args.cohort):
-        parser.error("--ndjson-dir and --cohort are required unless --functions-only")
-    if not args.catalog:
-        parser.error("no catalog: pass --catalog or run under scripts/with-local-env.sh, which sets "
-                     "UC_CATALOG from databricks.local.yml")
+    if args.catalog.casefold() == (os.environ.get("UC_CATALOG") or "").casefold():
+        parser.error(f"{args.catalog} is uc_catalog, the default environment's catalog; the large population is an "
+                     "environment of its own, in its own catalog (DATA-SYNTH-LARGE)")
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     from cql_databricks_common.databricks_profile import databricks_profile
 
@@ -194,13 +171,10 @@ def main(argv: list[str] | None = None) -> int:
     profile = databricks_profile(args.profile)
     if profile:
         os.environ["DATABRICKS_CONFIG_PROFILE"] = profile
-    if args.functions_only:
-        for fqn in functions_only(profile=profile, catalog=args.catalog):
-            print(f"  {fqn}")
-        return 0
-    counts = load(profile=profile, catalog=args.catalog, ndjson_dir=args.ndjson_dir, cohort=args.cohort)
-    for fhir_type, n in counts.items():
-        print(f"  retrieve_{fhir_type}  {n} rows")
+    counts = load(profile=profile, catalog=args.catalog, ndjson_dir=args.ndjson_dir, cohort=args.cohort,
+                  users_group=args.users_group, designer_app=args.designer_app)
+    for name, n in counts.items():
+        print(f"  {name}  {n} rows")
     return 0
 
 

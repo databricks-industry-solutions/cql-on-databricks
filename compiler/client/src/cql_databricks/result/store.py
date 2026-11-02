@@ -1,11 +1,13 @@
-"""CLIENT-RESULT-STORE: kept results, found by fingerprint and written, in Delta.
+"""CLIENT-RESULT-RESOLVER: kept results, found by fingerprint and written, in Delta.
 
-:class:`DeltaResultStore` is the one shipped store: a destination ``(catalog, schema)`` the caller names, where
-every result is written, and the ``catalog.schema`` result scopes it is also read from, destination first
-(`CLIENT-DISCOVERY-SCOPE`). A result is a Delta table named ``<library>_<define>_<16 fingerprint digits>``
-(`RUN-CLIENT-TABLE-NAMES`) carrying the four completion tags (`RUN-CLIENT-RESULT-IDENTITY`). ``materialize``
-runs on the same store, finding every result of a run in one lookup and writing the misses in parallel
-(`RUN-CLIENT-PARALLEL-DEFINES`). A result is never written to a folder.
+:class:`DeltaResultResolver` is the one shipped result resolver: a destination ``(catalog, schema)`` in an
+environment, ``results`` or ``draft_results`` (`RUN-CLIENT-DRAFT-RESULTS`), where every result is written, and the
+environment's other result schemas it also reads from, destination first. A result is a Delta table named
+``<library>_<define>_<16 fingerprint digits>_<8 writer digits>`` (`RUN-CLIENT-TABLE-NAMES`) carrying the four
+completion tags (`RUN-CLIENT-RESULT-IDENTITY`). It belongs to the identity that wrote it: ``find`` returns only a table
+``owner`` owns (`RUN-CLIENT-RESULT-OWNERSHIP`). ``materialize`` runs on the same resolver, finding every result of a run
+in one lookup and writing the misses in parallel (`RUN-CLIENT-PARALLEL-DEFINES`). A result is never written to a
+folder.
 """
 from __future__ import annotations
 
@@ -14,10 +16,11 @@ import logging
 from collections.abc import Sequence
 from datetime import datetime, timezone
 
-from cql_databricks.compiler.roles import ResultStore, TableRef
+from cql_databricks.compiler.resolvers import ResultResolver, TableRef
 from cql_databricks.data_bindings.runner import SqlRunner
 
-from ._catalog_completion import (NAME_DIGITS, TAGS, Completion, _literal, _set_tags, result_table_name)
+from ._catalog_completion import (NAME_DIGITS, TAGS, Completion, _literal, _set_tags, result_table_name,
+                                  writer_digest)
 from ._durable import _destination, _digest
 from ._durable_delta import table_sql
 from ._catalog_runtime import TABLE_FORMAT
@@ -25,32 +28,37 @@ from ._catalog_runtime import TABLE_FORMAT
 log = logging.getLogger(__name__)
 
 
-class DeltaResultStore(ResultStore):
-    """CLIENT-RESULT-STORE: results written to ``destination`` and read from it, then from ``sources`` in order,
-    through ``run``, as its identity. The scopes are the trust boundary: a result found in one is reused with no
-    owner check (`DEC-RESULT-SCOPE`)."""
+class DeltaResultResolver(ResultResolver):
+    """CLIENT-RESULT-RESOLVER: results written to ``destination`` and read from it, then from ``sources`` in order,
+    through ``run``, which acts as ``owner``. Only tables ``owner`` owns are found (`RUN-CLIENT-RESULT-OWNERSHIP`)."""
 
-    def __init__(self, destination: tuple[str, str], run: SqlRunner,
-                 sources: Sequence[tuple[str, str]] = ()) -> None:
+    def __init__(self, destination: tuple[str, str], run: SqlRunner, sources: Sequence[tuple[str, str]] = (), *,
+                 owner: str) -> None:
         _destination(destination)
         self.destination = tuple(destination)
         self.sources = tuple(s for s in dict.fromkeys(tuple(s) for s in sources) if s != self.destination)
         self._run = run
+        self.owner = owner
+        self.writer = writer_digest(owner)
 
     def find(self, fingerprint: str) -> TableRef | None:
-        """The table holding the completed result with ``fingerprint``, destination first, else None."""
+        """The table holding the completed result with ``fingerprint`` that ``owner`` owns, destination first, else
+        None."""
         _digest(fingerprint, "fingerprint")
         scopes = [self.destination, *self.sources]
-        params = {"suffix": "%\\_" + fingerprint[:NAME_DIGITS]}
+        params = {"suffix": f"%\\_{fingerprint[:NAME_DIGITS]}\\_{self.writer}", "owner": self.owner}
         branches = []
         for i, catalog in enumerate(dict.fromkeys(catalog for catalog, _ in scopes)):
             params[f"schemas_{i}"] = json.dumps(sorted(schema for c, schema in scopes if c == catalog))
             branches.append(
-                "SELECT catalog_name, schema_name, table_name, tag_name, tag_value "
-                f"FROM {table_sql((catalog, 'information_schema', 'table_tags'))} "
-                f"WHERE schema_name IN (SELECT explode(from_json(:schemas_{i}, 'ARRAY<STRING>'))) "
-                "AND table_name LIKE :suffix "
-                f"AND tag_name IN ({', '.join(_literal(tag) for tag in TAGS)})")
+                "SELECT g.catalog_name, g.schema_name, g.table_name, g.tag_name, g.tag_value "
+                f"FROM {table_sql((catalog, 'information_schema', 'table_tags'))} g "
+                f"JOIN {table_sql((catalog, 'information_schema', 'tables'))} t "
+                "ON t.table_catalog = g.catalog_name AND t.table_schema = g.schema_name "
+                "AND t.table_name = g.table_name AND t.table_owner = :owner "
+                f"WHERE g.schema_name IN (SELECT explode(from_json(:schemas_{i}, 'ARRAY<STRING>'))) "
+                "AND g.table_name LIKE :suffix "
+                f"AND g.tag_name IN ({', '.join(_literal(tag) for tag in TAGS)})")
         found: dict[tuple[str, str, str], dict[str, str]] = {}
         for row in self._run(" UNION ALL ".join(branches), params):
             table = (row["catalog_name"], row["schema_name"], row["table_name"])
@@ -69,9 +77,9 @@ class DeltaResultStore(ResultStore):
         if recipe.durable is None:
             raise ValueError(f"recipe {recipe.name} is not durable: compile it with durable=True")
         if not recipe.durable.reusable:
-            raise ValueError(f"recipe {recipe.name} is not reusable, so it is never kept (CLIENT-PROVIDER-IDENTITY)")
+            raise ValueError(f"recipe {recipe.name} is not reusable, so it is never kept (CLIENT-RESOLVER-IDENTITY)")
         fingerprint = recipe.durable.fingerprint
-        table = (*self.destination, result_table_name(recipe.library, recipe.define, fingerprint))
+        table = (*self.destination, result_table_name(recipe.library, recipe.define, fingerprint, self.writer))
         started = datetime.now(timezone.utc)
         self._run(f"CREATE OR REPLACE TABLE {table_sql(table)} USING DELTA "
                   f"TBLPROPERTIES ('cql.durable.format' = '{TABLE_FORMAT}') AS {relation}")

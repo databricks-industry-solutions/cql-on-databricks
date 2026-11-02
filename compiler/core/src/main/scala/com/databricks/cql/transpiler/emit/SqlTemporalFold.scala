@@ -240,13 +240,11 @@ object SqlTemporalFold {
     case Lambda(ps, b)          => Lambda(ps, f(b))
     case Struct(fs)             => Struct(fs.map { case (n, v) => n -> f(v) })
     case Over(fn, part, ord)    => Over(f(fn), part.map(f), ord.map(k => k.copy(expr = f(k.expr))))
-    case NamedArg(n, v)         => NamedArg(n, f(v))
   }
 
   /** Apply `f` to every expression embedded in a relation (recursing into sub-relations). */
   private def mapRel(r: SqlRel)(f: SqlExpr => SqlExpr): SqlRel = r match {
     case SqlRel.TableRef(_) | SqlRel.OneRow => r
-    case SqlRel.TableFunc(fn, args, catalog) => SqlRel.TableFunc(fn, args.map(f), catalog)
     case s: SqlRel.Select =>
       s.copy(projections = s.projections.map(p => p.copy(expr = f(p.expr))), from = mapRel(s.from)(f),
         where = s.where.map(f), groupBy = s.groupBy.map(f), having = s.having.map(f),

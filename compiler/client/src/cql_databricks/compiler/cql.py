@@ -27,7 +27,7 @@ def cql(source=None, *, resource: Optional[str] = None, cql: Optional[str] = Non
         elm: Optional[str] = None, library: Optional[str] = None, context: Optional[str] = None,
         data_model: Optional[str] = None, spark=None, client=None,
         endpoint: Optional[str] = None, engine: Optional[str] = None,
-        data_source: Optional[str] = None, recompute: Optional[bool] = None) -> "CqlQuery":
+        recompute: Optional[bool] = None) -> "CqlQuery":
     """Bind ``source`` and return a lazy :class:`CqlQuery` handle (`PIPE-RUNTIME-COMPILE`), peer to how
     ``spark.sql`` names a query — except selection of WHICH defines to evaluate happens terminally in
     ``exec(*targets)``, not here.
@@ -45,17 +45,16 @@ def cql(source=None, *, resource: Optional[str] = None, cql: Optional[str] = Non
     SEPARATE kwarg, never an overload of the ``source`` string: the string classification (path / ELM / raw
     CQL) is frozen (`BUILD-CLIENT-COMPAT`), so a bare name would otherwise be raw CQL forever.
 
-    ``engine``, ``data_source`` and ``recompute`` are the explicit tier of the session's settings
+    ``engine`` and ``recompute`` are the explicit tier of the session's settings
     (EVALUATOR-CLIENT-EVALUATE, `DEC-ENGINE-SESSION-OPTIONS`); a session sets them once and omits them here."""
     needs_bind = isinstance(source, str) or source is None or resource or cql or elm or library
     if needs_bind:
         c = client if client is not None else _lazy_client(spark=spark, endpoint=endpoint)
         return c.cql(source, resource=resource, cql=cql, elm=elm, library=library, context=context,
-                     data_model=data_model, spark=spark, engine=engine, data_source=data_source,
-                     recompute=recompute)
+                     data_model=data_model, spark=spark, engine=engine, recompute=recompute)
     # An already-bound library value object (or a duck-typed one): wrap it directly, no client needed.
-    if engine is not None or data_source is not None or recompute is not None:
-        raise TypeError("engine/data_source/recompute apply to a source STRING; bind them on the library instead")
+    if engine is not None or recompute is not None:
+        raise TypeError("engine/recompute apply to a source STRING; bind them on the library instead")
     if context is not None or data_model is not None:
         raise TypeError("context/data_model apply to a source STRING; bind them on the library instead")
     return CqlQuery(source, spark=spark)
@@ -133,7 +132,7 @@ class CqlQuery:
                          grain_first: bool = False, durable: bool = False) -> PipelinePlan:
         """The compile-once :class:`~.providers.PipelinePlan` (`PIPE-SQL-DAG-REUSE`) — one dataset recipe per
         materialized define. What the reference SDP turns into ``@dp.materialized_view`` bodies."""
-        return _pipeline(self._lib, lambda: self.describe().retrieve_types, boundaries=boundaries,
+        return _pipeline(self._lib, boundaries=boundaries,
                          grain_first=grain_first, durable=durable)
 
     # -- terminal execution ----------------------------------------------------------------------
@@ -200,7 +199,7 @@ class CqlQuery:
             raise ValueError(f"the {engine!r} engine runs CQL text, and this query was bound from ELM; bind it "
                              f"from CQL (a source string, a .cql resource, or library= with CQL on the path)")
         request = EngineRequest(
-            cql=source, targets=list(targets), data_source=getattr(self._lib, "data_source", None),
+            cql=source, targets=list(targets),
             measurement_period=getattr(self._lib, "measurement_period", None),
             recompute=bool(getattr(self._lib, "recompute", False)),
             settings=dict(getattr(self._lib, "settings", None) or {}), spark=self._spark or _active_spark())
@@ -217,16 +216,15 @@ class CqlQuery:
         return CqlQuery(replace(self._lib, recompute=recompute), self._spark)
 
     def _compile(self, target: Optional[str], boundaries: Optional[Iterable[str]]) -> SqlCompileResult:
-        # CLIENT-SESSION-MOUNT: a binder whose choice can change (a new mount) keys the cache by its generation,
-        # so a query compiled before the change recompiles against the new functions.
+        # CLIENT-RESOLVER-IDENTITY: a binder whose choice can change keys the cache by its generation, so a query
+        # compiled before the change recompiles against the new relations.
         generation = getattr(getattr(self._lib, "binder", None), "generation", None)
         key = (target, frozenset(boundaries) if boundaries is not None else None,
                generation() if generation is not None else None)
         cached = self._compile_cache.get(key)
         if cached is None:
-            # CLIENT-EXEC-DISCOVERY: the binder chooses the data, told what this library retrieves.
-            req = bound_request(self._lib, _request(self._lib, target=target, boundaries=boundaries),
-                                lambda: self.describe().retrieve_types)
+            # BIND-CALL-SITE: the binder binds this compile's call sites.
+            req = bound_request(self._lib, _request(self._lib, target=target, boundaries=boundaries))
             cached = self._lib.provider.compile_sql(req)
             self._compile_cache[key] = cached
         return cached
@@ -252,10 +250,8 @@ def _request(lib, *, target: Optional[str] = None, boundaries: Optional[Iterable
         parameters=lib.parameters,
         grain_first=grain_first,
         durable=durable,
-        sources=getattr(lib, "sources", None) or {},
         deps=tuple(getattr(lib, "deps", ()) or ()),
         object_prefix=getattr(lib, "object_prefix", None),
-        terminology_table=getattr(lib, "valueset_table", None),
         udf_schema=getattr(lib, "udf_schema", None),
         session_parameters=getattr(lib, "session_parameters", None) or {})
 
@@ -301,16 +297,15 @@ def compile_pipeline(library: Library, boundaries: Optional[Iterable[str]] = Non
     """Return the library's compile-once :class:`PipelinePlan` (`PIPE-SQL-DAG-REUSE`) via the active
     provider — one dataset recipe per materialized define, cut from a single whole-library lowering. What
     the reference pipeline turns into one ``@dp.materialized_view`` per recipe (no per-node ``cql()``). No
-    Spark session or execution needed (pure compile). The library's binder chooses its data
-    (`CLIENT-EXEC-DISCOVERY`)."""
-    return _pipeline(library, lambda: describe(library).retrieve_types, boundaries=boundaries,
-                     grain_first=grain_first, durable=durable)
+    Spark session or execution needed (pure compile). The library's binder binds its call sites
+    (`BIND-CALL-SITE`)."""
+    return _pipeline(library, boundaries=boundaries, grain_first=grain_first, durable=durable)
 
 
-def _pipeline(library, retrieve_types, *, boundaries, grain_first: bool, durable: bool) -> PipelinePlan:
-    """The one pipeline compile: ``retrieve_types`` is asked only when the library has a binder."""
+def _pipeline(library, *, boundaries, grain_first: bool, durable: bool) -> PipelinePlan:
+    """The one pipeline compile, bound by the library's binder (`BIND-CALL-SITE`)."""
     request = _request(library, boundaries=boundaries, grain_first=grain_first, durable=durable)
-    return library.provider.compile_pipeline(bound_request(library, request, retrieve_types, durable=durable))
+    return library.provider.compile_pipeline(bound_request(library, request, durable=durable))
 
 
 def _lazy_client(*, spark=None, endpoint: Optional[str] = None):

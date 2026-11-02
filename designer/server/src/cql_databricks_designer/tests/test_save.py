@@ -169,8 +169,9 @@ def _route(monkeypatch, folder, *, compiles=True):
     compiler = SimpleNamespace(translate=lambda cql, includes: {
         "ok": compiles, "elm": ELM if compiles else None, "diagnostics": [] if compiles else ["Syntax error at 2:9"]})
     content = SimpleNamespace(corpus=_corpus, knowledge_sources=lambda: [STORE], reload=lambda: reloads.append(1))
+    contents = SimpleNamespace(get=lambda name: content)
     app = FastAPI()
-    app.include_router(save_routes.router(compiler=compiler, content=content, warehouse=lambda: "wh"))
+    app.include_router(save_routes.router(compiler=compiler, contents=contents, warehouse=lambda: "wh"))
     return TestClient(app)
 
 
@@ -350,18 +351,32 @@ def test_the_route_refuses_a_new_library_with_no_base(monkeypatch):
 
 # ── Publish ──────────────────────────────────────────────────────────────────────────────────────
 
-class _PublishStore:
-    """The store's rows by (url, version), read and MERGEd as the client's publish does."""
+#: CLIENT-ENVIRONMENT — the environment the caller can see, in catalog ``k``.
+ENVIRONMENT_TAGS = [{"catalog": "k", "tag": "cql_databricks_environment", "value": "k_env", "comment": None},
+                    {"catalog": "k", "tag": "cql_databricks_environment_version", "value": "1", "comment": None},
+                    {"catalog": "k", "tag": "cql_databricks_environment_default", "value": "true", "comment": None}]
 
-    def __init__(self, fail=False):
-        self.rows, self.fail, self.merged = {}, fail, []
+
+class _PublishStore:
+    """The store's rows by (url, version), read and MERGEd as the client's publish does, and the published view over
+    them: ``hidden`` is a view that does not select the store."""
+
+    def __init__(self, fail=False, hidden=False):
+        self.rows, self.fail, self.hidden, self.merged, self.written = {}, fail, hidden, [], []
 
     def __call__(self, sql, params=None):
+        if "system.information_schema.catalog_tags" in sql:
+            return ENVIRONMENT_TAGS
+        if sql.startswith("SELECT url, version FROM"):
+            # BIND-PUBLISHED-VIEW: the read-back through the environment's knowledge view.
+            assert "`k`.`knowledge`.`library`" in sql
+            return [] if self.hidden else [{"url": u, "version": v} for u, v in self.rows]
         if sql.startswith("SELECT"):
             held = self.rows.get((params["url"], params["version"]))
             return [{"resource": json.dumps(held)}] if held else []
         if self.fail:
             raise RuntimeError("PERMISSION_DENIED")
+        self.written.append(sql)
         resource = json.loads(params["resource_json"])
         self.rows[(resource["url"], resource["version"])] = resource
         self.merged.append(resource["resourceType"])
@@ -378,7 +393,7 @@ def _publishing(monkeypatch, store):
     return _route(monkeypatch, folder)
 
 
-PUBLISH = {"location": f"folder:{F}", "name": "Measure", "version": "1.0.0", "store": "k.measures"}
+PUBLISH = {"location": f"folder:{F}", "name": "Measure", "version": "1.0.0", "environment": "k_env"}
 
 
 def test_publish_writes_the_folder_library_into_the_store_as_the_user(monkeypatch):
@@ -388,16 +403,20 @@ def test_publish_writes_the_folder_library_into_the_store_as_the_user(monkeypatc
     assert response.status_code == 200, response.json()
     assert [(lib["name"], lib["outcome"]) for lib in response.json()["libraries"]] == [("Measure", "published")]
     assert store.merged == ["Library", "Measure"] and reloads == [1]
+    # DOC-PUBLISH — into the environment's knowledge store, not its published views.
+    assert all("`k`.`knowledge_store`." in sql for sql in store.written)
     again = _publishing(monkeypatch, store).post("/api/libraries/publish", json=PUBLISH)
     assert [lib["outcome"] for lib in again.json()["libraries"]] == ["unchanged"]
 
 
 def test_publish_says_what_was_refused_and_what_failed(monkeypatch):
     client = _publishing(monkeypatch, _PublishStore())
-    refused = client.post("/api/libraries/publish", json={**PUBLISH, "store": "k.other"})
-    assert refused.status_code == 400 and "not a tagged knowledge store" in refused.json()["error"]
+    refused = client.post("/api/libraries/publish", json={**PUBLISH, "environment": "missing"})
+    assert refused.status_code == 400 and "no environment named 'missing'" in refused.json()["error"]
     from_store = client.post("/api/libraries/publish", json={**PUBLISH, "location": "store:k.measures"})
     assert from_store.status_code == 400
     failed = _publishing(monkeypatch, _PublishStore(fail=True)).post("/api/libraries/publish", json=PUBLISH)
     assert failed.status_code == 502 and failed.json()["summary"]["libraries"][0]["outcome"] == "refused"
     assert reloads == [1]
+    hidden = _publishing(monkeypatch, _PublishStore(hidden=True)).post("/api/libraries/publish", json=PUBLISH)
+    assert hidden.status_code == 502 and "does not select the store" in hidden.json()["error"]

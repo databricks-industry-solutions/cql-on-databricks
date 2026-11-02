@@ -1,11 +1,11 @@
 library FhirRetrieveRelation version '1.0.0'
 
-// BIND-RELATION, BIND-NAMED-ARGS, BIND-RETRIEVE-REQUEST: each retrieve reads the relation bound to its id
-// in the compile request (BIND-PROVIDER-REQUEST). The harness binds Patient, the context type, to a table
-// and every other type to a SQL function that declares four request fields by name, in another order than
-// the request's, and keeps only rows whose `fhir_type` argument names its type. A retrieve with a value set,
-// one with a closed date window and a bare one each pass different arguments; a positional or mis-named
-// argument fails the call, and a wrong `fhir_type` returns no rows.
+// BIND-RELATION, BIND-CALL-SITE, BIND-RETRIEVE-REQUEST: each retrieve reads the relation its call site is
+// bound to in the compile request. The harness binds every type by rule to `global_temp.<type>`, which holds
+// Patient's rows and is an EMPTY decoy for every other type, and every non-Patient retrieve site through the map
+// to a view of its own holding its type's rows. So a site that reads the rule instead of its map entry reads
+// nothing, and the two Condition retrieves, in two defines, are two sites. A retrieve with a value set, one
+// with a closed date window and a bare one each have a request of their own.
 //
 // Data discriminates: only p1 has a Condition in "Diabetes" (c2); p1, p5 and p6 have a Condition recorded
 // on a day in 2023; p1 and p3 are born in the window, p2 is not.

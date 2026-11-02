@@ -3,8 +3,8 @@
 ``connect()`` builds a ``cql-databricks`` :class:`~cql_databricks.compiler.CqlClient` wired for AUTO-DISCOVERY:
 it resolves the deployed Compiler Service App endpoint from the workspace App registry and authenticates
 by serverless→App OAuth token-exchange (the ``databricks-app`` provider this package contributes), while
-each run reads the data source found by its Unity Catalog tag (`CLIENT-EXEC-DISCOVERY`). So a notebook
-needs NO endpoint, NO token, and NO provider selection::
+each run reads the default environment, found by its Unity Catalog catalog tags (`CLIENT-ENVIRONMENT`). So a notebook
+needs NO endpoint, NO token, and NO environment::
 
     from cql_databricks.compiler import cql
     cql('define "Two": 2 + 2').exec("Two").display()
@@ -28,74 +28,45 @@ from typing import Iterable, Optional, Sequence
 from cql_databricks.compiler import CqlClient, CqlQuery
 from cql_databricks.compiler.libraries import resolve_library_provider
 
-from .knowledge_providers import library_provider
-from .provider_binder import ProviderBinder
+from .knowledge_resolvers import library_provider
+from .resolver_binder import ResolverBinder
 from ._udfs import register_runtime_udfs
 from .compile_shim import CqlDatabricksCompileProvider, discover_udf_schema
-from .discovery import DatabricksDataBinder
 from .provider import CONF_APP_NAME, make_provider
 from .session_libraries import session_provider
 from .session_scope import SessionScope
-from .session_state import SessionRecord
+from .session_state import SessionRecord, session_resolvers, set_session_resolvers
 
 
-def connect(spark=None, *, app_name: Optional[str] = None, data_catalog: Optional[str] = None,
-            valueset_table: Optional[str] = None, udf_schema: Optional[str] = None,
+def connect(spark=None, *, app_name: Optional[str] = None, udf_schema: Optional[str] = None,
             library_path: Optional[str | Iterable[str]] = None, engine: Optional[str] = None,
-            data_source: Optional[str] = None, measurement_period: Optional[tuple[str, str]] = None,
-            recompute: Optional[bool] = None, catalog_scopes: Optional[Iterable[str]] = None,
-            data=None, terminology=None, knowledge=None) -> CqlClient:
-    """A :class:`~cql_databricks.compiler.CqlClient` wired for Databricks auto-discovery. The Compiler Service App
-    endpoint + OAuth are resolved ON INIT via this package's ``databricks-app`` provider (built directly,
-    so it needs no ``provider.kind`` selection). Each run reads the data source found by its tag, in the
-    session's catalog scopes (`CLIENT-EXEC-DISCOVERY`, :mod:`.discovery`): the one ``data_source`` names,
-    else the only one in scope. Value sets come from the ``valuesets`` view in the ``udf_schema``, as for a
-    durable calculation. Call inside a Databricks notebook/job.
+            environment: Optional[str] = None, measurement_period: Optional[tuple[str, str]] = None,
+            recompute: Optional[bool] = None, data=None, terminology=None, knowledge=None) -> CqlClient:
+    """A :class:`~cql_databricks.compiler.CqlClient` wired for Databricks. The Compiler Service App endpoint + OAuth
+    are resolved ON INIT via this package's ``databricks-app`` provider (built directly, so it needs no
+    ``provider.kind`` selection). Call inside a Databricks notebook/job.
 
-    Emitted ``cql_*`` calls are schema-qualified through the OSS ``.udf_schema()`` knob
-    (`EMIT-UDF-QUALIFY`) and the provider is wrapped in :class:`~.compile_shim.CqlDatabricksCompileProvider` so
-    materialization barriers are serverless-safe (`SVC-NOTEBOOK-RUNTIME-BIND`) — the two things that
-    otherwise make a measure fail on serverless, which is the compute a notebook gets by default.
+    Every run is in one environment (`CLIENT-ENVIRONMENT`): the one ``environment`` names, else
+    ``CQL_DATABRICKS_ENVIRONMENT``, else the default environment, found by its catalog tags as this user on first
+    compile (`CLIENT-ENVIRONMENT-RESOLVER`). Its published views serve the data and value sets, bound by rule, so a run
+    makes one compiler call and reads no catalog (`BIND-PUBLISHED-VIEW`). ``data``, ``terminology`` and ``knowledge``
+    replace the environment's resolver for that role (`CLIENT-RESOLVERS`); a resolver that binds per call site makes
+    the run ask ``describe`` first (`BIND-CALL-SITE`).
+
+    Emitted ``cql_*`` calls are schema-qualified through the OSS ``.udf_schema()`` knob (`EMIT-UDF-QUALIFY`) and the
+    provider is wrapped in :class:`~.compile_shim.CqlDatabricksCompileProvider` so materialization barriers are
+    serverless-safe (`SVC-NOTEBOOK-RUNTIME-BIND`).
 
     ``library_path`` mounts one or more directories of CQL as the session's library source
-    (`SVC-NOTEBOOK-LIBRARY-FOLDER`) — typically a Databricks **Git Folder** under ``/Workspace``, or a UC
-    Volume. Roots are ORDERED and earlier wins, so an override directory shadows a vendored content repo.
-    With it set, ``client.cql(library="HypertensionBPControl")`` resolves that library BY NAME and ships its whole
-    ``include`` closure with the compile (`BUILD-LIBRARY-PROVIDER`, `BUILD-COMPILE-LINK`). Omit it and the
-    folder still resolves from ``spark.cqldatabricks.libraryPath`` / ``CQL_DATABRICKS_LIBRARY_PATH``, which is how the
-    ``%%cql`` magic and the module-level :func:`cql`, which build their own client, see the same folder
-    without being handed one.
+    (`SVC-NOTEBOOK-LIBRARY-FOLDER`), typically a Databricks **Git Folder** under ``/Workspace``, or a UC Volume. Roots
+    are ORDERED and earlier wins. Omit it and the folder still resolves from ``spark.cqldatabricks.libraryPath`` /
+    ``CQL_DATABRICKS_LIBRARY_PATH``. Ahead of that folder sit the libraries DECLARED BY ``%%cql`` CELLS
+    (`SVC-NOTEBOOK-CELL-LIBRARY`), and after it the environment's knowledge (`CLIENT-KNOWLEDGE-INCLUDES`). CQL with NO
+    ``library`` header joins the session library instead (`SVC-NOTEBOOK-SESSION-SCOPE`).
 
-    Ahead of that folder sit the libraries DECLARED BY ``%%cql`` CELLS (`SVC-NOTEBOOK-CELL-LIBRARY`), so a
-    measure can be written across cells and a later cell's ``include`` finds an earlier cell's library. One
-    lookup order, cells first — a cell shadows a published library of the same name, which is what makes it
-    an override while you draft.
-
-    CQL with NO ``library`` header — a ``%%cql`` cell or a ``client.cql("...")`` string — joins the session
-    library instead (`SVC-NOTEBOOK-SESSION-SCOPE`): a later fragment sees an earlier one's defines unqualified,
-    and redeclaring a name replaces it. Every client on the session shares it, like the cells.
-
-    ``spark`` is the session runs execute against (else the active one). The keyword overrides are only for
-    a NON-convention deployment: ``app_name`` (a Compiler Service App not named the default),
-    ``data_catalog`` (a ``catalog.schema`` whose ``retrieve_<Type>`` functions every run reads, instead of
-    finding a data source by tag), ``valueset_table`` (the value-set table, instead of the runtime view),
-    ``udf_schema`` (the ``cql_*`` UC catalog's ``catalog.schema``, else discovered from UC).
-
-    ``catalog_scopes`` is the ordered list of ``catalog``, ``catalog.schema`` or ``*`` entries this client discovers
-    data sources, libraries and value sets in, and ``materialize`` reads results in (`CLIENT-DISCOVERY-SCOPE`).
-    Unset, it is ``CQL_DATABRICKS_CATALOG_SCOPES``, else every catalog, with a warning. Pass it here rather than in
-    the Spark conf, which serverless refuses to set (`BUILD-RESOLVE`).
-
-    ``engine``, ``data_source``, ``measurement_period`` and ``recompute`` set the
-    session's engine settings once (EVALUATOR-CLIENT-EVALUATE, `DEC-ENGINE-SESSION-OPTIONS`), so every later
-    call is just ``client.cql("…")``. An ``engine`` other than the local one is a plugin in the
-    ``cql_databricks.engines`` entry-point group; none ships since EVALUATOR-REMOVE retired the evaluator App's.
-    Each also resolves from its ``spark.cqldatabricks.*`` conf or ``CQL_DATABRICKS_*`` env, which is how
-    the module-level :func:`cql` and the ``%%cql`` magic see them."""
+    ``engine``, ``measurement_period`` and ``recompute`` set the session's engine settings once
+    (`DEC-ENGINE-SESSION-OPTIONS`)."""
     conf = {CONF_APP_NAME: app_name} if app_name else {}
-    if isinstance(catalog_scopes, str):
-        raise TypeError("catalog_scopes is a list of entries, not one string: pass [\"cat\", \"cat.schema\"]")
-    scopes = None if catalog_scopes is None else list(catalog_scopes)
     session = spark if spark is not None else _active_spark()
     provider = CqlDatabricksCompileProvider(make_provider(conf))
     # `.provider(...)` injects the discovered provider directly (bypasses endpoint/auth conf resolution).
@@ -104,37 +75,14 @@ def connect(spark=None, *, app_name: Optional[str] = None, data_catalog: Optiona
     builder = builder.udf_schema(udf)
     if spark is not None:
         builder = builder.spark(spark)
-    # BUILD-RESOLVE: a data source named by keyword, Spark conf or env is read through providers alike.
-    from . import config as settings
-
-    named = settings.resolve_setting(
-        "data source", explicit=data_source, conf_key=settings.CONF_DATA_SOURCE, env=settings.ENV_DATA_SOURCE,
-        conf={} if session is None else {settings.CONF_DATA_SOURCE: _conf_or_empty(session, settings.CONF_DATA_SOURCE)})
-    if data is not None or terminology is not None or (named and not data_catalog):
-        # CLIENT-DATA-PROVIDER, CLIENT-DEFAULT-RESOLVER: the run reads through providers. A named data source and
-        # the default terminology come from the tags in this session's scopes, as this user.
-        if data is not None and named:
-            raise ValueError("give data= or data_source=, not both")
-        if data_catalog or valueset_table:
-            raise ValueError("data_catalog= and valueset_table= are not used with providers: name a data "
-                             "provider or data_source=, and a terminology source")
-        resolver = _resolver(session, scopes)
-        builder = builder.data_binder(ProviderBinder(
-            data=data if data is not None else (lambda: resolver().data(named)) if named else None,
-            terminology=terminology if terminology is not None else lambda: resolver().terminology(),
-            run=lambda: _spark_runner(session), spark=session, schemas=provider.resource_schemas))
-    elif data_catalog:
-        builder = builder.data_catalog(data_catalog)
-    else:
-        builder = builder.data_binder(DatabricksDataBinder(
-            lambda: _session_content(session, scopes), lambda: _spark_runner(session),
-            terminology_table=f"{udf}.valuesets", record=SessionRecord(session), catalog_scopes=scopes))
-    if valueset_table:
-        builder = builder.valueset_table(valueset_table)
+    env = _environment(session, environment)
+    # CLIENT-RESOLVERS: the environment's resolvers, each replaced by the one given for its role.
+    builder = builder.data_binder(ResolverBinder(
+        data=data if data is not None else lambda: env.resolver().data(env.get()),
+        terminology=terminology if terminology is not None else lambda: env.resolver().terminology(env.get()),
+        run=lambda: _spark_runner(session), spark=session, schemas=provider.resource_schemas))
     if engine:
         builder = builder.engine(engine)
-    if data_source:
-        builder = builder.data_source(data_source)
     if measurement_period:
         builder = builder.measurement_period(*measurement_period)
     if recompute is not None:
@@ -144,9 +92,9 @@ def connect(spark=None, *, app_name: Optional[str] = None, data_catalog: Optiona
         # Recorded as ordinary session config too, so the mount stays visible on the client — the injected
         # provider below is built from these same roots, never from a second source of truth.
         builder = builder.library_path(*roots)
-    # CLIENT-KNOWLEDGE-PROVIDER: a knowledge source given replaces the default order (cells, folder, tagged).
+    # CLIENT-KNOWLEDGE-RESOLVER: a knowledge resolver given replaces the default order (cells, folder, environment).
     builder = builder.library_provider(library_provider(knowledge) if knowledge is not None
-                                       else _library_provider(roots, spark, scopes))
+                                       else _library_provider(roots, spark, env))
     # SVC-NOTEBOOK-SESSION-SCOPE: header-less CQL joins the session library, kept beside the cells.
     builder = builder.session_scope(SessionScope(SessionRecord(spark)))
     client = builder.build()
@@ -158,65 +106,59 @@ def connect(spark=None, *, app_name: Optional[str] = None, data_catalog: Optiona
     return client
 
 
-def _resolver(session, scopes):
-    """CLIENT-DEFAULT-RESOLVER — the tag resolver over this session, built on first use."""
-    built = []
+class _SessionEnvironment:
+    """CLIENT-ENVIRONMENT — the environment a session runs in, found as this user on first use and kept."""
 
-    def get():
-        if not built:
-            from .tagged import TaggedResolver
+    def __init__(self, spark, name: Optional[str]) -> None:
+        self._spark, self.name = spark, name
+        self._resolver = None
+        self._env = None
 
-            built.append(TaggedResolver(_session_content(session, scopes), _spark_runner(session)))
-        return built[0]
-    return get
+    def resolver(self):
+        if self._resolver is None:
+            from .environment import EnvironmentResolver
+
+            self._resolver = EnvironmentResolver(_spark_runner(_session(self._spark)))
+        return self._resolver
+
+    def get(self):
+        if self._env is None:
+            self._env = self.resolver().resolve(self.name)
+        return self._env
+
+    def content(self):
+        return self.resolver().content(self.get())
 
 
-def _library_provider(roots: list[str], spark=None, catalog_scopes: Optional[list[str]] = None):
-    """SVC-NOTEBOOK-CELL-LIBRARY, CLIENT-KNOWLEDGE-INCLUDES — the session's library source: cells first, the
-    mounted folder second, tagged knowledge in scope third.
+def _environment(spark, name: Optional[str]) -> _SessionEnvironment:
+    """CLIENT-ENVIRONMENT, BUILD-RESOLVE — the environment ``name`` names, else ``CQL_DATABRICKS_ENVIRONMENT``, else the
+    default; found on first use."""
+    from . import config as settings
 
-    A :class:`~.session_libraries.SessionLibraryProvider` over the session's cells is always installed, so
-    a library declared by a `%%cql` cell is includable by a later cell whether or not any folder is
-    mounted. Its second root is the engine's own configured provider — ``roots`` when `connect()` was
-    handed a ``library_path``, else whatever ``spark.cqldatabricks.libraryPath`` / ``CQL_DATABRICKS_LIBRARY_PATH``
-    resolves to, which is how the front doors that build their own client see the same folder
-    (`BUILD-RESOLVE`). The cells are shared with every other client; this folder is this client's own.
-    Its third is the tagged knowledge in the session's catalog scopes, read through ``spark`` (else the active
-    session) on first use (:mod:`.knowledge_libraries`)."""
+    return _SessionEnvironment(spark, settings.resolve_setting("environment", explicit=name,
+                                                               env=settings.ENV_ENVIRONMENT))
+
+
+def _library_provider(roots: list[str], spark, env: _SessionEnvironment):
+    """SVC-NOTEBOOK-CELL-LIBRARY, CLIENT-KNOWLEDGE-INCLUDES — the session's library source: cells first, the mounted
+    folder second, the environment's knowledge third, read on first use (:mod:`.knowledge_libraries`).
+
+    A :class:`~.session_libraries.SessionLibraryProvider` over the session's cells is always installed, so a library
+    declared by a `%%cql` cell is includable by a later cell whether or not any folder is mounted. Its second root is
+    the engine's own configured provider: ``roots`` when `connect()` was handed a ``library_path``, else whatever
+    ``spark.cqldatabricks.libraryPath`` / ``CQL_DATABRICKS_LIBRARY_PATH`` resolves to (`BUILD-RESOLVE`)."""
     from .knowledge_libraries import FolderThenKnowledge, KnowledgeLibraryProvider
 
-    knowledge = KnowledgeLibraryProvider(lambda: _session_content(spark, catalog_scopes))
+    knowledge = KnowledgeLibraryProvider(env.content)
     return session_provider(FolderThenKnowledge(resolve_library_provider({}, search_path=roots), knowledge),
                             spark)
 
 
-def _session_content(spark=None, catalog_scopes: Optional[Iterable[str]] = None):
-    """CLIENT-DISCOVERY-SCOPE — a resolver over this session's tagged content, as this user, in the session's
-    catalog scopes: ``catalog_scopes``, else ``spark.cqldatabricks.catalogScopes``, else
-    ``CQL_DATABRICKS_CATALOG_SCOPES``, else every catalog this user can see, with a warning."""
-    from cql_databricks.data_bindings import ContentResolver, spark_runner
-
+def _session(spark):
     if spark is None:
         from pyspark.sql import SparkSession  # lazy
         spark = SparkSession.active()
-    scopes = session_catalog_scopes(spark, catalog_scopes)
-    return ContentResolver(lambda: spark_runner(spark), scopes)
-
-
-def session_catalog_scopes(spark=None, catalog_scopes: Optional[Iterable[str]] = None, *,
-                           query=None) -> Optional[list[str]]:
-    """CLIENT-DISCOVERY-SCOPE — the session's ordered catalog scopes: ``catalog_scopes``, else the list
-    ``connect(catalog_scopes=...)`` gave ``query``'s client, else ``spark.cqldatabricks.catalogScopes`` on ``spark``
-    (none read when ``spark`` is None), else ``CQL_DATABRICKS_CATALOG_SCOPES``, else ``None``, which is every
-    catalog. Discovery and durable results read the same list."""
-    from . import config
-
-    if catalog_scopes is None and query is not None:
-        binder = getattr(getattr(query, "_lib", None), "binder", None)
-        if isinstance(binder, DatabricksDataBinder):
-            catalog_scopes = binder.catalog_scopes
-    conf = {} if spark is None else {config.CONF_CATALOG_SCOPES: _conf_or_empty(spark, config.CONF_CATALOG_SCOPES)}
-    return config.resolve_catalog_scopes(None if catalog_scopes is None else list(catalog_scopes), conf=conf)
+    return spark
 
 
 def _spark_runner(spark):
@@ -258,7 +200,31 @@ def _active_spark():
 
 # A lazily-built, reused default client for the module-level `cql` shorthand (NOT a public/settable
 # global — the confusing OSS `set_default_client` was removed; this is just the zero-config convenience).
+# `_default_resolvers` is the session's resolvers it was built with (CLIENT-SESSION-RESOLVERS): once they are
+# replaced, the next `cql()` builds a new one.
 _default_client: Optional[CqlClient] = None
+_default_resolvers = None
+
+
+def use_resolvers(*, data=None, terminology=None, knowledge=None) -> None:
+    """CLIENT-SESSION-RESOLVERS — set the resolvers this notebook's ``cql()`` calls and ``%%cql`` cells run through::
+
+        from cql_databricks.compiler import FolderTerminologyResolver, VolumeDataResolver, use_resolvers
+        use_resolvers(data=VolumeDataResolver("/Volumes/main/cql/tests/fhir"),
+                      terminology=FolderTerminologyResolver("/Volumes/main/cql/tests/valuesets"))
+
+    Each role given replaces the environment's resolver for that role; each role not given is the environment's
+    (`CLIENT-RESOLVERS`). A call sets every role, so ``use_resolvers()`` returns to the environment. Nothing is read
+    here: the next ``cql()`` or cell builds its client with them. ``reset(spark)`` drops them
+    (`CLIENT-SESSION-RESET`). A client from :func:`connect` is not changed by them."""
+    from .resolvers import DataResolver, KnowledgeResolver, TerminologyResolver
+
+    roles = {"data": (data, DataResolver), "terminology": (terminology, TerminologyResolver),
+             "knowledge": (knowledge, KnowledgeResolver)}
+    for role, (given, kind) in roles.items():
+        if given is not None and not isinstance(given, kind):
+            raise TypeError(f"{role}= takes a {kind.__name__}, not {type(given).__name__} (CLIENT-SESSION-RESOLVERS)")
+    set_session_resolvers({role: given for role, (given, _) in roles.items() if given is not None})
 
 
 def cql(source=None, *, spark=None, client=None, endpoint=None, **kwargs) -> CqlQuery:
@@ -266,8 +232,9 @@ def cql(source=None, *, spark=None, client=None, endpoint=None, **kwargs) -> Cql
     runs it. This is the package's exported ``cql`` (`SVC-ZERO-CONFIG-NOTEBOOK`).
 
     With neither ``client`` nor ``endpoint``, it AUTO-DISCOVERS: the client is built once by
-    :func:`connect` — App-registry endpoint, ambient-identity OAuth, UC-discovered catalog / value-set
-    table / UDF schema — and reused for later calls. That is the notebook path, where naming any of it
+    :func:`connect` — App-registry endpoint, ambient-identity OAuth, the environment, the UDF schema — with the
+    session's resolvers (:func:`use_resolvers`, `CLIENT-SESSION-RESOLVERS`), and reused for later calls until they
+    change. That is the notebook path, where naming any of it
     by hand is the thing this package exists to avoid.
 
     Given an explicit ``client`` or ``endpoint``, it delegates to the core binder
@@ -288,62 +255,59 @@ def cql(source=None, *, spark=None, client=None, endpoint=None, **kwargs) -> Cql
             or kwargs.get("cql") or kwargs.get("elm") or kwargs.get("library")):
         return _core_cql(source, spark=spark, client=client, endpoint=endpoint, **kwargs)
 
-    global _default_client
-    if _default_client is None:
-        _default_client = connect(spark=spark)
+    global _default_client, _default_resolvers
+    resolvers = session_resolvers()
+    if _default_client is None or resolvers is not _default_resolvers:
+        _default_client = connect(spark=spark, **resolvers)
+        _default_resolvers = resolvers
     return _default_client.cql(source, spark=spark, **kwargs)
 
 
-def resolve_libraries(source: str, *, spark=None, catalog_scopes: Optional[Iterable[str]] = None,
+def resolve_libraries(source: str, *, spark=None, environment: Optional[str] = None,
                       bff_app_name: Optional[str] = None) -> list[str]:
-    """The CQL sources of ``source``'s ``include`` closure from tagged knowledge, dependencies first
+    """The CQL sources of ``source``'s ``include`` closure from the environment's knowledge, dependencies first
     (`KNOWLEDGE-RESOLVE-API`, `BUILD-RESOLVE-COMPILE`).
 
-    Resolved in this session, as the notebook's user: the knowledge schemas are found by their UC tag and read
-    through ``spark`` (the active session when omitted), so what resolves is what this user may read
-    (`DEC-STATELESS-SERVICES`). Only the session's catalog scopes are searched (`CLIENT-DISCOVERY-SCOPE`):
-    ``catalog_scopes``, else ``spark.cqldatabricks.catalogScopes``, else ``CQL_DATABRICKS_CATALOG_SCOPES``, else
-    every catalog this user can see, with a warning. The resolver is :func:`cql_databricks.compiler.resolve.resolve`, the one the
-    Designer and the SDP publish use, so all three resolve alike. An include not found raises, naming it.
+    Resolved in this session, as the notebook's user, in the environment ``environment`` names, else
+    ``CQL_DATABRICKS_ENVIRONMENT``, else the default (`CLIENT-ENVIRONMENT`). The resolver is
+    :func:`cql_databricks.compiler.resolve.resolve`, the one the Designer uses, so both resolve alike. An include not
+    found raises, naming it.
 
     Before BUILD-RESOLVE-COMPILE this asked the Designer's App (``bff_app_name``), an edge against the feature
     order; that argument is refused rather than ignored."""
     if bff_app_name is not None:
         raise TypeError("resolve_libraries no longer calls the Designer's App: it resolves in this session from "
-                        "tagged knowledge (BUILD-RESOLVE-COMPILE); drop bff_app_name")
+                        "the environment's knowledge (BUILD-RESOLVE-COMPILE); drop bff_app_name")
     from .resolve import resolve
 
-    return resolve(_session_content(spark, catalog_scopes), cql=source).require_complete().include_sources
+    return resolve(_environment(spark, environment).content(), cql=source).require_complete().include_sources
 
 
-def publish_library(name: str, version: str, *, folder: str, store: str, base: str, spark=None,
-                    catalog_scopes: Optional[Iterable[str]] = None, app_name: Optional[str] = None):
-    """Publish library ``name`` ``version`` from the workspace ``folder`` into the tagged knowledge ``store``
-    (``catalog.schema``), as this notebook's or Job's user (`CLIENT-PUBLISH`).
+def publish_library(name: str, version: str, *, folder: str, base: str, spark=None,
+                    environment: Optional[str] = None, app_name: Optional[str] = None):
+    """Publish library ``name`` ``version`` from the workspace ``folder`` into the knowledge store of the environment
+    ``environment`` names, else ``CQL_DATABRICKS_ENVIRONMENT``, else the default, as this notebook's or Job's user
+    (`CLIENT-PUBLISH`, `BIND-PUBLISHED-VIEW`).
 
     The library's includes held in ``folder`` go with it, dependencies first, and only what changed is written; see
     :func:`cql_databricks.compiler.library_publish.publish_folder_library`, which the Designer's Publish calls too.
-    The folder is read from this session's ``/Workspace`` file system, includes not in it resolve from tagged
-    knowledge in the session's catalog scopes (as :func:`resolve_libraries` does), the CQL compiles through the
-    Compiler Service App (as :func:`translate` does), and the rows are written through ``spark``. ``base`` is the
-    canonical base for a library whose folder holds no ``Library`` JSON with a URL. Returns the
+    The folder is read from this session's ``/Workspace`` file system, includes not in it resolve from the
+    environment's knowledge, the CQL compiles through the Compiler Service App (as :func:`translate` does), and the
+    rows are written through ``spark``, then read back through the ``knowledge`` view. ``base`` is the canonical base
+    for a library whose folder holds no ``Library`` JSON with a URL. Returns the
     :class:`~cql_databricks.compiler.library_publish.PublishSummary`; raises ``PublishRefused`` when nothing was
     written and ``PublishFailed`` when a write failed after others."""
-    from cql_databricks.data_bindings import spark_runner
-
+    from .environment import KNOWLEDGE, KNOWLEDGE_STORE
     from .libraries import LocalLibraryFiles
     from .library_publish import publish_folder_library
 
-    catalog, _, schema = store.partition(".")
-    if not catalog or not schema or "." in schema:
-        raise ValueError(f"store {store!r} is not catalog.schema")
-    if spark is None:
-        from pyspark.sql import SparkSession  # lazy
-        spark = SparkSession.active()
+    session = _session(spark)
+    env = _environment(session, environment)
     provider = make_provider({CONF_APP_NAME: app_name} if app_name else {})
-    return publish_folder_library(_session_content(spark, catalog_scopes), LocalLibraryFiles(), folder, name, version,
-                                  store=(catalog, schema), run=spark_runner(spark), translate=provider.translate_result,
-                                  base=base)
+    held = env.get()
+    return publish_folder_library(env.content(), LocalLibraryFiles(), folder, name, version,
+                                  store=held.address(KNOWLEDGE_STORE), view=held.address(KNOWLEDGE),
+                                  run=_spark_runner(session), translate=provider.translate_result, base=base)
 
 
 def translate(source: str, *, includes: Sequence[str] = (), app_name: Optional[str] = None) -> str:

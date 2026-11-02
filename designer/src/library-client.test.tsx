@@ -3,6 +3,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { toDefinition, fetchDefinitions, fetchDefineProfile, fetchLibrarySource, fetchMeasureMetrics, publishLibrary, peekDefineProfile } from "./library-client.ts";
 import { fetchResults } from "./run-client.ts";
 import type { ResultSetAddress } from "./wire.ts";
+import { setCurrentEnvironment } from "./environment.ts";
 
 const measure = {
   id: { name: "ExampleMeasure", version: "1.0.0" },
@@ -22,7 +23,7 @@ describe("result request transport (RUN-CLIENT-REQUEST-REOPEN)", () => {
     destination: ["synthetic", "results"], publisher: "synthetic-owner", session_id: "session",
     selection_id: "generation-digest", request_hash: "request", purpose: "private",
     population: "synthetic", targets: ["Synthetic.Output"], computed_since: null,
-    calculation: { data_source: "synthetic", runtime_catalog: "synthetic", runtime_schema: "runtime",
+    calculation: { environment: "synthetic", runtime_catalog: "synthetic", runtime_schema: "runtime",
       cql: "library Synthetic version '1'\ndefine Output: 1", period: ["2026-01-01", "2026-12-31"],
       targets: ["Synthetic.Output"] },
   };
@@ -31,7 +32,7 @@ describe("result request transport (RUN-CLIENT-REQUEST-REOPEN)", () => {
     const profile = { kind: "synthetic-profile" };
     const fetcher = vi.fn().mockImplementation(async () => new Response(JSON.stringify(profile)));
     vi.stubGlobal("fetch", fetcher);
-    const scope = { dataSourceId: "synthetic", draft: "durable.session", resultSet };
+    const scope = { environment: "synthetic", draft: "durable.session", resultSet };
     expect(await fetchDefineProfile("Synthetic", "1", "Output", "Synthetic", scope)).toEqual(profile);
     expect(peekDefineProfile("Synthetic", "1", "Output", "Synthetic", scope)).toEqual(profile);
     const changed = { ...scope, resultSet: { ...resultSet, selection_id: "new-generation" } };
@@ -57,7 +58,7 @@ describe("result request transport (RUN-CLIENT-REQUEST-REOPEN)", () => {
 
 describe("figure reads (RUN-CLIENT-RESULT-SETS)", () => {
   afterEach(() => vi.unstubAllGlobals());
-  const scope = { dataSourceId: "synthetic", draft: "durable.figures" };
+  const scope = { environment: "synthetic", draft: "durable.figures" };
 
   it("reads a 409 as no figures", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "nothing computed yet" }), { status: 409 })));
@@ -77,11 +78,25 @@ describe("publishLibrary (DOC-PUBLISH)", () => {
   it("reads a refusal and a failed write apart, each with its summary", async () => {
     const summary = { store: "k.m", libraries: [] };
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "no", summary }), { status: 400 })));
-    expect(await publishLibrary({ location: "folder:/x", name: "S", version: "1", store: "k.m" }))
+    expect(await publishLibrary({ location: "folder:/x", name: "S", version: "1" }))
       .toEqual({ kind: "refused", error: "no", summary });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "denied", summary }), { status: 502 })));
-    expect(await publishLibrary({ location: "folder:/x", name: "S", version: "1", store: "k.m" }))
+    expect(await publishLibrary({ location: "folder:/x", name: "S", version: "1" }))
       .toEqual({ kind: "failed", error: "denied", summary });
+  });
+
+  it("publishes into the picked environment (DOC-ENVIRONMENT-PICKER)", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ store: "k.knowledge_store", libraries: [] })));
+    vi.stubGlobal("fetch", fetcher);
+    setCurrentEnvironment("example");
+    try {
+      await publishLibrary({ location: "folder:/x", name: "S", version: "1" });
+    } finally {
+      setCurrentEnvironment(null);
+    }
+    const init = (fetcher.mock.calls[0] as unknown as [string, RequestInit])[1];
+    expect(JSON.parse(String(init.body))).toEqual({ location: "folder:/x", name: "S", version: "1",
+                                                    environment: "example" });
   });
 });
 

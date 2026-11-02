@@ -1,17 +1,16 @@
 """SVC-MCP-TOOLS — the data tools, as plain functions (`agent/README.md`).
 
-``get_specification`` · ``list_data_sources`` · ``list_tables`` · ``get_output`` · ``query_data`` ·
-``get_freshness``.
+``get_specification`` · ``list_tables`` · ``get_output`` · ``query_data`` · ``get_freshness``.
 
 **``get_output`` is why the list is short.** Given the output of a define, membership, distributions,
 demographic cuts and cross-source comparison are the AGENT reasoning over data — not tools we specify,
 build and maintain. An earlier draft had a tool per question shape, and the ceiling was the list of
 questions we had thought of.
 
-**Three DISCOVERY tools and three that answer.** `get_specification` says what a measure declares,
-`list_data_sources` says what it can be computed against, `list_tables` says what has been. The
-discovery half is what makes the surface usable by a caller that has never seen CQL on Databricks. A discovery tool adds no question
-shape, which is the ceiling the count exists to protect.
+**Two DISCOVERY tools and three that answer.** `get_specification` says what a measure declares, `list_tables`
+says what has been computed. There is nothing to choose to compute against: the tools run in one environment
+(`AGENT-DEFAULT-ENVIRONMENT`). The discovery half is what makes the surface usable by a caller that has never seen
+CQL on Databricks. A discovery tool adds no question shape, which is the ceiling the count exists to protect.
 
 **Every tool takes explicit arguments** (`APP-ASSISTANT-CONTEXT`). The UI's active selection
 prefills them; nothing here reads ambient state. A tool that did would work inside CQL on Databricks and break
@@ -62,36 +61,7 @@ class ReadOnlyViolation(ValueError):
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# 2. list_data_sources
-# ---------------------------------------------------------------------------
-
-#: Supplies the registered Data Sources. Injected like the warehouse, so the tool is testable without
-#: a Lakebase, and so exactly one component decides what a Data Source IS.
-DataSourceLister = Callable[[], list[Any]]
-
-
-def list_data_sources(*, lister: DataSourceLister) -> list[dict[str, Any]]:
-    """Every registered Data Source: its id, its name, and what the data actually is.
-
-    Source discovery is separate from complete-selection reads. A source ID does not select a
-    result; those tools require the resultSet locator returned by Designer or a publishing Job.
-
-    ``description`` is the source schema's COMMENT about the DATA — whose records, what period, real or
-    fabricated (`DATA-SOURCE-DESCRIPTION`, `DATA-SOURCE-UC-TAG`) — and is absent when nobody wrote one,
-    never synthesized from the source's other fields: that would describe the binding, not the data.
-    Source-change declarations are not inspected (`RUN-CLIENT-REUSE`).
-    """
-    out: list[dict[str, Any]] = []
-    for source in lister():
-        entry: dict[str, Any] = {"id": source.id, "name": source.name}
-        if source.description:
-            entry["description"] = source.description
-        out.append(entry)
-    return out
-
-
-# ---------------------------------------------------------------------------
-# 3. list_tables
+# 2. list_tables
 # ---------------------------------------------------------------------------
 
 #: RUN-CLIENT-RESULT-SETS — exact compiler names from an explicitly selected complete result set.
@@ -104,7 +74,7 @@ def list_tables(computed: ComputedLookup, result_set: dict) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# 4. get_output — the primitive
+# 3. get_output — the primitive
 # ---------------------------------------------------------------------------
 
 def get_output(address: NodeAddress, reference: SelectedOutput | None, *,
@@ -125,7 +95,7 @@ def get_output(address: NodeAddress, reference: SelectedOutput | None, *,
 
 
 # ---------------------------------------------------------------------------
-# 5. query_data
+# 4. query_data
 # ---------------------------------------------------------------------------
 
 #: A read starts with SELECT or WITH. Anything else is refused by name rather than by a deny-list of
@@ -166,7 +136,7 @@ def query_data(sql: str, *, warehouse: Warehouse,
 
 
 # ---------------------------------------------------------------------------
-# 6. get_freshness
+# 5. get_freshness
 # ---------------------------------------------------------------------------
 
 def get_freshness(address: NodeAddress, reference: SelectedOutput | None) -> Freshness:

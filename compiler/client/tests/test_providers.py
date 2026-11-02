@@ -5,7 +5,7 @@ from unittest import mock
 
 from cql_databricks.compiler import config, providers
 from cql_databricks.compiler.providers import (
-    CompileError, CompileRequest, LibraryInput, NoAuth, OAuth2TokenExchange, RemoteProvider, StaticBearer,
+    CompileError, CompileRequest, NoAuth, OAuth2TokenExchange, RemoteProvider, StaticBearer,
     resolve_credentials, resolve_provider,
 )
 
@@ -237,13 +237,9 @@ class RemoteProviderTests(unittest.TestCase):
             plan = provider.compile_pipeline(CompileRequest(elm="{...}", context="Patient"))
         self.assertEqual(plan.datasets[0].sql_file, "")
 
-    def test_multi_library_request_ships_every_root_and_reports_the_compiler(self):
-        # PIPE-MULTI-LIB: several roots in one body; BUILD-VERSION-PIN: the plan carries the compiler identity.
-        request = CompileRequest(libraries=[LibraryInput(elm="{root-a}", deps=["{dep}"]),
-                                            LibraryInput(elm="{root-b}")])
-        self.assertEqual(request.to_json()["libraries"],
-                         [{"elm": "{root-a}", "deps": ["{dep}"]}, {"elm": "{root-b}", "deps": []}])
-        self.assertNotIn("libraries", CompileRequest(elm="x").to_json())  # BUILD-CLIENT-COMPAT: omitted when unset
+    def test_the_plan_reports_the_compiler(self):
+        # BUILD-VERSION-PIN: the plan carries the compiler identity.
+        request = CompileRequest(elm="x")
         provider = RemoteProvider("http://h")
         body = {"datasets": [], "compilerVersion": "engine-abc+svc-abc"}
         with mock.patch("requests.post", return_value=_resp(json_body=body)):
@@ -384,12 +380,10 @@ class ResolveTests(unittest.TestCase):
         lazily precisely so that an explicitly wired client stays platform-free — the property the OSS
         end-to-end conformance lane depends on."""
         import sys
-        for mod in [m for m in list(sys.modules) if m.startswith("cql_databricks.compiler.provider")
-                    or m.startswith("cql_databricks.compiler.discovery")]:
+        for mod in [m for m in list(sys.modules) if m.startswith("cql_databricks.compiler.provider")]:
             del sys.modules[mod]
         resolve_provider({config.CONF_PROVIDER_ENDPOINT: "https://compile.example"})
         self.assertNotIn("cql_databricks.compiler.provider", sys.modules)
-        self.assertNotIn("cql_databricks.compiler.discovery", sys.modules)
 
 
 if __name__ == "__main__":

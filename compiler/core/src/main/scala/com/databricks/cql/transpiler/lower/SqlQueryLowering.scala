@@ -421,6 +421,19 @@ object SqlQueryLowering {
     *
     * `r` is `None` for the CONTEXT BASE mount (the per-subject `Patient` scan, [[contextRel]]): it has no
     * predicates and belongs to no define, so its `parameters` map is empty. */
+  /** BIND-CALL-SITE: the mount for one retrieve call site. The context's own retrieve (`r` is `None`) belongs to
+    * no define, so its site names no library; every other site names the define being lowered and its library
+    * ([[SqlEvalEnv.siteOwner]]). */
+  private[lower] def retrieveMount(r: Option[Retrieve], rt: String, lib: Library, env: SqlEvalEnv): SqlRel = {
+    val call = retrieveCall(r, rt, lib, env)
+    env.retrieveMount(call, CallSite.retrieve(call, if (r.isEmpty) None else env.siteOwner(lib)))
+  }
+
+  /** BIND-CALL-SITE: the value-set site for a membership test on `vsId` in the define being lowered. */
+  private[lower] def valueSetMount(vsId: String, lib: Library, env: SqlEvalEnv): SqlRel =
+    env.valueSetMount(vsId, CallSite.valueSet(vsId, lib.valueSets.find(_.id == vsId).flatMap(_.version),
+      env.siteOwner(lib)))
+
   private[lower] def retrieveCall(r: Option[Retrieve], rt: String, lib: Library, env: SqlEvalEnv): RetrieveCall = {
     val valueSet = r.flatMap(_.codes).collect {
       case ValueSetRef(name, _)         => valueSetId(lib, name)
@@ -437,7 +450,6 @@ object SqlQueryLowering {
     RetrieveCall(
       fhirType = rt,
       valueSet = valueSet,
-      codeProperty = r.flatMap(_.codeProperty).map(resolveCodeSlot(rt, _)),
       codes = codes,
       dateProperty = r.flatMap(_.dateProperty),
       dateLow = dateLow,
@@ -525,7 +537,7 @@ object SqlQueryLowering {
     * flattens the extra list level (cardinality read STATICALLY from the model, ARCH-NO-RUNTIME-SCHEMA).
     * `resourceExpr` navigates the coding/id off the row (a mount navigates `__resource`). */
   private def membershipSemiJoin(resources: SqlRel, resourceExpr: SqlExpr, codeProperty: String,
-                                 vsId: String, env: SqlEvalEnv, codeIsList: Boolean): SqlRel = {
+                                 vsId: String, env: SqlEvalEnv, codeIsList: Boolean, lib: Library): SqlRel = {
     val codings0 = navPath(resourceExpr, s"$codeProperty.coding")
     val codings  = if (codeIsList) Call("flatten", Seq(codings0)) else codings0
     resources match {
@@ -544,7 +556,7 @@ object SqlQueryLowering {
           from = SqlRel.LateralView(mount, Call("explode", Seq(codings)), "__cx", Seq("__coding")))
         val matched = SqlRel.Select(
           projections = Seq(SqlRel.Proj(Col("__mid"))), distinct = true,
-          from = SqlRel.Join(asFrom(exploded, "__ex"), SqlRel.AliasRel(env.valueSetMount(vsId), "__vs"),
+          from = SqlRel.Join(asFrom(exploded, "__ex"), SqlRel.AliasRel(valueSetMount(vsId, lib, env), "__vs"),
             SqlRel.JoinKind.LeftSemi, using = Seq("system", "code")))
         SqlRel.Join(mount, SqlRel.AliasRel(matched, "__mids"), SqlRel.JoinKind.LeftSemi,
           on = Some(Infix("=", idExpr, Col("__mid"))))
@@ -557,7 +569,7 @@ object SqlQueryLowering {
         val cond = Call("exists", Seq(codings, Lambda(Seq("x"),
           Infix("AND", Infix("=", Field(Col("x"), "system"), Field(Col(vs), "system")),
                        Infix("=", Field(Col("x"), "code"),   Field(Col(vs), "code"))))))
-        SqlRel.Join(frame, SqlRel.AliasRel(env.valueSetMount(vsId), vs), SqlRel.JoinKind.LeftSemi, on = Some(cond))
+        SqlRel.Join(frame, SqlRel.AliasRel(valueSetMount(vsId, lib, env), vs), SqlRel.JoinKind.LeftSemi, on = Some(cond))
     }
   }
 
@@ -605,15 +617,15 @@ object SqlQueryLowering {
     * read's BODY without recursing into the substitution that would make it read itself. */
   private[lower] def filteredRetrieveInline(r: Retrieve, rt: String, env: SqlEvalEnv, lib: Library,
                                             typeOf: Expr => CqlType): SqlRel = {
-    val mount = env.retrieveMount(retrieveCall(Some(r), rt, lib, env))
+    val mount = retrieveMount(Some(r), rt, lib, env)
     val resourceCol = Col(Resource)
     def codeProp: String = resolveCodeSlot(rt, r.codeProperty.getOrElse(throw UnsupportedNode("Retrieve",
       s"code-filtered retrieve [$rt] has no codeProperty to test membership on")))
     def isList: Boolean = FhirModel.isListElement(rt, codeProp)
     val codeFiltered = r.codes match {
       case None                                 => mount
-      case Some(ValueSetRef(name, _))           => membershipSemiJoin(mount, resourceCol, codeProp, valueSetId(lib, name), env, isList)
-      case Some(ToList(ValueSetRef(name, _)))   => membershipSemiJoin(mount, resourceCol, codeProp, valueSetId(lib, name), env, isList)
+      case Some(ValueSetRef(name, _))           => membershipSemiJoin(mount, resourceCol, codeProp, valueSetId(lib, name), env, isList, lib)
+      case Some(ToList(ValueSetRef(name, _)))   => membershipSemiJoin(mount, resourceCol, codeProp, valueSetId(lib, name), env, isList, lib)
       case Some(CodeRef(name, _))               => val (s, c) = codePair(lib, name); codeFilter(mount, resourceCol, codeProp, s, c, isList)
       case Some(ToList(CodeRef(name, _)))       => val (s, c) = codePair(lib, name); codeFilter(mount, resourceCol, codeProp, s, c, isList)
       case Some(other)                          => throw UnsupportedNode(other.elmType, s"retrieve [$rt] code filter must be a ValueSetRef or a code")
@@ -844,7 +856,7 @@ object SqlQueryLowering {
     if (env.context.hasSubjectGrouping)
       Some(SqlRel.Select(
         projections = Seq(SqlRel.Proj(Col(SubjectId)), SqlRel.Proj(Col(Resource), env.context.name)),
-        from = env.retrieveMount(retrieveCall(None, env.context.name, lib, env))))
+        from = retrieveMount(None, env.context.name, lib, env)))
     else None
 
   /** The Cartesian combination of all sources (inner-joined on `__subject_id`), with the value[x] static
@@ -1137,7 +1149,6 @@ object SqlQueryLowering {
     case Struct(fs)        => fs.iterator.flatMap { case (_, v) => freeColRefs(v) }.toSet
     case Lambda(ps, b)     => freeColRefs(b) -- ps.toSet
     case Over(fn, pb, ob)  => freeColRefs(fn) ++ pb.flatMap(freeColRefs).toSet ++ ob.flatMap(k => freeColRefs(k.expr)).toSet
-    case NamedArg(_, v)    => freeColRefs(v)
     case _: Lit            => Set.empty
   }
 
@@ -1162,7 +1173,6 @@ object SqlQueryLowering {
       case Struct(fs)         => Struct(fs.map { case (n, v) => (n, go(v)) })
       case Lambda(ps, b)      => Lambda(ps, substCols(b, names -- ps, carrier))
       case Over(fn, pb, ob)   => Over(go(fn), pb.map(go), ob.map(k => k.copy(expr = go(k.expr))))
-      case NamedArg(n, v)     => NamedArg(n, go(v))
       case l: Lit             => l
     }
     go(e)
@@ -1250,7 +1260,7 @@ object SqlQueryLowering {
         from = codingRows)
       SqlRel.Select(
         projections = keyProjs :+ SqlRel.Proj(bool(true), flagCol), distinct = true,
-        from = SqlRel.Join(asFrom(exploded, "__ex"), SqlRel.AliasRel(env.valueSetMount(vsId), "__vs"),
+        from = SqlRel.Join(asFrom(exploded, "__ex"), SqlRel.AliasRel(valueSetMount(vsId, lib, env), "__vs"),
           SqlRel.JoinKind.LeftSemi, using = Seq("system", "code")))
     }
 
@@ -1335,7 +1345,7 @@ object SqlQueryLowering {
     val (alias, path, vs) = RetrieveFilter.membership(conjunct).get
     val srcExpr = q.sources.collectFirst { case QuerySource(`alias`, e) => e }
     val isList  = srcExpr.flatMap(e => aliasResourceType(e, typeOf)).exists(FhirModel.isListElement(_, path))
-    membershipSemiJoin(SqlRel.AliasRel(frame, "__m"), Col(alias), path, valueSetId(lib, vs.name), env, isList)
+    membershipSemiJoin(SqlRel.AliasRel(frame, "__m"), Col(alias), path, valueSetId(lib, vs.name), env, isList, lib)
   }
 
   /** `exists(query)`: the distinct subjects with ≥1 surviving combined row (the SQL twin of
@@ -1350,7 +1360,7 @@ object SqlQueryLowering {
     * `FrameLowering.subjectsPresent`). */
   def subjectsPresent(r: Retrieve, env: SqlEvalEnv, lib: Library, typeOf: Expr => CqlType): SqlRel = {
     val rt = localName(r.dataType)
-    val read = if (isUnfilteredScan(r)) env.retrieveMount(retrieveCall(Some(r), rt, lib, env))
+    val read = if (isUnfilteredScan(r)) retrieveMount(Some(r), rt, lib, env)
                else filteredRetrieve(r, rt, env, lib, typeOf)
     SqlRel.Select(projections = Seq(SqlRel.Proj(Col(SubjectId))), from = asFrom(read, "__sp"), distinct = true)
   }

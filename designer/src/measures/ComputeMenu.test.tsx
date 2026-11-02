@@ -1,4 +1,4 @@
-// APP-EXECUTION-PILL / APP-UPDATE-MODE / APP-COMPUTE-TARGET — ONE dropdown of items, in order: Data source
+// APP-EXECUTION-PILL / APP-UPDATE-MODE / APP-COMPUTE-TARGET — ONE dropdown of items, in order: Environment
 // (a submenu), Compute (a submenu of SQL warehouses), Automatic (one checkable item; unchecked is Manual),
 // then the Refresh button. The trigger is the dot and caret alone; its tooltip names the choices.
 
@@ -6,7 +6,7 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ComputeMenu } from "./ComputeMenu.tsx";
 import { runStatusText, runStatusWhen, storedUpdateMode, type RunStatus } from "./model.ts";
-import type { DataSourceRecord, WarehouseRecord } from "../wire.ts";
+import type { EnvironmentRecord, WarehouseRecord } from "../wire.ts";
 
 const WAREHOUSES: WarehouseRecord[] = [
   { id: "wh-default", name: "Shared Serverless", state: "RUNNING" },
@@ -24,9 +24,9 @@ const trigger = () => screen.getByRole("button", { name: "Execution control" });
 
 describe("ComputeMenu (APP-EXECUTION-PILL)", () => {
   it("prints no value on the trigger and names the choices in its tooltip", () => {
-    renderPill({ sources: [source()], selectedSourceId: "example-data" });
+    renderPill({ environments: [environment()], environment: "example" });
     expect(trigger().textContent).toBe("");
-    expect(trigger()).toHaveAttribute("title", "Example Data · Shared Serverless · Manual");
+    expect(trigger()).toHaveAttribute("title", "example · Shared Serverless · Manual");
   });
 
   it("says None is one inseparable state when nothing is engaged", () => {
@@ -34,36 +34,36 @@ describe("ComputeMenu (APP-EXECUTION-PILL)", () => {
     expect(trigger()).toHaveAttribute("title", "None — no computed data");
   });
 
-  it("is one menu of items with no section headings: Data source, Compute, Automatic, then Refresh", () => {
+  it("is one menu of items with no section headings: Environment, Compute, Automatic, then Refresh", () => {
     renderPill();
     fireEvent.click(trigger());
     expect(document.querySelectorAll(".mw-selpill-group")).toHaveLength(0);
     const items = [...document.querySelectorAll(".mw-selpill-list > *")];
     expect(items.map((i) => (i.textContent ?? "").trim())).toEqual([
-      expect.stringMatching(/^Data source/), expect.stringMatching(/^Compute/),
+      expect.stringMatching(/^Environment/), expect.stringMatching(/^Compute/),
       expect.stringMatching(/^Automatic/), "Refresh"]);
   });
 
-  it("holds the data source behind one item that names it, and closes on a pick", () => {
-    const onSourceChange = vi.fn();
-    renderPill({ sources: [source()], onSourceChange });
+  it("holds the environment behind one item that names it, and closes on a pick", () => {
+    const onEnvironmentChange = vi.fn();
+    renderPill({ environments: [environment()], onEnvironmentChange });
     fireEvent.click(trigger());
-    const row = screen.getByRole("button", { name: /^Data source:/ });
-    expect(row).toHaveAccessibleName("Data source: None");
-    expect(screen.queryByRole("listbox", { name: "Data source" })).toBeNull();
+    const row = screen.getByRole("button", { name: /^Environment:/ });
+    expect(row).toHaveAccessibleName("Environment: None");
+    expect(screen.queryByRole("listbox", { name: "Environment" })).toBeNull();
     fireEvent.click(row);
-    fireEvent.click(within(screen.getByRole("listbox", { name: "Data source" })).getByRole("option", { name: /Example Data/ }));
-    expect(onSourceChange).toHaveBeenCalledWith("example-data");
+    fireEvent.click(within(screen.getByRole("listbox", { name: "Environment" })).getByRole("option", { name: /example/ }));
+    expect(onEnvironmentChange).toHaveBeenCalledWith("example");
     // Picking a state IS a decision, so it closes the pill.
-    expect(screen.queryByRole("button", { name: /^Data source:/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Environment:/ })).toBeNull();
   });
 
   it("opens one submenu at a time", () => {
-    renderPill({ sources: [source()] });
+    renderPill({ environments: [environment()] });
     fireEvent.click(trigger());
-    fireEvent.click(screen.getByRole("button", { name: /^Data source:/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Environment:/ }));
     fireEvent.click(screen.getByRole("button", { name: /^Compute:/ }));
-    expect(screen.queryByRole("listbox", { name: "Data source" })).toBeNull();
+    expect(screen.queryByRole("listbox", { name: "Environment" })).toBeNull();
     expect(screen.getByRole("listbox", { name: "Compute" })).toBeInTheDocument();
   });
 });
@@ -83,8 +83,8 @@ describe("the Compute submenu (APP-COMPUTE-TARGET)", () => {
 
   it("opens the warehouse list beside it, and reports a pick", () => {
     const onWarehouseChange = vi.fn();
-    renderPill({ warehouseId: "wh-big", onWarehouseChange, sources: [source()], selectedSourceId: "example-data" });
-    expect(trigger()).toHaveAttribute("title", "Example Data · Large · Manual");
+    renderPill({ warehouseId: "wh-big", onWarehouseChange, environments: [environment()], environment: "example" });
+    expect(trigger()).toHaveAttribute("title", "example · Large · Manual");
     fireEvent.click(trigger());
     fireEvent.click(computeRow());
     const compute = screen.getByRole("listbox", { name: "Compute" });
@@ -141,7 +141,7 @@ describe("runStatusText (APP-UPDATE-MODE)", () => {
   it("says why nothing is shown, and never says Idle", () => {
     const texts = ([
       { kind: "not-computed" }, { kind: "changed" }, { kind: "running", done: 2, total: 5 },
-      { kind: "running" }, { kind: "failed" }, { kind: "shown" }, { kind: "checking" }, { kind: "no-source" },
+      { kind: "running" }, { kind: "failed" }, { kind: "shown" }, { kind: "checking" }, { kind: "no-environment" },
     ] as RunStatus[]).map(runStatusText);
     expect(texts.slice(0, 6)).toEqual(["Not computed. Press Refresh", "Calculation changed since last run",
       "Running 2/5", "Running…", "Failed. Retry", "Last Data Refresh"]);
@@ -173,8 +173,8 @@ describe("the Automatic item (APP-UPDATE-MODE)", () => {
   });
 
   it("is checked, with the accent wash and the tick, in Automatic", () => {
-    renderPill({ updateMode: "live", sources: [source()], selectedSourceId: "example-data" });
-    expect(trigger()).toHaveAttribute("title", "Example Data · Shared Serverless · Automatic");
+    renderPill({ updateMode: "live", environments: [environment()], environment: "example" });
+    expect(trigger()).toHaveAttribute("title", "example · Shared Serverless · Automatic");
     fireEvent.click(trigger());
     expect(automatic()).toHaveAttribute("aria-checked", "true");
     expect(automatic()).toHaveClass("on");
@@ -202,36 +202,28 @@ describe("the Automatic item (APP-UPDATE-MODE)", () => {
   });
 });
 
-// DATA-SOURCE-DESCRIPTION — a source row's subtitle is the schema's own comment about the DATA. These pin
-// that nothing else is printed there: the record's metadata (the catalog.schema, the size of the binding
-// map) describes the record, and a binding count in the position of a figure reads as a population size.
-// The record is the tagged-schema shape (DATA-SOURCE-UC-TAG): no class, status or libraries.
-function source(over: Partial<DataSourceRecord> = {}): DataSourceRecord {
-  return {
-    id: "example-data", name: "Example Data", catalog: "acme", schema: "demo_population",
-    dataBindings: { Patient: { function: "acme.demo_population.retrieve_Patient" },
-                    Condition: { function: "acme.demo_population.retrieve_Condition" } },
-    ...over,
-  };
+// DOC-ENVIRONMENT-PICKER — an environment row's subtitle says whether it is the default and what the catalog's own
+// comment says it holds. Nothing else is printed there: the catalog name describes the record, not the data.
+function environment(over: Partial<EnvironmentRecord> = {}): EnvironmentRecord {
+  return { name: "example", catalog: "acme_example", version: "1", default: false, ...over };
 }
 
-describe("source subtitles (DATA-SOURCE-DESCRIPTION)", () => {
-  it("prints the description under the source's name", () => {
-    renderPill({ sources: [source({ description: "Synthetic patients with an example condition." })] });
+describe("DOC-ENVIRONMENT-PICKER environment subtitles", () => {
+  it("prints the default mark and the description under the environment's name", () => {
+    renderPill({ environments: [environment({ default: true, description: "Synthetic patients." })] });
     fireEvent.click(trigger());
-    fireEvent.click(screen.getByRole("button", { name: /^Data source:/ }));
-    const row = screen.getByRole("option", { name: /Example Data/ });
-    expect(row).toHaveTextContent("Synthetic patients with an example condition.");
+    fireEvent.click(screen.getByRole("button", { name: /^Environment:/ }));
+    const row = screen.getByRole("option", { name: /example/ });
+    expect(row).toHaveTextContent("Default · Synthetic patients.");
   });
 
-  it("says nothing rather than describing the registry when no description was written", () => {
-    renderPill({ sources: [source()] });
+  it("says nothing rather than describing the catalog when no description was written", () => {
+    renderPill({ environments: [environment()] });
     fireEvent.click(trigger());
-    fireEvent.click(screen.getByRole("button", { name: /^Data source:/ }));
-    const row = screen.getByRole("option", { name: /Example Data/ });
+    fireEvent.click(screen.getByRole("button", { name: /^Environment:/ }));
+    const row = screen.getByRole("option", { name: /example/ });
     expect(row.querySelector(".bl")).toBeNull();
-    expect(row).not.toHaveTextContent("acme.demo_population");
-    expect(row).not.toHaveTextContent("bindings");
+    expect(row).not.toHaveTextContent("acme_example");
   });
 });
 

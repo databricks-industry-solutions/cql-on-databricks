@@ -15,15 +15,6 @@ object SqlRel {
     * define-once / reference-many is realized — no subtree inlining. */
   final case class TableRef(name: String) extends SqlRel
 
-  /** A CALL of a table-valued function in FROM position — `FROM [catalog.]fn(arg, …)`
-    * (`BIND-RETRIEVE-UDF`). The SQL-back-end seam for a client-supplied SQL UDTF the compiler names but
-    * never bodies (`ARCH-PURITY`): the retrieve mount lowers to a `retrieve_<Type>(…)` call whose EIGHT
-    * explicit literal arguments (`BIND-EXPLICIT-PARAMS`) let Catalyst inline the SQL UDTF and fold its
-    * non-matching source arms at analysis time. `catalog` is an optional dotted qualifier from the
-    * binding table; the arguments are ordinary [[SqlExpr]]s (no relational subquery), so it is a FROM
-    * atom like [[TableRef]]. */
-  final case class TableFunc(fn: String, args: Seq[SqlExpr], catalog: Option[String] = None) extends SqlRel
-
   /** A single synthetic row with no columns (`SELECT 1`) — the FROM atom for an UNGROUPED-context base
     * relation (Unfiltered/Population), where the whole library is the degenerate one-subject case of the
     * set-at-a-time frame (ARCH-SET-EVAL). A base `SELECT '*' AS __subject_id FROM (SELECT 1)` seeds the

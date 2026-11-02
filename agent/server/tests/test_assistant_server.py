@@ -34,7 +34,7 @@ from agent.server.tests.research_fixture import RESEARCH_TOOLS, fake_research
 #: The five that answer questions ABOUT a measure. This set is the one that must not grow
 #: (`SVC-MCP-TOOLS`): `get_output` is the primitive precisely so that a new question shape is the
 #: agent reasoning over data rather than a sixth entry here.
-DATA_TOOLS = {"get_specification", "list_data_sources", "list_tables", "get_output",
+DATA_TOOLS = {"get_specification", "list_tables", "get_output",
               "query_data", "get_freshness"}
 
 #: The skill pair (`SVC-MCP-SKILLS`). Counted separately because they are a different KIND of thing —
@@ -43,14 +43,6 @@ DATA_TOOLS = {"get_specification", "list_data_sources", "list_tables", "get_outp
 SKILL_TOOLS = {"list_skills", "get_skill"}
 
 EXPECTED_TOOLS = DATA_TOOLS | RESEARCH_TOOLS | SKILL_TOOLS
-
-
-#: A registered Data Source, as `list_data_sources` reads one. A `SimpleNamespace` rather than the real
-#: dataclass because the tool touches four attributes and the seam exists precisely so a test need not
-#: build a registry (`docs/coding-standards.md`, the storage-seam pattern).
-SOURCE = SimpleNamespace(id="example-patients", name="Example Patients",
-                         description="Fabricated patient data for development",
-                         change_data_log="cat.sch.change_log")
 
 
 def _contributed() -> ToolRegistry:
@@ -72,7 +64,6 @@ def server():
     return create_mcp(
         warehouse=lambda sql: None,
         reference_for=lambda address: None, computed_for=lambda *scope: None,
-        data_sources=lambda: [SOURCE],
         research=fake_research(),
         contributed=_contributed(),
     )
@@ -84,7 +75,7 @@ class TestContributedTools:
     def test_without_a_contribution_the_specification_tool_is_absent(self):
         bare = create_mcp(warehouse=lambda sql: None,
                           reference_for=lambda *args: None, computed_for=lambda *scope: [],
-                          data_sources=lambda: [], research=fake_research())
+                          research=fake_research())
         assert "get_specification" not in _tools(bare)
 
     def test_a_contributed_tool_leads_the_list(self, server):

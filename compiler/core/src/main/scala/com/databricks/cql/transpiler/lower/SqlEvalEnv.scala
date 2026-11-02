@@ -1,6 +1,6 @@
 package com.databricks.cql.transpiler.lower
 
-import com.databricks.cql.env.{Config, Context, RetrieveRelation, SourceBinding}
+import com.databricks.cql.env.{Config, Context, DataBinding, RetrieveRelation, TerminologyBinding}
 import com.databricks.cql.error.UnsupportedNode
 import com.databricks.cql.transpiler.emit.{SqlExpr, SqlNames, SqlRel}
 
@@ -11,35 +11,25 @@ import com.databricks.cql.transpiler.emit.{SqlExpr, SqlNames, SqlRel}
   * no `Materializer`, no `TerminologyProvider` adapter. The SQL back end emits TEXT, so those seams
   * collapse into NAMES the runtime has mounted.
   *
-  * THE RETRIEVE SEAM ([[retrieveMount]], BIND-RETRIEVE-UDF). Where the compiler's
-  * `EvalEnv.requireData(...).retrieve(rt)` returns a `DataFrame` for `[Encounter]`, the SQL target returns
-  * a [[SqlRel.TableFunc]] CALL `[catalog.]retrieve_<Type>(library, value_set, code_property, codes,
-  * date_property, date_low, date_high, parameters)` to a client-supplied SQL UDTF — the SQL analog of a
-  * `DataProvider` handing back a frame. That function returns the identical
-  * `(__subject_id, __resource)` contract (`SystemColumns`, DATA-RETRIEVE-VIEW): the runtime
-  * (client/conformance) registers one such UDTF per resource type BEFORE running the script, so the
-  * transpiler never constructs a scan — it names the function (from the caller's binding table,
-  * BIND-MANIFEST) and feeds it eight EXPLICIT literal arguments it may prune on
-  * ([[SqlEvalEnv.retrieveParams]], BIND-EXPLICIT-PARAMS / BIND-PUSHDOWN). A SQL UDTF inlines in Catalyst,
-  * so pruning/sharing stay native; the module stays Spark-free (ARCH-PURITY). (The earlier bare
-  * `retrieve_<Type>` VIEW mount was RETIRED — the UDTF is now the sole mount contract. The opaque
-  * `(context VARIANT, hints VARIANT)` envelope pair was retired in favour of the explicit parameters,
-  * 2026-08.)
+  * THE RETRIEVE SEAM ([[retrieveMount]], BIND-CALL-SITE). Where the compiler's
+  * `EvalEnv.requireData(...).retrieve(rt)` returns a `DataFrame` for `[Encounter]`, the SQL target names the
+  * relation the request's [[data]] binds to the retrieve's call site, read as `SELECT __subject_id, __resource FROM
+  * <name>` (`BIND-CONTRACT`). The retrieve's filters re-apply above it (`BIND-CAPABILITY`), so the transpiler never
+  * constructs a scan and the module stays Spark-free (ARCH-PURITY). A retrieve with no relation fails.
   *
-  * THE TERMINOLOGY SEAM ([[valueSetMount]], BIND-TERMINOLOGY-TABLE). Every `TerminologyProvider.expand(vsId)`
-  * (a DataFrame of `(system, code)`) lands in ONE mounted `valuesets` table keyed by value-set id; a
-  * membership selects its set with `WHERE valueset_id = '<vsId>'` and renders as a semi-join against that
-  * ([[SqlQueryLowering.membershipFilter]]). `terminology = false` fails a membership loudly
-  * (CORE-NO-SILENT-MISLOWER), mirroring `EvalEnv.terminology.getOrElse(throw …)`. */
+  * THE TERMINOLOGY SEAM ([[valueSetMount]], BIND-CALL-SITE). A membership reads its value set's `(system, code)` rows
+  * from the relations [[terminologyBinding]] gives its site, the first that holds it winning, keyed by
+  * `valueset_id`, and renders as a semi-join ([[SqlQueryLowering.membershipFilter]]). No terminology fails a
+  * membership loudly (CORE-NO-SILENT-MISLOWER).
+  *
+  * `describe` lowers before anything is bound, so it lowers with [[describing]]'s placeholder relations, which are
+  * named in no SQL anyone runs. */
 final case class SqlEvalEnv(
     /** The active CQL context; decides the base relation's grouping (LANG-CONTEXT). */
     context: Context,
     /** Frozen engine configuration (TECH-CONFIG) — the SAME `Config` the proto path reads, so
       * `grainFirst`, the materialize mode, and the boundary set all carry over unchanged. */
     config: Config = Config.defaults,
-    /** Whether value-set expansion views are mounted (the SQL analog of an injected
-      * `TerminologyProvider`). `false` → a membership test fails loudly. */
-    terminology: Boolean = false,
     /** The per-name REUSE (refcount) map (DATA-MATERIALIZE-POLICY), threaded from
       * `passes.Materialize.reuseCounts` — the reuse factor the `costly` policy multiplies a candidate's
       * cost by. Consumed by [[SqlMaterialization]] to pick a define's statement kind. Empty → reuse 1. */
@@ -50,9 +40,11 @@ final case class SqlEvalEnv(
     /** ARCH-CTE-DEF: the define currently being lowered, set per-define by [[SqlFrameLowering]] so a
       * local CSE cut inside its query can be named in that define's namespace. `None` outside a define. */
     currentDefine: Option[String] = None,
-    /** EMIT-ROOT-INDEPENDENT: each define's parameters, keyed by its own library's names
-      * ([[com.databricks.cql.passes.ParameterScope]]), set by [[SqlFrameLowering]]. A retrieve's `parameters`
-      * argument carries only the current define's, so a parameter another library declares never changes it. */
+    /** EMIT-ROOT-INDEPENDENT, BIND-RETRIEVE-REQUEST: each define's parameters, keyed by its own library's names
+      * ([[com.databricks.cql.passes.ParameterScope]]). The caller sets it from the library BEFORE
+      * `ParameterResolver` inlines parameters: after that no define references one, so a scope computed there is
+      * empty. A retrieve's `parameters` carries only the current define's, so a parameter another library
+      * declares never changes it. */
     defineParameters: Map[String, Seq[(String, com.databricks.cql.ir.ParameterDef)]] = Map.empty,
     /** ARCH-RESOURCE-HANDLE: the demand (navigated fields / whole-body need) per heterogeneous-`Choice`
       * list define, from `passes.ChoiceDemand.analyze` (the SAME pure pass the compiler uses — Spark-free).
@@ -114,37 +106,25 @@ final case class SqlEvalEnv(
       * combined frame and resolves the reference to its value column ([[SqlQueryLowering.combined]]). Empty
       * outside a define / on the Array path — a ref there still fails loudly (CORE-NO-SILENT-MISLOWER). */
     scalarDefs: scala.collection.Set[String] = Set.empty,
-    /** BIND-MANIFEST: the caller-supplied retrieve binding table — a per-FHIR-type map to the SQL UDTF
-      * ([[SourceBinding]]) that retrieves it, passed as DATA over the compile API. Consulted ONLY in UDTF
-      * mount mode ([[retrieveSource]], `Config.retrieveUdtf`); a type ABSENT from the map falls back to the
-      * convention `retrieve_<Type>` with no catalog. Empty (the default) → every type is convention-bound.
-      * The compiler reads no catalog to discover a function (`ARCH-PURITY`). */
-    sources: Map[String, SourceBinding] = Map.empty,
     /** PIPE-EMIT-SQL — the naming context for published dataset names (`{library}_{version}[_{param_hash}]__
       * {define}`). Threaded from the compile request's library identity and parameter overrides. `None`
       * (the default, off the pipeline path) → `datasetName` is never called (the interactive `compileSql`
       * path has no cut and emits no published names). */
     datasetNameCtx: Option[SqlNames.DatasetNameContext] = None,
-    /** BIND-TERMINOLOGY-TABLE: optional fully-qualified table name for the value-set expansion mount
-      * (e.g. `"catalog.schema.valuesets"`). When `Some`, the emitted SQL references `FROM <fqn>` instead
-      * of bare `FROM valuesets`, so a pipeline whose target schema differs from the terminology schema
-      * resolves correctly. When `None` (the default), the bare `"valuesets"` convention is preserved. */
-    terminologyTable: Option[String] = None,
     /** RUN-RESULTS-BY-EVAL (`DEC-EVAL-ID-LOOKUP`): the evaluation set this pipeline-cut compile writes. A
       * published sibling holds every evaluation set's rows keyed by `__eval_id`, so when this is set a read
       * of one ([[relRef]], [[scalarRef]], [[readRef]]) keeps only this evaluation's rows and drops the key.
       * `None` (the default) reads the published name bare, as before. Ignored off the cut path. */
     publishedEvalId: Option[String] = None,
-    /** BIND-PROVIDER-REQUEST: each retrieve id ([[RetrieveCall.id]]) to the relation the client's data provider
-      * returned for it. `Some` binds every retrieve per id, and a retrieve with no relation fails; `None`
-      * keeps the per-type [[sources]] binding. */
-    data: Option[Map[String, RetrieveRelation]] = None,
-    /** BIND-PROVIDER-REQUEST: the value-set relations in precedence order, a set read from the first that
-      * holds it. `Some` replaces [[terminologyTable]] and [[terminology]]: an empty list has no terminology. */
-    terminologyRelations: Option[Seq[RetrieveRelation]] = None,
-    /** BIND-PROVIDER-REQUEST: every retrieve this lowering made, by id, in first-seen order, for `describe`.
-      * Shared by every copy of the env, like [[hoistCounter]]. */
-    retrieveCalls: scala.collection.mutable.LinkedHashMap[String, RetrieveCall] =
+    /** BIND-CALL-SITE: how the request binds each retrieve call site, by rule or per site. A site with no
+      * relation fails, and so does any retrieve when it is `None`: CQL that retrieves nothing needs no data. */
+    data: Option[DataBinding] = None,
+    /** BIND-CALL-SITE: how the request binds each value-set site, by rule or per site. `None` fails every
+      * membership. */
+    terminologyBinding: Option[TerminologyBinding] = None,
+    /** BIND-CALL-SITE: every call site this lowering bound, by id, in first-seen order, for `describe`. Shared by
+      * every copy of the env, like [[hoistCounter]]. */
+    callSites: scala.collection.mutable.LinkedHashMap[String, CallSite] =
       scala.collection.mutable.LinkedHashMap.empty
 ) {
 
@@ -206,59 +186,46 @@ final case class SqlEvalEnv(
     case _ => SqlRel.TableRef(name)
   }
 
-  /** The retrieve MOUNT for one retrieve (BIND-RELATION, BIND-PROVIDER-REQUEST): the relation the request
-    * binds to the retrieve's id. A table or view is read as `SELECT __subject_id, __resource FROM <name>`, so
-    * a column beyond the contract never reaches a join; a function is called with the request fields it
-    * declares, by name (`BIND-NAMED-ARGS`). Without `data`, the per-type [[sources]] binding is called with
-    * the seven positional arguments. The retrieve's predicates still re-apply ABOVE the relation
-    * (BIND-CAPABILITY), so a relation that ignores its request is a correct un-pruned superset. A SQL table
-    * function inlines in Catalyst like a view; the compiler names the relation and never bodies it
-    * (`ARCH-PURITY`). Every call is recorded for `describe` ([[retrieveCalls]]). */
-  def retrieveMount(call: RetrieveCall): SqlRel = {
-    retrieveCalls.getOrElseUpdate(call.id, call)
-    data match {
-      case Some(bound) => bound.get(call.id) match {
-        case Some(RetrieveRelation.Table(name, _)) =>
-          SqlRel.Select(
-            projections = Seq(SqlRel.Proj(SqlExpr.Col(com.databricks.cql.spark.SystemColumns.SubjectId)),
-                              SqlRel.Proj(SqlExpr.Col(com.databricks.cql.spark.SystemColumns.Resource))),
-            from = SqlRel.TableRef(name))
-        case Some(RetrieveRelation.Function(name, parameters, _)) =>
-          // Each dotted segment is quoted on its own (`SqlRender.qualifiedName`).
-          val dot = name.lastIndexOf('.')
-          SqlRel.TableFunc(name.substring(dot + 1), call.namedArgs(parameters),
-            if (dot < 0) None else Some(name.substring(0, dot)))
-        case None => throw UnsupportedNode("Retrieve",
-          s"retrieve ${call.id} [${call.fhirType}] has no relation in the request's data (BIND-PROVIDER-REQUEST)")
-      }
-      case None =>
-        val (fn, catalog) = retrieveSource(call.fhirType)
-        SqlRel.TableFunc(fn, call.positionalArgs, catalog)
+  /** BIND-CALL-SITE: the library, version and own name of the define being lowered, which a call site is in;
+    * none outside a define. */
+  def siteOwner(lib: com.databricks.cql.ir.Library): Option[(String, String, String)] =
+    currentDefine.map { d => val o = lib.ownerOf(d); (o.library, o.version, o.name) }
+
+  /** BIND-CALL-SITE: this env with [[SqlEvalEnv.DescribeData]] and [[SqlEvalEnv.DescribeTerminology]], for a
+    * lowering that only reports call sites and shape (`describe`) and runs nothing. */
+  def describing: SqlEvalEnv =
+    copy(data = Some(SqlEvalEnv.DescribeData), terminologyBinding = Some(SqlEvalEnv.DescribeTerminology))
+
+  /** The retrieve MOUNT for one retrieve call site (BIND-RELATION, BIND-CALL-SITE): the table or view the
+    * request binds to the site, read as `SELECT __subject_id, __resource FROM <name>`, so a column beyond the
+    * contract never reaches a join. The retrieve's predicates still re-apply ABOVE the relation (BIND-CAPABILITY),
+    * so a relation that ignores its request is a correct un-pruned superset. The compiler names the relation and
+    * never bodies it (`ARCH-PURITY`). Every site is recorded for `describe` ([[callSites]]). */
+  def retrieveMount(call: RetrieveCall, site: CallSite): SqlRel = {
+    callSites.getOrElseUpdate(site.id, site)
+    val binding = data.getOrElse(throw UnsupportedNode("Retrieve",
+      s"retrieve site ${site.id} [${call.fhirType}] needs data, and the request binds none (BIND-CALL-SITE)"))
+    binding.relationFor(site.id, call.fhirType) match {
+      case Some(relation) =>
+        SqlRel.Select(
+          projections = Seq(SqlRel.Proj(SqlExpr.Col(com.databricks.cql.spark.SystemColumns.SubjectId)),
+                            SqlRel.Proj(SqlExpr.Col(com.databricks.cql.spark.SystemColumns.Resource))),
+          from = SqlRel.TableRef(relation.table))
+      case None => throw UnsupportedNode("Retrieve",
+        s"retrieve site ${site.id} [${call.fhirType}] has no relation: the request's data has no rule and no " +
+          "entry for it (BIND-CALL-SITE)")
     }
   }
 
-  /** BIND-MANIFEST: resolve a FHIR resource type to its bound UDTF `(function, catalog)` — the caller's
-    * [[sources]] entry, else the convention `retrieve_<rt>` in the default schema (no catalog). The one
-    * home for name/catalog resolution; the compiler reads no catalog (`ARCH-PURITY`). */
-  def retrieveSource(rt: String): (String, Option[String]) =
-    sources.get(rt).map(b => (b.function, b.catalog)).getOrElse((retrieveMountName(rt), None))
-
-  /** The mounted-view NAME for a retrieve (`retrieve_<rt>`), for callers that need the identifier
-    * (the retrieve-share barrier / a `spark.table`-style reference). */
-  def retrieveMountName(rt: String): String = s"retrieve_$rt"
-
-  /** The value-set expansion MOUNT for `vsId` (BIND-TERMINOLOGY-TABLE): a `(system, code)` relation
-    * selected out of the SINGLE mounted `valuesets` expansion table, keyed by the canonical value-set id
-    * — `SELECT system, code FROM valuesets WHERE valueset_id = '<vsId>'`. ALL value sets share one
-    * physical mount (the way a real terminology export stores expansions — one long table
-    * keyed by set, not one table per set), so the runtime binds ONE table instead of N. The SQL analog of
-    * `TerminologyProvider.expand`; fails loudly when no terminology is mounted. */
-  def valueSetMount(vsId: String): SqlRel = terminologyRelations match {
-    case Some(layers) => layeredValueSet(vsId, layers)
-    case None =>
-      if (!terminology) throw UnsupportedNode("InValueSet",
-        s"value-set membership on '$vsId' needs a mounted terminology expansion (SqlEvalEnv.terminology=false)")
-      else valueSetFrom(vsId, valueSetsMountName)
+  /** The value-set MOUNT for `vsId` (BIND-CALL-SITE): a `(system, code)` relation selected out of the relations
+    * the request binds to the membership's site, keyed by the canonical value-set id — `SELECT system, code FROM
+    * <relation> WHERE valueset_id = '<vsId>'`. One relation holds every value set, the way a terminology export
+    * stores expansions. The SQL analog of `TerminologyProvider.expand`; fails loudly with no terminology. */
+  def valueSetMount(vsId: String, site: CallSite): SqlRel = {
+    callSites.getOrElseUpdate(site.id, site)
+    val binding = terminologyBinding.getOrElse(throw UnsupportedNode("InValueSet",
+      s"value-set membership on '$vsId' needs terminology, and the request binds none (BIND-CALL-SITE)"))
+    layeredValueSet(vsId, binding.relationsFor(site.id).getOrElse(Nil))
   }
 
   /** `SELECT system, code FROM <table> WHERE valueset_id = '<vsId>'`. */
@@ -269,19 +236,14 @@ final case class SqlEvalEnv(
       from = SqlRel.TableRef(table),
       where = Some(SqlExpr.Infix("=", SqlExpr.Col(valueSetKeyColumn), SqlExpr.str(vsId))))
 
-  /** BIND-PROVIDER-REQUEST: value set `vsId` read from the FIRST terminology relation that holds it, so an
-    * overlay's development set replaces its base's rather than merging with it (`CLIENT-PROVIDER-OVERLAY`).
+  /** BIND-CALL-SITE: value set `vsId` read from the FIRST terminology relation that holds it, so an
+    * overlay's development set replaces its base's rather than merging with it (`CLIENT-RESOLVER-OVERLAY`).
     * One relation reads it directly. Several are a `UNION ALL` tagged with each layer's position, kept to
     * the rows of the lowest position present. No relation fails the membership (CORE-NO-SILENT-MISLOWER). */
   private def layeredValueSet(vsId: String, layers: Seq[RetrieveRelation]): SqlRel = {
-    val tables = layers.map {
-      case RetrieveRelation.Table(name, _) => name
-      case other => throw new IllegalArgumentException(
-        s"a terminology relation is a table or view, not $other (BIND-PROVIDER-REQUEST)")
-    }
-    tables match {
+    layers.map(_.table) match {
       case Seq() => throw UnsupportedNode("InValueSet",
-        s"value-set membership on '$vsId' needs terminology, and the request has none (BIND-PROVIDER-REQUEST)")
+        s"value-set membership on '$vsId' needs terminology, and the request has none for it (BIND-CALL-SITE)")
       case Seq(only) => valueSetFrom(vsId, only)
       case many =>
         val layer = "__layer"
@@ -300,38 +262,19 @@ final case class SqlEvalEnv(
     }
   }
 
-  /** The name of the single mounted value-set expansion table (BIND-TERMINOLOGY-TABLE): `(valueset_id,
-    * system, code)` rows for EVERY expanded value set the runtime mounted before the script runs.
-    * When [[terminologyTable]] is set, the FQN is used instead of the bare convention name. */
-  val valueSetsMountName: String = terminologyTable.getOrElse("valuesets")
-
-  /** The key column of [[valueSetsMountName]] carrying the canonical value-set id each expansion row
+  /** The key column of a value-set relation carrying the canonical value-set id each expansion row
     * belongs to (the URL/OID `vsId`), so a membership test filters its set out of the shared table. */
   val valueSetKeyColumn: String = "valueset_id"
 }
 
 object SqlEvalEnv {
-  /** BIND-EXPLICIT-PARAMS: the retrieve UDTF's parameter list, in POSITIONAL order — the single source of
-    * truth for the seam's shape, shared by the emitter, the runtime registrars, and the docs. The engine
-    * always passes all eight positionally (it reads no catalog to discover a signature, `ARCH-PURITY`),
-    * so a binding must declare all eight; the published template gives each a DEFAULT so a hand-written
-    * call can omit trailing arguments. */
-  val retrieveParams: Seq[(String, String)] = Seq(
-    "value_set"     -> "STRING",
-    "code_property" -> "STRING",
-    "codes"         -> "ARRAY<STRUCT<system STRING, code STRING>>",
-    "date_property" -> "STRING",
-    "date_low"      -> "STRING",
-    "date_high"     -> "STRING",
-    "parameters"    -> "MAP<STRING, VARIANT>")
+  /** BIND-CALL-SITE: the schema of [[describing]]'s placeholder relations. No SQL naming it is run. */
+  val DescribeSchema: String = "__describe"
 
-  /** The DEFAULT clause for each [[retrieveParams]] entry — an empty array/map for a collection, NULL for
-    * a scalar (the ABSENT convention: a binding tests presence, never a sentinel). */
-  def retrieveParamDefault(sqlType: String): String =
-    if (sqlType.startsWith("ARRAY")) "array()" else if (sqlType.startsWith("MAP")) "map()" else "NULL"
+  /** BIND-CALL-SITE: every retrieve read from `__describe.<type in lower case>`, for `describe`. */
+  val DescribeData: DataBinding = DataBinding(Some(DataBinding.Rule(DescribeSchema)), Map.empty)
 
-  /** The parameter list as SQL DDL text (`value_set STRING DEFAULT NULL, …`) — what a binding author
-    * (and every runtime registrar) puts between the parentheses of `CREATE FUNCTION`. */
-  val retrieveParamsDdl: String =
-    retrieveParams.map { case (n, t) => s"$n $t DEFAULT ${retrieveParamDefault(t)}" }.mkString(", ")
+  /** BIND-CALL-SITE: every value set read from `__describe.valueset`, for `describe`. */
+  val DescribeTerminology: TerminologyBinding =
+    TerminologyBinding(Some(Seq(RetrieveRelation(s"$DescribeSchema.valueset"))), Map.empty)
 }

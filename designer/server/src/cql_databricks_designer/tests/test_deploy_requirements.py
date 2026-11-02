@@ -152,38 +152,62 @@ def test_no_wheel_version_is_hard_coded_in_this_repo():
         "pyproject.toml or resolve the wheel by glob (SVC-WHEEL-VERSION)")
 
 
-def test_private_catalog_configuration_and_maintenance_grant_ship_together():
-    """RUN-CLIENT-PRIVATE-PROVISIONING, RUN-CLIENT-MAINTENANCE — the catalog is an administrator
-    prerequisite: no creation, no user grants, no bundle-owned private data resource."""
+def test_the_bundle_makes_the_default_environments_schemas_and_their_grants():
+    """DEPLOY-DEFAULT-ENVIRONMENT, DEPLOY-APP-GRANTS, DATA-ENVIRONMENT-LAYOUT, RUN-CLIENT-DRAFT-RESULTS — every schema of
+    the layout is a bundle resource in uc_catalog with its comment; the users read the published schemas and create
+    tables in draft_results; the Designer's principal reads knowledge and terminology; no store is granted."""
+    import yaml
+    from shipped_sources.environment import SCHEMAS
+
+    schemas = yaml.safe_load((_ROOT / "databricks.yml").read_text())["resources"]["schemas"]
+    env = {r["name"]: r for key, r in schemas.items() if key.startswith("environment_")}
+    assert {n: (r["catalog_name"], r["comment"]) for n, r in env.items()} == {
+        n: ("${var.uc_catalog}", c) for n, c in SCHEMAS.items()}
+    users, designer = "${var.app_users_group}", "${resources.apps.cql_databricks_designer.service_principal_client_id}"
+    grants = {n: {g["principal"]: g["privileges"] for g in r.get("grants", [])} for n, r in env.items()}
+    assert grants == {
+        "data": {users: ["USE_SCHEMA", "SELECT"]},
+        "terminology": {users: ["USE_SCHEMA", "SELECT"], designer: ["USE_SCHEMA", "SELECT"]},
+        "knowledge": {users: ["USE_SCHEMA", "SELECT"], designer: ["USE_SCHEMA", "SELECT"]},
+        "results": {users: ["USE_SCHEMA", "SELECT"]},
+        "draft_results": {users: ["USE_SCHEMA", "CREATE_TABLE"]},
+        "data_store": {}, "terminology_store": {}, "knowledge_store": {}}
+
+
+def test_the_default_environment_and_its_maintenance_grant_ship_together():
+    """DEPLOY-DEFAULT-ENVIRONMENT, RUN-CLIENT-MAINTENANCE, RUN-CLIENT-DRAFT-RESULTS — the deploy builds the default
+    environment in uc_catalog and grants it; there is no results catalog and no per-user schema."""
     bundle = (_ROOT / "databricks.yml").read_text()
     deploy = (_ROOT / "scripts" / "deploy" / "deploy.sh").read_text()
     stage = (_ROOT / "scripts" / "deploy" / "stage-app.sh").read_text()
     descriptor = (_DESIGNER_ROOT / "deploy" / "app.yaml").read_text()
-    assert 'designer_results_catalog:' in bundle and "results_catalog:" not in bundle.replace("designer_results_catalog:", "")
+    for text in (bundle, deploy, stage, descriptor, (_ROOT / "databricks.local.yml.example").read_text()):
+        assert "designer_results_catalog" not in text and "DESIGNER_RESULTS_CATALOG" not in text
     assert "content: bash ./scripts/deploy/grant-maintenance-access.sh" in bundle
     assert 'bash "$here/scripts/deploy/grant-maintenance-access.sh"' in deploy
-    assert not (_ROOT / "scripts" / "provision-private-catalog.sh").exists()
     grants = (_ROOT / "scripts" / "deploy" / "grant-maintenance-access.sh").read_text()
     assert 'scripts/deploy/maintenance_principal.py" "$cfg" "$profile"' in grants
     principal = (_ROOT / "scripts" / "deploy" / "maintenance_principal.py").read_text()
     assert "provision_maintenance_principal(WorkspaceClient(profile=profile)" in principal
+    assert 'catalog = required("uc_catalog")' in principal
     for text in (grants, principal):
         assert "CREATE CATALOG" not in text and "app_users_group" not in text
     # The Job's run-as is set by the deploy, never by hand: nothing in the local config names it.
     assert 'export BUNDLE_VAR_maintenance_principal="$_maintenance_principal"' in deploy
     assert "maintenance_principal" not in (_ROOT / "databricks.local.yml.example").read_text()
-    assert 'export BUNDLE_VAR_designer_results_catalog="${_designer_results_catalog}"' in deploy
-    assert '"__CQL_DESIGNER_RESULTS_CATALOG__": os.environ.get("BUNDLE_VAR_designer_results_catalog", "")' in stage
-    assert 'name: "CQL_DESIGNER_RESULTS_CATALOG"\n    value: "__CQL_DESIGNER_RESULTS_CATALOG__"' in descriptor
-    # RUN-CLIENT-PRIVATE-PROVISIONING — App identities never hold inherited data privileges on the catalog
-    # that also holds private schemas: catalog-level USE_CATALOG/CREATE_SCHEMA only, the rest per schema.
+    # DEPLOY-DEFAULT-ENVIRONMENT — step [8] fills the environment the bundle made, and makes the two grants a bundle
+    # cannot: the users' USE CATALOG and the maintenance principal's MANAGE on draft_results.
+    assert ('"$here/scripts/deploy/provision-examples.py" --catalog "$_uc_catalog" --users-group "$users_group"'
+            in deploy)
+    assert '--maintenance-principal "$_maintenance_principal"\n)' in deploy
+    provision = (_ROOT / "scripts" / "deploy" / "provision-examples.py").read_text()
+    assert "import catalog_grant, fill, maintenance_grant" in provision and "default=True" in provision
+    assert "build(" not in provision
+    # RUN-CLIENT-DRAFT-RESULTS — App identities never hold a catalog-wide data privilege, which draft_results would
+    # inherit: catalog-level USE_CATALOG only, and an earlier deploy's catalog-wide grants revoked.
     app_grants = (_ROOT / "scripts" / "deploy" / "grant-app-access.sh").read_text()
-    assert 'if [ "$cat" = "$private_catalog" ]; then' in app_grants
-    assert "name.startswith('cql_private_')" in app_grants and "name == 'information_schema'" in app_grants
-    assert 'private_schema_format="cql-private-schema-v1"' in app_grants
-    assert '\\"remove\\":$schema_privs' in app_grants
-    from cql_databricks.result.private import SCHEMA_FORMAT
-    assert SCHEMA_FORMAT == "cql-private-schema-v1"
+    assert "catalog_privs='[\"USE_CATALOG\"]'" in app_grants
+    assert "revoked_privs='[\"USE_SCHEMA\",\"SELECT\"]'" in app_grants and '\\"remove\\":$revoked_privs' in app_grants
     # RUN-CLIENT-MIGRATION — Designer runs refuse to start without the runtime catalog (calculation_env.py).
     assert 'name: "CQL_RUNTIME_CATALOG"\n    value: "__CQL_RUNTIME_CATALOG__"' in descriptor
     assert "\n  catalogs:" not in bundle.split("\nresources:", 1)[1]
@@ -244,28 +268,47 @@ def test_a_run_log_table_that_drifted_from_its_definition_fails_the_deploy():
         _provision_run_log().provision(run, "synthetic_cat", "synthetic-sp", "synthetic-readers")
 
 
-def test_every_app_we_deploy_discovers_only_in_the_deployments_catalog_scopes(catalog_scopes):
-    """CLIENT-DISCOVERY-SCOPE — the Apps whose deployment we own take their scopes from databricks.local.yml.
+def _run_log_tables(runs_columns):
+    """A warehouse whose ``runs`` table has ``runs_columns``, recording every statement."""
+    from cql_databricks_designer import run_log
+    calls = []
 
-    One required bundle variable, refused empty by the deploy, staged into both Apps as the client's own session
-    setting, read for local runs from the same file, and exported to the deploy's conformance bind.
-    """
-    from cql_databricks_designer.data_bindings import app_content_resolver, user_content_resolver
-    expected = ["synthetic_dev.cql", "synthetic_shared"]
-    assert [str(s) for s in app_content_resolver().scopes] == expected
-    assert [str(s) for s in user_content_resolver(lambda *a: []).scopes] == expected
+    def run(sql, params=None):
+        calls.append(sql)
+        if "information_schema.columns" in sql:
+            steps = [(run_log.STEPS, name, kind) for name, kind in run_log.STEP_COLUMNS]
+            runs = [(run_log.RUNS, name, kind) for name, kind in runs_columns]
+            return [{"table_name": t, "column_name": n, "full_data_type": k.lower()} for t, n, k in runs + steps]
+        return []
+    return run, calls
 
-    bundle = (_ROOT / "databricks.yml").read_text()
-    deploy = (_ROOT / "scripts" / "deploy" / "deploy.sh").read_text()
-    stage = (_ROOT / "scripts" / "deploy" / "stage-app.sh").read_text()
-    assert "  catalog_scopes:\n" in bundle
-    assert "catalog_scopes is empty" in deploy and 'export BUNDLE_VAR_catalog_scopes="${_catalog_scopes}"' in deploy
-    assert 'export CQL_DATABRICKS_CATALOG_SCOPES="$_catalog_scopes"' in deploy
-    assert deploy.index("catalog_scopes is empty") < deploy.index('"$here/scripts/deploy/stage-app.sh"')
-    assert '"__CQL_DATABRICKS_CATALOG_SCOPES__": os.environ.get("BUNDLE_VAR_catalog_scopes", "")' in stage
-    for descriptor in (_DESIGNER_ROOT / "deploy" / "app.yaml", _ROOT / "agent" / "server" / "deploy" / "app.yaml"):
-        assert ('- name: "CQL_DATABRICKS_CATALOG_SCOPES"\n    value: "__CQL_DATABRICKS_CATALOG_SCOPES__"'
-                in descriptor.read_text()), descriptor
+
+def test_an_earlier_run_log_is_migrated_once():
+    """APP-RUN-LOG — a runs table with the old data_source column gets column mapping and the rename, once."""
+    from cql_databricks_designer import run_log
+    old = [("data_source", kind) if name == "environment" else (name, kind) for name, kind in run_log.RUN_COLUMNS]
+    run, calls = _run_log_tables(old)
+    assert _provision_run_log().migrate(run, "synthetic_cat") == [
+        "ALTER TABLE `synthetic_cat`.`designer`.`runs` SET TBLPROPERTIES ('delta.columnMapping.mode' = 'name', "
+        "'delta.minReaderVersion' = '2', 'delta.minWriterVersion' = '5')",
+        "ALTER TABLE `synthetic_cat`.`designer`.`runs` RENAME COLUMN `data_source` TO `environment`"]
+    run, calls = _run_log_tables(run_log.RUN_COLUMNS)
+    assert _provision_run_log().migrate(run, "synthetic_cat") == []
+    run, calls = _run_log_tables([*run_log.RUN_COLUMNS, ("data_source", "STRING")])
+    assert _provision_run_log().migrate(run, "synthetic_cat") == []
+    assert not any(sql.startswith("ALTER") for sql in calls)
+
+
+def test_no_app_we_deploy_discovers_by_catalog_scope():
+    """CLIENT-ENVIRONMENT — nothing is discovered in catalog scopes: the Apps find environments by catalog tag, so no
+    deploy step, App descriptor or local setting carries catalog_scopes."""
     from cql_databricks_common.local_env import BUNDLE_OWNED
-    assert BUNDLE_OWNED["CQL_DATABRICKS_CATALOG_SCOPES"] == ("variables", "catalog_scopes", "value")
-    assert "resolve_catalog_scopes()" in (_ROOT / "scripts" / "deploy" / "provision-examples.py").read_text()
+    texts = [(_ROOT / "databricks.yml").read_text(), (_ROOT / "scripts" / "deploy" / "deploy.sh").read_text(),
+             (_ROOT / "scripts" / "deploy" / "stage-app.sh").read_text(),
+             (_ROOT / "scripts" / "deploy" / "provision-examples.py").read_text(),
+             (_DESIGNER_ROOT / "deploy" / "app.yaml").read_text(),
+             (_ROOT / "agent" / "server" / "deploy" / "app.yaml").read_text(),
+             (_ROOT / "databricks.local.yml.example").read_text()]
+    for text in texts:
+        assert "catalog_scopes" not in text and "CATALOG_SCOPES" not in text
+    assert "CQL_DATABRICKS_CATALOG_SCOPES" not in BUNDLE_OWNED

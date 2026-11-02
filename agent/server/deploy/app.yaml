@@ -35,10 +35,6 @@ env:
   - name: "UC_CATALOG"
     value: "__UC_CATALOG__"
 
-  # CLIENT-DISCOVERY-SCOPE — the ordered catalog scopes discovery reads (the client's own session setting).
-  - name: "CQL_DATABRICKS_CATALOG_SCOPES"
-    value: "__CQL_DATABRICKS_CATALOG_SCOPES__"
-
   # The serverless SQL warehouse every tool reads through.
   - name: "WAREHOUSE_ID"
     value: "__WAREHOUSE_ID__"
@@ -47,8 +43,3 @@ env:
   # knowledge views. Inline runs (run_cql, compare_cql) and value-set lookups read it.
   - name: "CQL_RUNTIME_CATALOG"
     value: "__CQL_RUNTIME_CATALOG__"
-
-  # AGENT-SAVED-RESULTS, RUN-CLIENT-PRIVATE-PROVISIONING — the catalog of the per-user result schemas.
-  # find_results reads the caller's own schema there first. The agent never creates one.
-  - name: "CQL_DESIGNER_RESULTS_CATALOG"
-    value: "__CQL_DESIGNER_RESULTS_CATALOG__"

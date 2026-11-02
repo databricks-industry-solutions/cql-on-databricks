@@ -26,7 +26,8 @@ class SqlFrameLoweringSpec extends AnyFunSuite {
       includes = Nil, parameters = Nil, codeSystems = Nil, valueSets = Nil, codes = Nil, concepts = Nil,
       contexts = Seq(ContextDef("Patient")), statements = defs)
 
-  private def env(config: Config = Config.defaults): SqlEvalEnv = SqlEvalEnv(Context.Patient, config)
+  /** BIND-CALL-SITE: every retrieve reads its placeholder relation, `__describe.<type>`. */
+  private def env(config: Config = Config.defaults): SqlEvalEnv = SqlEvalEnv(Context.Patient, config).describing
 
   test("a library lowers to one view per define over a named context base, in dependency order") {
     val lib = library(
@@ -35,10 +36,10 @@ class SqlFrameLoweringSpec extends AnyFunSuite {
       define("HasEncounter", Exists(ExpressionRef("AllEncounters", None))))
     val out = SqlRender.render(SqlFrameLowering.lower(lib, env()).script)
 
-    // The context base view is named and reads the mounted context retrieve.
+    // The context base view is named and reads the context retrieve's relation.
     assert(out.contains("CREATE OR REPLACE TEMP VIEW __frame_base AS"))
     assert(out.contains("__resource AS Patient"))
-    assert(out.contains("FROM retrieve_Patient"))
+    assert(out.contains("FROM __describe.patient"))
     // A scalar define is its own view over the base, publishing its value as `__val`
     // (EMIT-SQL-VALUE-COLUMN — the define name names the OBJECT, never a column).
     assert(out.contains("CREATE OR REPLACE TEMP VIEW InitialPopulation AS"))

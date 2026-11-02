@@ -14,17 +14,26 @@ from fastapi.testclient import TestClient
 
 from cql_databricks.compiler.providers import DatasetRecipe, DurableIdentity, PipelinePlan
 from cql_databricks.data_bindings import ExecutedStatement
-from cql_databricks.result import durable, PrivateDestination
+from cql_databricks.result import durable
 from cql_databricks.result.calculation import PreparedCalculation
 from cql_databricks.result import selection_reading
 from cql_databricks_designer.routes import runs
 from cql_databricks_designer.run_log import RunContext
 
 BODY = {"cql": "library Synthetic version '1'\ndefine Output: 1", "trigger": "automatic",
-        "data_source_id": "synthetic", "session_id": "tab",
+        "environment": "synthetic", "session_id": "tab",
         "overrides": {"periodStart": "2026-01-01", "periodEnd": "2026-12-31"}}
-SCOPE = {"dataSourceId": "synthetic", "library": "Synthetic", "version": "1",
+SCOPE = {"environment": "synthetic", "library": "Synthetic", "version": "1",
          "periodStart": "2026-01-01", "periodEnd": "2026-12-31"}
+
+
+#: CLIENT-ENVIRONMENT — the environments the caller can see: the default one, and another.
+ENVIRONMENT_TAGS = [
+    {"catalog": "synthetic_env", "tag": "cql_databricks_environment", "value": "synthetic", "comment": None},
+    {"catalog": "synthetic_env", "tag": "cql_databricks_environment_version", "value": "1", "comment": None},
+    {"catalog": "synthetic_env", "tag": "cql_databricks_environment_default", "value": "true", "comment": None},
+    {"catalog": "other_env", "tag": "cql_databricks_environment", "value": "other", "comment": None},
+    {"catalog": "other_env", "tag": "cql_databricks_environment_version", "value": "1", "comment": None}]
 
 
 @pytest.fixture
@@ -33,7 +42,7 @@ def setup(monkeypatch):
     state = SimpleNamespace(files=object(), tables={}, writes=[], sql=[], sessions={}, failed=False, denied=False,
                             results=None,
                             provisioned=False, warehouses=[], unusable=set(), logged=[], log_fails=False)
-    private = PrivateDestination("synthetic_private", "synthetic-user")
+    owner = "synthetic-user"
     lock = Lock()
 
     def prepare(**kwargs):
@@ -46,25 +55,30 @@ def setup(monkeypatch):
                                     fingerprint=hashlib.sha256(kwargs.get("cql", "").encode()).hexdigest(),
                                     reusable=True, parameters={}))], "synthetic-compiler")
         request = {key: kwargs[key] for key in ("cql", "library", "version", "runtime_catalog",
-                   "runtime_schema", "data_source", "period") if key in kwargs}
+                   "runtime_schema", "period") if key in kwargs}
+        request["environment"] = kwargs["environment"].name
         request["period"] = list(request["period"])
         request["targets"] = ["Synthetic.Output"]
-        return PreparedCalculation("Synthetic", "1", "synthetic", ("Synthetic.Output",), compiled, request)
+        return PreparedCalculation("Synthetic", "1", kwargs["environment"].name, ("Synthetic.Output",), compiled,
+                                   request)
 
     def run(sql, params=None):
         with lock:
             state.sql.append(sql)
             parts = re.findall(r"`([^`]+)`", sql)
+            if "system.information_schema.catalog_tags" in sql:
+                return ENVIRONMENT_TAGS
             if sql == "SELECT current_user() AS principal":
-                return [{"principal": private.owner}]
-            if sql.startswith("SELECT schema_owner"):
-                return [{"schema_owner": private.owner, "comment": "cql-private-schema-v1"}]
-            if sql.startswith("SELECT schema_name"):
-                return [{"schema_name": params["schema"]}] if state.provisioned else []
+                return [{"principal": owner}]
+            if sql.startswith("SELECT g.catalog_name"):
+                # RUN-CLIENT-RESULT-OWNERSHIP: the caller's own completed results in the environment's results.
+                assert params["owner"] == owner
+                return []
             if sql.startswith("SHOW TABLES"):
                 return [dict(tableName=t[2], isTemporary=False) for t in state.tables if t[:2] == tuple(parts)]
             if sql.startswith("SELECT t.table_catalog"):
-                return [dict(table_catalog=t[0], table_schema=t[1], table_name=t[2], tag_name=k, tag_value=v)
+                return [dict(table_catalog=t[0], table_schema=t[1], table_name=t[2], table_owner=owner,
+                             tag_name=k, tag_value=v)
                         for t, tags in state.tables.items() if t[0] == parts[0] and t[1] == params["schema"]
                         and t[2] in json.loads(params["tables"]) for k, v in (tags.items() or [(None, None)])]
             if sql.startswith("SELECT table_name, column_name"):
@@ -146,18 +160,13 @@ def setup(monkeypatch):
             raise RuntimeError("synthetic run log failure")
         state.logged.append(entry)
 
-    def provision(*args, **kwargs):
-        state.provisioned = True
-        return private
-
     monkeypatch.setattr(runs, "prepare_calculation", prepare)
     monkeypatch.setattr(selection_reading, "prepare_calculation", prepare)
     monkeypatch.setattr(runs, "materialize", compute)
-    monkeypatch.setattr(runs, "ensure_private_destination", provision)
     state.listing = {"default": "wh-default", "warehouses": [{"id": "wh-default", "name": "Shared", "state": "RUNNING"}]}
     env = runs.CalculationEnv(user_session=user_session,
-        settings=lambda: runs.CalculationSettings(private.catalog, "synthetic_runtime"),
-        warehouses=lambda: state.listing, content=lambda _: object(), files=lambda: state.files,
+        settings=lambda: runs.CalculationSettings("synthetic_runtime"),
+        warehouses=lambda: state.listing, files=lambda: state.files,
         run_context=lambda warehouse: RunContext(user="synthetic-user", warehouse_id=warehouse or "wh-default",
                                                  app_version="synthetic-build"),
         run_log=run_log)
@@ -257,7 +266,7 @@ def test_refresh_refuses_the_old_selection_and_reopens_the_new_one(setup):
 
 
 @pytest.mark.parametrize("scope", [{"library": "Other"}, {"version": "2"},
-                                  {"dataSourceId": "other"}, {"periodStart": "2025-01-01"}])
+                                  {"environment": "other"}, {"periodStart": "2025-01-01"}])
 def test_request_cannot_relabel_a_different_scope(setup, scope):
     """RUN-CLIENT-RESULT-SETS — displayed period, data source and library must match the selected request."""
     client, _ = setup
@@ -270,7 +279,8 @@ def test_legacy_addresses_fail_without_storage_reads(setup, address):
     """RUN-CLIENT-MIGRATION — no SDP/session-index fallback."""
     client, state = setup
     assert client.post("/api/results", json={**SCOPE, "resultSet": address}).status_code == 409
-    assert not state.sql
+    # Only the environment is looked up (CLIENT-ENVIRONMENT-RESOLVER); no result storage is read.
+    assert all("system.information_schema.catalog_tags" in sql for sql in state.sql)
 
 
 def test_no_caller_is_refused_before_streaming(setup):
@@ -305,7 +315,6 @@ def test_all_derivation_routes_receive_one_current_closure(setup, monkeypatch):
     client, state = setup
     result = client.post("/api/run", json=BODY).json()
     request = result_request(result)
-    monkeypatch.setattr(runs, "resolve_data_source", lambda *a, **kw: SimpleNamespace(bindings={}))
     captured = []
     def derive(**kwargs):
         captured.append(kwargs)
@@ -320,7 +329,7 @@ def test_all_derivation_routes_receive_one_current_closure(setup, monkeypatch):
     assert len(captured) == 4 and len(state.writes) == 1
 
 
-REOPEN = {"cql": BODY["cql"], "dataSourceId": "synthetic", "periodStart": "2026-01-01", "periodEnd": "2026-12-31"}
+REOPEN = {"cql": BODY["cql"], "environment": "synthetic", "periodStart": "2026-01-01", "periodEnd": "2026-12-31"}
 TAB = {"x-designer-instance": "tab"}
 
 
@@ -328,7 +337,6 @@ def test_reopen_shows_own_results_without_computing(setup, monkeypatch):
     """RUN-CLIENT-REQUEST-REOPEN — opening a measure reads the caller's exact results; it never computes."""
     client, state = setup
     first = client.post("/api/run", json=BODY, headers=TAB).json()
-    monkeypatch.setattr(runs, "ensure_private_destination", lambda *a, **kw: pytest.fail("provisioned on read"))
     monkeypatch.setattr(runs, "materialize", lambda *a, **kw: pytest.fail("computed on read"))
     state.writes.clear()
     response = client.post("/api/reopen", json=REOPEN, headers=TAB)
@@ -347,7 +355,7 @@ def test_reopen_miss_is_an_answer_and_creates_nothing(setup):
     """RUN-CLIENT-REQUEST-REOPEN — nothing computed, or edited CQL, is `found: false`, never a run."""
     client, state = setup
     never = client.post("/api/reopen", json=REOPEN, headers=TAB)
-    assert never.status_code == 200 and never.json() == {"found": False, "reason": "nothing computed yet"}
+    assert never.status_code == 200 and never.json()["found"] is False
     assert not any(sql.startswith("CREATE") for sql in state.sql)
     client.post("/api/run", json=BODY, headers=TAB)
     state.writes.clear()
@@ -378,9 +386,10 @@ def test_unusable_warehouse_fails_and_never_falls_back(setup):
     """APP-COMPUTE-TARGET — no CAN_USE on the chosen warehouse is a visible error, not the default."""
     client, state = setup
     state.unusable.add("wh-denied")
+    # The environment is found on the request thread, as the user, so the first refused statement refuses the run
+    # before it streams (DOC-ENVIRONMENT-PICKER).
     stream = client.post("/api/run-stream", json={**BODY, "warehouse_id": "wh-denied"}, headers=TAB)
-    events = [json.loads(line[6:]) for line in stream.text.split("\n\n") if line.startswith("data: ")]
-    assert events[-1]["stage"] == "error" and "no CAN_USE on warehouse wh-denied" in events[-1]["error"]
+    assert stream.status_code == 503 and "no CAN_USE on warehouse wh-denied" in stream.json()["error"]
     reopened = client.post("/api/reopen", json={**REOPEN, "warehouseId": "wh-denied"}, headers=TAB)
     assert reopened.status_code == 502 and "wh-denied" in reopened.json()["error"]
     assert None not in state.warehouses and not state.writes
@@ -438,7 +447,7 @@ def test_a_completed_run_is_logged_with_its_steps_and_their_statement_ids(setup)
     [entry] = state.logged
     assert done["runId"] == entry.run_id
     run = entry.run
-    assert (run["user"], run["library"], run["version"], run["data_source"], run["warehouse_id"]) == (
+    assert (run["user"], run["library"], run["version"], run["environment"], run["warehouse_id"]) == (
         "synthetic-user", "Synthetic", "1", "synthetic", "wh-chosen")
     assert (run["period_start"], run["period_end"], run["trigger"], run["mode"]) == (
         "2026-01-01", "2026-12-31", "automatic", "skip_if_computed")
@@ -520,7 +529,6 @@ def test_metrics_counts_each_define_in_the_cohort_the_client_names(setup, monkey
     """SPEC-POPULATION-CASCADE — the cohort travels with each define; a define without one is refused."""
     client, _ = setup
     request = result_request(client.post("/api/run", json=BODY).json())
-    monkeypatch.setattr(runs, "resolve_data_source", lambda *a, **kw: SimpleNamespace(bindings={}))
     captured = []
     monkeypatch.setattr(runs, "build_measure_metrics",
                         lambda **kw: captured.append(kw) or SimpleNamespace(to_dict=lambda: {"ok": True}))
@@ -543,7 +551,6 @@ def test_metrics_carries_the_clients_score_under_the_declared_scoring(setup, mon
     when the request declares a scoring."""
     client, _ = setup
     request = result_request(client.post("/api/run", json=BODY).json())
-    monkeypatch.setattr(runs, "resolve_data_source", lambda *a, **kw: SimpleNamespace(bindings={}))
     monkeypatch.setattr(runs, "build_measure_metrics", lambda **kw: SimpleNamespace(to_dict=lambda: {"ok": True}))
     scored = []
 

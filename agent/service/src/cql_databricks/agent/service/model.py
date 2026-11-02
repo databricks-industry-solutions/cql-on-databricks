@@ -8,7 +8,7 @@ from typing import Any
 
 @dataclass(frozen=True)
 class NodeAddress:
-    """WHICH output a tool asks about: one define of one library version, for one data source and period.
+    """WHICH output a tool asks about: one define of one library version, in one environment and period.
 
     It names the scope and nothing else. Where the output is stored, and which of a table's rows are this
     scope's, are the evaluator's to say (`DEC-EVALUATOR-OPAQUE`): a tool asks it for a
@@ -20,7 +20,8 @@ class NodeAddress:
     library: str
     version: str
     define: str
-    data_source_id: str
+    #: CLIENT-ENVIRONMENT: the environment the calculation ran in.
+    environment: str
     period_start: str | None = None
     period_end: str | None = None
 
@@ -29,7 +30,7 @@ class NodeAddress:
             "library": self.library,
             "version": self.version,
             "define": self.define,
-            "dataSourceId": self.data_source_id,
+            "environment": self.environment,
         }
         if self.period_start:
             d["periodStart"] = self.period_start

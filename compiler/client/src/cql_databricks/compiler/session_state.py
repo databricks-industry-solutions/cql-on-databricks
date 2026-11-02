@@ -1,26 +1,27 @@
-"""CLIENT-SESSION-STATE — what the client keeps for a notebook session, kept in that Spark session.
+"""CLIENT-SESSION-STATE, CLIENT-SESSION-RESET — what the client keeps for a notebook session, kept in that Spark
+session.
 
-The libraries declared by ``%%cql`` cells (`SVC-NOTEBOOK-CELL-LIBRARY`) and the session mount
-(`CLIENT-SESSION-MOUNT`) are rows of one temp view, ``__cqldatabricks_session``, beside the temp functions and
-views the mount owns. So they end together: restarting Python loses neither, and ending the Spark session
-loses both. They never disagree.
+The libraries declared by ``%%cql`` cells (`SVC-NOTEBOOK-CELL-LIBRARY`) are rows of one temp view,
+``__cqldatabricks_session``, beside the temporary views the client registers for relations (`BIND-RELATION`). So
+they end together: restarting Python loses neither, and ending the Spark session loses both.
 
 Rows are ``(kind, name, payload)``. A ``cell`` row's payload is its CQL text; the ``scope`` row's is the session
-library that header-less CQL joins (`SVC-NOTEBOOK-SESSION-SCOPE`); the ``mount`` row's is the mount's manifest as
-JSON; the ``version`` row's is a counter every write moves, so a compile cached against an older mount is not
-reused (`CLIENT-SESSION-MOUNT`).
+library that header-less CQL joins (`SVC-NOTEBOOK-SESSION-SCOPE`); the ``version`` row's is a counter every write
+moves, so a compile cached against older cells is not reused.
 
 A write rebuilds the view from the rows: notebooks are single-threaded and the record is small. A read is one
 small query. The client writes no session conf. With no Spark session there is no record: reading one
 finds nothing, and writing one raises. There is no in-memory stand-in.
+
+The session's resolvers (`CLIENT-SESSION-RESOLVERS`) are the one thing kept in the Python process instead: they are
+Python objects, a DataFrame among them, which no view can hold.
 """
 from __future__ import annotations
 
-import json
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Mapping, Tuple
 
 VIEW = "__cqldatabricks_session"
-CELL, SCOPE, MOUNT, VERSION = "cell", "scope", "mount", "version"
+CELL, SCOPE, VERSION = "cell", "scope", "version"
 _SCHEMA = "kind STRING, name STRING, payload STRING"
 
 Row = Tuple[str, str, str]
@@ -75,17 +76,6 @@ class SessionRecord:
     def version(self) -> int:
         return _version(self.rows())
 
-    def mount(self) -> Optional[dict]:
-        """The mount's manifest, or ``None`` when nothing is mounted."""
-        payload = next((p for k, _, p in self.rows() if k == MOUNT), None)
-        return None if payload is None else json.loads(payload)
-
-    def set_mount(self, manifest: Optional[dict]) -> None:
-        rows = [r for r in self.rows() if r[0] != MOUNT]
-        if manifest is not None:
-            rows.append((MOUNT, "", json.dumps(manifest, sort_keys=True)))
-        self.write(rows)
-
     def scope(self) -> str:
         """The session library header-less CQL has joined so far (`SVC-NOTEBOOK-SESSION-SCOPE`), or ``""``."""
         return next((p for k, _, p in self.rows() if k == SCOPE), "")
@@ -96,6 +86,38 @@ class SessionRecord:
     def drop(self) -> None:
         """Remove the record itself. Safe when there is none."""
         self.spark.catalog.dropTempView(VIEW)
+
+
+#: CLIENT-SESSION-RESOLVERS — the resolvers ``cql()`` and ``%%cql`` cells run through, by role. Replaced whole on
+#: each set, so a client built from one mapping can tell it is no longer the session's.
+_resolvers: Mapping[str, Any] = {}
+
+
+def session_resolvers() -> Mapping[str, Any]:
+    """CLIENT-SESSION-RESOLVERS — the session's resolvers by role (``data``, ``terminology``, ``knowledge``); a role
+    not in it is the environment's."""
+    return _resolvers
+
+
+def set_session_resolvers(resolvers: Mapping[str, Any]) -> None:
+    """CLIENT-SESSION-RESOLVERS — replace the session's resolvers with ``resolvers``; empty returns every role to the
+    environment's."""
+    global _resolvers
+    _resolvers = dict(resolvers)
+
+
+def reset(spark) -> None:
+    """CLIENT-SESSION-RESET — start the session clean: drop the temporary views the client registered for relations
+    (`BIND-RELATION`) and the libraries ``%%cql`` cells declared, then the session record, and return the session's
+    resolvers to the environment's (`CLIENT-SESSION-RESOLVERS`). Safe to call twice. Define result views are left
+    alone; each run re-creates them."""
+    from .relations import VIEW_PREFIX
+
+    for row in spark.sql("SHOW VIEWS").collect():
+        if row["isTemporary"] and row["viewName"].startswith(VIEW_PREFIX):
+            spark.catalog.dropTempView(row["viewName"])
+    SessionRecord(spark).drop()
+    set_session_resolvers({})
 
 
 def _version(rows: List[Row]) -> int:

@@ -33,7 +33,6 @@ class EngineRequest:
 
     cql: str
     targets: Sequence[str]
-    data_source: Optional[str] = None
     measurement_period: Optional[Tuple[str, str]] = None
     recompute: bool = False
     settings: Mapping[str, str] = field(default_factory=dict)

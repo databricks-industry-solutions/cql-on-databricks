@@ -101,38 +101,3 @@ def test_a_version_already_there_is_replaced():
     """DEC-PUBLISH-IMMUTABLE — the import and publishing both replace a published (url, version)."""
     row = knowledge_merge_sql("k.m.library", SINGLE_ROW)
     assert "WHEN MATCHED THEN UPDATE" in row and "WHEN NOT MATCHED THEN INSERT" in row
-
-
-# --- CONTENT-IMPORT-TARGET-TAG ---------------------------------------------------------------------
-
-class _RecordingSpark:
-    def __init__(self):
-        self.statements = []
-
-    def sql(self, statement):
-        self.statements.append(statement)
-
-
-def test_tag_loaded_declares_both_schemas_for_the_resolver():
-    from cql_databricks.data_bindings.measure_import.load import tag_loaded
-    spark = _RecordingSpark()
-    tag_loaded(spark, catalog="main", knowledge=("quality_measures", "my-measures"),
-               terminology=("terminology", "terminology"))
-    assert spark.statements == [
-        "ALTER SCHEMA `main`.`quality_measures` SET TAGS ('cql_databricks_knowledge' = 'my-measures')",
-        "ALTER SCHEMA `main`.`terminology` SET TAGS ('cql_databricks_terminology' = 'terminology')",
-    ]
-
-
-def test_tag_loaded_skips_a_target_given_as_none():
-    from cql_databricks.data_bindings.measure_import.load import tag_loaded
-    spark = _RecordingSpark()
-    tag_loaded(spark, catalog="main", knowledge=None, terminology=("terminology", "terminology"))
-    assert len(spark.statements) == 1 and "terminology" in spark.statements[0]
-
-
-def test_tagging_without_a_catalog_is_an_error_not_a_silent_skip():
-    import pytest
-    from cql_databricks.data_bindings.measure_import.load import tag_loaded
-    with pytest.raises(ValueError, match="Unity Catalog"):
-        tag_loaded(_RecordingSpark(), catalog=None, knowledge=("quality_measures", "my-measures"), terminology=None)

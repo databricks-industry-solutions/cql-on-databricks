@@ -61,7 +61,7 @@ final class EmitSizeSpec extends AnyFunSuite {
         val lib       = Differential.buildLibrary(c)
         val config    = Differential.evalConfig(c.library)
         val optimized = Optimize.run(lib, config)
-        val env       = SqlEvalEnv(c.context, config, terminology = c.terminology.isDefined)
+        val env       = SqlEvalEnv(c.context, config).describing
         val lowered   = SqlFrameLowering.lower(optimized, env)
 
         val rendered = lowered.script.statements.map(s => s.name -> SqlRender.render(s))

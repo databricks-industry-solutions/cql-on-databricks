@@ -1,6 +1,6 @@
 package com.databricks.cql.transpiler.lower
 
-import com.databricks.cql.env.{Config, Context, SourceBinding}
+import com.databricks.cql.env.{Config, Context, DataBinding, RetrieveRelation, TerminologyBinding}
 import com.databricks.cql.error.UnsupportedNode
 import com.databricks.cql.ir._
 import com.databricks.cql.ir.CqlType._
@@ -11,8 +11,8 @@ import org.scalatestplus.junit.JUnitRunner
 
 /** Phase 3b tests for the RELATIONAL core of `SqlQueryLowering` (EMIT-SQL-EXECUTE): a FHIR query over
   * retrieve mounts lowered to a `SqlRel` of joins/filters, rendered to SQL TEXT — server-free, no Spark.
-  * These lock that the relation encoding emits well-formed, readable SQL that references the mounted
-  * `retrieve_<Type>` views by NAME (the DAG the proto could not express). Real semantic correctness vs
+  * These lock that the relation encoding emits well-formed, readable SQL that reads each retrieve's bound relation
+  * by NAME (BIND-CALL-SITE; the DAG the proto could not express). Real semantic correctness vs
   * the Java CQF reference is the Phase-5 gate; here we only pin the shape. */
 @RunWith(classOf[JUnitRunner])
 class SqlQueryLoweringRelationSpec extends AnyFunSuite {
@@ -24,11 +24,11 @@ class SqlQueryLoweringRelationSpec extends AnyFunSuite {
 
   private def lit(t: String, v: String): Literal = Literal(s"{urn:hl7-org:elm-types:r1}$t", Some(v))
 
-  private def env(terminology: Boolean = false,
-                  sources: Map[String, SourceBinding] = Map.empty,
-                  terminologyTable: Option[String] = None): SqlEvalEnv =
+  /** BIND-CALL-SITE: every retrieve bound by rule to `acme.data.<type>`, every value set to one relation. */
+  private def env(): SqlEvalEnv =
     SqlEvalEnv(context = Context.Patient, config = Config.defaults,
-      terminology = terminology, sources = sources, terminologyTable = terminologyTable)
+      data = Some(DataBinding(Some(DataBinding.Rule("acme.data")), Map.empty)),
+      terminologyBinding = Some(TerminologyBinding(Some(Seq(RetrieveRelation("acme.terminology.valueset"))), Map.empty)))
 
   private val lib: Library = Library("Test", None, Nil, Nil, Nil, Nil,
     valueSets = Seq(ValueSetDef("RoutineEncounter", "urn:oid:2.999.1.102", None)),
@@ -42,7 +42,7 @@ class SqlQueryLoweringRelationSpec extends AnyFunSuite {
 
   test("a bare retrieve lowers to grain-first rows over the mounted view (retrieveRelationFrame)") {
     val out = render(SqlQueryLowering.retrieveRelationFrame(retrieve(Encounter), env(), lib, _ => AnyType))
-    assert(out.contains("FROM retrieve_Encounter"))
+    assert(out.contains("FROM acme.data.encounter"))
     assert(out.contains("__resource.__resource_id AS __ordinal"))
     assert(out.contains("__resource AS __val"))
     assert(out.contains("__subject_id"))
@@ -55,7 +55,7 @@ class SqlQueryLoweringRelationSpec extends AnyFunSuite {
       where = Some(Equal(Property(None, Some("E"), "status"), lit("String", "finished"))),
       returnExpr = None)
     val out = render(SqlQueryLowering.relationFrameDirect(q, env(), lib, _ => AnyType))
-    assert(out.contains("FROM retrieve_Encounter"))
+    assert(out.contains("FROM acme.data.encounter"))
     assert(out.contains("__resource AS E"))        // aliased source struct column
     assert(out.contains("(E.status = 'finished')")) // residual 3VL predicate
     assert(out.contains("__ord_E AS __ordinal"))    // single-source ordinal
@@ -67,7 +67,7 @@ class SqlQueryLoweringRelationSpec extends AnyFunSuite {
     val out = render(SqlQueryLowering.relationExists(q, env(), lib, _ => AnyType))
     assert(out.startsWith("SELECT DISTINCT"))
     assert(out.contains("__subject_id"))
-    assert(out.contains("FROM retrieve_Encounter"))
+    assert(out.contains("FROM acme.data.encounter"))
   }
 
   test("a value-set membership where renders as a LEFT SEMI JOIN against the mounted expansion") {
@@ -76,91 +76,86 @@ class SqlQueryLoweringRelationSpec extends AnyFunSuite {
       sources = Seq(QuerySource("E", retrieve(Encounter))),
       where = Some(InValueSet(Property(None, Some("E"), "type"), ValueSetRef("RoutineEncounter", None))),
       returnExpr = None)
-    val out = render(SqlQueryLowering.relationFrameDirect(q, env(terminology = true), lib,
+    val out = render(SqlQueryLowering.relationFrameDirect(q, env(), lib,
       { case r: Retrieve if r.dataType == Encounter => ListType(NamedType("{http://hl7.org/fhir}Encounter")); case _ => AnyType }))
     assert(out.contains("LEFT SEMI JOIN"))
-    // BIND-TERMINOLOGY-TABLE: one keyed `valuesets` table, the set selected by canonical id.
-    assert(out.contains("FROM valuesets"))
+    // BIND-CALL-SITE: one keyed value-set relation, the set selected by canonical id.
+    assert(out.contains("FROM acme.terminology.valueset"))
     assert(out.contains("valueset_id = 'urn:oid:2.999.1.102'"))
     assert(out.contains("exists(")) // coding membership HOF, no UDF
   }
 
-  test("a value-set membership with terminologyTable emits the FQN instead of bare 'valuesets' (BIND-TERMINOLOGY-TABLE)") {
-    val q = Query(
-      sources = Seq(QuerySource("E", retrieve(Encounter))),
-      where = Some(InValueSet(Property(None, Some("E"), "type"), ValueSetRef("RoutineEncounter", None))),
-      returnExpr = None)
-    val out = render(SqlQueryLowering.relationFrameDirect(q,
-      env(terminology = true, terminologyTable = Some("acme.bindings.valuesets")), lib,
-      { case r: Retrieve if r.dataType == Encounter => ListType(NamedType("{http://hl7.org/fhir}Encounter")); case _ => AnyType }))
-    assert(out.contains("FROM acme.bindings.valuesets"))
-    assert(!out.contains("FROM valuesets\n") && !out.contains("FROM valuesets "))
-    assert(out.contains("valueset_id = 'urn:oid:2.999.1.102'"))
-  }
-
   test("a code-filtered retrieve scan renders a membership semi-join at the mount (filteredRetrieve)") {
     val r = retrieve(Encounter, codeProperty = Some("type"), codes = Some(ValueSetRef("RoutineEncounter", None)))
-    val out = render(SqlQueryLowering.filteredRetrieve(r, "Encounter", env(terminology = true), lib, _ => AnyType))
-    assert(out.contains("retrieve_Encounter"))
+    val out = render(SqlQueryLowering.filteredRetrieve(r, "Encounter", env(), lib, _ => AnyType))
+    assert(out.contains("FROM acme.data.encounter"))
     assert(out.contains("LEFT SEMI JOIN"))
-    assert(out.contains("FROM valuesets"))
+    assert(out.contains("FROM acme.terminology.valueset"))
     assert(out.contains("valueset_id = 'urn:oid:2.999.1.102'"))
   }
 
-  test("a filtered retrieve calls FROM fn(...) with the SEVEN explicit literal args (BIND-EXPLICIT-PARAMS)") {
+  test("a retrieve reads only the contract columns of its relation, with no arguments (BIND-CALL-SITE)") {
     val r = retrieve(Encounter, codeProperty = Some("type"), codes = Some(ValueSetRef("RoutineEncounter", None)))
-    val out = render(SqlQueryLowering.filteredRetrieve(r, "Encounter", env(terminology = true), lib, _ => AnyType))
-    // The mount is a UDTF CALL, not a bare `FROM retrieve_Encounter` view, and names no library
-    // (EMIT-ROOT-INDEPENDENT).
-    assert(out.contains("retrieve_Encounter('urn:oid:"))
-    assert(!out.contains("named_struct('id'"))
-    assert(!out.contains("FROM retrieve_Encounter\n") && !out.contains("FROM retrieve_Encounter "))
-    // BIND-PUSHDOWN: this retrieve's statically-known predicates are POSITIONAL literals — value_set,
-    // then code_property, then the (empty) direct-codes array. Absent scalars are NULL.
-    assert(out.contains("'urn:oid:2.999.1.102', 'type', array(), NULL, NULL, NULL, map())"))
-    // BIND-CAPABILITY: the value-set membership is STILL re-applied ABOVE the call (the args are advisory).
+    val out = render(SqlQueryLowering.filteredRetrieve(r, "Encounter", env(), lib, _ => AnyType))
+    assert(out.contains("    __subject_id,\n    __resource\n  FROM acme.data.encounter\n"))
+    assert(!out.contains("acme.data.encounter("))
+    // BIND-CAPABILITY: the value-set membership is applied ABOVE the relation, which takes no request.
     assert(out.contains("LEFT SEMI JOIN"))
-    assert(out.contains("FROM valuesets"))
   }
 
-  test("a bare retrieve calls fn with every PREDICATE arg absent") {
-    val out = render(SqlQueryLowering.retrieveRelationFrame(retrieve(Encounter), env(), lib, _ => AnyType))
-    assert(out.contains("retrieve_Encounter(NULL, NULL, array(), NULL, NULL, NULL, map())"))
+  test("a retrieve with no data binding fails, naming its site (BIND-CALL-SITE)") {
+    val unbound = env().copy(data = None)
+    val err = intercept[UnsupportedNode](
+      SqlQueryLowering.retrieveRelationFrame(retrieve(Encounter), unbound, lib, _ => AnyType))
+    assert(err.getMessage.contains("[Encounter] needs data"))
+  }
+
+  test("a membership with no terminology binding fails (BIND-CALL-SITE)") {
+    val r = retrieve(Encounter, codeProperty = Some("type"), codes = Some(ValueSetRef("RoutineEncounter", None)))
+    val err = intercept[UnsupportedNode](
+      SqlQueryLowering.filteredRetrieve(r, "Encounter", env().copy(terminologyBinding = None), lib, _ => AnyType))
+    assert(err.getMessage.contains("needs terminology"))
+  }
+
+  test("a bare retrieve's request has every predicate absent (BIND-RETRIEVE-REQUEST)") {
+    val req = SqlQueryLowering.retrieveCall(None, "Encounter", lib, env()).requestJson
+    assert(req("valueSet").isNull && req("codes").arr.isEmpty && req("dateProperty").isNull &&
+      req("dateLow").isNull && req("dateHigh").isNull && req("parameters").obj.isEmpty)
   }
 
   test("EMIT-ROOT-INDEPENDENT: retrieveCall names no library, and passes only the current define's parameters") {
     val libV = lib.copy(version = Some("1.2.000"))
-    val args = SqlQueryLowering.retrieveCall(None, "Encounter", libV, env()).positionalArgs.map(SqlRender.expr)
-    assert(args.size == 7 && !args.exists(_.contains("Test")))
+    val req = SqlQueryLowering.retrieveCall(None, "Encounter", libV, env()).requestJson
+    assert(!ujson.write(req).contains("Test"))
     // The context base belongs to no define, so its parameters map is empty.
-    assert(args.last == "map()")
+    assert(req("parameters").obj.isEmpty)
   }
 
-  test("retrieveCall maps literal parameter defaults to MAP<STRING, VARIANT> (BIND-EXPLICIT-PARAMS)") {
+  test("retrieveCall carries literal parameter defaults in its request (BIND-RETRIEVE-REQUEST)") {
     val dt = "{urn:hl7-org:elm-types:r1}DateTime"
     val mp = IntervalExpr(Some(Literal(dt, Some("2026-01-01"))), Some(Literal(dt, Some("2026-12-31"))),
       lowClosed = true, highClosed = false)
     val libP = lib.copy(parameters = Seq(
       ParameterDef("Measurement Period", Some("Interval<DateTime>"), Some(mp)),
       ParameterDef("Threshold", Some("Integer"), Some(Literal("{urn:hl7-org:elm-types:r1}Integer", Some("40"))))))
-    val out = SqlRender.expr(SqlQueryLowering.retrieveCall(None, "Encounter", libP, scoped(libP)).positionalArgs.last)
-    // An INTERVAL default lands as a `{low, high}` VARIANT OBJECT (where context.measurementPeriod went),
-    // a scalar as a VARIANT SCALAR — one open container keyed by the CQL name, spaces and all.
-    assert(out == "map('Measurement Period', to_variant_object(named_struct('low', '2026-01-01', 'lowClosed', true, " +
-      "'high', '2026-12-31', 'highClosed', false)), 'Threshold', CAST('40' AS VARIANT))")
+    val out = SqlQueryLowering.retrieveCall(None, "Encounter", libP, scoped(libP)).requestJson("parameters")
+    // An INTERVAL default lands as a `{low, high}` object with its closure, a scalar as its string — one open
+    // container keyed by the CQL name, spaces and all.
+    assert(out == ujson.Obj(
+      "Measurement Period" -> ujson.Obj("low" -> "2026-01-01", "lowClosed" -> true, "high" -> "2026-12-31",
+        "highClosed" -> false),
+      "Threshold" -> "40"))
   }
 
-  test("retrieveCall emits DIRECT codes and the RESOLVED code slot, not the raw choice element") {
-    // A `value[x]`-choice code property resolves to its physical slot so a binding navigates what the
-    // plan filters on: MedicationRequest.medication -> medicationCodeableConcept.
+  test("retrieveCall carries DIRECT codes, with no value set") {
     val libC = lib.copy(codes = Seq(CodeDef("Aspirin", "1191", Some("RxNorm"))),
       codeSystems = Seq(CodeSystemDef("RxNorm", "http://www.nlm.nih.gov/research/umls/rxnorm", None)))
     val r = retrieve("{http://hl7.org/fhir}MedicationRequest", codeProperty = Some("medication"),
       codes = Some(ToList(CodeRef("Aspirin", None))))
-    val args = SqlQueryLowering.retrieveCall(Some(r), "MedicationRequest", libC, env()).positionalArgs.map(SqlRender.expr)
-    assert(args(0) == "NULL") // no value set on a direct-code retrieve
-    assert(args(1) == "'medicationCodeableConcept'")
-    assert(args(2) == "array(named_struct('system', 'http://www.nlm.nih.gov/research/umls/rxnorm', 'code', '1191'))")
+    val req = SqlQueryLowering.retrieveCall(Some(r), "MedicationRequest", libC, env()).requestJson
+    assert(req("valueSet").isNull) // no value set on a direct-code retrieve
+    assert(req("codes") == ujson.Arr(ujson.Obj("system" -> "http://www.nlm.nih.gov/research/umls/rxnorm",
+      "code" -> "1191")))
   }
 
   test("retrieveCall renders a Date/DateTime CONSTRUCTOR bound at its authored precision") {
@@ -168,21 +163,22 @@ class SqlQueryLoweringRelationSpec extends AnyFunSuite {
     // literal. A PARTIAL bound stays partial: padding would widen the window the binding prunes on.
     def dtParts(ns: Int*): Expr = DateTimeExpr(ns.map(n => lit("Integer", n.toString)))
     def window(lo: Expr, hi: Expr) = IntervalExpr(Some(lo), Some(hi), lowClosed = true, highClosed = true)
-    def bounds(lo: Expr, hi: Expr): (String, String) = {
+    def bounds(lo: Expr, hi: Expr): (ujson.Value, ujson.Value) = {
       val a = SqlQueryLowering.retrieveCall(
         Some(retrieve(Encounter, dateProperty = Some("period"), dateRange = Some(window(lo, hi)))),
-        "Encounter", lib, env()).positionalArgs.map(SqlRender.expr)
-      (a(4), a(5))
+        "Encounter", lib, env()).requestJson
+      (a("dateLow"), a("dateHigh"))
     }
-    assert(bounds(dtParts(2023, 6, 1), dtParts(2023, 6, 30)) == ("'2023-06-01'", "'2023-06-30'"))
-    assert(bounds(dtParts(2023), dtParts(2024)) == ("'2023'", "'2024'"))            // year precision kept
+    def both(lo: String, hi: String): (ujson.Value, ujson.Value) = (ujson.Str(lo), ujson.Str(hi))
+    assert(bounds(dtParts(2023, 6, 1), dtParts(2023, 6, 30)) == both("2023-06-01", "2023-06-30"))
+    assert(bounds(dtParts(2023), dtParts(2024)) == both("2023", "2024"))            // year precision kept
     assert(bounds(dtParts(2023, 6, 1, 12, 30, 0), dtParts(2023, 6, 1, 13, 0, 0)) ==
-      ("'2023-06-01T12:30:00'", "'2023-06-01T13:00:00'"))
+      both("2023-06-01T12:30:00", "2023-06-01T13:00:00"))
     assert(bounds(DateExpr(Seq(lit("Integer", "2023"), lit("Integer", "1"), lit("Integer", "5"))),
                   DateExpr(Seq(lit("Integer", "2023"), lit("Integer", "12"), lit("Integer", "31")))) ==
-      ("'2023-01-05'", "'2023-12-31'"))
+      both("2023-01-05", "2023-12-31"))
     // A non-literal component leaves the bound ABSENT rather than guess.
-    assert(bounds(DateTimeExpr(Seq(ExpressionRef("SomeYear", None))), dtParts(2024))._1 == "NULL")
+    assert(bounds(DateTimeExpr(Seq(ExpressionRef("SomeYear", None))), dtParts(2024))._1.isNull)
   }
 
   test("retrieveCall carries a Measurement Period interval default into the parameters map") {
@@ -193,11 +189,11 @@ class SqlQueryLoweringRelationSpec extends AnyFunSuite {
       Some(DateTimeExpr(Seq(lit("Integer", "2026"), lit("Integer", "12"), lit("Integer", "31")))),
       lowClosed = true, highClosed = true)
     val libP = lib.copy(parameters = Seq(ParameterDef("Measurement Period", Some("Interval<DateTime>"), Some(mp))))
-    val out = SqlRender.expr(SqlQueryLowering.retrieveCall(None, "Encounter", libP, scoped(libP)).positionalArgs.last)
+    val out = SqlQueryLowering.retrieveCall(None, "Encounter", libP, scoped(libP)).requestJson("parameters")
     // The CLOSURE is carried, not assumed — the standard eCQM period is HALF-OPEN, and a binding that
     // read a bare `high` as inclusive would over-select the boundary instant.
-    assert(out == "map('Measurement Period', to_variant_object(named_struct('low', '2026-01-01', 'lowClosed', true, " +
-      "'high', '2026-12-31', 'highClosed', true)))")
+    assert(out == ujson.Obj("Measurement Period" -> ujson.Obj("low" -> "2026-01-01", "lowClosed" -> true,
+      "high" -> "2026-12-31", "highClosed" -> true)))
   }
 
   test("retrieveCall emits the folded date window as inclusive bounds; a half-open range stays absent") {
@@ -205,23 +201,14 @@ class SqlQueryLoweringRelationSpec extends AnyFunSuite {
     def range(closedHigh: Boolean) = IntervalExpr(Some(Literal(dt, Some("2026-01-01"))),
       Some(Literal(dt, Some("2026-12-31"))), lowClosed = true, highClosed = closedHigh)
     val closed = retrieve(Encounter, dateProperty = Some("period"), dateRange = Some(range(true)))
-    val cArgs = SqlQueryLowering.retrieveCall(Some(closed), "Encounter", lib, env()).positionalArgs.map(SqlRender.expr)
-    assert(cArgs(3) == "'period'" && cArgs(4) == "'2026-01-01'" && cArgs(5) == "'2026-12-31'")
+    val cArgs = SqlQueryLowering.retrieveCall(Some(closed), "Encounter", lib, env()).requestJson
+    assert(cArgs("dateProperty").str == "period" && cArgs("dateLow").str == "2026-01-01" &&
+      cArgs("dateHigh").str == "2026-12-31")
     // A half-open interval leaves the WINDOW absent rather than shift a bound (CORE-NO-SILENT-MISLOWER);
     // the date PROPERTY is still named.
     val open = retrieve(Encounter, dateProperty = Some("period"), dateRange = Some(range(false)))
-    val oArgs = SqlQueryLowering.retrieveCall(Some(open), "Encounter", lib, env()).positionalArgs.map(SqlRender.expr)
-    assert(oArgs(3) == "'period'" && oArgs(4) == "NULL" && oArgs(5) == "NULL")
-  }
-
-  test("BIND-MANIFEST: a bound source resolves the retrieve to its catalog-qualified UDTF, else the convention") {
-    // Encounter is bound; Condition (unmapped) falls back to the convention `retrieve_Condition`.
-    val bound = env(sources = Map("Encounter" -> SourceBinding("fetch_encounter", Some("acme.fhir"))))
-    val enc = render(SqlQueryLowering.retrieveRelationFrame(retrieve(Encounter), bound, lib, _ => AnyType))
-    assert(enc.contains("FROM acme.fhir.fetch_encounter(NULL"))
-    assert(!enc.contains("retrieve_Encounter("))
-    val cond = render(SqlQueryLowering.retrieveRelationFrame(retrieve("{http://hl7.org/fhir}Condition"), bound, lib, _ => AnyType))
-    assert(cond.contains("FROM retrieve_Condition(NULL"))
+    val oArgs = SqlQueryLowering.retrieveCall(Some(open), "Encounter", lib, env()).requestJson
+    assert(oArgs("dateProperty").str == "period" && oArgs("dateLow").isNull && oArgs("dateHigh").isNull)
   }
 
   test("with / without lower to correlated LEFT SEMI / LEFT ANTI joins on subject + such-that") {

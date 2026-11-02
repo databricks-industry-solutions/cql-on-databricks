@@ -19,11 +19,12 @@ import type { Definition } from "../catalog.ts";
 import { fetchDefinitions, fetchLibrarySource, fetchSpecification, fetchDataRequirements, saveLibrary,
   type DataRequirement, type SpecificationOverlay } from "../library-client.ts";
 import { useRevision } from "../use-revision.ts";
-import { runMeasureStreaming, fetchDataSources, fetchWarehouses, reopenResults, type RunTrigger } from "../run-client.ts";
+import { runMeasureStreaming, fetchEnvironments, fetchWarehouses, reopenResults, type RunTrigger } from "../run-client.ts";
+import { currentEnvironment, setCurrentEnvironment } from "../environment.ts";
 import { translate } from "../authoring/diagnostics.ts";
 import { CqlCode } from "../authoring/cqlHighlight.tsx";
 import { parseElmDefines, type ElmLibraryInfo } from "../authoring/elmDefines.ts";
-import type { DataSourceRecord, RunResult, RunStage, TranslateResult, WarehouseRecord } from "../wire.ts";
+import type { EnvironmentRecord, RunResult, RunStage, TranslateResult, WarehouseRecord } from "../wire.ts";
 import { MeasureNarrative } from "./MeasureNarrative.tsx";
 import { TopBar, type TopBarChrome } from "./TopBar.tsx";
 import { Navigator } from "./Navigator.tsx";
@@ -69,7 +70,9 @@ type InPlace = { key: string; base: string; start: number; end: number; text: st
 // Persist the Compute menu selections across page reloads via localStorage.
 const STORAGE_KEY = "cql-databricks:compute";
 // APP-COMPUTE-TARGET — `warehouseId` is the chosen SQL warehouse; null or absent means the deployment's.
-interface StoredCompute { mode?: ExecMode; compute?: ComputeTarget; sourceId?: string | null; updateMode?: UpdateMode;
+// DOC-ENVIRONMENT-PICKER — `computing` is whether the picked environment computes (None when false); the
+// environment itself is kept by `environment.ts`, which every knowledge read uses.
+interface StoredCompute { mode?: ExecMode; compute?: ComputeTarget; computing?: boolean; updateMode?: UpdateMode;
   periodYear?: number; warehouseId?: string | null; }
 function loadCompute(): StoredCompute {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); } catch { return {}; }
@@ -218,8 +221,8 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // there is no root to address; an old link carrying one is simply ignored.
   const navTab = useMemo(
     () => parseNavTab(new URLSearchParams(location.search).get("nav")), [location.search]);
-  // APP-EXEC-MODE — the two OFFLINE states: `static` reads the spec, `deck` computes the synthetic Test
-  // Deck client-side. Real-backend targets come from the Data Source registry (`selectedSourceId`) below.
+  // APP-EXEC-MODE — the OFFLINE state: `static` reads the spec. The real targets are the environments
+  // (`runEnvironment`) below.
   // Restore from localStorage so the last selection survives a page reload.
   const stored = useRef(loadCompute());
   const [mode, setMode] = useState<ExecMode>(deepLink?.mode ?? stored.current.mode ?? "static");
@@ -236,13 +239,15 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // period or warehouse changes that find no results; it does not detect source-data changes, which
   // need Recompute everything. A stored `paused` or a missing value is Manual (`storedUpdateMode`).
   const [updateMode, setUpdateMode] = useState<UpdateMode>(storedUpdateMode(stored.current.updateMode));
-  // DATA-SOURCE-REGISTRY — the data sources the picker offers (Live + Conformance) and the selected one. A
-  // selected registry source overrides the ExecMode data source and runs via `data_source_id`; the backend
-  // resolves the bind. API-driven
-  // (APP-NO-UI-MOCK); a source selection still "computes" the document.
-  const [sources, setSources] = useState<DataSourceRecord[]>([]);
-  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(stored.current.sourceId ?? null);
-  const computed = selectedSourceId !== null;
+  // DOC-ENVIRONMENT-PICKER — the environments the picker offers and the one the Designer runs in: the picked one,
+  // else the default once the list is read. `runEnvironment` is it while it computes, and null for None.
+  // API-driven (APP-NO-UI-MOCK).
+  const [environments, setEnvironments] = useState<EnvironmentRecord[]>([]);
+  const [environmentError, setEnvironmentError] = useState<string | null>(null);
+  const [environment, setEnvironment] = useState<string | null>(currentEnvironment());
+  const [computing, setComputing] = useState<boolean>(stored.current.computing ?? false);
+  const runEnvironment = computing ? environment : null;
+  const computed = runEnvironment !== null;
   // PIPE-MEASUREMENT-PERIOD — the selected measurement period year, dialled in the toolbar's parameter
   // bar (DESIGNER-TOP-BAR); the selected year is passed to compile_pipeline as "Measurement Period" so the
   // SQL is baked with the correct period literals. Sticky with the rest of the compute selection:
@@ -264,10 +269,10 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // version; every figure on the page then reads that draft's results, never the version's.
   const draft = run?.draft || undefined;
   const profileScope = useMemo<ProfileScope | null>(() => (
-    selectedSourceId && draft && run?.resultSet
-      ? { dataSourceId: selectedSourceId, periodStart, periodEnd, draft, resultSet: run.resultSet,
+    runEnvironment && draft && run?.resultSet
+      ? { environment: runEnvironment, periodStart, periodEnd, draft, resultSet: run.resultSet,
           warehouseId: chosenWarehouse } : null
-  ), [selectedSourceId, periodStart, periodEnd, draft, run?.resultSet, chosenWarehouse]);
+  ), [runEnvironment, periodStart, periodEnd, draft, run?.resultSet, chosenWarehouse]);
   // APP-EXEC-PARAMS — the execution parameters this run is compiled with. The measurement period is
   // the only one the app has a source for today; the rest belong to the measure package the compiler
   // emits (a measure declares its own parameters), so they join this list when that data is wired — the
@@ -275,15 +280,23 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   const execParams = useMemo(() => [periodParam(periodYear, setPeriodYear)], [periodYear]);
   const token = useRef(0);
   const busy = useRef(false);
-  useEffect(() => { fetchDataSources().then(setSources).catch(() => {}); }, []);
+  useEffect(() => {
+    fetchEnvironments().then((list) => {
+      setEnvironments(list); setEnvironmentError(null);
+      // DOC-ENVIRONMENT-PICKER — the default is preselected; a picked environment the user no longer sees is not kept.
+      setEnvironment((picked) => (list.some((e) => e.name === picked) ? picked
+        : list.find((e) => e.default)?.name ?? null));
+    }).catch((e) => setEnvironmentError(e instanceof Error ? e.message : String(e)));
+  }, []);
+  useEffect(() => { setCurrentEnvironment(environment); }, [environment]);
   useEffect(() => {
     fetchWarehouses().then((list) => {
       setWarehouses(list.warehouses); setDefaultWarehouseId(list.default); setWarehouseError(null);
     }).catch((e) => setWarehouseError(e instanceof Error ? e.message : String(e)));
   }, []);
   // Persist every change so the next page load restores the last selection.
-  useEffect(() => { saveCompute({ mode, compute, sourceId: selectedSourceId, updateMode, periodYear, warehouseId }); },
-    [mode, compute, selectedSourceId, updateMode, periodYear, warehouseId]);
+  useEffect(() => { saveCompute({ mode, compute, computing, updateMode, periodYear, warehouseId }); },
+    [mode, compute, computing, updateMode, periodYear, warehouseId]);
 
   // APP-TOUR — apply a deep-link when it changes (a "Show me" while the workspace is already
   // mounted). The artifact and the lens land as ONE write — two would race (`setParams`).
@@ -389,31 +402,31 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // Source is empty while loading or on error — never use a generated stub.
   const source = editedSource ?? loadedSource ?? "";
 
-  // DATA-SOURCE-BIND / SVC-RUN-EVAL — run against a selected registry data source by its id; the backend
-  // resolves the bind origin (a Live source binds its retrieve UDTFs). One path for both.
+  // DOC-ENVIRONMENT-PICKER / SVC-RUN-EVAL — run in the picked environment, by its name; the backend binds its
+  // published views.
   // RUN-CLIENT-REQUEST-REOPEN — the calculation whose results were last looked up or shown, so a finished
   // run is not followed by a redundant reopen of what it just returned.
-  const scopeKey = `${libLocation ?? ""}\0${definition?.id ?? ""}\0${source}\0${selectedSourceId ?? ""}\0${periodStart}\0${periodEnd}\0${warehouseId ?? ""}\0${updateMode}`;
+  const scopeKey = `${libLocation ?? ""}\0${definition?.id ?? ""}\0${source}\0${runEnvironment ?? ""}\0${periodStart}\0${periodEnd}\0${warehouseId ?? ""}\0${updateMode}`;
   const currentKey = useRef(scopeKey);
   currentKey.current = scopeKey;
   const lookedUp = useRef<string | null>(null);
   // APP-UPDATE-MODE — "Calculation changed since last run": the last results shown were for this measure,
-  // data source and period, but other CQL. `shownNow` is this render's calculation, read through a ref so
+  // environment and period, but other CQL. `shownNow` is this render's calculation, read through a ref so
   // the memoized callbacks below never record a stale one.
-  type Shown = { id: string; sourceId: string; period: string; source: string };
+  type Shown = { id: string; environment: string; period: string; source: string };
   const shownNow = useRef<Shown | null>(null);
-  shownNow.current = definition && selectedSourceId
-    ? { id: definition.id, sourceId: selectedSourceId, period: `${periodStart}/${periodEnd}`, source } : null;
+  shownNow.current = definition && runEnvironment
+    ? { id: definition.id, environment: runEnvironment, period: `${periodStart}/${periodEnd}`, source } : null;
   const shownFor = useRef<Shown | null>(null);
   // APP-RUN-LOG — each caller names its action; Refresh recomputes, Automatic computes only what is missing.
-  const doRunSource = useCallback((src: string, sourceId: string, trigger: RunTrigger) => {
+  const doRunSource = useCallback((src: string, inEnvironment: string, trigger: RunTrigger) => {
     const recompute = trigger === "refresh";
     if (!src.trim() || busy.current) return;
     busy.current = true;
     const my = ++token.current;
     setRunStage({ stage: "connecting", message: "Starting…" });
     setRunError(null);
-    runMeasureStreaming(src, { dataSourceId: sourceId, periodStart, periodEnd, recompute, trigger,
+    runMeasureStreaming(src, { environment: inEnvironment, periodStart, periodEnd, recompute, trigger,
                                warehouseId: chosenWarehouse, location: libLocation }, (stage) => {
       if (my !== token.current) return;
       setRunStage(stage);
@@ -438,7 +451,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     ++token.current;
     setRun(null);
     setRunError(null);
-  }, [source, selectedSourceId, periodStart, periodEnd, definition?.id, warehouseId, libLocation]);
+  }, [source, runEnvironment, periodStart, periodEnd, definition?.id, warehouseId, libLocation]);
 
   const [lookup, setLookup] = useState<"checking" | "not-computed" | "changed" | null>(null);
 
@@ -447,12 +460,12 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // are always private: there is no published-results lookup (RUN-CLIENT-PUBLISHED, amended 2026-10-10).
   // A miss is "Not computed"; in Automatic it then runs Compute missing, in Manual it does not.
   useEffect(() => {
-    if (!definition || !selectedSourceId || !source) { setLookup(null); lookedUp.current = null; return; }
+    if (!definition || !runEnvironment || !source) { setLookup(null); lookedUp.current = null; return; }
     if (running || busy.current || lookedUp.current === scopeKey) return;
     lookedUp.current = scopeKey;
     const my = ++token.current;
     setLookup("checking");
-    reopenResults(source, { dataSourceId: selectedSourceId, periodStart, periodEnd, warehouseId: chosenWarehouse,
+    reopenResults(source, { environment: runEnvironment, periodStart, periodEnd, warehouseId: chosenWarehouse,
                             location: libLocation })
       .then((r) => {
         if (my !== token.current) return;
@@ -461,9 +474,9 @@ export function MeasureWorkspace({ chrome, deepLink }: {
           return;
         }
         const prev = shownFor.current;
-        setLookup(prev && prev.id === definition.id && prev.sourceId === selectedSourceId
+        setLookup(prev && prev.id === definition.id && prev.environment === runEnvironment
           && prev.period === `${periodStart}/${periodEnd}` && prev.source !== source ? "changed" : "not-computed");
-        if (updateMode === "live") doRunSource(source, selectedSourceId, "automatic");
+        if (updateMode === "live") doRunSource(source, runEnvironment, "automatic");
       })
       .catch((e) => {
         if (my !== token.current) return;
@@ -474,7 +487,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
 
   // APP-UPDATE-MODE — why the page shows what it shows; never a bare "Idle".
   const tasks = runStage?.tasks ?? [];
-  const runStatus: RunStatus = !selectedSourceId ? { kind: "no-source" }
+  const runStatus: RunStatus = !runEnvironment ? { kind: "no-environment", error: environmentError ?? undefined }
     : running ? (tasks.length
       ? { kind: "running", total: tasks.length,
           done: tasks.filter((t) => ["completed", "skipped", "failed"].includes(t.status)).length }
@@ -609,7 +622,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // auto-kick-off effect will immediately start a fresh run after this clears.
   useEffect(() => {
     setRun(null); setRunError(null);
-  }, [source, selectedSourceId]);
+  }, [source, runEnvironment]);
 
 
   // APP-SPEC-MODEL — the include closure arrives COMPILED on the translate result, so there are no
@@ -734,15 +747,13 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     // Only a DEFINE is a node the tools can address — a retrieve scopes the inspector but is not a
     // `NodeAddress`, so sending one would prefill an argument no tool could use.
     define: selected?.kind === "define" ? selected.name : undefined,
-    dataSourceId: selectedSourceId ?? undefined,
     periodStart, periodEnd,
     // The LABELS — what the screen calls those identifiers. Not tool arguments; the assistant writes
-    // with them so it does not say `HypertensionBPControl` and `synthetic-population-small` at a
-    // clinician who calls them something else. Resolved here because this is where both are already
+    // with them so it does not say `HypertensionBPControl` at a clinician who calls it something else. Resolved here because this is where both are already
     // known — the alternative is the assistant spending a tool round-trip on what is on the screen.
     measureTitle: definition?.title ?? undefined,
-    dataSourceName: sources.find((s) => s.id === selectedSourceId)?.name ?? undefined,
-  }), [definition, selected, selectedSourceId, periodStart, periodEnd, sources, run?.resultSet]);
+    environmentName: environment ?? undefined,
+  }), [definition, selected, environment, periodStart, periodEnd, run?.resultSet]);
 
   const specDoc = useMemo(
     () => (specModel ? buildSpecDocument(specModel, elmByLibrary, overlay) : null),
@@ -792,9 +803,9 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // RUN-CLIENT-RESULT-SETS — every figure on the document arrives together from these exact pins.
   const resultLibrary = definition?.name, resultVersion = definition?.version;
   const derivations = useSelectionDerivations(
-    resultLibrary && resultVersion && selectedSourceId && draft && run?.resultSet ? {
+    resultLibrary && resultVersion && runEnvironment && draft && run?.resultSet ? {
       library: resultLibrary, version: resultVersion,
-      scope: { dataSourceId: selectedSourceId, periodStart, periodEnd, draft, resultSet: run.resultSet,
+      scope: { environment: runEnvironment, periodStart, periodEnd, draft, resultSet: run.resultSet,
                warehouseId: chosenWarehouse },
       defines: metricDefines, reads: readRequest, gates: flowGates, scoring: overlay?.scoring ?? null,
     } : null);
@@ -1168,16 +1179,16 @@ export function MeasureWorkspace({ chrome, deepLink }: {
                   ) : runStatusText(runStatus)}
                 </span>
               }
-              sources={sources} selectedSourceId={selectedSourceId}
+              environments={environments} environment={runEnvironment}
               warehouses={warehouses} defaultWarehouseId={defaultWarehouseId} warehouseId={warehouseId}
               warehouseError={warehouseError}
               updateMode={updateMode}
-              onModeChange={() => { setSelectedSourceId(null); setMode("static"); }}
-              onSourceChange={setSelectedSourceId}
+              onModeChange={() => { setComputing(false); setMode("static"); }}
+              onEnvironmentChange={(name) => { setEnvironment(name); setComputing(true); }}
               onWarehouseChange={(id) => setWarehouseId(id === defaultWarehouseId ? null : id)}
               onUpdateModeChange={setUpdateMode}
-              runDisabled={running || compiling || !source || !selectedSourceId}
-              onRefresh={() => { if (selectedSourceId) doRunSource(source, selectedSourceId, "refresh"); }} />
+              runDisabled={running || compiling || !source || !runEnvironment}
+              onRefresh={() => { if (runEnvironment) doRunSource(source, runEnvironment, "refresh"); }} />
           </>} />
 
         {/* DOC-OPEN-SAVE — New from the empty state; with a library open, the form renders with the banners below. */}
@@ -1215,7 +1226,8 @@ export function MeasureWorkspace({ chrome, deepLink }: {
           )}
           {/* DOC-INCLUDE-NEW — the library was made but its include could not be placed. */}
           {includeProblem && <ErrorBanner message={includeProblem} onDismiss={() => setIncludeProblem(null)} />}
-          {publishing && <PublishForm definition={definition} onClose={() => setPublishing(false)} />}
+          {publishing && <PublishForm definition={definition} environmentName={environment}
+                                         onClose={() => setPublishing(false)} />}
           {fileForm && (
             <NewLibraryForm key={fileForm.kind === "new" ? fileForm.what : fileForm.kind} target={fileForm} at={openAt}
               onCancel={() => setFileForm(null)} onCreated={created} />

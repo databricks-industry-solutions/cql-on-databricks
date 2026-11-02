@@ -8,7 +8,7 @@ vi.mock("../library-client.ts", () => api);
 
 const request: SelectionDerivationRequest = {
   library: "Synthetic", version: "1",
-  scope: { dataSourceId: "synthetic", periodStart: "2026-01-01", periodEnd: "2026-12-31", draft: "durable.first" },
+  scope: { environment: "synthetic", periodStart: "2026-01-01", periodEnd: "2026-12-31", draft: "durable.first" },
   defines: [{ name: "Output", library: "Synthetic", resultType: "Boolean", cohort: { allOf: [], noneOf: [] } }],
   reads: [], gates: [], scoring: null,
 };

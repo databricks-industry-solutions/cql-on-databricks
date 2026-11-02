@@ -43,7 +43,7 @@ describe("reopenResults (RUN-CLIENT-REQUEST-REOPEN)", () => {
       outcomes: [{ definition: "a", decision: "reused", reason: "", completedAt: "2026-10-09T08:00:00+00:00" },
                  { definition: "b", decision: "reused", reason: "", completedAt: "2026-10-10T09:30:00+00:00" }] })));
     vi.stubGlobal("fetch", fetcher);
-    const opened = await reopenResults("synthetic CQL", { dataSourceId: "synthetic", periodStart: "2026-01-01",
+    const opened = await reopenResults("synthetic CQL", { environment: "synthetic", periodStart: "2026-01-01",
       periodEnd: "2026-12-31", warehouseId: "wh-chosen" });
     expect(opened.found).toBe(true);
     if (!opened.found) return;
@@ -52,16 +52,16 @@ describe("reopenResults (RUN-CLIENT-REQUEST-REOPEN)", () => {
     expect(opened.result.counts?.Numerator).toBe(2);
     const [url, init] = fetcher.mock.calls[0]!;
     expect(url).toBe("/api/reopen");
-    expect(JSON.parse(init.body)).toEqual({ cql: "synthetic CQL", dataSourceId: "synthetic",
+    expect(JSON.parse(init.body)).toEqual({ cql: "synthetic CQL", environment: "synthetic",
       periodStart: "2026-01-01", periodEnd: "2026-12-31", warehouseId: "wh-chosen", location: null });
     expect(init.headers).toMatchObject({ "x-designer-instance": designerInstanceId() });
   });
 
   it("returns a miss as an answer and a failure as an error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ found: false, reason: "nothing computed yet" }))));
-    expect(await reopenResults("CQL", { dataSourceId: "synthetic" })).toEqual({ found: false, reason: "nothing computed yet" });
+    expect(await reopenResults("CQL", { environment: "synthetic" })).toEqual({ found: false, reason: "nothing computed yet" });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "PERMISSION_DENIED: no CAN_USE" }), { status: 502 })));
-    await expect(reopenResults("CQL", { dataSourceId: "synthetic", warehouseId: "wh-denied" })).rejects.toThrow("no CAN_USE");
+    await expect(reopenResults("CQL", { environment: "synthetic", warehouseId: "wh-denied" })).rejects.toThrow("no CAN_USE");
   });
 });
 
@@ -138,7 +138,7 @@ describe("runMeasureStreaming (SVC-RUN-STAGE)", () => {
       DONE,
     ]);
     const seen: RunStage[] = [];
-    const r = await runMeasureStreaming("library X version '1'", { dataSourceId: "deck", trigger: "automatic" },
+    const r = await runMeasureStreaming("library X version '1'", { environment: "deck", trigger: "automatic" },
       (s) => seen.push(s));
     expect(r.ok).toBe(true);
     expect(r.counts?.["Numerator"]).toBe(2);
@@ -147,14 +147,14 @@ describe("runMeasureStreaming (SVC-RUN-STAGE)", () => {
 
   it("reports a lost stream ONLY when no terminal frame arrived", async () => {
     stubStream([{ stage: "executing", status: "running", tasks: [task("a", "running")] }]);
-    const r = await runMeasureStreaming("library X version '1'", { dataSourceId: "deck", trigger: "automatic" }, () => {});
+    const r = await runMeasureStreaming("library X version '1'", { environment: "deck", trigger: "automatic" }, () => {});
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/closed the run stream/);
   });
 
   it("surfaces an explicit error frame's own message", async () => {
     stubStream([{ stage: "error", error: "RuntimeError: no SQL warehouse configured" }]);
-    const r = await runMeasureStreaming("library X version '1'", { dataSourceId: "deck", trigger: "automatic" }, () => {});
+    const r = await runMeasureStreaming("library X version '1'", { environment: "deck", trigger: "automatic" }, () => {});
     expect(r).toEqual({ ok: false, error: "RuntimeError: no SQL warehouse configured" });
   });
 
@@ -162,7 +162,7 @@ describe("runMeasureStreaming (SVC-RUN-STAGE)", () => {
     for (let retry = 0; retry < 2; retry++) {
       stubStream([{ stage: "error", error: "synthetic final publication failure" }]);
       await runMeasureStreaming("library Synthetic version '1'", {
-        dataSourceId: "synthetic", recompute: true, computedSince: "2026-01-01T00:00:00Z", trigger: "refresh",
+        environment: "synthetic", recompute: true, computedSince: "2026-01-01T00:00:00Z", trigger: "refresh",
       }, () => {});
       const request = JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string);
       expect(request.recompute).toBe(true);
@@ -178,7 +178,7 @@ describe("runMeasureStreaming (SVC-RUN-STAGE)", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
     const cql = "library Synthetic version '1'";
-    const opts = { dataSourceId: "synthetic", recompute: true, trigger: "refresh" as const };
+    const opts = { environment: "synthetic", recompute: true, trigger: "refresh" as const };
     stubStream([{ stage: "error", error: "synthetic write failure" }]);
     await runMeasureStreaming(cql, opts, () => {});
     const saved = sessionStorage.getItem("cql.refresh-intent.v1")!;
@@ -189,7 +189,7 @@ describe("runMeasureStreaming (SVC-RUN-STAGE)", () => {
     const fresh = await import("../run-client.ts");
     stubStream([DONE]);
     // A plain compute retry cannot silently abandon an unfinished refresh.
-    await fresh.runMeasureStreaming(cql, { dataSourceId: "synthetic", trigger: "automatic" }, () => {});
+    await fresh.runMeasureStreaming(cql, { environment: "synthetic", trigger: "automatic" }, () => {});
     expect(JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string).computed_since)
       .toBe("2026-01-01T00:00:00.000Z");
     expect(sessionStorage.getItem("cql.refresh-intent.v1")).toBeNull();
@@ -201,10 +201,10 @@ describe("runMeasureStreaming (SVC-RUN-STAGE)", () => {
 
   it("does not apply another period's pending cutoff (RUN-CLIENT-REFRESH-RESUME)", async () => {
     stubStream([{ stage: "error", error: "synthetic failure" }]);
-    await runMeasureStreaming("synthetic CQL", { dataSourceId: "synthetic", periodStart: "2026-01-01",
+    await runMeasureStreaming("synthetic CQL", { environment: "synthetic", periodStart: "2026-01-01",
       recompute: true, computedSince: "2026-01-01T00:00:00Z", trigger: "refresh" }, () => {});
     stubStream([DONE]);
-    await runMeasureStreaming("synthetic CQL", { dataSourceId: "synthetic", periodStart: "2025-01-01", trigger: "automatic" }, () => {});
+    await runMeasureStreaming("synthetic CQL", { environment: "synthetic", periodStart: "2025-01-01", trigger: "automatic" }, () => {});
     expect(JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string).computed_since).toBeUndefined();
   });
 
@@ -245,7 +245,7 @@ describe("runMeasureStreaming (SVC-RUN-STAGE)", () => {
       purpose: "private" as const, population: "synthetic", targets: ["Output"], computed_since: null };
     stubStream([{ ...DONE, resultSet,
       identity: { library: "Synthetic", version: "1", dataSource: "synthetic", draft: handle } }]);
-    const result = await runMeasureStreaming("library Synthetic version '1'", { dataSourceId: "synthetic", trigger: "automatic" }, () => {});
+    const result = await runMeasureStreaming("library Synthetic version '1'", { environment: "synthetic", trigger: "automatic" }, () => {});
     expect(result.draft).toBe(handle);
     expect(result.resultSet).toEqual(resultSet);
     expect(JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string).recompute).toBe(false);
@@ -253,19 +253,19 @@ describe("runMeasureStreaming (SVC-RUN-STAGE)", () => {
 
   it("sends what started the run (APP-RUN-LOG)", async () => {
     stubStream([DONE]);
-    await runMeasureStreaming("synthetic CQL", { dataSourceId: "synthetic", trigger: "automatic" }, () => {});
+    await runMeasureStreaming("synthetic CQL", { environment: "synthetic", trigger: "automatic" }, () => {});
     expect(JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string).trigger).toBe("automatic");
     stubStream([DONE]);
-    await runMeasureStreaming("synthetic CQL", { dataSourceId: "synthetic", recompute: true, trigger: "refresh" }, () => {});
+    await runMeasureStreaming("synthetic CQL", { environment: "synthetic", recompute: true, trigger: "refresh" }, () => {});
     expect(JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string).trigger).toBe("refresh");
   });
 
   it("sends the chosen warehouse, and none when the deployment default applies (APP-COMPUTE-TARGET)", async () => {
     stubStream([DONE]);
-    await runMeasureStreaming("synthetic CQL", { dataSourceId: "synthetic", warehouseId: "wh-chosen", trigger: "automatic" }, () => {});
+    await runMeasureStreaming("synthetic CQL", { environment: "synthetic", warehouseId: "wh-chosen", trigger: "automatic" }, () => {});
     expect(JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string).warehouse_id).toBe("wh-chosen");
     stubStream([DONE]);
-    await runMeasureStreaming("synthetic CQL", { dataSourceId: "synthetic", trigger: "automatic" }, () => {});
+    await runMeasureStreaming("synthetic CQL", { environment: "synthetic", trigger: "automatic" }, () => {});
     expect(JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string).warehouse_id).toBeUndefined();
   });
 

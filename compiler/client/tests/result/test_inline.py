@@ -10,7 +10,7 @@ import sqlite3
 
 import pytest
 
-from cql_databricks.compiler.roles import Retrieve, RetrieveRequest
+from cql_databricks.compiler.environment import Environment
 from cql_databricks.compiler.providers import LibraryGraph, DefineShape, SqlCompileResult, SqlStatement
 from cql_databricks.data_bindings import Corpus, TaggedSchema
 from cql_databricks.result.inline import run_inline
@@ -38,7 +38,7 @@ class Content:
         return [TaggedSchema("cql_databricks_terminology", "terms", "synthetic", "terminology")]
 
 
-PATIENT = Retrieve(id="Patient_0c41d2e6a95f", request=RetrieveRequest(fhir_type="Patient"))
+ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="1")
 
 
 class Compiler:
@@ -48,10 +48,7 @@ class Compiler:
         self.kind = kind
 
     def describe(self, request):
-        """BIND-PROVIDER-REQUEST: the retrieves the CQL makes, asked with the compile's own request."""
-        self.described.append(request)
-        return LibraryGraph(defines=list(ROWS), dependencies={}, boundaries=[], materialized_defines=[],
-                            compiler_version="t", retrieves=(PATIENT,))
+        raise AssertionError("BIND-CALL-SITE: an environment binds by rule, so a run asks no describe")
 
     def resource_schemas(self, types):
         raise AssertionError("a table relation needs no reshape")
@@ -78,8 +75,6 @@ class Warehouse:
 
     def __call__(self, statement, params=None):
         self.statements.append(statement)
-        if "AS kind" in statement:  # CLIENT-DEFAULT-RESOLVER: the data source's layout
-            return [{"kind": "table", "name": "retrieve_patient"}]
         if self.fail_on and self.fail_on in statement:
             raise RuntimeError("statement failed")
         self.db.execute(statement)
@@ -100,20 +95,19 @@ class Warehouse:
 
 def inline(compiler=None, warehouse=None):
     return run_inline(content=Content(), run=warehouse or Warehouse(), compiler=compiler or Compiler(),
-                      data_source="population", cql=CQL, runtime_catalog="synthetic_runtime",
+                      environment=ENVIRONMENT, cql=CQL, runtime_catalog="synthetic_runtime",
                       period=("2026-01-01", "2026-12-31"))
 
 
-def test_an_inline_run_binds_the_data_source_and_period_under_its_own_prefix():
+def test_an_inline_run_binds_the_environment_and_period_under_its_own_prefix():
     compiler = Compiler()
     inline(compiler)
     inline(compiler)
     first, second = compiler.requests
-    # CLIENT-DEFAULT-RESOLVER, BIND-PROVIDER-REQUEST: the named source's table and the tagged terminology.
-    assert first.data == {PATIENT.id: {"table": "synthetic.source.retrieve_patient", "identity": "synthetic.source"}}
-    assert first.terminology == [{"table": "synthetic.terminology.valueset", "identity": "synthetic.terminology"}]
-    assert first.data_source is None and first.terminology_table is None
-    assert compiler.described[0] is not None and compiler.described[0].object_prefix == first.object_prefix
+    # BIND-PUBLISHED-VIEW: the environment's data and terminology views, by rule; one compiler call.
+    assert first.data == {"rule": {"schema": "synthetic.data", "identity": "synthetic.data"}}
+    assert first.terminology == {"rule": [{"table": "synthetic.terminology.valueset",
+                                            "identity": "synthetic.terminology"}]}
     assert first.measurement_period == ("2026-01-01", "2026-12-31")
     assert first.udf_schema == "synthetic_runtime.runtime" and not first.durable
     assert first.object_prefix != second.object_prefix

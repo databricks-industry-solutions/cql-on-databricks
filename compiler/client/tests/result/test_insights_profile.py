@@ -38,7 +38,7 @@ CATALOG = "acme_results"
 DATA_SOURCE = "conformance"
 PERIOD = ("2026-01-01", "2026-12-31")
 SUFFIX = evaluation_version(DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1])
-PATIENT_FN = "acme.conformance.retrieve_Patient"
+PATIENT_VIEW = "acme.data.patient"
 
 
 class _Row:
@@ -77,7 +77,7 @@ LIST_VALUED = {"__subject_id": "STRING", "__ordinal": "STRING", "__val": "STRUCT
 
 
 def _run(define="Initial Population", columns=BOOLEAN,
-         counts=(67, None), patient_function=PATIENT_FN, rows=None, **overrides):
+         counts=(67, None), patient_relation=PATIENT_VIEW, rows=None, **overrides):
     """Drive the builder with every warehouse read stubbed, capturing the SQL it issued."""
     issued: list[str] = []
 
@@ -104,7 +104,7 @@ def _run(define="Initial Population", columns=BOOLEAN,
         library="ExampleMeasure", version="1.0.0",
         define=define, define_library="ExampleMeasure",
         data_source_id=DATA_SOURCE, period_start=PERIOD[0], period_end=PERIOD[1], eval_id=SUFFIX, draft="",
-        closure=StateClosure(_State()), patient_function=patient_function,
+        closure=StateClosure(_State()), patient_relation=patient_relation,
         results_catalog=CATALOG, execute=_execute(),
     )
     kwargs.update(overrides)
@@ -155,11 +155,11 @@ def test_strata_are_cut_over_the_subjects_the_define_is_TRUE_of():
     assert "CASE WHEN `Initial_Population` THEN __subject_id END" in cut
 
 
-def test_the_patient_binding_is_called_with_no_argument():
-    """BIND-RETRIEVE-UDF, EMIT-ROOT-INDEPENDENT — the same call the evaluated total makes: the data source is the
+def test_the_patient_view_is_read_with_no_argument():
+    """BIND-PUBLISHED-VIEW, EMIT-ROOT-INDEPENDENT — the same call the evaluated total makes: the data source is the
     population, so no argument names a measure."""
     _, issued = _run()
-    assert any("retrieve_Patient() p" in sql for sql in issued)
+    assert any("FROM acme.data.patient p" in sql for sql in issued)
     assert not any("library" in sql for sql in issued)
 
 
@@ -179,7 +179,7 @@ def test_no_period_means_no_age_band_rather_than_an_age_measured_from_today():
 def test_no_patient_binding_drops_the_cuts_and_keeps_the_rest():
     """Unlike the evaluated total — which is a BASE and must be stated or the whole set fails — a
     missing demographic cut is an absence the rest of the profile survives."""
-    profile, _ = _run(patient_function=None)
+    profile, _ = _run(patient_relation=None)
     assert profile.values.subjects == 67
     assert not [s for s in profile.strata if not s.sampled]
 

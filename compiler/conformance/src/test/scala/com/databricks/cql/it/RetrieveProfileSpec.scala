@@ -32,7 +32,7 @@ final class RetrieveProfileSpec extends AnyFunSuite {
   private def renderOffline(c: Differential.Case): String = {
     val lib    = Differential.buildLibrary(c)
     val config = Differential.withConditionalUnion(c.library, Differential.withGrainFirst(c.library, Config.defaults))
-    val env    = SqlEvalEnv(c.context, config, terminology = true)
+    val env    = SqlEvalEnv(c.context, config).describing
     SqlFrameLowering.lower(Optimize.run(lib, config), env).script.statements.map(SqlRender.render).mkString(";\n\n")
   }
 

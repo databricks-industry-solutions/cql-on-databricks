@@ -137,24 +137,10 @@ def canonical_base() -> str:
     return base
 
 
-def designer_results_catalog() -> str:
-    """RUN-CLIENT-PRIVATE-PROVISIONING — the catalog holding the Designer's per-user result schemas.
-
-    May be the same catalog as source and runtime when the deployment sets it so: per-user schemas, not
-    the catalog, separate private results. There is no default: a catalog name is workspace config
-    (bundle variable ``designer_results_catalog``, SVC-LOCAL-CONFIG-BUNDLE).
-    """
-    catalog = os.environ.get("CQL_DESIGNER_RESULTS_CATALOG", "").strip()
-    if not catalog:
-        raise RuntimeError("CQL_DESIGNER_RESULTS_CATALOG is not configured: set designer_results_catalog "
-                           "in databricks.local.yml")
-    return catalog
-
-
 def designer_catalog() -> str:
     """APP-RUN-LOG, DEC-RUN-LOG-LOCATION — the catalog holding the shared ``designer`` schema (the run log).
 
-    Not the results catalog: that one holds users' private schemas. Falls back to ``UC_CATALOG``, as the
+    Falls back to ``UC_CATALOG``, as the
     bundle variable defaults to ``uc_catalog``. Neither set is an error: there is no default catalog name.
     """
     catalog = (os.environ.get("CQL_DESIGNER_CATALOG") or os.environ.get("UC_CATALOG") or "").strip()

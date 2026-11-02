@@ -245,14 +245,11 @@ export function preComputedToRunResult(
   };
 }
 
-// APP-EXEC-MODE / DATA-SOURCE-MODE — the compute pill's Data Source group. ExecMode covers the two OFFLINE
-// / read states that need no backend binding: `static` (None — read the spec, no data + no compute) and
-// `deck` (Synthetic — compute a bundled synthetic funnel, offline; the glass-box works with no
-// backend). The real backend targets — customer Live sources and Conformance decks — come from the Data Source
-// REGISTRY (DATA-SOURCE-REGISTRY, `GET /api/data-sources`); they are listed alongside these and run via
-// `data_source_id` (DATA-SOURCE-PROFILE), the backend resolving the bind origin. The former `sample`/`live`
-// ExecModes are RETIRED from the menu — a Live source is now a registered Data Source (sampling lives in its
-// UDTFs, not a client cap); the union keeps those members only for the Inspector's run-state labels.
+// APP-EXEC-MODE / DOC-ENVIRONMENT-PICKER — the compute pill's Environment group. ExecMode covers the OFFLINE
+// read state that needs no backend: `static` (None — read the spec, no data + no compute). The real targets are
+// the environments the user can see (`GET /api/environments`), listed alongside it; picking one sets the mode to
+// `live` and runs there. `deck` and `sample` are not offered; the union keeps them for the Inspector's run-state
+// labels.
 export type ExecMode = "static" | "deck" | "sample" | "live";
 
 /** Compute character of a mode: `none` = no run, `synthetic` = offline deck, `live` = real backend. */
@@ -294,7 +291,7 @@ export function storedUpdateMode(value: unknown): UpdateMode {
 
 /** APP-UPDATE-MODE — why the page shows what it shows. Never a bare "Idle". */
 export type RunStatus =
-  | { kind: "no-source" }
+  | { kind: "no-environment"; error?: string }
   | { kind: "checking" }
   | { kind: "not-computed" }
   | { kind: "changed" }
@@ -305,7 +302,7 @@ export type RunStatus =
 /** APP-UPDATE-MODE — the status line's words for each reason. */
 export function runStatusText(status: RunStatus): string {
   switch (status.kind) {
-    case "no-source": return "No data source";
+    case "no-environment": return status.error ? `Environments unavailable: ${status.error}` : "No environment";
     case "checking": return "Looking for your results…";
     case "not-computed": return "Not computed. Press Refresh";
     case "changed": return "Calculation changed since last run";

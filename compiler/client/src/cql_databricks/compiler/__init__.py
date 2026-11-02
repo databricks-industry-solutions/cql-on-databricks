@@ -9,12 +9,15 @@ test path: the conformance suite's end-to-end lane drives it against a local com
     from cql_databricks.compiler import CqlClient
     client = (CqlClient.builder()
               .endpoint("http://localhost:8080").auth_bearer(token)
-              .library_source("cql/").data_catalog("fhir").spark(spark).build())
+              .library_source("cql/").spark(spark).data_binder(binder).build())
     q = (client.cql("cql/HypertensionBPControl.cql")
               .with_measurement_period("2026-01-01", "2026-12-31"))
     q.dag()                # the neutral LibraryGraph
     q.exec("Initial Population")    # -> lazy DataFrame (single target)
     q.exec()               # -> {Initial Population: DataFrame, ...} (the default set)
+
+``binder`` is a :class:`~.resolver_binder.ResolverBinder` over the run's resolvers (`BIND-CALL-SITE`); without one,
+only CQL that retrieves nothing compiles.
 
 **The Databricks layer** makes that zero-config on a workspace (`SVC-ZERO-CONFIG-NOTEBOOK`): it resolves
 the Compiler Service App endpoint from the App registry, authenticates with the ambient identity by
@@ -56,21 +59,25 @@ from .library import Library, load_library, measurement_period_bounds, measureme
 # The Databricks layer (`SVC-DISCOVERY-PLUGIN`, `SVC-ZERO-CONFIG-NOTEBOOK`). `cql` here SHADOWS the core
 # binder deliberately: on a workspace, zero-config is the correct default, and it still honors an explicit
 # `client=` / `endpoint=` so nothing is taken away.
-from .zeroconfig import connect, cql, publish_library, resolve_libraries, translate
+from .zeroconfig import connect, cql, publish_library, resolve_libraries, translate, use_resolvers
 from .provider import make_provider
 from .session_libraries import register_cell
-# CLIENT-SESSION-MOUNT / CLIENT-SESSION-RESET / BIND-RESHAPE: session data, and raw FHIR JSON as a source.
-from .mount import mount, reset
+# CLIENT-SESSION-RESET / BIND-RESHAPE: a clean session, and raw FHIR JSON as a source.
+from .session_state import reset
 from .reshape import FhirJson
-# CLIENT-PUBLISH: a folder library into a tagged knowledge store.
+# CLIENT-PUBLISH: a folder library into an environment's knowledge store.
 from .library_publish import PublishFailed, PublishRefused, PublishSummary, publish_folder_library
-# BIND-PUBLISH: a tagged data source from tables.
+# BIND-PUBLISH: an environment's published data views over tables.
 from .publish import PublishPlan, publish_data_source
-# CLIENT-DATA-PROVIDER, CLIENT-TERMINOLOGY-PROVIDER, CLIENT-KNOWLEDGE-PROVIDER, CLIENT-RESULT-STORE,
-# CLIENT-PROVIDER-OVERLAY, BIND-RETRIEVE-REQUEST, BIND-RELATION: the four roles a run reads and writes through.
-from .roles import (Code, DataFrameRelation, DataProvider, FunctionRelation, KnowledgeSource, KnowledgeStore, Overlay,
-                    PublishReport, ResultStore, RetrieveRequest, TableRef, TableRelation, TerminologySource,
-                    TerminologyStore, ValueSet, ValueSetRef, VolumeRelation)
+# CLIENT-RESOLVERS, CLIENT-RESOLVER-OVERLAY, BIND-RETRIEVE-REQUEST, BIND-CALL-SITE, BIND-RELATION: the four roles a run
+# reads and writes through, and the environment that holds them all (CLIENT-ENVIRONMENT).
+from .resolvers import (CallSite, Code, DataFrameRelation, DataResolver, IncludeSite, KnowledgeResolver,
+                        KnowledgeStore, Overlay, PublishReport, ResultResolver, RetrieveRequest, TableRef, TableRelation,
+                        TerminologyResolver, TerminologyStore, ValueSet, ValueSetRef, VolumeRelation)
+from .data_resolvers import DataFrameDataResolver, SchemaDataResolver, TableDataResolver, VolumeDataResolver
+from .terminology_resolvers import DataFrameTerminologyResolver, FolderTerminologyResolver, TableTerminologyResolver
+from .knowledge_resolvers import CellsKnowledgeResolver, FolderKnowledgeResolver, TableKnowledgeResolver
+from .environment import Environment, EnvironmentLookupError, EnvironmentResolver
 from .providers import (
     RELATION,
     RESOURCE,
@@ -84,7 +91,6 @@ from .providers import (
     DatasetRecipe,
     DefineShape,
     LibraryGraph,
-    LibraryInput,
     NoAuth,
     OAuth2TokenExchange,
     PipelinePlan,
@@ -103,7 +109,7 @@ __all__ = [
     "CqlClient", "CqlClientBuilder", "CqlQuery",
     "cql", "cql_explicit", "describe", "compile_pipeline", "load_library", "Library",
     # SVC-ZERO-CONFIG-NOTEBOOK: the Databricks surface.
-    "connect", "publish_library", "resolve_libraries", "translate", "make_provider", "register_cell",
+    "connect", "use_resolvers", "publish_library", "resolve_libraries", "translate", "make_provider", "register_cell",
     "measurement_period_bounds",
     "measurement_period_literal",
     # BUILD-LIBRARY-PROVIDER: the library SOURCE seam. Implement `LibraryProvider` and inject it with
@@ -111,15 +117,20 @@ __all__ = [
     # entry-point group and select it by `.library_provider_kind(name)`.
     "LibraryProvider", "FileLibraryProvider", "LibraryRef", "LibrarySource",
     "LibraryResolutionError", "LAYOUTS", "includes_of",
-    # CLIENT-SESSION-MOUNT, CLIENT-SESSION-RESET, BIND-RESHAPE: FHIR data on the session, with no catalog writes.
-    "mount", "reset", "FhirJson",
-    # BIND-PUBLISH: write a tagged data source from tables, for review or to run.
+    # CLIENT-SESSION-RESET, BIND-RESHAPE: a clean session, and raw FHIR JSON as a source.
+    "reset", "FhirJson",
+    # BIND-PUBLISH: write an environment's published data views over tables, for review or to run.
     "publish_data_source", "PublishPlan",
     "publish_folder_library", "PublishSummary", "PublishRefused", "PublishFailed",
-    # CLIENT-DATA-PROVIDER and the other roles: implement these to bring your own data, value sets or knowledge.
-    "DataProvider", "TerminologySource", "TerminologyStore", "KnowledgeSource", "KnowledgeStore", "ResultStore",
-    "Overlay", "RetrieveRequest", "Code", "TableRelation", "FunctionRelation", "VolumeRelation",
-    "DataFrameRelation", "ValueSetRef", "ValueSet", "PublishReport", "TableRef",
+    # CLIENT-RESOLVERS: implement these to bring your own data, value sets or knowledge; the shipped ones; the
+    # environment resolver that is the default (CLIENT-ENVIRONMENT-RESOLVER).
+    "DataResolver", "TerminologyResolver", "TerminologyStore", "KnowledgeResolver", "KnowledgeStore",
+    "ResultResolver", "Overlay", "RetrieveRequest", "CallSite", "IncludeSite", "Code", "TableRelation",
+    "VolumeRelation", "DataFrameRelation", "ValueSetRef", "ValueSet", "PublishReport", "TableRef",
+    "SchemaDataResolver", "TableDataResolver", "VolumeDataResolver", "DataFrameDataResolver",
+    "TableTerminologyResolver", "FolderTerminologyResolver", "DataFrameTerminologyResolver",
+    "CellsKnowledgeResolver", "FolderKnowledgeResolver", "TableKnowledgeResolver",
+    "Environment", "EnvironmentResolver", "EnvironmentLookupError",
     "CompileProvider", "RemoteProvider", "CompileRequest", "CompileError",
     "SqlCompileResult", "SqlStatement",
     # CLIENT-RESOURCE-SCHEMA: the model's `__resource` struct per FHIR type (`CqlClient.resource_schema`).

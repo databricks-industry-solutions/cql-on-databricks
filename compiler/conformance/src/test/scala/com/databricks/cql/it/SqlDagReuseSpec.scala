@@ -33,21 +33,21 @@ final class SqlDagReuseSpec extends AnyFunSuite {
 
   private val Fixture = "SdpDagReuse"
 
-  /** The cut pipeline plan for `SdpDagReuse`, lowered SERVER-FREE (terminology mounted, so the value-set
-    * membership lowers; nothing executes). */
+  /** The cut pipeline plan for `SdpDagReuse`, lowered SERVER-FREE over placeholder relations
+    * (`SqlEvalEnv.describing`), so the value-set membership lowers; nothing executes. */
   private val dsCtx = SqlNames.DatasetNameContext("SdpDagReuse", "1.0.0")
 
   private def cutPlan: com.databricks.cql.service.PipelinePlan = {
     val optimized = Optimize.run(Pipeline().normalize(Paths.read(Paths.elm(Fixture))), Config.defaults)
-    val env = SqlEvalEnv(Context.Patient, Config.defaults, terminology = true,
-      cutSiblings = Some(mutable.Set.empty[String]), datasetNameCtx = Some(dsCtx))
+    val env = SqlEvalEnv(Context.Patient, Config.defaults,
+      cutSiblings = Some(mutable.Set.empty[String]), datasetNameCtx = Some(dsCtx)).describing
     CompileService.cutPlan(SqlFrameLowering.lower(optimized, env), dsCtx = dsCtx)
   }
 
   /** The un-cut WHOLE-LIBRARY script (the re-inlined baseline structure) as one text blob. */
   private def reinlinedScript: String = {
     val optimized = Optimize.run(Pipeline().normalize(Paths.read(Paths.elm(Fixture))), Config.defaults)
-    val env = SqlEvalEnv(Context.Patient, Config.defaults, terminology = true)
+    val env = SqlEvalEnv(Context.Patient, Config.defaults).describing
     val lowered = SqlFrameLowering.lower(optimized, env)
     lowered.script.statements.map(com.databricks.cql.transpiler.emit.SqlRender.render).mkString(";\n")
   }
@@ -64,7 +64,7 @@ final class SqlDagReuseSpec extends AnyFunSuite {
       s"Denominator recipe must DECLARE a read of sdpdagreuse_1_0_0__diabeteslist; reads=${den.reads}")
     assert(sql.contains("sdpdagreuse_1_0_0__diabeteslist"),
       s"Denominator recipe SQL must reference the sibling dataset by name:\n$sql")
-    assert(!sql.contains("retrieve_Condition"),
+    assert(!sql.contains("__describe.condition"),
       s"Denominator recipe must NOT re-inline the Condition retrieve (it reads the cut sibling):\n$sql")
     // The declarative SDP-body form: a single WITH query that reads the sibling dataset and runs NO DDL
     // command (a Spark Declarative Pipeline body rejects CREATE VIEW/CACHE TABLE).
@@ -75,7 +75,7 @@ final class SqlDagReuseSpec extends AnyFunSuite {
     val list = plan.datasets.find(_.name == "sdpdagreuse_1_0_0__diabeteslist").get
     val listSql = list.statements.map(_.sql).mkString("\n")
     assert(list.reads.isEmpty, s"DiabetesList has no materialized deps; reads=${list.reads}")
-    assert(listSql.contains("retrieve_Condition"),
+    assert(listSql.contains("__describe.condition"),
       s"DiabetesList recipe DOES compute the Condition retrieve:\n$listSql")
   }
 
@@ -163,8 +163,8 @@ final class SqlDagReuseSpec extends AnyFunSuite {
       val config = Differential.evalConfig(md.library)
       val optimized = Optimize.run(linked, config)
       val measureCtx = SqlNames.DatasetNameContext(root.id, root.version.getOrElse(""))
-      val env = SqlEvalEnv(Context.Patient, config, terminology = true,
-        cutSiblings = Some(mutable.Set.empty[String]), datasetNameCtx = Some(measureCtx))
+      val env = SqlEvalEnv(Context.Patient, config,
+        cutSiblings = Some(mutable.Set.empty[String]), datasetNameCtx = Some(measureCtx)).describing
       val plan = CompileService.cutPlan(SqlFrameLowering.lower(optimized, env),
         root.id, root.version.getOrElse(""), dsCtx = measureCtx)
 

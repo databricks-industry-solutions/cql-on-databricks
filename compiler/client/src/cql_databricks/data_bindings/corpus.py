@@ -203,16 +203,18 @@ class Corpus:
         return resource
 
 
-def load_corpus(run: SqlRunner, sources: list[TaggedSchema]) -> Corpus:
+def load_corpus(run: SqlRunner, sources: list[TaggedSchema], *, check: bool = True) -> Corpus:
     """Read every tagged knowledge source in ``sources`` order; the first copy of a (url, version) wins.
 
     Each source's layout is checked first, and a source that does not match fails the load: a corpus
-    missing one source's libraries would resolve includes wrongly with nothing to say so.
+    missing one source's libraries would resolve includes wrongly with nothing to say so. An environment's
+    published views are not checked (``check=False``, `BIND-PUBLISHED-VIEW`): a missing view fails the read.
     """
     libraries: list[Library] = []
     seen: set[tuple[str, str]] = set()
     for knowledge in sources:
-        check_layout(run, knowledge, KNOWLEDGE)
+        if check:
+            check_layout(run, knowledge, KNOWLEDGE)
         roots: dict[str, dict[str, Any]] = {}
         for edge in run(_MEASURES.format(table=knowledge.table("measure"))):
             if edge.get("library_url"):

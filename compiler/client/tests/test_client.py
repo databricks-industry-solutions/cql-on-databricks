@@ -72,7 +72,7 @@ class _FakeProvider(CompileProvider):
 
 
 def _client(provider):
-    return (CqlClient.builder().provider(provider).data_catalog("fhir").spark(_FakeSpark()).build())
+    return (CqlClient.builder().provider(provider).spark(_FakeSpark()).build())
 
 
 class HandleTests(unittest.TestCase):
@@ -137,14 +137,7 @@ class HandleTests(unittest.TestCase):
                   .udf_schema("acme.runtime").build())
         client.cql(cql='define "x": 1').exec("Numerator")
         self.assertEqual(prov.seen.udf_schema, "acme.runtime")
-        self.assertEqual(prov.seen.to_json()["sources"]["udfs"], {"schema": "acme.runtime"})
-
-    def test_valueset_table_knob_reaches_the_request_where_the_service_reads_it(self):
-        prov = _FakeProvider()
-        client = (CqlClient.builder().provider(prov).spark(_FakeSpark())
-                  .valueset_table("cat.sch.vs").build())
-        client.cql(cql='define "x": 1').exec("Numerator")
-        self.assertEqual(prov.seen.to_json()["sources"]["valuesets"], {"table": "cat.sch.vs"})
+        self.assertEqual(prov.seen.to_json()["runtime"], {"schema": "acme.runtime"})
 
     def test_udf_jar_is_shipped_once_per_session_not_once_per_exec(self):
         """The upload hook runs on EVERY exec, and Spark Connect rejects re-adding an artifact it already
@@ -313,15 +306,14 @@ class ContextAndOptionTests(unittest.TestCase):
         _client(prov).cql(cql='define "x": 1', context="Population").exec("x")
         self.assertEqual(prov.seen.context, "Population")
 
-    def test_option_alias_and_data_model_and_data_catalog_knobs(self):
+    def test_option_alias_and_data_model_knobs(self):
         prov = _FakeProvider()
         client = (CqlClient.builder().provider(prov).spark(_FakeSpark())
                   .option(config.CONF_CONTEXT, "Practitioner")
-                  .data_model("OMOP").data_catalog("myhosp").build())
+                  .data_model("OMOP").build())
         lib = client.with_library(cql='define "x": 1')
         self.assertEqual(lib.context, "Practitioner")
         self.assertEqual(lib.overrides[config.OVERRIDE_DATA_MODEL], "OMOP")
-        self.assertEqual(lib.overrides[config.OVERRIDE_FHIR_CATALOG], "myhosp")
 
 
 class StringFormTests(unittest.TestCase):

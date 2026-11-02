@@ -13,8 +13,7 @@ from __future__ import annotations
 import pytest
 
 from cql_databricks.agent.service import (
-    NodeAddress, ReadOnlyViolation, get_freshness, get_output,
-    list_data_sources, list_tables, query_data)
+    NodeAddress, ReadOnlyViolation, get_freshness, get_output, list_tables, query_data)
 from cql_databricks.result import ResultsUnavailable
 from agent.service.tests.durable_fixture import RESULT_SET, reference
 
@@ -22,7 +21,7 @@ CATALOG = "acme_results"
 
 ADDRESS = NodeAddress(
     library="HypertensionBPControl", version="1.0.0", define="Initial Population",
-    data_source_id="acme-prod", period_start="2026-01-01", period_end="2026-12-31")
+    environment="acme-prod", period_start="2026-01-01", period_end="2026-12-31")
 
 #: What the evaluator answers for ADDRESS (`DEC-EVALUATOR-OPAQUE`): the stored table and the set's filter.
 REFERENCE = reference()
@@ -180,44 +179,3 @@ class TestDiscovery:
             return ["Synthetic.Output", "Synthetic.Base"]
         assert list_tables(computed, RESULT_SET) == ["Synthetic.Base", "Synthetic.Output"]
         assert asked == [RESULT_SET]
-
-
-class TestListDataSources:
-    """SVC-MCP-TOOLS — the tool that makes the other three callable.
-
-    `list_tables`, `get_output` and `get_freshness` all REQUIRE `data_source_id`, and until this
-    existed nothing produced one — so a caller without the Designer's UI had three tools it could read about
-    and not use. It survived because the in-product drawer always had an id to hand from the compute
-    pill, which is exactly the blindness the two-clients premise is supposed to prevent.
-    """
-
-    def _source(self, **over):
-        from types import SimpleNamespace
-        return SimpleNamespace(**{
-            "id": "example-patients", "name": "Example Patients",
-            "description": "Fabricated patient data for development",
-            "change_data_log": "cat.sch.change_log", **over})
-
-    def test_it_yields_an_id_every_other_tool_will_accept(self):
-        [source] = list_data_sources(lister=lambda: [self._source()])
-        assert source["id"] == "example-patients"
-        assert source["name"] == "Example Patients"
-
-    def test_it_carries_what_the_data_IS_so_a_figure_can_be_qualified(self):
-        # DATA-SOURCE-DESCRIPTION — whose records, what period, real or fabricated. It is how an agent
-        # tells a synthetic development source from a live one BEFORE quoting a number at somebody.
-        [source] = list_data_sources(lister=lambda: [self._source()])
-        assert source["description"] == "Fabricated patient data for development"
-
-    def test_a_source_nobody_described_says_nothing_rather_than_inventing_one(self):
-        # Never synthesized from the record's own fields: a sentence assembled from catalog/schema
-        # describes the REGISTRY, not the data.
-        [source] = list_data_sources(lister=lambda: [self._source(description=None)])
-        assert "description" not in source
-
-    def test_source_discovery_does_not_claim_to_track_changes(self):
-        [source] = list_data_sources(lister=lambda: [self._source()])
-        assert "declaresChange" not in source
-
-    def test_an_empty_registry_is_an_answer_not_an_error(self):
-        assert list_data_sources(lister=lambda: []) == []

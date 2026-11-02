@@ -15,7 +15,7 @@ final class CompileResponseCacheSpec extends AnyFunSuite {
       cache.getOrCompile(version, op, body) { calls += 1; HttpResult(200, "result") }
     assert(!run("""{"cql":"one","deps":[{"cql":"helper"}],"parameters":{"P":"1"}}""")._2)
     assert(run("""{"parameters":{"P":"1"},"deps":[{"cql":"helper"}],"cql":"one"}""")._2)
-    for (field <- Seq("cql", "deps", "parameters", "measurementPeriod", "dataSource", "sources",
+    for (field <- Seq("cql", "deps", "parameters", "measurementPeriod", "data", "terminology",
       "overrides", "durable", "context", "target", "boundaries", "grainFirst", "sessionParameters", "libraries")) {
       val a = ujson.Obj(field -> "one")
       val b = ujson.Obj(field -> "two")

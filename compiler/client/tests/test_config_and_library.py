@@ -33,12 +33,12 @@ class ResolveSettingTests(unittest.TestCase):
     def test_required_fails_loudly_naming_every_way(self):
         with mock.patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ConfigResolutionError) as cm:
-                resolve_setting("FHIR catalog", conf={}, conf_key=config.CONF_FHIR_CATALOG,
-                                env=config.ENV_FHIR_CATALOG, required=True)
+                resolve_setting("CQL context", conf={}, conf_key=config.CONF_CONTEXT,
+                                env=config.ENV_CONTEXT, required=True)
         msg = str(cm.exception)
-        self.assertIn("FHIR catalog", msg)
-        self.assertIn(config.CONF_FHIR_CATALOG, msg)
-        self.assertIn(config.ENV_FHIR_CATALOG, msg)
+        self.assertIn("CQL context", msg)
+        self.assertIn(config.CONF_CONTEXT, msg)
+        self.assertIn(config.ENV_CONTEXT, msg)
 
     def test_not_required_returns_none(self):
         with mock.patch.dict(os.environ, {}, clear=True):
@@ -99,32 +99,21 @@ class LoadLibraryTests(unittest.TestCase):
         self.assertIsInstance(lib.provider, RemoteProvider)
         self.assertEqual(lib.provider._base, "http://explicit:2")
 
-    def test_catalog_and_valueset_and_versions_carried_as_overrides(self):
-        lib = load_library("x", elm="{}", provider=object(), conf={}, fhir_catalog="myhosp",
-                           valueset_table="myhosp.terminology", compiler_version="1.2.3",
+    def test_versions_carried_as_overrides(self):
+        lib = load_library("x", elm="{}", provider=object(), conf={}, compiler_version="1.2.3",
                            terminology_version="2024-09")
         self.assertEqual(lib.overrides, {
             config.OVERRIDE_DATA_MODEL: "FHIR",
-            config.OVERRIDE_FHIR_CATALOG: "myhosp",
-            config.OVERRIDE_VALUESET_TABLE: "myhosp.terminology",
             config.OVERRIDE_COMPILER_VERSION: "1.2.3",
             config.OVERRIDE_TERMINOLOGY_VERSION: "2024-09",
         })
 
-    def test_data_free_library_needs_no_catalog(self):
-        # No explicit/conf/env, no spark -> catalog/valueset simply omitted (not a FAIL). The data model is
-        # always carried with its compiled-in FHIR default (an explicit knob, not a discovered one).
+    def test_data_free_library_carries_only_the_data_model(self):
+        # No explicit/conf/env, no spark -> no pin carried. The data model is always carried with its
+        # compiled-in FHIR default (an explicit knob, not a discovered one).
         with mock.patch.dict(os.environ, {}, clear=True):
             lib = load_library("x", elm="{}", provider=object(), conf={})
         self.assertEqual(lib.overrides, {config.OVERRIDE_DATA_MODEL: "FHIR"})
-
-    def test_an_unset_catalog_is_never_guessed_from_a_conventional_name(self):
-        """CLIENT-EXEC-DISCOVERY: a catalog or value-set table is a setting, or the binder's choice at compile
-        time. A conventionally named `fhir` catalog in the session is not a reason to read it."""
-        with mock.patch.dict(os.environ, {}, clear=True):
-            lib = load_library("x", elm="{}", provider=object(), conf={})
-        self.assertEqual(lib.overrides, {config.OVERRIDE_DATA_MODEL: "FHIR"})
-        self.assertIsNone(lib.valueset_table)
 
     def test_library_source_roots_a_relative_resource(self):
         """`library_source` roots a RELATIVE resource; the sibling `.elm.json` is still preferred."""

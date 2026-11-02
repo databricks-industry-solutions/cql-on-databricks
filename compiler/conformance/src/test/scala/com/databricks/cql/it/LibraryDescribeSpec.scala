@@ -16,8 +16,7 @@ final class LibraryDescribeSpec extends AnyFunSuite {
 
   private def describe(fixture: String, context: Context, overrides: Map[String, String],
                        hasTerminology: Boolean = false): LibraryGraph =
-    LibraryDescribe.describe(Paths.read(Paths.elm(fixture)), context = context, overrides = overrides,
-      hasTerminology = hasTerminology)
+    LibraryDescribe.describe(Paths.read(Paths.elm(fixture)), context = context, overrides = overrides)
 
   test("Arithmetic: describe yields the define nodes + a non-empty boundary set (materialize=all)") {
     val g = describe("Arithmetic", Context.Unfiltered, Map("materialize.mode" -> "all"))

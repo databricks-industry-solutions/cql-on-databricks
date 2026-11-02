@@ -11,8 +11,8 @@ ONE shim remains, entirely client-side, without touching the compiler area (`APP
   (`DATA-MATERIALIZE-POLICY`) — one path, no compute-shaped behavior fork.
 
 **UDF schema qualification is now ordinary configuration**, set in :func:`~cql_databricks.compiler.zeroconfig.connect`
-as a first-class field rather than mutating the request body. The client's ``.udf_schema(...)`` method and
-``_sources_json`` field emit ``sources.udfs.schema`` without the body mutation that used to be needed here.
+as a first-class field rather than mutating the request body. The client's ``.udf_schema(...)`` method sends
+``runtime.schema`` without the body mutation that used to be needed here.
 This reduces the places where the accelerator and the engine can disagree about the same wire.
 
 The UDF schema is still DISCOVERED, not configured: UC itself records where the catalog was registered, so

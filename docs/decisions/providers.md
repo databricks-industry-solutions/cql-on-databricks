@@ -1,6 +1,6 @@
 # Providers (proposed)
 
-Status: agreed. Each `CLIENT-*` and `BIND-*` ID below is a requirement in
+Status: agreed, and partly replaced by [environments.md](environments.md), which says what. Each `CLIENT-*` and `BIND-*` ID below is a requirement in
 [compiler/docs/requirements.md](../../compiler/docs/requirements.md), and `DEC-PROVIDER-RELATION` is listed in
 [decisions/README.md](README.md). Which steps are built is in the [roadmap](../roadmap.md), with the decisions
 still open.

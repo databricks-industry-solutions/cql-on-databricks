@@ -81,7 +81,7 @@ def measure_metrics(
     defines: list[tuple[str, str, str | None]],
     cohorts: dict[DefineKey, Cohort],
     closure: "ClosureSource",
-    patient_function: str | None,
+    patient_relation: str | None,
     results_catalog: str,
     execute: Execute,
 ) -> MeasureMetrics:
@@ -122,7 +122,7 @@ def measure_metrics(
 
     columns = relation_columns(results_catalog, located.values(), execute=execute)
     counts = count_relations(execute, columns, eval_id=suffix)
-    evaluated = _evaluated_subjects(patient_function, execute=execute)
+    evaluated = _evaluated_subjects(patient_relation, execute=execute)
 
     present = [(lib, name) for lib, name, _ in defines
                if (lib, name) in located and located[(lib, name)] in counts]
@@ -229,10 +229,10 @@ def cohort_count_sql(subjects: list[str], cohorts: list[tuple[list[int], list[in
     return "WITH " + ",\n".join(ctes) + "\n" + "\nUNION ALL\n".join(branches)
 
 
-def _evaluated_subjects(patient_function: str | None, *, execute: Execute) -> int:
+def _evaluated_subjects(patient_relation: str | None, *, execute: Execute) -> int:
     """The EVALUATED total — every subject the measure ran against, before any criterion (`SPEC-METRIC`).
 
-    **Read from the bound Patient retrieve, and only from there** (D3, `BIND-RETRIEVE-UDF`). This is the
+    **Read from the environment's Patient view, and only from there** (`BIND-PUBLISHED-VIEW`). This is the
     decision the metric set waited on, and the reason it is the binding rather than a result table: a
     result relation's subject set is whatever its joins LEFT — the numerator relation mentions 2,713
     subjects, but that excludes every patient with no reading at all, so it is a lower
@@ -240,30 +240,30 @@ def _evaluated_subjects(patient_function: str | None, *, execute: Execute) -> in
     is" when the strata read demographics, so the cohort and its breakdowns come from one definition
     rather than two that can disagree.
 
-    **THE DATA SOURCE IS THE POPULATION.** The call passes no argument: a retrieve's rows depend only on its
-    arguments and its data source (`EMIT-ROOT-INDEPENDENT`), and a measure's population is chosen by
-    choosing its data source (`DATA-CONFORMANCE-MEASURE-SELECT`, one conformance source per measure).
+    **THE ENVIRONMENT'S DATA IS THE POPULATION.** The view takes no argument: a retrieve's rows depend only on its
+    request and the data it is bound to (`EMIT-ROOT-INDEPENDENT`), and a measure's population is chosen by
+    choosing its environment (`CLIENT-ENVIRONMENT`).
 
-    A Data Source with no Patient binding has no cohort to state, and 0 is not the answer — it reports
+    An environment with no Patient view has no cohort to state, and 0 is not the answer — it reports
     absence upward by raising, since `SPEC-METRIC` requires a share's base be STATED. A binding that
     resolves but yields no subjects is the same absence for the same reason: a document cannot take
     shares against an empty cohort, and rendering "0 → 67" is a base that is not a base.
     """
-    if not patient_function:
+    if not patient_relation:
         raise MetricsUnavailable(
-            "the Data Source has no Patient data binding, so the evaluated-subject total the shares "
+            "the environment has no Patient view, so the evaluated-subject total the shares "
             "are taken against cannot be stated (SPEC-METRIC requires the base be stated)")
 
     sql = (f"SELECT COUNT(DISTINCT {SUBJECT_ID}) AS subjects "
-           f"FROM {patient_function}()")
+           f"FROM {patient_relation}")
     rows = execute(sql)
     if not rows or not rows[0]:
         raise MetricsUnavailable(
-            f"the Patient binding {patient_function} returned no count for the evaluated-subject total")
+            f"the Patient binding {patient_relation} returned no count for the evaluated-subject total")
     subjects = int(rows[0][0] or 0)
     if subjects == 0:
         raise MetricsUnavailable(
-            f"the Patient binding {patient_function} holds no subjects, so the "
+            f"the Patient binding {patient_relation} holds no subjects, so the "
             f"evaluated-subject total the shares are taken against cannot be stated (SPEC-METRIC)")
     return subjects
 

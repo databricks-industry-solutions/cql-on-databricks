@@ -131,12 +131,9 @@ s = open(p).read()
 mapping = {
     "__UC_CATALOG__": os.environ.get("BUNDLE_VAR_uc_catalog", ""),
     "__CQL_RUNTIME_CATALOG__": os.environ.get("BUNDLE_VAR_uc_catalog", ""),
-    "__CQL_DESIGNER_RESULTS_CATALOG__": os.environ.get("BUNDLE_VAR_designer_results_catalog", ""),
     # APP-RUN-LOG — the catalog of the shared `designer` schema, and the build the log records.
     "__CQL_DESIGNER_CATALOG__": os.environ.get("BUNDLE_VAR_designer_catalog", ""),
     "__CQL_APP_VERSION__": os.environ.get("CQL_APP_VERSION", ""),
-    # CLIENT-DISCOVERY-SCOPE — where the App discovers data sources, knowledge and terminology.
-    "__CQL_DATABRICKS_CATALOG_SCOPES__": os.environ.get("BUNDLE_VAR_catalog_scopes", ""),
     "__WAREHOUSE_ID__": os.environ.get("BUNDLE_VAR_warehouse_id", ""),
     # APP-ASSISTANT — a NAME, not a resource binding: the FM call runs as the signed-in user
     # (SEC-OBO), so there is no App-side grant for a `valueFrom` to keep in step with.
@@ -149,9 +146,9 @@ for placeholder, val in mapping.items():
         s = s.replace(placeholder, val)
 # PIPE-DEPLOY-NO-PLACEHOLDER-ENV — drop every env entry whose value is STILL a placeholder. An
 # unsubstituted placeholder means the deploy had no value for that var, and the descriptor must then
-# say nothing about it: shipping `value: "__CQL_DESIGNER_RESULTS_CATALOG__"` sets the var to that literal
+# say nothing about it: shipping `value: "__CQL_RUNTIME_CATALOG__"` sets the var to that literal
 # string, which is truthy, so config.py never reaches its fallback and the app queries a catalog
-# named __cql_designer_results_catalog__. Absent is the only encoding of "not configured" the app can read.
+# named __cql_runtime_catalog__. Absent is the only encoding of "not configured" the app can read.
 name_re = re.compile("^  - name: \"[A-Z_0-9]+\"$")
 placeholder_re = re.compile("^    value: \"__[A-Z_0-9]+__\"$")
 lines, kept, dropped, i = s.split("\n"), [], [], 0
@@ -184,7 +181,7 @@ if dropped:
     print("==> " + p + ": dropped unconfigured env vars " + ", ".join(dropped) + " (config.py defaults apply)")
 ' "$y"
 done
-echo "==> app.yaml catalog vars: UC_CATALOG=${BUNDLE_VAR_uc_catalog:-<dropped>} CQL_DESIGNER_RESULTS_CATALOG=${BUNDLE_VAR_designer_results_catalog:-<dropped>} WAREHOUSE_ID=${BUNDLE_VAR_warehouse_id:-<dropped>}"
+echo "==> app.yaml catalog vars: UC_CATALOG=${BUNDLE_VAR_uc_catalog:-<dropped>} WAREHOUSE_ID=${BUNDLE_VAR_warehouse_id:-<dropped>}"
 
 # SVC-PACKAGING — bake the runtime Volume path into the staged requirements.txt, so pip installs the
 # cql-databricks wheel from UC. A Databricks App cannot install it any other way: the package is not on

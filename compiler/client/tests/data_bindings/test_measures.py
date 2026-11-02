@@ -43,7 +43,7 @@ class _FakeSpark:
 
 @pytest.fixture
 def writes(monkeypatch):
-    """Stand in for the Spark writers; records what would be written and tagged."""
+    """Stand in for the Spark writers; records what would be written."""
     from cql_databricks.data_bindings.measure_import import load as load_module
 
     seen: dict = {}
@@ -55,7 +55,6 @@ def writes(monkeypatch):
 
     monkeypatch.setattr(load_module, "load", fake_load)
     monkeypatch.setattr(load_module, "ensure_valueset_table", lambda spark, **kw: seen.setdefault("ensure", kw))
-    monkeypatch.setattr(load_module, "tag_loaded", lambda spark, **kw: seen.setdefault("tags", kw))
     return seen
 
 
@@ -93,37 +92,34 @@ def test_a_library_declares_its_value_sets_in_cql_requirements_and_dependencies(
                                        f"{BASE}/ValueSet/dep"}
 
 
-def test_an_import_writes_and_tags_the_schema(writes):
+def test_an_import_writes_the_environments_stores(writes):
+    """CONTENT-IMPORT-MEASURES, DATA-ENVIRONMENT-LAYOUT — knowledge_store and terminology_store; nothing is tagged."""
     summary = import_measures(_FakeSpark(), [MEASURE, LIBRARY, VALUESET, {"resourceType": "Patient"}],
-                              catalog="main", schema="quality_measures", source="pkg")
+                              catalog="main", source="pkg")
     result, catalog, schema, terminology = writes["load"]
-    assert (catalog, schema, terminology) == ("main", "quality_measures", "quality_measures")
+    assert (catalog, schema, terminology) == ("main", "knowledge_store", "terminology_store")
     assert summary.rows == {"measure": 1, "library": 1, "valueset": 2}
     assert summary.skipped == {"Patient": 1}
-    assert writes["tags"]["knowledge"] == ("quality_measures", "quality_measures")
-    assert writes["tags"]["terminology"] == ("quality_measures", "quality_measures")
+    assert (summary.knowledge, summary.terminology) == ("main.knowledge_store", "main.terminology_store")
 
 
-def test_codes_alone_go_to_a_terminology_schema_and_tag_only_it(writes):
+def test_codes_alone_go_to_the_terminology_store(writes):
     codes = [{"valueset_id": f"{BASE}/ValueSet/office-visit", "system": "http://example.org/codes", "code": "a"}]
-    summary = import_measures(_FakeSpark(), [], codes=codes, catalog="main", schema="quality_measures",
-                              terminology_schema="terminology", terminology_name="shared", source="pkg")
-    assert summary.terminology == "main.terminology" and summary.valuesets == [f"{BASE}/ValueSet/office-visit"]
-    assert writes["tags"] == {"catalog": "main", "knowledge": None, "terminology": ("terminology", "shared")}
+    summary = import_measures(_FakeSpark(), [], codes=codes, catalog="main", source="pkg")
+    assert summary.terminology == "main.terminology_store" and summary.valuesets == [f"{BASE}/ValueSet/office-visit"]
 
 
 def test_a_dry_run_checks_and_writes_nothing(writes):
-    summary = import_measures(_FakeSpark(), [MEASURE, LIBRARY, VALUESET], catalog="main", schema="m",
-                              source="pkg", dry_run=True)
+    summary = import_measures(_FakeSpark(), [MEASURE, LIBRARY, VALUESET], catalog="main", source="pkg", dry_run=True)
     assert summary.measures == [f"{BASE}/Measure/Visits|1.0.0"] and summary.rows == {}
-    assert "load" not in writes and "tags" not in writes
+    assert "load" not in writes
 
 
 def test_every_problem_is_reported_at_once_and_nothing_is_written(writes):
     measure = dict(MEASURE, library=[f"{BASE}/Library/Missing"])
     bad = {"resourceType": "ValueSet", "url": f"{BASE}/ValueSet/bad", "compose": {"include": [{"valueSet": ["x"]}]}}
     with pytest.raises(ImportContentError) as e:
-        import_measures(_FakeSpark(), [measure, LIBRARY, bad], catalog="main", schema="m", source="pkg")
+        import_measures(_FakeSpark(), [measure, LIBRARY, bad], catalog="main", source="pkg")
     message = str(e.value)
     assert "Library/Missing" in message and "office-visit" in message and "ValueSet/bad" in message
     assert "load" not in writes
@@ -131,18 +127,18 @@ def test_every_problem_is_reported_at_once_and_nothing_is_written(writes):
 
 def test_what_is_already_in_the_target_counts(writes):
     """A measure may name a library, and a library a value set, loaded by an earlier import."""
-    spark = _FakeSpark({"`main`.`m`.`library`": [f"{BASE}/Library/Visits"],
-                        "`main`.`m`.`valueset`": [f"{BASE}/ValueSet/office-visit"]})
-    summary = import_measures(spark, [MEASURE, LIBRARY], catalog="main", schema="m", source="pkg")
+    spark = _FakeSpark({"`main`.`knowledge_store`.`library`": [f"{BASE}/Library/Visits"],
+                        "`main`.`terminology_store`.`valueset`": [f"{BASE}/ValueSet/office-visit"]})
+    summary = import_measures(spark, [MEASURE, LIBRARY], catalog="main", source="pkg")
     assert summary.rows["measure"] == 1
 
 
 def test_nothing_to_import_fails():
     with pytest.raises(ImportContentError, match="nothing to import"):
-        import_measures(_FakeSpark(), [{"resourceType": "Patient"}], catalog="main", schema="m", source="pkg")
+        import_measures(_FakeSpark(), [{"resourceType": "Patient"}], catalog="main", source="pkg")
 
 
 def test_no_catalog_fails():
     with pytest.raises(ImportContentError, match="no catalog"):
-        import_measures(_FakeSpark(), [MEASURE], catalog="", schema="m", source="pkg")
+        import_measures(_FakeSpark(), [MEASURE], catalog="", source="pkg")
 

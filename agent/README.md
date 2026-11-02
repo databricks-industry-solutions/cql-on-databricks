@@ -34,23 +34,25 @@ Three components, like the compiler's `service` and `server` (`docs/structure.md
 
 ## Tools
 
+Every tool runs in one environment (`AGENT-DEFAULT-ENVIRONMENT`): the default one, or, from the Designer's assistant
+drawer, the one the Designer has picked. No tool takes an environment argument, and the agent never asks for one.
+
 | Tool | What it answers |
 |---|---|
-| `list_data_sources` | The data sources you can run against |
 | `list_tables` | The output names in one complete result set |
 | `get_output` | One define's output: a bounded preview, its row count and its address |
-| `query_data` | One read-only `SELECT` or `WITH` statement over those outputs and the source tables |
+| `query_data` | One read-only `SELECT` or `WITH` statement over those outputs and the environment's data views |
 | `get_freshness` | Whether a result exists and when it was computed. It doesn't track source data |
 
 The research tools find a definition, read what was saved, and run experiments that save nothing:
 
 | Tool | What it answers |
 |---|---|
-| `list_definitions` | Every library in scope, with its title and description. The model matches the user's words and asks them to pick (`AGENT-DEFINITION-DISCOVERY`) |
+| `list_definitions` | Every library in the environment's knowledge, with its title and description. The model matches the user's words and asks them to pick (`AGENT-DEFINITION-DISCOVERY`) |
 | `get_definition` | One library's CQL as written, and its declared scoring |
 | `list_value_sets` | Every value set the libraries declare, the names it is declared under, and who uses it (`AGENT-VALUE-SET-LOOKUP`) |
 | `value_sets_with_code` | The value sets in the terminology that contain a code |
-| `find_results` | Whether a calculation of exactly this definition, data source and period is saved, and when. Never computes (`AGENT-SAVED-RESULTS`) |
+| `find_results` | Whether the caller saved a calculation of exactly this definition and period, draft or published, and when. Never computes (`AGENT-SAVED-RESULTS`) |
 | `get_population_summary` | A saved calculation's populations, counted as written, and its score (`RUN-CLIENT-MEASURE-SCORE`) |
 | `check_cql` | Translates a library and reports diagnostics, with a diff against a baseline |
 | `run_cql` | Runs a library inline and returns its counts, score and the CQL that ran (`AGENT-INLINE-EXPERIMENTS`) |

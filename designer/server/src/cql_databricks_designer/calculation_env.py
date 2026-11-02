@@ -41,7 +41,7 @@ def _settings() -> CalculationSettings:
     catalog = config.runtime_catalog()
     if not catalog:
         raise RuntimeError("CQL_RUNTIME_CATALOG is not configured")
-    return CalculationSettings(config.designer_results_catalog(), catalog, config.runtime_schema())
+    return CalculationSettings(catalog, config.runtime_schema())
 
 
 #: APP-COMPUTE-TARGET — warehouse types that cannot run the runtime's ``cql_*`` UC functions, so are not offered.
@@ -73,7 +73,7 @@ def _run_context(warehouse: str | None) -> RunContext:
 
 
 def calculation_env() -> CalculationEnv:
-    """RUN-CLIENT-PRIVATE-PROVISIONING — deployment config only; no per-user destination setting."""
+    """RUN-CLIENT-DRAFT-RESULTS — deployment config only; results go to the picked environment's ``draft_results``."""
     run_log = RunLog(app_sql_runner, config.designer_catalog)
     return CalculationEnv(user_session=lambda warehouse=None: user_session(_chosen(warehouse)),
                           settings=_settings, warehouses=_warehouses,

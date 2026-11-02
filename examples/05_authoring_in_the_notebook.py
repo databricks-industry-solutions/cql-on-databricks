@@ -73,25 +73,23 @@ print("found   :", sorted(d for d in ("data",)))
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## 2. Mount the data
-# MAGIC Unchanged from notebook 3, and deliberately so: every `[Resource]` retrieve lowers to a
-# MAGIC `retrieve_<Type>` table-valued function you bind to your own tables. Authoring the logic in cells
-# MAGIC changes nothing about how data reaches it — that is the seam holding still while everything above it moves.
+# MAGIC ## 2. The data
+# MAGIC Unchanged from notebook 3, and deliberately so: every `[Resource]` retrieve reads the environment's view of
+# MAGIC its type. Authoring the logic in cells changes nothing about how data reaches it — that is the seam holding
+# MAGIC still while everything above it moves.
 # MAGIC
-# MAGIC **Expected output:**
-# MAGIC ```
-# MAGIC Condition    16 rows -> retrieve_Condition__cqlmount
-# MAGIC Encounter    29 rows -> retrieve_Encounter__cqlmount
-# MAGIC Patient      20 rows -> retrieve_Patient__cqlmount
-# MAGIC ```
+# MAGIC **Expected output:** the environment's name and catalog, then one line per type: its row count and the view
+# MAGIC it is read from.
 
 # COMMAND ----------
-from cql_databricks.compiler import mount
+from cql_databricks.compiler import EnvironmentResolver
+from cql_databricks.data_bindings import spark_runner
 
-mounted = mount(spark, str(CONTENT / "data"))
-for t, fn in sorted(mounted.items()):
-    rows = spark.sql(f"SELECT count(*) AS n FROM `{fn}`()").first()["n"]
-    print(f"{t:12} {rows} rows -> {fn}")
+environment = EnvironmentResolver(spark_runner(spark)).default()
+print("environment:", environment.name, "in catalog", environment.catalog)
+for t in ("Condition", "Encounter", "Patient"):
+    view = f"{environment.schema('data')}.{t.lower()}"
+    print(f"{t:12} {spark.table(view).count()} rows -> {view}")
 
 # COMMAND ----------
 # MAGIC %md

@@ -24,7 +24,9 @@ from cql_databricks.compiler.libraries import LibrarySource
 from cql_databricks.compiler.providers import CompileRequest, SqlCompileResult
 from cql_databricks.compiler.resolve import resolve
 
-from .calculation import tagged_request
+from cql_databricks.compiler.environment import Environment
+
+from .calculation import environment_request
 from .insights.score import POPULATIONS, MeasureScore, measure_score, subjects_sql
 from .relation import SUBJECT_ID, quote
 
@@ -38,7 +40,7 @@ class InlineRun:
 
     library: str
     version: str
-    data_source: str
+    environment: str
     period: tuple[str, str]
     cql: str
     defines: tuple[str, ...]
@@ -99,13 +101,13 @@ class InlineRun:
         self.close()
 
 
-def run_inline(*, content, run, compiler, data_source: str, cql: str, runtime_catalog: str,
+def run_inline(*, content, run, compiler, environment: Environment, cql: str, runtime_catalog: str,
                runtime_schema: str = "runtime", period: tuple[str | None, str | None] = (None, None),
                location: str | None = None, files=None) -> InlineRun:
     """CLIENT-INLINE-WAREHOUSE — compile ``cql`` with its include closure and run it inline on ``run``.
 
     ``run`` is a warehouse session runner (``WarehouseSession``), ``compiler`` a provider whose
-    ``/compile-sql`` renders barriers as views. Includes resolve from tagged knowledge, as for a durable
+    ``/compile-sql`` renders barriers as views. Includes resolve from the environment's knowledge, as for a durable
     calculation (`CLIENT-KNOWLEDGE-INCLUDES`), first from ``location`` when given (RUN-ADDRESS-LOCATION), a folder
     read through ``files``. The period defaults to the current calendar year.
     """
@@ -120,16 +122,16 @@ def run_inline(*, content, run, compiler, data_source: str, cql: str, runtime_ca
         object_prefix=f"inline_{uuid.uuid4().hex[:12]}",
         deps=tuple(LibrarySource(name=inc.id.name, version=inc.id.version, cql=inc.source)
                    for inc in resolution.includes))
-    # CLIENT-DEFAULT-RESOLVER: the named data source and the tagged terminology in scope, as the caller.
+    # BIND-PUBLISHED-VIEW: the environment's data and terminology views, by rule, as the caller.
     compiled: SqlCompileResult = compiler.compile_sql(
-        tagged_request(request, compiler=compiler, content=content, run=run, data_source=data_source))
+        environment_request(request, compiler=compiler, environment=environment, run=run)[0])
     barriers = [s.name for s in compiled.statements if s.kind != "view"]
     if barriers:
         raise ValueError(f"inline runs create views only; the compiler returned {barriers}. Compile through "
                          "CqlDatabricksCompileProvider (SVC-RUN-SERVERLESS-BARRIER)")
     relations = _relations(compiled)
     objects: list[str] = []
-    inline = InlineRun(library=resolution.name, version=resolution.version, data_source=data_source,
+    inline = InlineRun(library=resolution.name, version=resolution.version, environment=environment.name,
                        period=bounds, cql=cql, defines=tuple(compiled.defines), _relations=relations,
                        _objects=(), _run=run)
     try:

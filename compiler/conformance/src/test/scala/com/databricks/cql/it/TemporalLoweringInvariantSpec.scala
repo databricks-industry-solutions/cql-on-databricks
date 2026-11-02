@@ -46,10 +46,10 @@ final class TemporalLoweringInvariantSpec extends AnyFunSuite {
 
   /** Lower a case to SQL text with no session in scope (see [[OfflineCompileSpec]] for why this is
     * structurally possible: the SQL emitter is Spark-free). */
-  private def lower(c: Differential.Case, hasTerminology: Boolean): Seq[(String, String)] = {
+  private def lower(c: Differential.Case): Seq[(String, String)] = {
     val lib = Differential.buildLibrary(c)
     val config = Differential.withConditionalUnion(c.library, Differential.withGrainFirst(c.library, Config.defaults))
-    val lowered = SqlFrameLowering.lower(Optimize.run(lib, config), SqlEvalEnv(c.context, config, terminology = hasTerminology))
+    val lowered = SqlFrameLowering.lower(Optimize.run(lib, config), SqlEvalEnv(c.context, config).describing)
     lowered.script.statements.map { st =>
       val sql = SqlRender.render(st)
       (sql.linesIterator.take(2).mkString(" ").trim.take(120), sql)
@@ -108,7 +108,7 @@ final class TemporalLoweringInvariantSpec extends AnyFunSuite {
 
   Corpus.linkMeasures.foreach { md =>
     test(s"${md.library}: emitted temporal SQL is well-typed (CONF-GATE-EMIT-INVARIANT)") {
-      check(md.library, lower(measureCase(md), hasTerminology = true))
+      check(md.library, lower(measureCase(md)))
     }
   }
 
@@ -126,7 +126,7 @@ final class TemporalLoweringInvariantSpec extends AnyFunSuite {
       s"authored FHIR fixture(s) produced no ELM — translation failed and `translateCorpus` skipped them, " +
         s"so they are silently untested: ${untranslated.mkString(", ")}")
     libraries.foreach { lib =>
-      check(lib, lower(Differential.Case(lib, Context.Patient), hasTerminology = true))
+      check(lib, lower(Differential.Case(lib, Context.Patient)))
     }
   }
 }
