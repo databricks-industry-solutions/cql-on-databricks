@@ -319,3 +319,13 @@ def test_the_client_wheel_is_checked_under_python_311():
     stage = (_ROOT / "scripts" / "deploy" / "stage-app.sh").read_text()
     assert 'PYTHONPYCACHEPREFIX="$(mktemp -d)" python3.11 -m compileall -q "$here/compiler/client/src/cql_databricks"' in stage
     assert stage.index("compiler/client/src/cql_databricks") < stage.index("staged OK")
+
+
+def test_the_apps_that_use_the_compiler_are_created_one_after_the_other():
+    """DEPLOY-APP-GRANTS — each App's compiler resource writes the compiler App's permissions; two at once conflict, so
+    the Designer references the agent App, the bundle's only ordering edge between resources."""
+    import yaml
+    apps = yaml.safe_load((_ROOT / "databricks.yml").read_text())["resources"]["apps"]
+    users = [k for k, a in apps.items() if any("app" in r for r in a.get("resources") or [])]
+    assert sorted(users) == ["cql_databricks_agent", "cql_databricks_designer"]
+    assert "${resources.apps.cql_databricks_agent.name}" in apps["cql_databricks_designer"]["description"]

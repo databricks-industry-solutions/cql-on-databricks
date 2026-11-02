@@ -249,7 +249,11 @@ resources:
     # (`DEC-EVALUATOR-APP-REHOME`).
     cql_databricks_designer:
       name: cql-databricks-designer
-      description: "CQL-on-Databricks Designer — the Specification authoring UI (SPA + FastAPI BFF). SVC-APP-TOPOLOGY."
+      # DEPLOY-APP-GRANTS — the reference to the agent App orders this App after it. Both declare the compiler App as
+      # a resource, so creating each writes its service principal into the compiler App's permissions; created at
+      # once (they otherwise depend on the same two resources), one write failed with RESOURCE_CONFLICT and left this
+      # App in a fatal state. A bundle has no depends_on for resources: a reference is the only ordering edge.
+      description: "CQL-on-Databricks Designer — the Specification authoring UI (SPA + FastAPI BFF). SVC-APP-TOPOLOGY. Deployed with ${resources.apps.cql_databricks_agent.name}."
       source_code_path: ./designer/server/build/app
       # SEC-OBO — USER AUTHORIZATION. Declaring these scopes is what makes the platform forward the
       # signed-in user's OAuth access token (`x-forwarded-access-token`), which is the whole of
