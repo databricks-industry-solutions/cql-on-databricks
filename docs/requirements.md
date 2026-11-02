@@ -102,7 +102,7 @@ The Apps, the bundle, packaging and local runs.
 | `SVC-PACKAGING` | Small jars ship as app source; oversized runtime artifacts (JRE, three public jars) are hosted in a UC Volume with public-URL fallback. |
 | `SVC-PLATFORM-API` | Three-level composable API: App-to-App resource, published SDK, and MCP/agents. |
 | `SVC-PROTOCOL` | Browser-to-BFF and BFF-to-Compiler over REST/JSON HTTPS with bearer tokens and OAuth. |
-| `SVC-PY311-SYNTAX` | Deployed backend code must parse under Python 3.11; staging validates all source with `python3.11 -m compileall` to catch 3.12-only syntax before App startup. |
+| `SVC-PY311-SYNTAX` | Deployed backend code must parse under Python 3.11, the Apps' runtime: each App's staged source and the client wheel it installs (`compiler/client/src`). Staging validates both with `python3.11 -m compileall`, writing no bytecode into the source tree, and fails before any App starts. |
 | `SVC-RUN-DBCONNECT` | In-process execution via Spark Connect to serverless or all-purpose clusters. |
 | `SVC-STAGE-LOCAL-JARS` | Source the three public Maven jars from installDist output instead of re-fetching from Maven Central. |
 | `SVC-STATE-BOUNDARY` | Knowledge sources are UC-based; per-instance state, terminology, and UDFs are stored separately. |

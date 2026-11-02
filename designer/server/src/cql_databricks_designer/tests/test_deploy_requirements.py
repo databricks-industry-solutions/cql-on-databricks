@@ -312,3 +312,10 @@ def test_no_app_we_deploy_discovers_by_catalog_scope():
     for text in texts:
         assert "catalog_scopes" not in text and "CATALOG_SCOPES" not in text
     assert "CQL_DATABRICKS_CATALOG_SCOPES" not in BUNDLE_OWNED
+
+
+def test_the_client_wheel_is_checked_under_python_311():
+    """SVC-PY311-SYNTAX — the Apps import the client wheel at startup, so staging parses its source under 3.11 too."""
+    stage = (_ROOT / "scripts" / "deploy" / "stage-app.sh").read_text()
+    assert 'PYTHONPYCACHEPREFIX="$(mktemp -d)" python3.11 -m compileall -q "$here/compiler/client/src/cql_databricks"' in stage
+    assert stage.index("compiler/client/src/cql_databricks") < stage.index("staged OK")

@@ -101,6 +101,12 @@ echo "==> verify the staged payloads parse under Python 3.11 (SVC-PY311-SYNTAX)"
 command -v python3.11 >/dev/null 2>&1 || {
   echo "!!! python3.11 not found — it is required to verify the staged payloads against the"
   echo "    Databricks Apps runtime (SVC-PY311-SYNTAX). Install it: brew install python@3.11"; exit 1; }
+# The client wheel each App installs from the Volume is built from compiler/client/src, so it is checked too: it is
+# imported at startup like the staged source (observed 2026-11-01: a PEP 701 f-string in resolve.py).
+# The bytecode goes to a scratch directory, never the source tree.
+PYTHONPYCACHEPREFIX="$(mktemp -d)" python3.11 -m compileall -q "$here/compiler/client/src/cql_databricks" || {
+  echo "!!! the client wheel's source does not parse under Python 3.11, which is what the Apps run (SVC-PY311-SYNTAX)."
+  exit 1; }
 for o in "$out_designer" "$out_agent"; do
   python3.11 -m compileall -q "$o"/cql_databricks_* "$o"/cql_databricks || {
     echo "!!! the staged source in $o does not parse under Python 3.11, which is what the App runs."

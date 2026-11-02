@@ -99,8 +99,8 @@ def resolve(content: ContentResolver, *, library: str | None = None, version: st
     else:
         found = corpus.library_in(store, library, version) if store else corpus.library(library, version)
         if found is None:
-            raise ResolutionError(f"{library} {version or '(newest)'} is not in "
-                                  f"{f'the store {where.path}' if store else "the environment's knowledge"}")
+            held = f"the store {where.path}" if store else "the environment's knowledge"
+            raise ResolutionError(f"{library} {version or '(newest)'} is not in {held}")
         name, root_version, source = found.name, found.version, found.source
     closure = corpus.resolve_closure(source, prefer=store)
     return Resolution(name=name, version=root_version, source=source, includes=tuple(closure.includes),
