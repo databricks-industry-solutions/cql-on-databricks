@@ -1,4 +1,4 @@
-// PHASE-S2 / APP-LOGIC-VIEW (PROC-TDD) — Narrative derivation from CQL source.
+// APP-LOGIC-VIEW (PROC-TDD) — Narrative derivation from CQL source.
 import { describe, it, expect } from "vitest";
 import { libraryHeader, parseDefinitions } from "./logic.ts";
 

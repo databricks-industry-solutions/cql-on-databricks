@@ -52,15 +52,15 @@ decisions are in the [roadmap](../roadmap.md).
 | `DEC-RUN-LOG-SHAPE` | The run log is two tables, `designer.runs` and `designer.run_steps`, so a run that fails before any step still has a row. |
 | `DEC-SAME-ANSWER` | One compiled artifact per library version serves every strategy, and conformance runs each supported strategy. |
 | `DEC-SDP-ONLY-BULK` | Retired with SDP. Bulk runs are durable client calculations. See `RUN-CLIENT-DURABLE`. |
-| `DEC-SESSION-MOUNT` | Retired with `CLIENT-SESSION-MOUNT`: session data is a DataFrame or volume data provider, and a dev override is an `Overlay`. See `DEC-PROVIDER-RELATION`. |
+| `DEC-SESSION-MOUNT` | Retired: session data is a DataFrame or volume data provider, and a dev override is an `Overlay`. See `DEC-PROVIDER-RELATION`. |
 | `DEC-SPA-OUTPUT` | The Designer serves its own SPA from `designer/dist`. No build is copied anywhere else. |
 | `DEC-SPEC-SPLIT` | The Specification document model belongs to the Designer. Measure repository metadata belongs to Data Bindings. |
 | `DEC-SPECIFICATION-SCOPE` | Content holds Library and Measure resources only. Specification overlays and other Designer customizations stay with the Designer. |
 | `DEC-STATELESS-SERVICES` | The compiler service is stateless. Shared calling code lives in the Python client and runs as the caller. |
-| `DEC-SUBJECT-PARAMETER` | Retired with `BIND-RETRIEVE-SUBJECT`: no caller scoped a compile to patients. It passed the patient list as one named parameter, `:__subject_ids`, a JSON array string, the only parameter marker the compiler emitted. |
+| `DEC-SUBJECT-PARAMETER` | Retired: no caller scoped a compile to patients. It passed the patient list as one named parameter, `:__subject_ids`, a JSON array string, the only parameter marker the compiler emitted. |
 | `DEC-TERMINOLOGY-UC-TAG` | The terminology table is found by the `cql_databricks_terminology` tag. Value sets arrive already expanded. |
 | `DEC-TOOLCHAIN-VS-EXECUTION` | The compiler is the toolchain: it turns CQL into SQL and ships the runtime and conformance. The client runs that SQL as the caller (`RESULT-INTO-CLIENT`). |
-| `DEPLOY-OWNS-PRINCIPALS` | The deploy creates the service principals that Jobs run as: the maintenance principal before `bundle deploy`, since it is the `cql-databricks-designer-maintenance` Job's run-as. The compiler caller is retired with `SVC-COMPILER-M2M`. The client holds no deploy code. |
+| `DEPLOY-OWNS-PRINCIPALS` | The deploy creates the service principals that Jobs run as: the maintenance principal before `bundle deploy`, since it is the `cql-databricks-designer-maintenance` Job's run-as. The client holds no deploy code. |
 | `DERIVATIONS-TO-LIBRARY` | The explain, flow, strata and metrics derivations live in the client (`cql_databricks.result.insights`). The Designer and agent call them there. |
 | `DESIGNER-ONE-MODULE` | The Designer keeps one module, for authoring and testing. The other modules were removed. |
 | `DESIGNER-RUNS-SDP` | Retired with SDP. The Designer runs CQL through the client. See `RUN-CLIENT-MIGRATION`. |

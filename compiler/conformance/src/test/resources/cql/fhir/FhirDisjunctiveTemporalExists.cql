@@ -8,9 +8,9 @@ library FhirDisjunctiveTemporalExists version '1.0.0'
 // six arms (an inpatient discharge, an encounter, an assessment, an order, a procedure and a diagnosis,
 // each tested against the period its own way).
 //
-// Each `exists` lifts to a per-subject boolean flag; the DATA-MATERIALIZE fix (FrameLowering.presenceRef)
-// now stages each as its OWN barrier leaf so the define barrier only ORs flag columns. Before that fix
-// all the temporal `Case` ladders INLINED into one ~1.9 MB / 1137-unresolved-function barrier. Run with
+// Each `exists` lifts to a per-subject boolean flag; the DATA-MATERIALIZE rule (FrameLowering.presenceRef)
+// stages each as its OWN barrier leaf, so the define barrier only ORs flag columns. Without it
+// all the temporal `Case` ladders inline into one ~1.9 MB / 1137-unresolved-function barrier. Run with
 //     -Dcqldatabricks.barrierTrace=<file>
 // to see each staged barrier's proto size (bytes + unresolved_function count).
 //

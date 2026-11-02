@@ -103,8 +103,8 @@ def connect(spark=None, *, app_name: Optional[str] = None, udf_schema: Optional[
     client = builder.build()
     # SVC-RUNTIME-UDF: register the opaque-UDF catalog on a JVM-backed classic session. Since
     # SVC-NOTEBOOK-RUNTIME-BIND qualifies every emitted `cql_*` call against the UC catalog, nothing the
-    # compiler emits calls a bare name — this is the legacy classic-cluster path kept until SVC-RUNTIME-UDF
-    # is formally retired in favour of SVC-RUNTIME-UDF-UC. Best-effort no-op on Spark Connect (serverless).
+    # compiler emits calls a bare name. This is the classic-cluster path; the UC form is SVC-RUNTIME-UDF-UC.
+    # Best-effort no-op on Spark Connect (serverless).
     register_runtime_udfs(session)
     return client
 
@@ -173,7 +173,7 @@ def _spark_runner(spark):
 def _conf_or_empty(spark, key: str) -> str:
     """``key`` from the session conf, or ``""`` when it is unset. Serverless raises CONFIG_NOT_AVAILABLE for an
     unset key that is not on its allowlist, even with a default, and that is "unset" too, as in
-    ``library._spark_conf``. Unset scopes search every catalog, with a warning (CLIENT-DISCOVERY-SCOPE)."""
+    ``library._spark_conf``."""
     try:
         return spark.conf.get(key, None) or ""
     except Exception:  # noqa: BLE001 — pyspark raises AnalysisException; the key is simply not set
@@ -202,7 +202,7 @@ def _active_spark():
 
 
 # A lazily-built, reused default client for the module-level `cql` shorthand (NOT a public/settable
-# global — the confusing OSS `set_default_client` was removed; this is just the zero-config convenience).
+# global; this is just the zero-config convenience).
 # `_default_resolvers` is the session's resolvers it was built with (CLIENT-SESSION-RESOLVERS): once they are
 # replaced, the next `cql()` builds a new one.
 _default_client: Optional[CqlClient] = None

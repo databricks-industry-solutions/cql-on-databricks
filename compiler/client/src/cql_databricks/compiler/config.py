@@ -1,4 +1,4 @@
-"""Config keys + ONE-precedence setting resolution for the cql client (PHASE-10, BUILD-CLIENT / BUILD-RESOLVE).
+"""Config keys + ONE-precedence setting resolution for the cql client (BUILD-CLIENT / BUILD-RESOLVE).
 
 Every setting resolves by a SINGLE precedence (`BUILD-RESOLVE`)::
 
@@ -7,7 +7,7 @@ Every setting resolves by a SINGLE precedence (`BUILD-RESOLVE`)::
 Config is granular and explicit — one knob each, Spark-conf style; there is NO bespoke selector object,
 and the client never reads a config *table* from a catalog. Compiled-in defaults are constants, never
 fetched. A setting has no discovery tier: the data a run reads is chosen at compile time by the library's
-binder (`CLIENT-EXEC-DISCOVERY`, :mod:`.binding`), never guessed from a conventional name.
+binder (:mod:`.binding`), never guessed from a conventional name.
 
 This module owns the READING of config. The OSS core imports no platform SDK.
 """
@@ -38,7 +38,7 @@ CONF_LIBRARY_PROVIDER_KIND = "spark.cqldatabricks.libraryProvider.kind"
 # long-standing form. `auto` derives a stable prefix from the library identity; any other value is used
 # verbatim. Opt in when more than one library is lowered into a single Spark session.
 CONF_OBJECT_PREFIX = "spark.cqldatabricks.objectPrefix"
-# EVALUATOR-CLIENT-EVALUATE (`DEC-ONE-VERB-ENGINE-OPTION`, `DEC-ENGINE-SESSION-OPTIONS`): which engine runs a
+# `DEC-ONE-VERB-ENGINE-OPTION`, `DEC-ENGINE-SESSION-OPTIONS`: which engine runs a
 # query, and the settings the evaluator engine needs. All are session settings like the rest of this block,
 # so a session sets them once and every call is just `cql("…")`.
 CONF_ENGINE = "spark.cqldatabricks.engine"                      # local (default) | evaluator
@@ -94,7 +94,7 @@ ENV_AUTH_TOKEN = "CQL_DATABRICKS_AUTH_TOKEN"
 # sets no context (explicit arg / conf / env), the client sends UNSET and the COMPILER applies the
 # spec-conformant resolution (library-declared `context`, else the model default, else `Unfiltered`).
 # Hard-coding `Patient` here was non-conformant (it forced a Patient retrieve onto a context-free define).
-#: EVALUATOR-CLIENT-EVALUATE — the convention tier of the engine setting: the caller's own compute, as today.
+#: The convention tier of the engine setting: the caller's own compute, as today.
 #: Not a fallback: an engine that fails never hands the query to another (`DEC-ONE-VERB-ENGINE-OPTION`).
 LOCAL_ENGINE = "local"
 DEFAULT_DATA_MODEL = "FHIR"                         # the CQL data model; engine is FHIR-only today (ARCH-DATAMODEL-TRAIT future)

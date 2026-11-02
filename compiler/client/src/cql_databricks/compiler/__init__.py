@@ -21,8 +21,8 @@ only CQL that retrieves nothing compiles.
 
 **The Databricks layer** makes that zero-config on a workspace (`SVC-ZERO-CONFIG-NOTEBOOK`): it resolves
 the Compiler Service App endpoint from the App registry, authenticates with the ambient identity by
-serverless-to-App OAuth token exchange, finds each run's data source by its Unity Catalog tag
-(`CLIENT-EXEC-DISCOVERY`), and discovers the UDF schema from ``information_schema``. So a notebook names no
+serverless-to-App OAuth token exchange, finds each run's environment by its Unity Catalog tag
+(`CLIENT-ENVIRONMENT-RESOLVER`), and discovers the UDF schema from ``information_schema``. So a notebook names no
 endpoint, no token, and no catalog::
 
     from cql_databricks.compiler import cql

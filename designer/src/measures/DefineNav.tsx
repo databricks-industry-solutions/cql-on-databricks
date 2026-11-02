@@ -9,7 +9,7 @@
 // ELM-derived graph is consumed for RELATIONAL chrome only: dependency counts, closure highlighting, and
 // the read vocabulary the Data-type facet offers.
 //
-// THE PANE SHELL OWNS THE CHROME, NOT THIS FILE (APP-MEASURE-FLOW). The tab strip, the text filter and
+// THE PANE SHELL OWNS THE CHROME, NOT THIS FILE. The tab strip, the text filter and
 // the filter popover are in `NavPane` in `MeasureWorkspace.tsx` so both tabs share them. This component
 // receives the already-narrowed predicate (`applyNavFilters`) and whether a filter is active (`narrowed`);
 // it does not own them. Two things are
@@ -70,7 +70,7 @@ export function DefineNav({ selected, spec, retrieves = [], applyNavFilters, has
   overviewSections?: OverviewSections;
   appendixSections?: AppendixSections;
   /** APP-URL-ROUTING — land the reader on a document anchor. The workspace owns it because the
-   *  Specification is only mounted under the Define lens and the pane is not (APP-MEASURE-FLOW), so
+   *  Specification is only mounted under the Define lens and the pane is not, so
    *  reaching a heading can mean changing lens first. */
   onAnchor: (domId: string) => void;
   rows: NavRowKit;
@@ -116,12 +116,11 @@ export function DefineNav({ selected, spec, retrieves = [], applyNavFilters, has
       )}
 
       {/* Libraries — EVERY library the artifact is made of, the measure's own among them.
-          `Definitions` and `Included` used to be two sections, on the reasoning that an include is a
-          different KIND of thing to the reader: other people's libraries, versioned separately. That
-          distinction is real but it is not STRUCTURAL — a define is reached, named and counted the same
-          way whichever library declares it, and splitting on provenance meant the root's defines sat at
-          one depth while an include's sat one level deeper under a name. The reader paid for the
-          distinction in indentation on every row.
+          Splitting them into `Definitions` and `Included` would treat an include as a different KIND of
+          thing to the reader: other people's libraries, versioned separately. That distinction is real but
+          it is not STRUCTURAL — a define is reached, named and counted the same way whichever library
+          declares it, and splitting on provenance puts the root's defines at one depth while an include's
+          sit one level deeper under a name. The distinction would cost the reader indentation on every row.
 
           So: ONE section, one depth rule, and the root is a library group like any other. What it keeps
           is FIRST PLACE, which is the part of "this one is different" that is actually true — it is the
@@ -250,9 +249,8 @@ function ReadGroup({ type, count, reads, selected, rows, onAnchor }: {
 }) {
   const [open, setOpen] = useState(false);
   const holdsSelection = reads.some((r) => isRetrieveSelected(selected, r.key));
-  // This group DEFAULTS CLOSED, so before the reveal a selected read was hidden every time
-  // (APP-MEASURE-FLOW). The tint below is what it did instead, and it is kept for the case where the
-  // reader has closed the group again with the selection still inside.
+  // This group DEFAULTS CLOSED, so a selected read reveals it. The tint below covers the case where
+  // the reader has closed the group again with the selection still inside.
   useRevealOnSelect(holdsSelection, useCallback(() => setOpen(true), []));
   return (
     <>
@@ -279,14 +277,12 @@ function ReadGroup({ type, count, reads, selected, rows, onAnchor }: {
  *  for ONE library, the measure's own included. The entries are the SHARED model's — this group only
  *  decides open/closed. The collapse header names the library, so no "lib" row repeats it.
  *
- *  Was `IncludeGroup`, and rendered only the includes while the root's defines sat flat in a section of
- *  their own. Every library is a group now: the root declares defines exactly the way an include does,
- *  and the old split bought a provenance distinction at the price of putting two kinds of row at two
- *  depths for a reader who reaches them identically.
+ *  Every library is a group: the root declares defines exactly the way an include does, and splitting on
+ *  provenance would put two kinds of row at two depths for a reader who reaches them identically.
  *
- *  APP-NAV-DEPTH — the entries go in their OWN `.mw-nav-nested`. They used to be siblings of the
- *  header, which put a library's own defines one step LEFT of the library that declares them: the
- *  deepest rows in the nav read as the shallowest. */
+ *  APP-NAV-DEPTH — the entries go in their OWN `.mw-nav-nested`, not as siblings of the header. A sibling
+ *  would put a library's own defines one step LEFT of the library that declares them: the deepest rows in
+ *  the nav would read as the shallowest. */
 function LibraryGroup({ lib, entries, hasQuery, selected, rows }: {
   lib: SpecLibrary;
   entries: SpecEntry[];

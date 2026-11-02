@@ -1,4 +1,4 @@
-// PHASE-S1 — vitest setup: jest-dom matchers for component tests (PROC-TDD, SPA layer).
+// vitest setup: jest-dom matchers for component tests (PROC-TDD, SPA layer).
 import { beforeEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
 

@@ -78,7 +78,7 @@ describe("reference lens (SPEC-REF-LENS)", () => {
   });
 
   it("is sized for CHARTS in both dimensions, not for a sentence", () => {
-    // It was 190px of 10–12px type — a tooltip's budget. The lens holds the inspector's own three tabs now,
+    // A sentence-sized lens is 190px of 10–12px type — a tooltip's budget. The lens holds the inspector's own three tabs,
     // and the floors are asserted because they are the reason the layout works: a chart narrower than
     // ~560px of content box cannot carry readable axis labels, and one shorter than ~200px of plot area
     // reports a shape rather than a value. Left to drift these creep back down.
@@ -119,13 +119,13 @@ describe("reference lens (SPEC-REF-LENS)", () => {
     expect(rule).toMatch(/position:\s*fixed/);
     expect(rule).not.toMatch(/position:\s*absolute/);
     // The host carries `mw`, which is what keeps every `.mw`-qualified rule below reaching inside a box
-    // that is no longer a descendant of the workspace.
+    // that is not a descendant of the workspace.
     expect(css).toMatch(/\.mw-lens-layer \{/);
   });
 
   it("never reintroduces a hover-opened preview", () => {
-    // `pointer-events: none` existed only to let a hover-opened lens be dismissed by moving away. Hover
-    // no longer opens it, so the lens is always a real surface — and a stray reset of this property would
+    // `pointer-events: none` would matter only to let a hover-opened lens be dismissed by moving away. Hover
+    // does not open it, so the lens is always a real surface — and a stray reset of this property would
     // make every control in it unpressable while looking perfectly correct in the source.
     const css = readFileSync("src/measures/measures.css", "utf8");
     expect(css).not.toMatch(/\.mw-reflens[^-{][^}]*pointer-events:\s*none/);

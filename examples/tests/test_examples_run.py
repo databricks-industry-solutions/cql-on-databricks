@@ -6,7 +6,7 @@ submits it as a one-time job run on SERVERLESS compute, waits, and asserts resul
 deliberate: it validates the notebooks as they live in source, which is what keeps them up to date
 (BUILD-CLIENT, SVC-RUN-EVAL).
 
-SCOPE — this is the SMOKE, not the oracle (SVC-EXAMPLE-NOTEBOOKS, 2026-08-09). The notebooks are
+SCOPE — this is the SMOKE, not the oracle (SVC-EXAMPLE-NOTEBOOKS). The notebooks are
 narrative-led: each cell's expected result is stated in the markdown above it, not asserted in code. So a
 green run proves every compile and every query in every module succeeded against a fresh deployment — it
 does NOT prove the values were right. Value-level correctness is owned by the engine's conformance corpus
@@ -42,8 +42,6 @@ import re
 import pytest
 
 # This test lives INSIDE the examples it runs (examples/tests/), so the notebooks are its parent.
-# It used to sit in a top-level examples/tests/ and reach sideways into the client package -- a path
-# that broke silently in the merge and pointed at a directory that did not exist.
 EXAMPLES_DIR = pathlib.Path(__file__).resolve().parents[1]
 # `00_start_here` is the index page (SVC-EXAMPLE-INDEX): one markdown cell, no code, so there is nothing
 # to submit and no `ok` payload to assert. It is excluded by name rather than by "has no code cells" —

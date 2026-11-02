@@ -1,6 +1,6 @@
 library TemporalPartialPrecision version '1.0.0'
 
-// PHASE-8 (LANG-INTERVAL): the precision-aware comparison truth table for a partial-precision
+// LANG-INTERVAL: the precision-aware comparison truth table for a partial-precision
 // DateTime operand against a STATIC bound — the cells the length-dispatch lexical emission must
 // reproduce. The normative oracle is the cqframework Java reference (CONF-GATE-MEASURE), pinned by
 // SemanticsProbeSpec: the reference is COMPONENT-WISE-NULL, not uncertainty-interval. Two consequences

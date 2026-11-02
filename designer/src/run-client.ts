@@ -1,4 +1,4 @@
-// PHASE-S5 / APP-EVALUATION, SVC-RUN-EVAL — the SPA's client over the run endpoint (via the backend).
+// APP-EVALUATION, SVC-RUN-EVAL — the SPA's client over the run endpoint (via the backend).
 //
 // RUN-CLIENT-RESULT-SETS — the backend compiles and materializes through the durable client under
 // caller SQL credentials. It returns one complete selection and its counts, never partial outputs.
@@ -108,7 +108,7 @@ export async function fetchEnvironments(): Promise<EnvironmentRecord[]> {
 }
 
 /** SVC-RESOURCE-SCHEMA — the FHIR resource types the engine actually models, so the Data Sources editor offers
- *  only bindable entities (DATA-SOURCE-PROFILE, APP-NO-UI-MOCK). Degrades to [] on any failure OR a compiler
+ *  only bindable entities (APP-NO-UI-MOCK). Degrades to [] on any failure OR a compiler
  *  fallback, so the editor uses its static list rather than an empty picker. */
 export async function fetchModeledTypes(): Promise<string[]> {
   try {
@@ -164,7 +164,7 @@ async function errorText(res: Response, verb: string): Promise<string> {
 /** RUN-CLIENT-REQUEST-REOPEN — the signed-in user's own results for exactly this calculation, if any.
  *
  *  Read-only: the server never computes, never creates the private schema, and never reads a Job's or
- *  another user's results (RUN-CLIENT-PUBLISHED, amended 2026-10-10). A miss resolves `found: false`
+ *  another user's results (RUN-CLIENT-PUBLISHED). A miss resolves `found: false`
  *  with the server's reason; a failure (compile error, no access to the warehouse) rejects with its
  *  message, so the caller shows it rather than reading it as "not computed". */
 export type ReopenResult = { found: true; result: RunResult } | { found: false; reason: string };
@@ -255,12 +255,12 @@ export async function runMeasure(cql: string, opts: RunCallOptions): Promise<Run
  *  each carrying every definition's state). `onStage` is called for every progress event; the
  *  final `RunResult` is returned on completion.
  *
- *  **THE FINAL RESULT IS BUILT FROM THE `done` FRAME'S OWN FIELDS.** It used to be read from
- *  `event.result`, a key only the retired in-process runner ever sent — so the placeholder below
- *  survived every successful run and the Designer showed "stream ended unexpectedly" on top of
- *  correct numbers, while genuine failures (which do send `stage: "error"`) reported properly. The
- *  inversion is what made it look intermittent. `status` is now read as well, so a `timeout` or a
- *  `failed` Job says which it was instead of borrowing the disconnect message (`RUN-PROGRESS-TASKS`,
+ *  **THE FINAL RESULT IS BUILT FROM THE `done` FRAME'S OWN FIELDS.** It is not read from
+ *  `event.result`, a key no run sends. The placeholder below would survive every successful run and
+ *  show "stream ended unexpectedly" on top of correct numbers, while genuine failures (which do send
+ *  `stage: "error"`) report properly. The inversion is what makes it look intermittent. `status` is
+ *  read as well, so a `timeout` or a `failed` Job says which it was instead of borrowing the disconnect
+ *  message (`RUN-PROGRESS-TASKS`,
  *  `CORE-NO-SILENT-MISLOWER`). */
 export async function runMeasureStreaming(
   cql: string,
@@ -309,7 +309,7 @@ export async function runMeasureStreaming(
   const decoder = new TextDecoder();
   let buffer = "";
   // Reached only when the stream ends with no terminal frame at all — the backend went away
-  // mid-run (a reload in dev, a proxy timeout). It is no longer the outcome of an ordinary run.
+  // mid-run (a reload in dev, a proxy timeout). It is not the outcome of an ordinary run.
   let finalResult: RunResult = {
     ok: false,
     error: "The backend closed the run stream before it reported a result.",

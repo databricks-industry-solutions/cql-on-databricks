@@ -1,4 +1,4 @@
-// PHASE-S2 / APP-DIAGNOSTICS — turn the compiler's raw diagnostics into clinical, plain-language
+// APP-DIAGNOSTICS — turn the compiler's raw diagnostics into clinical, plain-language
 // messages, and run the live validation loop against the engine.
 //
 // APP-DIAGNOSTICS: validation is on-demand via the Compiler Service (browser → BFF /api/translate →

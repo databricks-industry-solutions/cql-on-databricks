@@ -18,9 +18,8 @@ handlers into `APIRouter`s and then into three packages changes no URL, no verb,
   the route call ITSELF with the builder's keyword arguments, on every request. Path and verb were
   perfect throughout. Only the target was wrong.
 
-**Nothing is stubbed** since `APP-PER-FEATURE`: the Designer's App holds no store and provisions
-nothing at startup. The data-source and Bind routes it took over from the evaluator App (EVALUATOR-REMOVE,
-`DEC-EVALUATOR-APP-REHOME`) kept their paths and handler names, so the SPA did not change.
+**Nothing is stubbed** (`APP-PER-FEATURE`): the Designer's App holds no store and provisions
+nothing at startup. The data-source and Bind routes keep the paths and handler names the SPA calls.
 """
 
 from __future__ import annotations
@@ -76,7 +75,7 @@ EXPECTED: dict[tuple[str, str], str] = {
     # DOC-ENVIRONMENT-PICKER — read-only: an environment is a tagged catalog, not a record.
     ("/api/environments", "GET"): "list_environments",
     ("/api/environments/reload", "POST"): "reload_environments",
-    # --- runs on SDP and their results, the Designer's own (`routes/runs.py`, DESIGNER-RUNS-SDP) ----------
+    # --- runs and their results, the Designer's own (`routes/runs.py`) ----------
     ("/api/run", "POST"): "run_measure",
     ("/api/run-stream", "POST"): "run_measure_stream",
     ("/api/results", "POST"): "get_results",

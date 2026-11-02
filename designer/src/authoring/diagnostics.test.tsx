@@ -1,4 +1,4 @@
-// PHASE-S2 / APP-DIAGNOSTICS (PROC-TDD) — plain-language humanization + the translate transport.
+// APP-DIAGNOSTICS (PROC-TDD) — plain-language humanization + the translate transport.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { humanize, humanizeAll, translate } from "./diagnostics.ts";
 

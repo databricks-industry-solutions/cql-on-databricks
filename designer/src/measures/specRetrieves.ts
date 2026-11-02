@@ -46,7 +46,7 @@ export interface SpecRetrieve {
   /** Dedupe key: `type|filter`. Two defines issuing the identical read are ONE row with two call
    *  sites, because it is one data requirement.
    *
-   *  PROFILE IS NOT IN THE KEY. It was, which split Condition/Exclusion A into two rows — one per
+   *  PROFILE IS NOT IN THE KEY. Including it would split Condition/Exclusion A into two rows — one per
    *  QICore profile — and that split is only as trustworthy as the `templateId` behind it. Until the
    *  profile is confirmed correct it is not shown, and a key that splits on a value the reader cannot
    *  see produces rows that look identical and are not. Held on `profiles` so nothing is lost. */
@@ -96,7 +96,7 @@ export interface RefSetRead {
   code?: string;
   codeProperty?: string;
   /** BODY-RELATIVE, 1-based, within the define — already the `sourceSpan` convention, so nothing here
-   *  recomputes it from a locator. That arithmetic used to live in this file, done twice. */
+   *  recomputes it from a locator. The arithmetic is done once, not repeated here. */
   line?: number;
 }
 
@@ -138,7 +138,7 @@ function visibleDefines(model: SpecModel): Map<string, Set<string>> {
 
 /** SPEC-DATA-REQUIREMENTS — every read the VISIBLE logic performs.
  *
- *  IT NO LONGER DERIVES THEM. The reads come from the server's reference set, which walked the ELM once
+ *  IT DOES NOT DERIVE THEM. The reads come from the server's reference set, which walked the ELM once
  *  (`SPEC-EXPLAIN-INPUTS`); this INVERTS them from per-define into per-read-with-call-sites, which is
  *  the shape the Data requirements section asks for and is not a fact about the CQL.
  *
@@ -213,9 +213,9 @@ export function buildRetrieves(
 
 /** SPEC-DERIVED-APPENDIX — the terminology the VISIBLE logic actually names.
  *
- *  ALSO CONSUMED RATHER THAN DERIVED now. The reference set attributes every value set and code to the
+ *  ALSO CONSUMED, NOT DERIVED. The reference set attributes every value set and code to the
  *  library that DECLARES it, resolving `Exclusions."Excluded Care Encounter"` through the ELM's own include table
- *  — which this file used to do with its own alias map, a second copy of the same lookup.
+ *  — so this file does not repeat that lookup with an alias map of its own, a second copy of the same lookup.
  *
  *  ELIMINATION EXTENDS TO TERMINOLOGY, for the same reason it extends to reads: a value set only an
  *  unreachable define mentions is one this measure does not use, and listing it invites a reader to go
@@ -257,8 +257,8 @@ export function readsForDefine(
 
 /** SPEC-DERIVED-APPENDIX — every value set and code ONE DEFINE REFERENCES, from the reference set.
  *
- *  NOT THE RETRIEVE FILTERS. This replaced a derivation that read `SpecRetrieve.valueSet` / `.code`, and
- *  the difference is a correctness bug, not a refinement: terminology only appears on a retrieve when the
+ *  NOT THE RETRIEVE FILTERS. Deriving from `SpecRetrieve.valueSet` / `.code` would be a correctness bug, not a
+ *  refinement: terminology only appears on a retrieve when the
  *  translator PUSHED THE FILTER DOWN into it. A define that retrieves broadly and narrows in a `where`
  *  references terminology the retrieve never mentions, so a retrieve-derived list silently omits it.
  *
@@ -273,7 +273,7 @@ export function readsForDefine(
  *  Library-qualified on the way in — two libraries in one closure may bind one name to different OIDs
  *  (`SPEC-TERMINOLOGY-REF`) — and returned as bare names, because the tab renders names and joins to the
  *  appendix by them. */
-/*  CURRENTLY UNCONSUMED, and kept deliberately. Codes are read off the define's RESULTS now rather
+/*  CURRENTLY UNCONSUMED, and kept deliberately. Codes are read off the define's RESULTS rather
  *  than its bindings. This function's consumer is the value-set coverage report, which needs exactly
  *  this list. Kept rather than deleted because the push-down finding below is expensive to rediscover
  *  and cheap to hold; delete it with the coverage report if that is ever abandoned. */

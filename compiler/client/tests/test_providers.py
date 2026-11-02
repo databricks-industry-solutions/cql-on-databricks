@@ -1,5 +1,5 @@
 """Unit tests for providers + credentials + resolution (stdlib unittest; requests is mocked, so no
-network and no pyspark needed). PHASE-10, BUILD-CLIENT."""
+network and no pyspark needed). BUILD-CLIENT."""
 import unittest
 from unittest import mock
 

@@ -5,9 +5,9 @@
 //
 // THE FAILURE IT EXISTS FOR. In the Composition tree a population is a `.mw-node` and so are the defines
 // beneath it, so the indent is the ONLY thing that can separate them. The collapsible row spent that
-// indent on its own twisty, which was an unsized `<button>` and so took the UA's own padding (24px wide).
-// Measured in Chrome against the shipped stylesheet: the population's label column landed at x=47 and its
-// own children's at x=24 — 23px to its LEFT. The hierarchy did not read as flat, it read INVERTED, which
+// indent on its own twisty, which is an unsized `<button>` and so takes the UA's own padding (24px wide).
+// Measured in Chrome against the shipped stylesheet: the population's label column lands at x=47 and its
+// own children's at x=24 — 23px to its LEFT. The hierarchy does not read as flat, it reads INVERTED, which
 // is the exact failure `APP-NAV-DEPTH` names. jsdom does not resolve `var()`/`calc()` into pixels, so
 // the arithmetic is not what is asserted here; what is asserted is that the slot is DECLARED rather than
 // inherited from the UA, and that a collapsible row's children clear it.
@@ -45,7 +45,7 @@ const step = (s: CSSStyleDeclaration) => s.getPropertyValue("--nav-step");
 describe("nav depth (APP-NAV-DEPTH)", () => {
   it("gives the twisty a DECLARED slot, not the UA button's padding", () => {
     // `auto` / "" here means the rule went away and the slot is whatever the UA makes of a `<button>`
-    // wrapping a 12px glyph — which is where the 13px inversion came from.
+    // wrapping a 12px glyph — which is where the 13px inversion comes from.
     const s = nav()("twisty");
     expect(s.width).toBe("var(--nav-twisty)");
     expect(s.padding).toBe("0px");
@@ -60,7 +60,7 @@ describe("nav depth (APP-NAV-DEPTH)", () => {
   });
 
   it("leaves ordinary depth alone — a level under a heading, or under a leaf row, is one step", () => {
-    // The Outline's levels are the majority of the pane and were never wrong; the slot rule must not
+    // The Outline's levels are the majority of the pane and are correct; the slot rule must not
     // reach them. `under-child` also covers the tree below a population, where no row carries a twisty.
     const g = nav();
     expect(step(g("under-heading"))).toBe("var(--nav-indent)");
@@ -68,8 +68,8 @@ describe("nav depth (APP-NAV-DEPTH)", () => {
   });
 
   it("hangs the guide rail off the level's own step, so it cannot be left behind", () => {
-    // The rail was a hardcoded 11px — right for a 16px step and silently wrong for any other, which is
-    // how the deeper level this change introduces would get a rail 21px adrift of the rows it brackets.
+    // The rail is a hardcoded 11px — right for a 16px step and silently wrong for any other, which is
+    // how a deeper level would get a rail 21px adrift of the rows it brackets.
     // Read from the source, not from the engine: jsdom does not compute pseudo-elements at all.
     const rail = /\.mw-nav-nested::before\s*\{([^}]*)\}/.exec(CSS);
     expect(rail).not.toBeNull();
@@ -86,10 +86,9 @@ describe("nav depth (APP-NAV-DEPTH)", () => {
   });
 
   it("the Flow spine is the TOP level and declares no step of its own", () => {
-    // APP-MEASURE-FLOW — the spine is where the Composition tab's population rows sat, so the tree
-    // under it has to land in the same column the other arrangement puts the same define in. Giving the
-    // spine a step would push every row beneath it one indent right of its twin in the Outline, and the
-    // two tabs would disagree about depth for one model.
+    // The `.mw-flow-spine` rule sets no `--nav-step`, so the tree under the spine lands in the same column
+    // the same define gets in the Outline. A step on the spine would push every row beneath it one indent
+    // right of its twin in the Outline, and the two would disagree about depth for one model.
     expect(CSS).toMatch(/\.mw-flow-spine\s*\{/);
     const spine = /\.mw-flow-spine\s*\{([^}]*)\}/.exec(CSS);
     expect(spine![1]).not.toContain("--nav-step");

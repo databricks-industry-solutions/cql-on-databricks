@@ -83,7 +83,7 @@ def test_translate_sends_the_identity_bearer_and_does_not_follow_redirects():
 
 
 def test_a_gate_redirect_is_reported_as_an_auth_failure():
-    """Previously followed into a 200 text/html sign-in page and misreported as a bad response body."""
+    """A redirect into a 200 text/html sign-in page is reported as an auth failure, not a bad response body."""
     redirect = _response(302, headers={"location": "https://acme.cloud.databricks.com/login"},
                          content_type="text/html")
     with _identity():

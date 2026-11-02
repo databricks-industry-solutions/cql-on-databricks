@@ -8,7 +8,7 @@ import org.junit.runner.RunWith
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.junit.JUnitRunner
 
-/** Multi-library pipeline compilation gate (`PIPE-MULTI-LIB`, `PIPE-MULTI-DESCRIBE`). Two independent
+/** Multi-library pipeline compilation gate. Two independent
   * libraries compiled into a single pipeline plan: recipe names are library-qualified
   * (`cql_{libId}__{define}`), shared dependency defines are deduplicated, and the single-library path
   * remains unchanged (backward-compatible). Server-free (no Connect server needed). */
@@ -34,7 +34,7 @@ final class MultiLibPipelineSpec extends AnyFunSuite {
   private lazy val elmA: String = toElm(cqlA)
   private lazy val elmB: String = toElm(cqlB)
 
-  // ---- PIPE-MULTI-LIB: compilePipeline with libraries manifest ----------------------------
+  // ---- compilePipeline with libraries manifest ----------------------------
 
   test("multi-lib pipeline plan has library-qualified recipe names for each root") {
     // Force materialization of ALL defines (`materialize.mode=all`) so the cost model is not the

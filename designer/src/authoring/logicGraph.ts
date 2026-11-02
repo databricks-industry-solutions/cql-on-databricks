@@ -1,4 +1,4 @@
-// PHASE-S2/S5 / APP-LOGIC-VIEW, APP-DEP-COUNTS — derive a dependency graph from CQL source.
+// APP-LOGIC-VIEW, APP-DEP-COUNTS — derive a dependency graph from CQL source.
 //
 // The Narrative view is a filterable list of every criterion (population / define / function / value set
 // / retrieve) with, per node, its dependency counts in BOTH directions — "uses N" (downstream, what it

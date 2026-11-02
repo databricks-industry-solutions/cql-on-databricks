@@ -4,7 +4,7 @@
 // that the scope travels as a removable default rather than as ambient state
 // (`APP-ASSISTANT-CONTEXT`), that an agent-derived figure cannot be mistaken for a measure result
 // (`SVC-ANSWER-PROVENANCE`), that the answer carries the address that makes it reproducible
-// (`SVC-TOOL-ADDRESS`), and that the read-only boundary is stated before a reader is refused
+// and that the read-only boundary is stated before a reader is refused
 // (`KNOWLEDGE-FAIL-LOUD`).
 
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
@@ -245,7 +245,7 @@ describe("provenance (SVC-ANSWER-PROVENANCE)", () => {
   });
 
   it("cites the address, which is what makes the answer reproducible", async () => {
-    // SVC-TOOL-ADDRESS — a node's output is a place, so the citation is a relation anyone can re-read,
+    // A node's output is a place, so the citation is a relation anyone can re-read,
     // never a conversation id.
     askAssistant.mockResolvedValue(answer({
       invocations: [{
@@ -340,7 +340,7 @@ describe("transcript states", () => {
     expect(await screen.findByText("3 steps")).toBeInTheDocument();
   });
 
-  it("names each tool AS IT LANDS, in the reader's terms (THEME-GLASSBOX)", async () => {
+  it("names each tool AS IT LANDS, in the reader's terms", async () => {
     // The reason streaming is worth having: a real answer is a SEQUENCE of calls, so a client that
     // waited for the whole loop would show a spinner for the entire investigation. What is shown is
     // the actual reads the answer will cite — and in clinical terms, because `get_freshness` is not

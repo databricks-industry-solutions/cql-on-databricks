@@ -1,4 +1,4 @@
-// SPEC-NAV-COMPOSITION — the left pane's Composition tab, restored from the Flow tab that replaced it.
+// SPEC-NAV-COMPOSITION — the left pane's Composition tab.
 //
 // THE FAILURE THESE EXIST FOR is the one that retired Flow: a navigator that can only show you ONE
 // population's decomposition at a time cannot answer "where else is this define used?", which is the

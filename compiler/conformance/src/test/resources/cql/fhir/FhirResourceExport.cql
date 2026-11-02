@@ -1,6 +1,6 @@
 library FhirResourceExport version '1.0.0'
 
-// PHASE-6 (DATA-EXPORT): a result that surfaces the RAW FHIR resource (not a projection). The engine
+// DATA-EXPORT: a result that surfaces the RAW FHIR resource (not a projection). The engine
 // exports each resource by its data-usage lineage identity (__resource_type/__resource_id → "Type/id");
 // the Java reference renders the same HAPI resource to the same "Type/id". So a raw-resource list
 // result diffs clean by IDENTITY (which source instances fed the result) rather than by un-normalized

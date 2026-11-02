@@ -1,8 +1,6 @@
 """DATA-CHANGE-LOG — the exemplar change log this repository's own sources ship.
 
-The digest reader that consumed the log for the evaluator App's run fingerprint retired with the App
-(EVALUATOR-REMOVE); what stays is the contract's shape and the exemplar DDL the loaders and the conformance
-provisioner run.
+This covers the contract's shape and the exemplar DDL the loaders and the conformance provisioner run.
 """
 from __future__ import annotations
 

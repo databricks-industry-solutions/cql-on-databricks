@@ -10,7 +10,7 @@ import com.databricks.cql.ir._
   * TOTAL — any expression `type` we do not model is lifted into an explicit `UnknownExpr`
   * carrying the verbatim ELM JSON, never silently dropped (CORE-NO-SILENT-MISLOWER).
   *
-  * Emit is the inverse used only for the Phase 0 ELM->IR->ELM round-trip (PHASE-0 exit):
+  * Emit is the inverse used only for the ELM->IR->ELM round-trip:
   * its only consumer is our own Load, so it need not satisfy the JS reference. Together,
   * `Load(Emit(Load(elm))) == Load(elm)` is a fixed point — the round-trip invariant.
   *
@@ -393,7 +393,7 @@ object ElmCodec {
         // `asType` (LANG-CHOICE). So leave `asType` empty here rather than the degenerate name
         // `typeSpecName` yields for a `List<Choice>` specifier ("List<>", inner choice → ""). This also
         // restores the round-trip fixed point: Emit drops `asType` when choiceTypes is non-empty, so a
-        // non-empty `asType` on such a node would reload as "" (ELM->IR->ELM->IR no longer stable).
+        // non-empty `asType` on such a node would reload as "" (which would make ELM->IR->ELM->IR unstable).
         val asType =
           if (choiceTypes.nonEmpty) ""
           else str(v, "asType").orElse(spec.map(typeSpecName).filter(_.nonEmpty)).getOrElse("")

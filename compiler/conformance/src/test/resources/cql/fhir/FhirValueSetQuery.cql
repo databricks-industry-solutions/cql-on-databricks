@@ -1,6 +1,6 @@
 library FhirValueSetQuery version '1.0.0'
 
-// PHASE-5 5b (LANG-TERMINOLOGY, LANG-QUERY): a value-set-filtered retrieve used as a general QUERY
+// LANG-TERMINOLOGY, LANG-QUERY: a value-set-filtered retrieve used as a general QUERY
 // SOURCE — not the bare-`exists` fast path, but a `return` query that routes through the Relation
 // realization (QueryLowering.aliasedSource). This is exactly the shape the terminology pushdown
 // optimizer emits (`[Resource: "VS"]` into a query source), so its row-level membership must lower:
@@ -9,7 +9,7 @@ library FhirValueSetQuery version '1.0.0'
 // Diabetes Condition (c2) AND one non-Diabetes Condition (c1, which must be filtered OUT), p2 has
 // only a non-Diabetes Condition (empty list), p3 has none (empty list). The return projects
 // `C.subject.reference` (a stable string both sides render identically — sidestepping the FHIR
-// `.id` qualification quirk, an orthogonal Phase-6 lineage concern): if filtering were broken and
+// `.id` qualification quirk, an orthogonal lineage concern): if filtering were broken and
 // kept c1 too, p1's list would have TWO elements, so the value still proves the row-level filter.
 using FHIR version '4.0.1'
 include FHIRHelpers version '4.0.1' called FHIRHelpers

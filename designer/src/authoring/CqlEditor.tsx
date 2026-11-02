@@ -59,7 +59,7 @@ export function CqlEditor({ value, onChange, readOnly = false, theme, inline, on
       onChange={(next) => onChange(next ?? "")}
       onMount={(editor) => {
         if (inline) editor.focus();
-        // Bound only when asked for: a bound Escape is no longer Monaco's (multi-cursor, selections).
+        // Bound only when asked for: a bound Escape overrides Monaco's own use of Escape (multi-cursor, selections).
         if (escape.current) editor.addCommand(monaco.KeyCode.Escape, () => escape.current?.(),
           "!suggestWidgetVisible && !findWidgetVisible && !parameterHintsVisible");
       }}

@@ -16,8 +16,7 @@ import java.util.concurrent.Executors
   * (`SVC-COMPILE-ENDPOINT` / `SVC-API-HOST`, `compiler/docs/compiler-service.md`).
   *
   * One JVM endpoint serving the engine's compile ops over HTTPS-shaped REST/JSON (`SVC-PROTOCOL`),
-  * reconciled to the engine's **SQL-script backend** (`EXEC-SQL-BACKEND`, 2026-07 — supersedes the
-  * plan-proto model):
+  * reconciled to the engine's **SQL-script backend** (`EXEC-SQL-BACKEND`):
   *   - authoring:  POST /translate       {cql, includes?}                 -> {elm, diagnostics, ok}
   *   - runtime:    POST /compile-sql      {elm|cql, target?, boundaries?}  -> {statements:[{name,kind,sql}], target, defines, shapes}
   *   - pipeline:   POST /compile-pipeline {elm|cql, boundaries?, ...}      -> {datasets:[{name,target,reads,query,statements}]}
@@ -299,7 +298,7 @@ final class CompilerRouter(service: CompileService, token: Option[String],
 
   /** The compile-once PIPELINE PLAN (`PIPE-SQL-DAG-REUSE`): one dataset recipe per materialized define,
     * `{name, target, reads, query, statements}`. The deployed SDP turns each recipe into one
-    * `@dp.materialized_view` (no per-node `cql()`, `SVC-SDP-PACKAGE`). Session-free; failure is a loud 400. */
+    * `@dp.materialized_view` (no per-node `cql()`). Session-free; failure is a loud 400. */
   private def compilePipeline(body: String): HttpResult =
     try {
       val plan = service.compilePipeline(CompileRequest.fromJson(body))
@@ -330,7 +329,7 @@ final class CompilerRouter(service: CompileService, token: Option[String],
     } catch { case t: Throwable => HttpResult.error(400, t) }
 
   /** The neutral pipeline graph — the parameterized metadata-driven SDP reads this to build its dataset
-    * DAG dynamically (`SVC-SDP-PACKAGE`). Session-free; failure is a loud 400. */
+    * DAG dynamically. Session-free; failure is a loud 400. */
   private def describe(body: String): HttpResult =
     try {
       HttpResult.json(200, CompilerRouter.graphJson(service.describe(CompileRequest.fromJson(body)), compilerVersion))
@@ -338,7 +337,7 @@ final class CompilerRouter(service: CompileService, token: Option[String],
 
   /** The canonical `__resource` mount DDL per FHIR type (`SVC-RESOURCE-SCHEMA`) — the schema a data
     * seeder needs to stand up a contract-correct `retrieve_<Type>` on the `(__subject_id, __resource)`
-    * mount contract (`DATA-CONTRACT` / `DATA-RETRIEVE-VIEW`) WITHOUT re-deriving the engine's FHIR model.
+    * mount contract (`DATA-CONTRACT` / `BIND-CONTRACT`) WITHOUT re-deriving the engine's FHIR model.
     * Pure model derivation from the STATIC schema (`ResourceStruct.structType`), so it stays Spark-free
     * (`EXEC-SQL-BACKEND`) — no `SparkSession`, only the catalyst `StructType` on the runtime classpath.
     * The engine is a CALLED public API here, never edited (`APP-DECOUPLE`).

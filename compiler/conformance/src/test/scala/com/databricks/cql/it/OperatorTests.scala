@@ -6,7 +6,7 @@ import org.w3c.dom.{Element, Node}
 import javax.xml.parsers.DocumentBuilderFactory
 import scala.collection.mutable.ArrayBuffer
 
-/** PHASE-7 Stage 4 — the vendored `cqframework` CQL operator test suite, parsed into cases
+/** The vendored `cqframework` CQL operator test suite, parsed into cases
   * (`CONF-GATE-OPERATOR`). The suite ([cql-tests, Apache-2.0](src/test/resources/cql-tests)) is the
   * official per-operator conformance corpus: each `<test>` is a single CQL `<expression>` with the
   * spec-declared `<output>`. We turn each case into a `define` and run it through the SAME engine
@@ -182,7 +182,7 @@ object OperatorTests {
     * here LOUDLY (not silently) so they are not forgotten. Each is a real correctness defect the
     * operator gate caught; fixing the engine then removes the entry and the case starts gating.
     *
-    * EXEC-SQL-DECIMAL-STEP (FIXED 2026-07): the SQL lowering of `Predecessor`/`Successor`/`HighBoundary`
+    * EXEC-SQL-DECIMAL-STEP: the SQL lowering of `Predecessor`/`Successor`/`HighBoundary`
     * over `Decimal` once dropped CQL's decimal precision step (10^-8) / boundary padding — e.g.
     * `predecessor of 1.0` yielded `1` where CQL requires `0.99999999`. Root cause: decimal literals
     * lower to DECIMAL(38,8), and Spark's addition of two (38,8) operands overflows precision 38 and

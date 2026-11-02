@@ -1,7 +1,7 @@
 """SPEC-METRIC, SPEC-ATTRITION — the relation-shape rules both result readers share.
 
 Every case here is measured against a live results schema
-(``<results catalog>.examplemeasure_1_0_0_081b9dc0``, 2026-08-03) rather than assumed, because
+(``<results catalog>.examplemeasure_1_0_0_081b9dc0``) rather than assumed, because
 the assumption is what the rules replace: that a relation is one row per subject, and that the value
 column is called ``__val``.
 """

@@ -2,7 +2,7 @@ library ChoiceTypes version '1.0.0'
 
 // Choice types: a value of one of several statically-known types (LANG-CHOICE). Sources here are
 // conditionals whose branches differ in type and a Union of differently-typed lists. Encoded as a
-// discriminated struct; `as`/`is` read the discriminator and project to a concrete type. (Phase 4.)
+// discriminated struct; `as`/`is` read the discriminator and project to a concrete type.
 
 define "HetIfInt": if true then 1 else 'x'
 define "HetIfStr": if false then 1 else 'x'

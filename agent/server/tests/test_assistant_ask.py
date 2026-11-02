@@ -251,7 +251,7 @@ class TestProvenance:
         assert _run(server, client).invocations[0].provenance == "context"
 
     def test_the_handle_travels_so_the_answer_can_be_reproduced(self, server):
-        # SVC-TOOL-ADDRESS — the citation is the address, never a conversation id, and it is lifted
+        # The citation is the address, never a conversation id, and it is lifted
         # onto the invocation rather than left inside a payload the client does not parse.
         client = _FakeClient([
             SimpleNamespace(content="", tool_calls=[_tool_call("c1", "get_output", {
@@ -271,7 +271,7 @@ class TestProvenance:
 
 
 class TestEventStream:
-    """APP-ASSISTANT — the loop reports each tool AS IT LANDS (`THEME-GLASSBOX`).
+    """APP-ASSISTANT — the loop reports each tool AS IT LANDS.
 
     A real answer is a SEQUENCE of calls, so a client that only saw the end would show a spinner for
     the whole investigation. What the reader watches is the same evidence the finished answer cites.

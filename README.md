@@ -173,7 +173,7 @@ Spark server, and the build checks it (`./gradlew checkNeutrality`).
 | Next | A synthetic demo population as a free Marketplace listing (`DATA-SYNTH-MARKETPLACE`). Care-gap agents: CQL probes derived from a measure's own logic explain each failure, computed in bulk, as the caller (`AGENT-CARE-GAPS`) |
 | Next | Genie One integration: ask a population question from Genie One, and the agent's research tools answer it as the signed-in user (`AGENT-RESEARCH-TOOLS`, `DEPLOY-AGENT-REGISTRATION`). More agentic features: CQL and measurement packaged as composable agents for Genie, custom apps and third-party systems (`SVC-AGENTS`) |
 | Through 2026 | The remaining upstream operator tests, and a published CQL support table |
-| Later | Scale acceptance for durable calculations (`CLIENT-DURABLE-VALIDATE`). Natural-language authoring in the Designer (`APP-CREATE-NL`) |
+| Later | Scale acceptance for durable calculations (`RUN-CLIENT-DURABLE`). Natural-language authoring in the Designer (`APP-CREATE-NL`) |
 
 
 ## Repository layout

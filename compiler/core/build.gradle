@@ -1,4 +1,4 @@
-// PHASE-0 / PHASE-10 (BUILD-MODULES) — compiler: a multi-pass compiler over a typed IR
+// BUILD-MODULES — compiler: a multi-pass compiler over a typed IR
 // emitting a lazy Spark plan (Connect proto + dataset-graph metadata), plus the CQL operator
 // semantics it lowers to. PURE lowering — NO EXECUTION. ARCH-PURITY is a MODULE WALL: no EXECUTING
 // Materializer is on this module's classpath — the staging impl (`localCheckpoint` + temp views) lives
@@ -7,7 +7,7 @@
 // builds plan references + records the cost decision, so the metadata (graph shape + boundaries) this
 // repo DESCRIBES is computed here without running anything. Its PUBLIC API surface is CQL
 // (TECH-ELM-INPUT): it translates CQL→ELM in-process and ships that capability — ELM is an internal
-// IR-input. (Renamed from cql-spark-engine, PHASE-10.)
+// IR-input.
 //
 // Holds (see modules.md):
 //   * the in-process CQL→ELM front end (`com.databricks.cql.translate`, TECH-ELM-INPUT);

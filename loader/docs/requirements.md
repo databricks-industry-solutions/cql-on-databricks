@@ -2,8 +2,8 @@
 
 Requirements the loader owns. Requirements that span features, and the rule for where a requirement
 lives, are in [`docs/requirements.md`](../../docs/requirements.md). Each ID is stable, unique across
-every registry, and cited from code (`PROC-CITE-REQ`). A requirement that stops being true moves to
-[Retired](#retired) with a one-line reason, so old citations still resolve.
+every registry, and cited from code (`PROC-CITE-REQ`). A requirement that stops being true is
+deleted, with every citation of it (`PROC-CURRENT-DEFINITION`).
 
 ## Content
 
@@ -11,29 +11,17 @@ Importing, storing and resolving measure content and value sets.
 
 | ID | Requirement |
 |---|---|
-| `CONTENT-BAKE-AUTHORITY` | SUPERSEDED by `DATA-ENVIRONMENT-LAYOUT`: the import writes the environment's standard store schemas; there is no `example_measures` schema. |
-| `CONTENT-CATALOG-LAYOUT` | SUPERSEDED by `DATA-ENVIRONMENT-LAYOUT`: content lives in an environment's standard schemas, not in authority-named schemas. |
 | `CONTENT-FHIR-VARIANT` | Knowledge tables store each FHIR resource in one `VARIANT` column, so nothing is lost and no schema is generated. A typed struct is not used: the Measure resource alone has thousands of fields. |
-| `CONTENT-FIXTURE-ONE-PER-SUBJECT` | SUPERSEDED: the importer does not load test cases. |
-| `CONTENT-IG-ENGINE-ALIGN` | SUPERSEDED: nothing is fetched from an implementation-guide repository. |
 | `CONTENT-IMPORT-MEASURES` | One function, `cql_databricks.data_bindings.measure_import.import_measures` in the `cql-databricks` client, imports measures: FHIR `Measure`, `Library` and `ValueSet` resources (or Bundles of them) and value-set code rows the caller has read, into the `knowledge_store` and `terminology_store` of the environment the caller names (`DATA-ENVIRONMENT-LAYOUT`). It reads no file and fetches nothing. Before writing it checks every problem and reports them together: a Measure naming a Library not in the import or the schema, a value set a library declares with no codes in the import or the terminology table, a ValueSet that needs expanding. Other resource types are counted as skipped. A dry run checks and writes nothing. |
 | `CONTENT-IMPORT-SKILL` | One of the agent's skills (`SVC-MCP-SKILLS`), `agent/skills/import-quality-measures/SKILL.md`, guides a user through importing quality measures with `CONTENT-IMPORT-MEASURES`: reaching and reading their content, getting value-set codes from a terminology service they name, finding targets they may write and the deployment can see, a dry run, the import and a compile check. It names no content source; the agent reasons out where the content is from what the user says. It asks the user to confirm they may use the content under its terms. Served by `get_skill`, and published by `DEPLOY-AGENT-SKILLS` to the workspace skills folder and as a Unity Catalog skill. It installs the client wheel alone and holds no deployment value, since it is served verbatim: it finds the runtime Volume by its comment, and asks the user for the deployment's catalog scopes. |
-| `CONTENT-IMPORT-TARGET-TAG` | SUPERSEDED by `DATA-ENVIRONMENT-LAYOUT`: the import writes an environment's store tables, and tags nothing. |
 | `CONTENT-IMPORTER-FHIR-SCHEMAS` | The shipped sources' FHIR resource schemas (`scripts/deploy/shipped_sources/src/shipped_sources/resource-schemas.json`) are the compiler's `dumpResourceSchemas` output, committed, so the synthetic population lands in the shape the compiler reads (`DATA-MODEL-SCHEMA`). `./gradlew checkResourceSchemas`, part of `checkAll`, fails when they differ; `./gradlew updateResourceSchemas` refreshes the copy. |
 | `CONTENT-INCREMENTAL` | MERGE on (url, version) for Measure/Library (upsert). Re-runnable without data loss. A value set's codes replace that value set's earlier codes whole, keyed on `valueset_id`, so two imports sharing a value set keep one copy and an import never deletes a value set it did not bring. |
 | `CONTENT-INGEST` | Standalone ETL tool loads FHIR Measure/Library resources into Unity Catalog; zero dependency on app or engine. It fetches nothing. One import function (`CONTENT-IMPORT-MEASURES`) takes the resources a caller has read; the deploy loads `examples/` through it (`CONTENT-EXAMPLE-PRELOAD`). |
 | `CONTENT-LAKEHOUSE-STANDARD-ONLY` | Published tables are standardized FHIR resources or do not belong. Junctions and denormalizations are derived downstream. The published schema has no measure_library or valueset_ref. Valueset keeps tall shape (engine binding contract). |
 | `CONTENT-MARKETPLACE-READY` | Table layout and provenance columns designed for eventual Databricks Marketplace publishing. |
 | `CONTENT-MEASURE-LIBRARY-LINK` | The link from a Measure to its root CQL Library is derived from the Measure resource when read. It is an index with no truth of its own. |
-| `CONTENT-MEASURE-NAME-PUBLISHED` | SUPERSEDED: there are no fixtures and no pins, so there is no rename to record. |
 | `CONTENT-NO-DERIVED-COLUMNS` | A knowledge table holds the resource, its identity and its provenance only. `url` and `version` are generated columns. Anything else derived from the resource is computed when read. |
-| `CONTENT-PIN-ASSERT` | SUPERSEDED: the importer fetches no packages, so there is no pin to assert against. |
-| `CONTENT-PIN-IG-TEST-DIR` | SUPERSEDED: there are no pins. |
-| `CONTENT-PIN-LOCAL-EDIT` | SUPERSEDED: the importer fetches no packages; the measurement period is a run-time parameter (`LANG-PARAMETER`). |
-| `CONTENT-PIN-LOCK` | SUPERSEDED: the importer fetches no packages, so there is no lock. |
-| `CONTENT-RUN-ALL-DEFAULT` | SUPERSEDED: the importer has one input and no flags. |
 | `CONTENT-SHARE-FAITHFUL` | Published knowledge stays faithful to FHIR spec including where inconvenient (base64 stays base64). Ergonomics live downstream of the share. Consumers derive optimized forms. |
-| `CONTENT-TERMINOLOGY-SCHEMA` | SUPERSEDED by `DATA-ENVIRONMENT-LAYOUT`: value sets live in an environment's `terminology_store`; several environments share one copy through a view over another's store. |
 
 ## Synthetic data
 
@@ -68,24 +56,4 @@ The data sources the loader lands.
 
 | ID | Requirement |
 |---|---|
-| `CONFORMANCE-SCHEMA` | SUPERSEDED by `CONTENT-EXAMPLE-PRELOAD` and `DATA-SAMPLE-SOURCE`, which land the example patients as one data source: the per-measure conformance sources were built from official test cases fetched from GitHub, which are removed. The compiler's conformance corpus stays internal to `compiler/`. |
-| `DATA-CONFORMANCE-CORPUS` | SUPERSEDED by `DATA-SAMPLE-SOURCE`: the deck corpus existed only for published test content, which is removed. |
-| `DATA-DEMO-POPULATION` | SUPERSEDED by `DATA-SYNTH-SMALL`, which reuses its tag and schema name: the demo population and its generator were built on an official measure's shape, which is removed. Synthetic populations are re-synthesized from the repository's own measures (`DATA-SYNTH-LARGE`). |
-| `DATA-SAMPLE-SOURCE` | SUPERSEDED by `DATA-SYNTH-SMALL`: one example set. The 48 hand-written patients remain only as conformance fixtures. |
 
-## Retired
-
-| ID | Status |
-|---|---|
-| `CONTENT-FHIR-IG` | Retired: IG packages are not fetched from CI builds. See `CONTENT-IG-ENGINE-ALIGN`. |
-| `CONTENT-STRUCT-RENDER-FIDELITY` | Retired: resources are stored as `VARIANT`, which drops nothing. See `CONTENT-FHIR-VARIANT`. |
-| `CONTENT-STRUCT-ROUNDTRIP` | Retired: resources are stored as `VARIANT`, which drops nothing. See `CONTENT-FHIR-VARIANT`. |
-| `DATA-SYNTH-1M` | SUPERSEDED by `DATA-SYNTH-LARGE`: renamed, because the population grows with each measure's cohort, so a count in its name goes stale. |
-| `DATA-SYNTHEA-SOURCE` | SUPERSEDED by `SYNTH-PDS-MODULE`: the synthesizer generates the synthetic sources from measure logic, and nothing used Synthea. The importer's Synthea path and the Synthea seeder are removed. |
-| `MOUNT-MEASURE-NAME-MAP` | Retired: the published name is stored at ingest. See `CONTENT-MEASURE-NAME-PUBLISHED`. |
-| `SYNTH-DETERMINISM` | Retired: Proposed, see `SYNTH-PDS-DETERMINISM`. |
-| `SYNTH-FORMAT-EMITTER` | Retired: Proposed multi-format support. Not implemented. |
-| `SYNTH-MEASURE-PROFILE` | Retired: Proposed generation profiles. Not implemented. |
-| `SYNTH-REALISM` | Retired: Proposed realism layer. Not implemented. |
-| `SYNTH-ROUNDTRIP` | Retired: Proposed cross-format parsing. Not implemented. |
-| `SYNTH-SINGLE-SOURCE` | Retired: Proposed design principle. Not implemented. |

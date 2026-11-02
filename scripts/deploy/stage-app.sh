@@ -124,7 +124,7 @@ if [ -n "$CQL_APP_VERSION" ] && [ -n "$(git -C "$here" status --porcelain 2>/dev
 fi
 export CQL_APP_VERSION
 
-# Substitute placeholder env vars into the STAGED app.yaml (PIPE-DEPLOY-CATALOG-VARS). deploy.sh exports
+# Substitute placeholder env vars into the STAGED app.yaml. deploy.sh exports
 # BUNDLE_VAR_* before calling
 # this script; a var it leaves unset has its env entry DROPPED from the staged descriptor
 # (PIPE-DEPLOY-NO-PLACEHOLDER-ENV) so config.py's own fallback chain is what applies.
@@ -133,7 +133,7 @@ python3 -c '
 import os, re, sys
 p = sys.argv[1]
 s = open(p).read()
-# Catalog + warehouse (PIPE-DEPLOY-CATALOG-VARS) — sourced from BUNDLE_VAR_* exports.
+# Catalog + warehouse — sourced from BUNDLE_VAR_* exports.
 mapping = {
     "__UC_CATALOG__": os.environ.get("BUNDLE_VAR_uc_catalog", ""),
     "__CQL_RUNTIME_CATALOG__": os.environ.get("BUNDLE_VAR_uc_catalog", ""),

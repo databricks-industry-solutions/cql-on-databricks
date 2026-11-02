@@ -113,7 +113,7 @@ def open_result_set(query: CqlQuery | PreparedCalculation, *targets: str, **opti
 
 def archive_session(session_id: str, *, destination: tuple[str, str],
                     spark=None, run: SqlRunner | None = None) -> None:
-    """RUN-CLIENT-PORTABLE-HANDLE — a portable reference is released by discarding it in its owner."""
+    """A portable reference is released by discarding it in its owner."""
     raise ValueError("portable handles have no server-side session to archive; discard the client reference")
 
 

@@ -1,10 +1,10 @@
 library FhirPeriodWhere version '1.0.0'
 
-// PHASE-6 (Phase-5 carried item): a FHIR Period-typed property in a temporal `where`. `Encounter.period`
+// A FHIR Period-typed property in a temporal `where`. `Encounter.period`
 // is a FHIR Period (a start/end interval), so `E.period during "Measurement Period"` is an
 // interval-in-interval relation — the translator wraps the Period in FHIRHelpers.ToInterval. Lowering
 // ToInterval to the engine's `struct(low, high)` temporal interval lets the existing Allen-relation
-// algebra (LANG-INTERVAL) evaluate it. Previously ToInterval was unlowered (failed loud).
+// algebra (LANG-INTERVAL) evaluate it.
 //
 // Data discriminates: p1 has e1 (period in MP 2023) + e1b (2022, out) → [finished]; p2 e2 (2023, in)
 // → [planned]; p3 e4 (2021, out) → [].

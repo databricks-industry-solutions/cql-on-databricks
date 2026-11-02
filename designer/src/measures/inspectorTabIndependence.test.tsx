@@ -1,7 +1,7 @@
 // SPEC-REF-LENS / APP-INSPECTOR — READING A LENS MUST NOT DISTURB THE PANE. Not its tab, and above all
 // not its PIN.
 //
-// Reported 2026-08-08 as "switching the popup lens's tab also switches the pinned inspector's tab". The
+// The reported failure: "switching the popup lens's tab also switches the pinned inspector's tab". The
 // tabs were never shared — `useInspectorTab` is per-instance, and the first three cases below pin that in
 // both directions. The actual defect was worse and is the last case: pressing a tab inside the lens
 // CLEARED the pin, so the pane fell back to "Whole document" and looked like it had followed the lens.
@@ -105,8 +105,8 @@ const REF = ".mw-defref, button.cql-link:not(.vs)";
  *  survive the fixture growing or being re-narrated.
  *
  *  The closed CQL blocks are OPENED first (`SPEC-CQL-VIEW` closes them under prose), because a criterion's
- *  tokens are where the references now live: the population "Builds on" row that used to carry one
- *  outside the code is gone (`SPEC-NO-UI-PROSE`). */
+ *  tokens are where the references live. There is no population "Builds on" row outside the code
+ *  (`SPEC-NO-UI-PROSE`). */
 function refSection(container: HTMLElement, exclude?: string) {
   for (const t of container.querySelectorAll<HTMLButtonElement>('.mw-cqlblock-toggle[aria-expanded="false"]')) {
     fireEvent.click(t);
@@ -118,10 +118,10 @@ function refSection(container: HTMLElement, exclude?: string) {
   return section;
 }
 
-/** Open the lens on a reference INSIDE a criterion. These used to press the population "Builds on" row,
- *  which is gone (`SPEC-NO-UI-PROSE`) — and pressing a reference inside a section was always the
- *  stronger gesture: it is the one the reported defect below was filed against, because the click
- *  bubbles through the criterion's own handler on its way up. */
+/** Open the lens on a reference INSIDE a criterion. There is no population "Builds on" row to press
+ *  (`SPEC-NO-UI-PROSE`). Pressing a reference inside a section is the stronger gesture: it is the one
+ *  the reported defect below was filed against, because the click bubbles through the criterion's own
+ *  handler on its way up. */
 function openLensOnReference(container: HTMLElement) {
   const section = refSection(container);
   fireEvent.click(section.querySelector<HTMLButtonElement>(REF)!);

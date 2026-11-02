@@ -1,4 +1,4 @@
-// PHASE-S1 / APP-SHELL — React SPA root.
+// APP-SHELL — React SPA root.
 // APP-URL-ROUTING — BrowserRouter enables URL-driven navigation so refresh preserves state.
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";

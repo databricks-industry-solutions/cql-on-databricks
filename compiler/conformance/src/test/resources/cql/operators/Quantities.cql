@@ -2,8 +2,7 @@ library Quantities version '1.0.0'
 
 // Quantities carry a UNIT; arithmetic and comparison require UCUM conversion
 // (LANG-QUANTITY) — comparing mg to g is a conversion, not a raw number compare. A
-// quantity is encoded as a (value, unit) struct. (UCUM conversion lands in Phase 3; these
-// fixtures pin the surface the conversion must satisfy.)
+// quantity is encoded as a (value, unit) struct. These fixtures pin the surface a UCUM conversion must satisfy.
 
 define "WeightInKg": 70 'kg'
 define "HeightInCm": 180 'cm'

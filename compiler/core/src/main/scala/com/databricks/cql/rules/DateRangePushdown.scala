@@ -16,8 +16,8 @@ import com.databricks.cql.ir._
   * the precise `where` downstream (section 7 step 6).
   *
   * Idempotent + convergent (ARCH-HAZARDS): only a retrieve with an empty `dateRange` is folded, one
-  * conjunct per application. Result-preservation is gated by the optimized-vs-unoptimized self-diff
-  * (CONF-GATE-SELFDIFF): the unoptimized lowering keeps the conjunct as a column `where` filter.
+  * conjunct per application. Result-preservation is checked by the optimized-vs-unoptimized self-diff:
+  * the unoptimized lowering keeps the conjunct as a column `where` filter.
   */
 object DateRangePushdown extends NodeRule {
   val name = "DateRangePushdown"

@@ -23,7 +23,7 @@ relation is readable in one statement, needs no function resolution, and is a
 
 There is no source column: the relation is registered per Data Source, so which source it describes
 is the address, not a column (the same reasoning that keeps measurement period and data source id
-out of `RUN-FINGERPRINT` — they are part of the address).
+out of the run fingerprint — they are part of the address).
 
 **BOTH SHAPES SATISFY IT, and that is deliberate.** The relation may be an append-only LOG the
 loader writes one row to per change, or a VIEW that derives the marks from the tables themselves.

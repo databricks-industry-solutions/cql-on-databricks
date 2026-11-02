@@ -140,7 +140,7 @@ final class DurablePlanSpec extends AnyFunSuite {
     }
   }
 
-  test("CLIENT-PROVIDER-IDENTITY: provider identities are hashed even where the SQL is identical") {
+  test("CLIENT-RESOLVER-IDENTITY: provider identities are hashed even where the SQL is identical") {
     val plan = compile(durable = false)
     def fingerprints(data: Seq[String], terminology: Seq[String]) =
       DurablePlan.annotate(plan, Set.empty, boundTo = DurablePlan.Providers(data, terminology))

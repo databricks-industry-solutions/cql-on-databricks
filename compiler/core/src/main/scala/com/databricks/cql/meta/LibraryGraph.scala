@@ -6,7 +6,7 @@ import com.databricks.cql.passes.{BuildInfo, Optimize, Pipeline, RetrieveCatalog
 import com.databricks.cql.spark.SystemColumns
 import com.databricks.cql.transpiler.lower.{CallSite, SqlEvalEnv, SqlFrameLowering}
 
-/** A NEUTRAL, pipeline-agnostic description of a CQL library's compiled graph (PHASE-10). This repo does
+/** A NEUTRAL, pipeline-agnostic description of a CQL library's compiled graph. This repo does
   * not generate a pipeline — it DESCRIBES one: an external pipeline (e.g. the parameterized SDP in the
   * accelerator) reads this to build and drive its own dataset graph, decide parallelism, and reuse shared
   * libraries across measures. Deliberately carries NO pipeline concepts (no `@dp`, no SDP, no provider).
@@ -31,8 +31,8 @@ final case class LibraryGraph(
     compilerVersion: String,
     terminologyVersion: Option[String] = None,
     /** EMIT-DESCRIBE-ENCODING: the het-Choice carrier ENCODING the library was described/lowered against —
-      * always `"struct"` (the flat native carrier, EMIT-SQL-FLAT-CHOICE, is the sole encoding since the
-      * VARIANT alternative was retired, EMIT-SQL-VARIANT-CHOICE RETIRED). Kept in the deploy contract (the
+      * always `"struct"` (the flat native carrier, EMIT-SQL-FLAT-CHOICE, is the sole encoding.
+      * Kept in the deploy contract (the
       * Python client reads it) so a future encoding change stays a described, validated boundary. */
     encoding: String = "struct",
     /** EMIT-DESCRIBE-ENCODING / EMIT-SQL-RETRIEVE-DEMAND-BOUND: per FHIR resource TYPE, the top-level
@@ -72,7 +72,7 @@ final case class LibraryGraph(
   *
   * `describe` reading the SAME classifier the runtime lowers with (`SqlFrameLowering`) is what keeps the
   * reported boundary set EQUAL to what the deployed pipeline actually materializes — the two are one
-  * function, so they cannot drift (the proto cost model and the SQL classifier previously could). */
+  * function, so they cannot drift. */
 object LibraryDescribe {
 
   /** Describe `elm` under the injected environment. `overrides`/`grainFirst` must match the deploy config so the
@@ -117,7 +117,7 @@ object LibraryDescribe {
 
     // EMIT-DESCRIBE-ENCODING: publish the encoding + the per-resource demand contract the runtime/customer
     // validates against (the SAME RetrieveDemand the lowering wired).
-    val encoding = "struct" // EMIT-SQL-FLAT-CHOICE is the sole het-Choice encoding (VARIANT retired)
+    val encoding = "struct" // EMIT-SQL-FLAT-CHOICE is the sole het-Choice encoding
     val typeOf: Expr => CqlType = { val ctx = TypeEncoding.ctxOf(optimized); e => TypeEncoding.typeOf(e, ctx) }
     val demand = RetrieveDemand.analyze(optimized, typeOf).map {
       case (rt, RetrieveDemand.Full)          => rt -> Seq("*")

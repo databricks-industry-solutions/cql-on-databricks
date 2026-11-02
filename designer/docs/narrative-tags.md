@@ -124,9 +124,8 @@ The server reads the measure's published `Measure` resource from tagged knowledg
 The resource covers the Overview only. It has no field for a single define, so Concepts and Rules come from
 CQL tags or have no prose.
 
-A library with no tags and no Measure resource shows no prose. Generated narration, cached per user,
-was removed (`APP-NARRATIVE-OVERLAY`, superseded), and so were the hand-written instances that once stood
-in for it (`SPEC-STATIC-OVERLAY`, superseded).
+A library with no tags and no Measure resource shows no prose. The page shows no generated narration: the
+assistant explains a measure in its own drawer (`DOC-EXPLAIN-REMOVE`).
 
 ### Precedence
 
@@ -186,8 +185,6 @@ is dropped. That reading is not built.
 |---|---|
 | `SPEC-NARRATIVE-TAGS` | this document |
 | `SPEC-MEASURE-METADATA` | "The measure's FHIR resource" |
-| `APP-NARRATIVE-OVERLAY` | Superseded by `DOC-EXPLAIN-REMOVE` |
-| `SPEC-STATIC-OVERLAY` | Superseded by `APP-NARRATIVE-OVERLAY` |
 | `DOC-EXPLAIN-REMOVE` | "Provenance" |
 | `SPEC-NARRATIVE-DEVICES` | "Narrative devices" |
 | `SPEC-COMMENT-NARRATION` | "Free-text comments" |

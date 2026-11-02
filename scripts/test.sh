@@ -109,7 +109,7 @@ if [ "$mode" = "integration" ] || [ "$mode" = "all" ]; then
     [ -n "$catalog" ] || { echo "  could not resolve uc_catalog from the bundle"; return 1; }
     # CLIENT-SESSION-RESOLVERS: notebook 07 writes its test files under the runtime Volume, which the deployer can
     # write, in a folder of its own.
-    # CLIENT-DEFAULT-RESOLVER: the provider live tests run the Designer's and the agent's paths on this warehouse.
+    # The provider live tests run the Designer's and the agent's paths on this warehouse.
     warehouse="$(jqpy "print(((d.get('variables') or {}).get('warehouse_id') or {}).get('value') or '')")"
     [ -n "$warehouse" ] || { echo "  could not resolve warehouse_id from the bundle"; return 1; }
     app="$(jqpy "print(d['resources']['apps']['cql_databricks_compiler']['name'])")" || return 1

@@ -1,4 +1,4 @@
-"""EVALUATOR-CLIENT-EVALUATE, `DEC-ONE-VERB-ENGINE-OPTION` — which engine runs a ``cql()`` query.
+"""`DEC-ONE-VERB-ENGINE-OPTION` — which engine runs a ``cql()`` query.
 
 One verb, ``cql()``, and an engine setting resolved like every other session setting (`BUILD-RESOLVE`):
 ``cql(engine=…)`` > ``connect(engine=…)`` / ``builder.engine(…)`` > ``spark.cqldatabricks.engine`` >

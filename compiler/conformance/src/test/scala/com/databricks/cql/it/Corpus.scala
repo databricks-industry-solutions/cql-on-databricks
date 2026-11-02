@@ -12,9 +12,7 @@ import java.io.File
   * spec-faithfulness gate runs over (PROC-DRY): engine vs the Java reference on the OPTIMIZED plan
   * (CONF-GATE-MEASURE, [[SqlDifferentialSpec]]). Measures are DISCOVERED, never listed: every directory under
   * `data/measures/` with an `answer-key.json` is a measure, and adding one gates it with no code change
-  * (CONF-MEASURE-DISCOVERY). (The former
-  * optimizer-faithfulness self-diff, CONF-GATE-SELFDIFF, was retired 2026-07 — its coverage folded
-  * into the reference gate, which runs the optimized path.)
+  * (CONF-MEASURE-DISCOVERY). The reference gate runs the optimized path.
   *
   * Each [[Entry]] carries a human label (with the requirement ids it exercises) and a THUNK that
   * builds the [[Differential.Case]] — deferred so `SparkConnect.session()` / file reads only happen

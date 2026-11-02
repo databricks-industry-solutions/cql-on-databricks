@@ -8,8 +8,8 @@
 # MAGIC
 # MAGIC That is how a measure is actually written. You do not start with a content repo; you start with a
 # MAGIC question, split the parts that other measures will want to share into their own library, and publish
-# MAGIC once the numbers hold up. Until now the only way to split logic across cells was to publish it to a
-# MAGIC folder first, which is a strange thing to have to do to a draft.
+# MAGIC once the numbers hold up. Splitting logic across cells does not mean publishing it to a folder first,
+# MAGIC which would be a strange thing to have to do to a draft.
 # MAGIC
 # MAGIC **A `%%cql` cell that declares a `library` header is a library.** A later cell can `include` it by
 # MAGIC name, exactly as it would include something out of a Git Folder. The last section publishes the draft

@@ -101,9 +101,9 @@ class HandleTests(unittest.TestCase):
                              '{"library": {"identifier": {"id": "Sample"}}}')
 
     def test_cql_resource_without_sibling_elm_falls_back_to_cql_text(self):
-        """A `.cql` resource with NO pre-translated sibling used to raise FileNotFoundError, which made
-        `client.cql("measures/Foo.cql")` unusable against any checkout of published content (content repos
-        ship CQL, not ELM). It now binds the CQL TEXT and lets the service translate."""
+        """A `.cql` resource with NO pre-translated sibling binds the CQL TEXT and lets the service translate.
+        Content repos ship CQL, not ELM, so `client.cql("measures/Foo.cql")` works against any checkout of
+        published content."""
         client = _client(_FakeProvider())
         with tempfile.TemporaryDirectory() as d:
             path = pathlib.Path(d) / "Solo.cql"
@@ -121,8 +121,8 @@ class HandleTests(unittest.TestCase):
         self.assertIsNone(client.cql("ScreeningMeasure")._lib.elm or None)
 
     def test_a_source_and_library_together_is_a_loud_error(self):
-        """Two bodies is a mistake, not a precedence question. Silently honoring one (it used to compile
-        `library=` and drop the source with no warning) is the quiet-wrong-answer class this surface
+        """Two bodies is a mistake, not a precedence question. Silently honoring one (compiling
+        `library=` and dropping the source with no warning) is the quiet-wrong-answer class this surface
         exists to avoid."""
         client = _client(_FakeProvider())
         with self.assertRaises(ValueError) as ctx:
@@ -236,11 +236,10 @@ class ExecTests(unittest.TestCase):
     def test_exec_arity_follows_the_CALL_not_the_librarys_contents(self):
         """BUILD-CLIENT-QUERY. A library with exactly ONE population must still give `exec()` a dict.
 
-        Previously the branch was `len(resolved_set) == 1`, so `exec()` returned a bare DataFrame for a
-        one-population measure and a dict for every other — meaning `for name, df in q.exec().items()`
-        worked on ScreeningMeasure and raised AttributeError on the next measure. It also made the planned switch to
-        authoritative populations metadata (a FHIR `Measure`) able to change the RETURN TYPE of released
-        caller code. Arity now depends only on how many targets the CALLER named.
+        Arity follows the CALL, not the library's contents: `exec()` returns a dict whatever the number of
+        populations the library resolves, so `for name, df in q.exec().items()` works on every measure. A planned
+        switch to authoritative populations metadata (a FHIR `Measure`) cannot change the RETURN TYPE of caller
+        code. Arity depends only on how many targets the CALLER named.
         """
         one_pop = _FakeProvider(defines=("Numerator", "DemographicAttribute"), materialized=())
         q = _client(one_pop).cql(cql='define "x": 1')

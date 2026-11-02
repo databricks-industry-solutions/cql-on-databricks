@@ -4,10 +4,9 @@ package com.databricks.cql.runtime
   * list / empty-list / null-state sentinels a grain-first list define collapses to. The value
   * REPRESENTATION is the consumer's job: the conformance harness renders `ujson.Value` for the
   * ground-truth diff (`Differential.UjsonResults`), a notebook might render display strings, etc. Keeps
-  * the collect surface free of any JSON/diff library (PHASE-10, BUILD-MODULES).
+  * the collect surface free of any JSON/diff library (BUILD-MODULES).
   *
-  * Formerly declared alongside the proto direct-execute kernel; extracted to its own file when the proto
-  * back end retired, since the SQL-path collector (`SqlDifferential.collect`) is now its sole user. */
+  * The SQL-path collector (`SqlDifferential.collect`) is its sole user. */
 trait ResultBuilder[V] {
   /** One collected cell (a scalar define's value, or one element of a list define). */
   def cell(raw: Any): V

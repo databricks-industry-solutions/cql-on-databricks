@@ -12,8 +12,8 @@ import org.scalatestplus.junit.JUnitRunner
   *  - every `handler` FQN resolves to a real public method on `…runtime.eval.CqlOps` with matching arity;
   *  - any `DECIMAL` in a declared type is `DECIMAL(38,18)` (the `java.math.BigDecimal` encoder precision —
   *    a mismatch here fails UC binding, `EXEC-UC-STRUCT-ARG`);
-  *  - the manifest covers the ENTIRE catalog (every UDF is UC-ready), and the retired `cql_choice_nav_*`
-  *    UDFs are gone from the catalog (choice nav is native, `EMIT-SQL-FLAT-CHOICE`);
+  *  - the manifest covers the ENTIRE catalog (every UDF is UC-ready), and no `cql_choice_nav_*`
+  *    UDF is in the catalog (choice nav is native, `EMIT-SQL-FLAT-CHOICE`);
   *  - `toJson` emits well-formed, non-empty JSON.
   * Pure JVM (no Spark session), so it runs in the compiler suite without the Connect server. */
 @RunWith(classOf[JUnitRunner])
@@ -58,7 +58,7 @@ class CqlUcManifestSpec extends AnyFunSuite {
   }
 
   test("the retired cql_choice_nav_* UDFs are gone from the catalog (EMIT-SQL-FLAT-CHOICE)") {
-    // Choice navigation lowers natively (flat demand-projection); the UDFs were retired.
+    // Choice navigation lowers natively (flat demand-projection); no UDF is needed.
     CqlRuntimeUdfs.catalog.keySet.foreach(n =>
       assert(!n.startsWith("cql_choice_nav"), s"$n should have been retired (native flat choice nav)"))
   }

@@ -49,10 +49,10 @@ def register_runtime_udfs(spark) -> bool:
         return False
     try:
         # Walk the py4j gateway one package segment at a time, DERIVED from `_CATALOG_CLASS` rather than
-        # spelled out again. Two spellings of one class name is how this broke during the monorepo rename:
-        # the dotted constant was updated and a hand-written `getattr` chain beside it was not, leaving the
-        # walk pointed at a package that no longer exists — and because every failure here is swallowed by
-        # design, it would have degraded silently to "UDFs never auto-register" rather than raising.
+        # spelled out again. Two spellings of one class name drift apart: a dotted constant and a hand-written
+        # `getattr` chain beside it can disagree, leaving the walk pointed at a package that does not exist — and
+        # because every failure here is swallowed by design, it would degrade silently to "UDFs never
+        # auto-register" rather than raising.
         catalog = jvm
         for segment in _CATALOG_CLASS.split("."):
             catalog = getattr(catalog, segment)

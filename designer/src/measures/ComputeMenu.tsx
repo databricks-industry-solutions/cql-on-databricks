@@ -6,7 +6,7 @@
 //
 // ONE ACT: Automatic covers compute-missing; Refresh is the one explicit act and recomputes everything.
 // Automatic and Manual are two marked options, not a checkbox (unchecked state reads ambiguously).
-// Compute is a real choice: a measure runs as SQL on a warehouse (`RUN-STATEMENT-EXEC`),
+// Compute is a real choice: a measure runs as SQL on a warehouse,
 // and the reader picks which warehouse.
 //
 // The execution PARAMETERS stay in the bar (`ExecParamBar`): they are changed while reading.

@@ -1,7 +1,7 @@
 // DESIGNER-TOP-BAR — ONE bar, three zones. These pin the parts of that promise a refactor could quietly
 // undo: one bar (no second strip, no wordmark, no module label, no File menu), the artifact selector leads
 // on the left, execution context sits in the CENTRE, and tour / appearance are two buttons at the right end
-// which SHOW their state (never rows behind an avatar). Settings is removed (APP-SETTINGS SUPERSEDED).
+// which SHOW their state (never rows behind an avatar). There is no Settings control.
 
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -50,11 +50,11 @@ describe("TopBar (DESIGNER-TOP-BAR)", () => {
   it("is one bar: the artifact selector and the bar tools, with no chrome strip", () => {
     const { container } = renderBar();
     expect(container.querySelectorAll(".mw-bar")).toHaveLength(1);
-    // The retired strip and its contents.
+    // No chrome strip and none of its contents.
     expect(container.querySelector(".mw-chrome")).toBeNull();
     expect(container.querySelector(".mw-brand")).toBeNull();
     expect(screen.queryByText("File")).toBeNull();
-    // The wordmark is gone.
+    // No wordmark.
     expect(screen.queryByText("CqlDatabricks")).toBeNull();
     // ...and so is the account menu: no avatar, no profile name, no popover to open for a toggle.
     expect(container.querySelector(".mw-avatar")).toBeNull();
@@ -123,7 +123,7 @@ describe("Navigator — the Open menu is the File surface (DESIGNER-TOP-BAR)", (
     render(<Navigator definition={DEFINITION} definitions={[]} onOpenDefinition={() => {}} />);
     fireEvent.click(screen.getByText("Example Measure"));
 
-    // The item whose only function was to open this very menu is gone.
+    // No item's only function is to open this very menu.
     expect(screen.queryByText(/Open from Catalog/)).toBeNull();
     for (const label of ["New measure", "New library", "Import CQL…"]) {
       expect(screen.getByRole("button", { name: new RegExp(label.replace("…", "")) })).toBeTruthy();

@@ -4,7 +4,7 @@ import org.junit.runner.RunWith
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.junit.JUnitRunner
 
-/** PHASE-7 Stage 4, Gate-1 translation layer (`CONF-GATE-OPERATOR`): every included operator test
+/** Gate-1 translation layer (`CONF-GATE-OPERATOR`): every included operator test
   * from the vendored `cqframework` suite must EITHER translate (CQL→ELM) and normalize to the engine
   * kernel, OR fail solely because it needs a node kind documented in
   * [[OperatorTests.UnsupportedNodes]]. No Spark server is needed, so this is the fast, hermetic

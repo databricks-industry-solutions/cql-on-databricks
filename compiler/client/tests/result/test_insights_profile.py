@@ -164,17 +164,14 @@ def test_cardinality_is_omitted_rather_than_sampled():
 
 
 def test_nothing_on_this_payload_is_fabricated_any_more():
-    """SUPERSEDES three tests that pinned the opposite, and the reversal is on evidence rather than
-    tidiness. `value_sets` is superseded by `SPEC-TERMINOLOGY-EXTRACT`, which reads real codes off the
-    define's own results; `temporal` is rendered by nothing since it left the Demographics tab; and the
-    race / ethnicity / payer cuts are now known to be UNDERIVABLE rather than merely underived — US Core
+    """`value_sets` is not fabricated: `SPEC-TERMINOLOGY-EXTRACT` reads real codes off the define's own
+    results. `temporal` is rendered by nothing. The race / ethnicity / payer cuts are UNDERIVABLE rather than merely
+    underived: US Core
     nests race and ethnicity under `extension[url=…].extension[url=ombCategory]` and the emitted
     extension struct is flat, so the accessor fails with `No such struct field 'extension'`
     (`DATA-INSIGHT-EXTRACTION`), and payer lives on Coverage, not Patient.
 
-    The old rule — keep a fabricated cut and MARK it, because removing it quietly shrinks a pane the
-    design was built around — was right while "no table answers this YET" was true. It is not true, and
-    an invented bar stops being the lesser evil against an absent one once the absence is a finding."""
+    A cut that is fabricated is MARKED; an absent cut is a finding, not a gap to fill."""
     profile, _ = _run(define="Example Results",
                       columns=LIST_VALUED, counts=(33, 80))
     assert profile.sampled == []

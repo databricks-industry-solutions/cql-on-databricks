@@ -9,10 +9,10 @@
 # on the deployed `name:` and nowhere else (ACC-BRAND-NAMING). The staged payload is `agent/server/build/app`.
 #
 # The env below is substituted by the same staging pass as the other Apps' (scripts/deploy/stage-app.sh) — the
-# tools read the results catalog and the warehouse. No Lakebase: data sources are tagged schemas
-# (DATA-SOURCE-UC-TAG). It compiles nothing, but it does call the compiler: the data-source layout check
-# maps each schema's retrieve functions back to FHIR types through the compiler's modeled types
-# (BIND-DATA-SOURCE-LAYOUT), so it names the compiler App and holds CAN_USE on it.
+# tools read the results catalog and the warehouse. No Lakebase: environments are tagged catalogs
+# (CLIENT-ENVIRONMENT). It compiles nothing, but it does call the compiler: the data-source layout check
+# maps each schema's retrieve functions back to FHIR types through the compiler's modeled types,
+# so it names the compiler App and holds CAN_USE on it.
 
 command:
   - "python"
@@ -31,7 +31,7 @@ env:
   - name: "CQL_APP_TARGET"
     value: "dev"
 
-  # UC catalog = the product (SVC-CATALOG-LAYOUT, PIPE-DEPLOY-CATALOG-VARS).
+  # UC catalog = the product (SVC-CATALOG-LAYOUT).
   - name: "UC_CATALOG"
     value: "__UC_CATALOG__"
 

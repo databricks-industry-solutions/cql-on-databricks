@@ -39,7 +39,7 @@ sync:
 
 # DEPLOY-APP-GRANTS — the App service-principal grants, as part of the bundle.
 #
-# The Designer has no Lakebase (`SPLIT-LAKEBASE` SUPERSEDED). The Apps' SCHEMA grants are bundle resources (the
+# The Designer has no Lakebase. The Apps' SCHEMA grants are bundle resources (the
 # environment schemas under `resources.schemas`, naming each App's service principal). Their CATALOG grant, USE CATALOG,
 # cannot be: an App `uc_securable` resource covers only CONNECTION/FUNCTION/TABLE/VOLUME, and the only declarative
 # route would be `resources.catalogs`, which would put the product's data catalog under bundle management — and
@@ -80,9 +80,6 @@ variables:
       RFC 6750 bearer the Designer BFF / notebook client send to the Compiler Service. Local-dev fallback
       only; on Databricks this is replaced by serverless->App OAuth token-exchange (SVC-COMPILE-ENDPOINT).
     default: ""
-  terminology_mounted:
-    description: Whether the compiler signals runtime-mounted value-set views (CQL_TERMINOLOGY; on = default).
-    default: "on"
   # The runtime LAYER (SVC-CATALOG-LAYOUT): catalog = product, `runtime` schema = the execution machinery
   # (deploy-once / version-pinned, its own grant). The bundle CREATES the schema + volume (resources below);
   # these three knobs make its location configurable. The volume holds: the opaque-UDF catalog JAR (the
@@ -282,14 +279,14 @@ resources:
       # and Apps accepts about a dozen of them. A name outside the Apps set fails the DEPLOY, not the
       # request — `terraform apply` answers `The specified scope <x> is not a valid scope` against
       # `databricks_app.cql_databricks_app` and NOTHING ships, including every unrelated resource in the
-      # bundle. Probed one name at a time against this workspace 2026-08-09:
+      # bundle. Probed one name at a time against this workspace:
       #   accepted — sql, sql.statement-execution, sql.warehouses, workspace.workspace, files,
       #              files.files, genie, dashboards.genie, model-serving, serving.serving-endpoints,
       #              vector-search, apps, postgres, ai-gateway, catalog.tables
       #   refused  — jobs, pipelines, clusters, compute, unity-catalog, secrets, query-history,
       #              alerts, all-apis, ... and bare `workspace` (ONLY `workspace.workspace` is taken).
       #
-      # NO `jobs` OR `pipelines` SCOPE EXISTS (`SEC-OBO-SCOPE-GAP`, probed 2026-08-09: every spelling refused), so
+      # NO `jobs` OR `pipelines` SCOPE EXISTS (`SEC-OBO-SCOPE-GAP`, probed: every spelling refused), so
       # nothing this App does as the user may create a Job or a pipeline.
       #
       # PREREQUISITE, and it is not declarative: a workspace admin must enable user authorization
@@ -311,7 +308,7 @@ resources:
       #   workspace.workspace — Save writes a library's CQL to a /Workspace folder as the user, through the
       #         Workspace API (`DOC-OPEN-SAVE`). The Files API refuses /Workspace paths.
       #   files — Save writes a library's CQL to a /Volumes folder as the user, through the Files API.
-      #         Both checked on the workspace 2026-10-30 (`DOC-WRITE-SCOPE-CHECK`).
+      #         Both checked on the workspace (`DOC-WRITE-SCOPE-CHECK`).
       user_api_scopes:
         - sql
         - serving.serving-endpoints
@@ -382,8 +379,8 @@ resources:
           group_name: ${var.app_users_group}
       resources:
         # DEPLOY-APP-GRANTS: this App has its own service principal, created BY this deploy. It needs NO
-        # Lakebase (data sources are tagged schemas, `DATA-SOURCE-UC-TAG`). It compiles nothing, but the
-        # data-source layout check reads the compiler's modeled FHIR types (`BIND-DATA-SOURCE-LAYOUT`).
+        # Lakebase (environments are tagged catalogs, `CLIENT-ENVIRONMENT`). It compiles nothing, but the
+        # data-source layout check reads the compiler's modeled FHIR types.
         # SEC-APP-TO-APP — CAN_USE on the compiler App for this App's service principal, or every call to it
         # is answered by the platform OAuth gate with a redirect to the sign-in page. Declared as an `app`
         # resource (DEPLOY-APP-GRANTS): the service principal is created BY this deploy, so nothing that ran

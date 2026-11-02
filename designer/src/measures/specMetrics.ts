@@ -1,4 +1,4 @@
-// APP-SAMPLE-METRICS / SPEC-ATTRITION — the document's figures, resolved in ONE place.
+// APP-SPEC-MODEL / SPEC-ATTRITION — the document's figures, resolved in ONE place.
 //
 // Every surface that renders a number reads this module: the nav row, the criterion heading, a figure
 // cited inside prose (`SPEC-METRIC-REF`) and the reported result. That is the whole design constraint —
@@ -71,7 +71,7 @@ const POPULATION_NAMES: ReadonlySet<string> = new Set(POPULATIONS);
 
 /** SPEC-POPULATION-CASCADE — every define's cohort, keyed like the metric set (`metricKey`).
  *
- *  A population is counted AS WRITTEN, among every evaluated subject (amended 2026-10-29): only the
+ *  A population is counted AS WRITTEN, among every evaluated subject: only the
  *  score is cascaded, and the client computes it (`RUN-CLIENT-MEASURE-SCORE`). A criterion is counted among
  *  the patients ENTERING the population it sits under, which is the same cascade — so `No HbA1c In
  *  Period` under the Numerator is counted among the Denominator less its Exclusions, and its share
@@ -216,7 +216,7 @@ export function resolveMetric(
 /** The two base rules, and no third.
  *
  *  A POPULATION is counted as written, so its base is every evaluated subject (`ALL_PATIENTS`), whatever
- *  the scoring (`SPEC-POPULATION-CASCADE`, amended 2026-10-29). Its share of the stage above it would mix
+ *  the scoring (`SPEC-POPULATION-CASCADE`). Its share of the stage above it would mix
  *  two definitions' subjects: a raw Numerator can hold patients the Denominator never had.
  *
  *  SPEC-ATTRITION — every other define's base is the cohort it was COUNTED among: the patients entering
@@ -259,8 +259,8 @@ export function metricTitle(m: ResolvedMetric, define: string): string {
 export function metricFunnel(set: MetricSet | null): Funnel | null {
   if (!set) return null;
   // The EVALUATED TOTAL is passed, and it is the only thing the first bar may be. `funnelFromCounts`
-  // used to fall back to the largest population when the total was 0, which drew an "All patients" bar
-  // identical to the Initial Population it sits above — a first stage that appeared to exclude nobody,
-  // and a base the criterion beside it reported as 0. It no longer substitutes; the total is stated.
+  // does not fall back to the largest population when the total is 0. That fallback would draw an "All
+  // patients" bar identical to the Initial Population it sits above: a first stage that appeared to
+  // exclude nobody, and a base the criterion beside it reported as 0. The total is stated, never substituted.
   return funnelFromCounts(set.counts, set.subjects, set.readout);
 }

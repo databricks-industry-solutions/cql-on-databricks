@@ -6,7 +6,7 @@ import com.databricks.cql.spark.SystemColumns
 import org.apache.spark.sql.types.{StringType, StructField, StructType}
 import org.apache.spark.sql.{Column, functions => F}
 
-/** The single schema-complete resource struct a retrieve mount carries (DATA-RETRIEVE-VIEW): the FHIR
+/** The single schema-complete resource struct a retrieve mount carries (BIND-CONTRACT): the FHIR
   * data columns plus the data-usage lineage (DATA-EXPORT) — `__resource_type` (the retrieve's type)
   * and `__resource_id` (the resource id) — packed into ONE `STRUCT` column ([[SystemColumns.Resource]]),
   * so every adapter returns the SAME `(__subject_id, __resource)` contract and the struct flows through

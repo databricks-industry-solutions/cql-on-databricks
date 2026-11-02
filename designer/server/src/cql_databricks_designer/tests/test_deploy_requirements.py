@@ -134,7 +134,7 @@ def test_no_wheel_version_is_hard_coded_in_this_repo():
     """SVC-WHEEL-VERSION — the wheel filenames' versions live in the pyprojects that build them.
 
     A literal `cql_databricks-0.0.0` / `cql_databricks-0.3.0` anywhere here is a second declaration
-    of a number another package owns; that drift is what failed the 2026-08-09 deploy at the guard in
+    of a number another package owns; that drift is what fails the deploy at the guard in
     `deploy-runtime-artifacts.sh` step [d]. Sources read the version or glob for it.
     """
     pattern = re.compile(r"(cql_databricks|cql_databricks)-\d+\.\d+\.\d+")

@@ -1,4 +1,4 @@
-"""CONTENT-RESOLVER — the one seam every resolver read goes through: a SQL runner.
+"""The one seam every resolver read goes through: a SQL runner.
 
 A runner takes a statement with named parameter markers (``:name``) and returns rows as dicts keyed by
 column name. Both Spark and Databricks SQL accept the same markers, so every query in this package is

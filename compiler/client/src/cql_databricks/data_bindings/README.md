@@ -1,7 +1,7 @@
 # Data Bindings
 
 Data Bindings finds what a calculation needs by Unity Catalog tag: data sources, value sets and CQL
-libraries (`CONTENT-RESOLVER`). It is the `cql_databricks.data_bindings` package inside the
+libraries. It is the `cql_databricks.data_bindings` package inside the
 `cql-databricks` client. It has no store and no App. The tagged schemas are the record.
 
 ## Modules
@@ -30,7 +30,7 @@ these. The compiler client checks the data-source layout itself (`cql_databricks
 ## Discovery
 
 Lookups read `system.information_schema`, so each caller sees only the schemas its grants allow. They
-search the caller's ordered catalog scopes (`CLIENT-DISCOVERY-SCOPE`). The earliest scope wins when a name
+search the caller's ordered catalog scopes. The earliest scope wins when a name
 is found twice. A caller that names no scopes searches every catalog it can see, and a warning says how to
 confine it. The [client README](../../../README.md) shows how to set the scopes.
 

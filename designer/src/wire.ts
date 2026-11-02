@@ -3,7 +3,7 @@ import type { ReferenceSet } from "./measures/specRetrieves.ts";
 // SVC-PROTOCOL — the CQL on Databricks app backend's /api wire types the SPA consumes.
 //
 // The backend (Python/FastAPI, SVC-APP-TOPOLOGY) owns the contract; the SPA consumes these hand-mirrored
-// types. Kept small and frontend-only (the former packages/api-client is retired with the Node BFF).
+// types. Kept small and frontend-only.
 
 /** One library from the root's include closure, compiled (APP-SPEC-MODEL). Present only when the
  *  request set `includeElm` — the Define lens needs its includes compiled, not merely resolved. */
@@ -133,14 +133,12 @@ export interface RunStageResults {
 /** SVC-RUN-STAGE — a progress event from the streaming `/api/run-stream` SSE endpoint.
  *  The frontend shows the current stage instead of a generic "computing…" indicator.
  *
- *  **THE STAGES ARE THE ONES THE RUN ROUTE ACTUALLY SENDS**, and that is the whole point of this
- *  comment. The retired in-process runner (`run.py:run_streaming`, unreferenced) emitted
- *  `binding` / `bind:*` / `plan` / `collecting` and a `done` frame carrying a whole `result`; the live
- *  route emits `compiling`, `profile`, `executing` and a `done` frame carrying `results` + `status`.
- *  Typing the retired vocabulary here is what let both bugs stand: the final result was read from a
- *  key nothing sends (so every successful run reported "stream ended unexpectedly"), and the progress
- *  bands were spent on phases that never arrive (`RUN-PROGRESS-TASKS`). A stage this union does not
- *  name is a backend that has moved on, and it must fail to compile rather than silently score 0. */
+ *  **THE STAGES ARE THE ONES THE RUN ROUTE ACTUALLY SENDS**, and that is the whole point of this comment. The run
+ *  route sends `compiling`, `profile`, `executing` and a `done` frame carrying `results` + `status`. Typing any other
+ *  vocabulary here would let both bugs stand: a final result read from a key nothing sends (so every successful run
+ *  reports "stream ended unexpectedly"), and progress bands spent on phases that never arrive (`RUN-PROGRESS-TASKS`).
+ *  A stage this union does not name is a backend that has moved on, and it must fail to compile rather than silently
+ *  score 0. */
 export interface RunStage {
   resultSet?: ResultSetAddress;
   stage: "connecting" | "compiling" | "profile" | "executing" | "done" | "error";
@@ -166,8 +164,7 @@ export interface RunStage {
 /** DESIGNER-SDP-NAV — the merged LibraryGraph from the engine's `/describe` endpoint.
  *  Hand-mirrors the engine's `LibraryGraph` (cql-databricks providers.py). The frontend merges this
  *  with the local CQL source scan (node classification + leaf nodes) to build the hybrid graph.
- *  Nothing fetches one for a Data Source any more: that read a source's library manifest, which left
- *  with the `data_sources` table (`DATA-SOURCE-UC-TAG`). */
+ *  Nothing fetches one for a Data Source: there is no `data_sources` table to read a library manifest from. */
 export interface DescribeResult {
   defines: string[];
   dependencies: Record<string, string[]>;
@@ -182,17 +179,17 @@ export interface DescribeResult {
 
 /** DESIGNER-DEFINE-STATUS — how a define's result stands, where a reader is shown it.
  *
- *  **Nothing feeds this live any more, and that is a consequence rather than an oversight.** It came
- *  from the SDP pipeline's event log, which said which of a pipeline's defines were computing; a
+ *  **Nothing feeds this live, and that is a consequence rather than an oversight.** It comes
+ *  from the SDP pipeline's event log, which says which of a pipeline's defines are computing; a
  *  barrier task has no event log and IS one define, so the per-define feed and the per-task feed
- *  collapsed into one — `RunTaskStatus` above (`RUN-PROGRESS-TASKS`). Reconnecting the nav's dots
+ *  collapse into one — `RunTaskStatus` above (`RUN-PROGRESS-TASKS`). Reconnecting the nav's dots
  *  means mapping a task key back to a define, which nothing does yet. */
 export type DefineStatusValue = "unknown" | "stale" | "computing" | "fresh" | "error";
 
 /** PIPE-PRE-COMPUTED — one define's counts from `/api/results`, at the two grains `SPEC-METRIC` names.
  *
  *  `subjects` is how many distinct subjects MET the define — not how many rows its relation holds, which
- *  is what the retired `rowCount` reported (57,565,315,157 for one measured exclusion whose true subject
+ *  is what a row count reports (57,565,315,157 for one measured exclusion whose true subject
  *  count is 146). `elements` is the per-element grain and is ABSENT wherever there is none to report. */
 export interface DefineResultEntry {
   name: string;
@@ -206,8 +203,8 @@ export interface DefineResultEntry {
  *  Returned by `GET /api/results`.
  *
  *  NO FUNNEL ON THE WIRE (`SPEC-ATTRITION`). It is derived from these counts by `funnelFromCounts()`,
- *  the one funnel builder; the server used to send a second, `COUNT(*)`-based one, which put two
- *  answers to "what did this measure score" on one page. */
+ *  the one funnel builder. A second, `COUNT(*)`-based funnel on the wire would put two answers to
+ *  "what did this measure score" on one page. */
 export interface PreComputedResults {
   schema: string;
   libraryName: string;
@@ -219,7 +216,7 @@ export interface PreComputedResults {
 }
 
 
-/** PIPE-PER-LIBRARY — library identity returned from the orchestrator run path. */
+/** Library identity returned from the orchestrator run path. */
 export interface LibraryIdentity {
   library: string;
   version: string;
@@ -338,7 +335,7 @@ export interface DefineProfile {
   generated: string;
   /** Why the payload is what it is — rendered next to the provenance mark. */
   caveat?: string;
-  /** APP-NO-UI-MOCK — the blocks on THIS payload that are fabricated. Everything not named here was
+  /** APP-NO-UI-MOCK — the blocks on THIS payload that are fabricated. Everything not named here is
    *  read from the evaluation. Per-block because a payload with a real value profile and an invented
    *  temporal spread cannot be described by one word: `run` would strip the mark off the invented bars,
    *  `sample` would put a false warning on real figures. */

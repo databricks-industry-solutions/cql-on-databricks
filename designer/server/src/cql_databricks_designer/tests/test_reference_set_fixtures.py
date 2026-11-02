@@ -5,7 +5,7 @@ The browser stopped deriving "what is a read" and now consumes what `reference_s
 fixtures rather than raw ELM — and a fixture is only worth anything if it is what the real extractor
 produces. Hand-maintained, it would drift, and the drift would be invisible: the TypeScript tests would
 keep passing against a shape the server no longer emits, which is precisely the two-implementations
-failure the refactor removed, moved into the test tree.
+failure this test tree exists to prevent.
 
 So this regenerates each fixture from the ELM committed beside it and asserts equality. It fails the
 moment the extractor's output changes, and the fix is to regenerate rather than to edit.

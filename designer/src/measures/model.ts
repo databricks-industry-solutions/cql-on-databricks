@@ -11,8 +11,7 @@ import { NUMERATOR, type Readout } from "./specScoring.ts";
 
 
 /** DESIGNER-ONE-MODULE — the Designer has ONE module (`DEC-DESIGNER-ONE-MODULE`). Bulk FHIR Sharing,
- *  Mapping, Scheduling and Data Readiness were removed, and the module switcher with them. Settings is
- *  removed (`APP-SETTINGS`, SUPERSEDED). Id stays `measures`. */
+ *  Mapping, Scheduling and Data Readiness are not part of it, and neither is Settings. Id stays `measures`. */
 export type TopModuleId = "measures";
 
 export interface MwModule {
@@ -25,7 +24,7 @@ export interface MwModule {
 }
 
 export const MW_MODULES: MwModule[] = [
-  // The authoring product — a living clinical spec you read static and compute Live (THEME-LIVING-DOC).
+  // The authoring product — a living clinical spec you read static and compute Live.
   { id: "measures", label: "Designer", glyph: "◈", blurb: "Living clinical specifications — measures, libraries & predictive factors", state: "active" },
 ];
 
@@ -36,8 +35,8 @@ export function pathForModule(id: TopModuleId): string {
   return `/${id}`;
 }
 
-// APP-LENSES — Designer is ONE surface, not a set of lenses over a shared spine (APP-ONE-SURFACE).
-// Validate and Analyze were removed with their modules. The remaining union has ONE reader-facing member.
+// APP-ONE-SURFACE — Designer is ONE surface, not a set of lenses over a shared spine.
+// The remaining union has ONE reader-facing member.
 // `cql` is not a tab (APP-CQL-AUTHORITATIVE) — it is the dependency view, reached by following an include.
 // The type stays a union rather than collapsing to a string because the router, the tour's deep links
 // and the palette all address a view by name.
@@ -77,7 +76,7 @@ export function defaultExampleId(defs: Definition[]): string {
  *  and has nothing to do with scoring. A separate, entirely different question — *which populations
  *  carry the score forward* — depends entirely on the declared scoring type. Separating them means
  *  every scoring type can recognize its populations, including the continuous-variable measure's
- *  `Measure Population`, which now appears in the document section, the funnel stage, the nav row, and
+ *  `Measure Population`, which appears in the document section, the funnel stage, the nav row, and
  *  the metric.
  *
  *  The second question is answered by `specScoring.populationChain(kind)`, and callers that mean the
@@ -121,8 +120,8 @@ export interface FunnelStage {
   name: string;
   count: number;
   pct: number; // relative to the funnel base (0–100)
-  /** The base `rate` is taken against, carried so the figure can NAME it in visible text. It was a
-   *  `title` attribute, which is to say invisible: a Numerator reading `56.7%` beside a bar drawn at its
+  /** The base `rate` is taken against, carried so the figure can NAME it in visible text. It is not a
+   *  `title` attribute, which would be invisible: a Numerator reading `56.7%` beside a bar drawn at its
    *  share of the cohort is two percentages against two bases with nothing on screen separating them. */
   rateBase?: number;
   /** SPEC-REPORTED-RESULT — the stage's share of ITS OWN base, where that differs from `pct` and the
@@ -141,11 +140,11 @@ export interface Funnel {
   stages: FunnelStage[];
   /** SPEC-SCORING-METHODOLOGY — what this measure REPORTS, which depends on how it is scored.
    *
-   *  Was `score: number | null`, computed as Numerator ÷ Denominator for every measure with both. That
-   *  is the proportion formula, and it was applied to ratio and continuous-variable measures too — a
-   *  rate stated with a proportion's authority over a shape that does not have one. `null` now means
-   *  "not computed"; a `readout` of kind `unsupported` means "this shape has no figure we can state",
-   *  and the two are different things a surface has to say differently. */
+   *  A `score: number | null` computed as Numerator ÷ Denominator for every measure with both would be the
+   *  proportion formula, applied to ratio and continuous-variable measures too: a rate stated with a proportion's
+   *  authority over a shape that does not have one. Here `null` means "not computed"; a `readout` of kind
+   *  `unsupported` means "this shape has no figure we can state", and the two are different things a surface has
+   *  to say differently. */
   readout: Readout;
 }
 
@@ -167,9 +166,9 @@ export function buildFunnel(run: RunResult | null): Funnel | null {
  *  A run reaches it through `buildFunnel`; the measure's metric set reaches it directly
  *  (`specMetrics.ts`), with the client's score as `readout`.
  *
- *  EVERY POPULATION IS A PLAIN BAR, COUNTED AS WRITTEN (`SPEC-POPULATION-CASCADE`, amended 2026-10-29).
- *  A population's own count is its define's subjects, so a removal is not a subset of the bar it used to
- *  be drawn inside: raw Denominator Exclusions can hold patients who were never in the Denominator, and
+ *  EVERY POPULATION IS A PLAIN BAR, COUNTED AS WRITTEN (`SPEC-POPULATION-CASCADE`).
+ *  A population's own count is its define's subjects, so a removal is not a subset of the bar it is
+ *  drawn inside: raw Denominator Exclusions can hold patients who were never in the Denominator, and
  *  "Denominator less Exclusions" drawn from raw counts is a subtraction of two unrelated sets. The
  *  cascade belongs to the SCORE, which the client computes (`RUN-CLIENT-MEASURE-SCORE`) and which
  *  arrives here as `readout` with its own counted numerator and base. */
@@ -177,11 +176,11 @@ export function funnelFromCounts(
   counts: Record<string, number>, subjects = 0, readout: Readout = null,
 ): Funnel | null {
   const present = POPULATIONS.filter((n) => n in counts);
-  // THE TOTAL IS THE CALLER'S TO STATE, and this function no longer second-guesses it. It used to take
-  // `Math.max(subjects, firstPopulation)`, which reads as defensive and is not: when the evaluated total
-  // came back as 0 — the Patient binding was being called on a retired signature (`insights/metrics.py`)
-  // — the max silently relabelled the Initial Population count as "All patients", so the header reported
-  // 67 while the criterion under it reported its base as 0. A wrong total that looks plausible is worse
+  // THE TOTAL IS THE CALLER'S TO STATE, and this function does not second-guess it. It does not take
+  // `Math.max(subjects, firstPopulation)`: that reads as defensive and is not. When the evaluated total
+  // comes back as 0 (the Patient binding called on a retired signature, `insights/metrics.py`), the max
+  // would silently relabel the Initial Population count as "All patients", so the header would report
+  // 67 while the criterion under it reports its base as 0. A wrong total that looks plausible is worse
   // than none: with no cohort there is no funnel, and the absence is the caller's to explain.
   const total = subjects;
   if (total === 0) return { total: 0, stages: [], readout: null };
@@ -213,11 +212,10 @@ function normalizeResultName(name: string): string {
 /** PIPE-PRE-COMPUTED — convert pre-computed results from `/api/results` into a `RunResult`
  *  shape that the existing `buildFunnel()` and `patientRows()` can consume.
  *
- *  THE POPULATION MATCH HAPPENS HERE, ONCE. The server used to send a pre-aggregated `funnel` whose
- *  camelCase keys were mapped back to define names on arrival; that was a second answer to "what did
- *  this measure score" (`SPEC-ATTRITION`) and it was built from `COUNT(*)`. What arrives now is one
- *  count per define, and the population defines are recognized by matching normalized names against
- *  `POPULATIONS`.
+ *  THE POPULATION MATCH HAPPENS HERE, ONCE. The server sends no pre-aggregated `funnel` whose camelCase
+ *  keys are mapped back to define names on arrival: that would be a second answer to "what did this
+ *  measure score" (`SPEC-ATTRITION`), built from `COUNT(*)`. What arrives is one count per define, and the
+ *  population defines are recognized by matching normalized names against `POPULATIONS`.
  *
  *  Per-member results are not available from this route (future: member pagination), which is why the
  *  Patient Lens still needs a run.
@@ -265,17 +263,17 @@ export function execModeInfo(id: ExecMode): ExecModeInfo {
 }
 
 // APP-COMPUTE-TARGET — the runtime the spec runs on. The literal survives in older stored selections only.
-// AMENDED 2026-10-10: the pill's Compute section picks a SQL warehouse (`warehouseId` in the stored state).
+// The pill's Compute section picks a SQL warehouse (`warehouseId` in the stored state).
 export type ComputeTarget = "serverless";
 
-// APP-UPDATE-MODE — whether a measure computes on its own. AMENDED 2026-10-10: one checkable
+// APP-UPDATE-MODE — whether a measure computes on its own. One checkable
 // "Automatic" item, unchecked by default (Manual). Checked, it takes the wash and tick of a selected row;
 // unchecked it is a plain row with no dot, and the status line beside the pill says why nothing is shown. `paused` is Manual: nothing computes until Run is pressed. `live` is Automatic:
 // a calculation change (CQL, data source, period, warehouse) that finds no results runs Compute missing.
 // Opening a measure always shows its existing results, read-only, in either mode
 // (RUN-CLIENT-REQUEST-REOPEN).
 //
-// The 2026-08-08 checkbox read as on while unchecked (the row took a dot either way), so a reader waited on
+// A checkbox that read as on while unchecked (the row took a dot either way) made a reader wait on
 // a run that was never going to start and saw only "Idle".
 export type UpdateMode = "live" | "paused";
 
@@ -435,7 +433,7 @@ export function themeAttr(t: ThemeChoice): "light" | "dark" | undefined {
  *  is how a reader finds where a define is actually used.
  *
  *  It is a PARSED UNION rather than a `useState` string because it lives in the URL as `?nav=`: the
- *  arrangement a colleague is looking at travels with the link. `?nav=flow` in an old link parses to
+ *  arrangement a colleague is looking at travels with the link. A stale link such as `?nav=flow` parses to
  *  `outline` rather than erroring — a stale address lands the reader somewhere real. */
 export type NavTab = "outline" | "composition" | "scope";
 
@@ -513,10 +511,9 @@ export function workspaceObjectUrl(host: string, path: string): string {
 // appears in the tour, deep-linking into the real product rather than a hand-maintained snapshot.
 //
 // ONE SECTION PER PILLAR. The page sells CQL_DATABRICKS, not the Designer: each section is a
-// theme of the product rather than a feature of a screen (`THEME-COMMODITIZE`, `THEME-LIVING-DOC`,
-// `THEME-GLASSBOX`, `SEC-GOVERNANCE` + `SEC-OBO`, `THEME-KNOWLEDGE-ARCH`, `APP-ANALYTICS`, the clinical decision layer). Mapping
-// (Data Readiness) and Sharing moved with their modules (DESIGNER-ONE-MODULE). Each topic from the
-// per-pane cards — narrative, figures, inspector, nav — is now a sentence or a chip inside the pillar
+// theme of the product rather than a feature of a screen (`SEC-GOVERNANCE` + `SEC-OBO`, `APP-ANALYTICS`,
+// the clinical decision layer). Mapping (Data Readiness) and Sharing are not part of it (DESIGNER-ONE-MODULE). Each topic from the
+// per-pane cards — narrative, figures, inspector, nav — is a sentence or a chip inside the pillar
 // it belongs to: eleven cards about one module could not say what the product IS, but a cohesive theme can.
 export const TOUR_FEATURES: TourFeature[] = [
   {
@@ -590,7 +587,7 @@ export function landingChip(l: Landing): string { return LANDING_CHIP[l]; }
 
 /** Where one subject LANDED. Proportion-shaped, deliberately and not yet generalized.
  *
- *  SPEC-SCORING-METHODOLOGY made scoring a first-class input everywhere a FIGURE is stated, and stopped
+ *  SPEC-SCORING-METHODOLOGY makes scoring a first-class input everywhere a FIGURE is stated, and stops
  *  short here. The reason is that this serves the Patient Lens, which is fed only by `run.results` — and
  *  `preComputedToRunResult` returns `results: undefined`, so the only path that reaches it is a live
  *  `/api/run`. Threading scoring through would make `Landing` nullable and ripple into `landingLabel`,
@@ -629,18 +626,17 @@ export function patientRows(run: RunResult | null): PatientRow[] {
   }));
 }
 
-/** Plain-language descriptions for well-known eCQM population defines (Summary view shows NO CQL). */
-// DEFINE_BLURB is GONE (SPEC-NARRATIVE-TAGS). It was a hardcoded map of generic sentences —
-// "Initial Population: the eligible cohort before any exclusions" — that read like narration while
-// saying nothing about how a criterion is actually defined, and it was indistinguishable on the page
-// from prose the measure's author wrote. Narration now comes from the CQL's own annotation tags or
+// NO BUILT-IN DEFINE BLURBS (SPEC-NARRATIVE-TAGS). A hardcoded map of generic sentences —
+// "Initial Population: the eligible cohort before any exclusions" — would read like narration while
+// saying nothing about how a criterion is actually defined, and it would be indistinguishable on the page
+// from prose the measure's author wrote. Narration comes from the CQL's own annotation tags or
 // from the Specification overlay, each labelled with its provenance; a define nobody has narrated
 // shows nothing at all, which is honest (`coding-standards.md`, "Data provenance").
 
 // ── Knowledge-Architecture up-trace (ACC-KA-TRACE) ───────────────────────────────────────────────
 // The KA reference makes the clinical lineage NAVIGABLE: from an
 // executable define (L3/L4) climb UP to the Pathway recommendation (L1) it realizes — "this numerator
-// implements recommendation 3.2." That up-hop is the glass-box (THEME-GLASSBOX) at the knowledge
+// implements recommendation 3.2." That up-hop is the glass-box at the knowledge
 // level, and it is the Patient-Lens crown jewel's other direction (APP-STEP-INTO-PATIENT climbs
 // down into the Case; this climbs up to the guideline).
 //
@@ -707,8 +703,8 @@ export function decidingCriterion(p: PatientRow): Deciding {
 
 // ── APP-LOGIC-VIEW / SPEC-NAV-COMPOSITION — what "selected" means ─────────────────────────────
 //
-// Selection is the thread that ties the nav, the document and the workbench together, and it used to be
-// a define NAME — a bare string, because a define was the only thing there was to select. A READ is now
+// Selection is the thread that ties the nav, the document and the workbench together. A define is
+// selected by its NAME, a bare string, because a define is the only thing there is to select. A READ is
 // selectable too (`SPEC-DATA-REQUIREMENTS`), and a read has no name: its identity is its resource and
 // its filter, which is what `SpecRetrieve.key` already is. So selection is a UNION.
 //

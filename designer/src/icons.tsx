@@ -56,8 +56,7 @@ export {
   // ── APP-WORKBENCH — the right pane's tab glyphs + the artifact/pin mark ──
   GitBranch,
   Package,
-  // `Command` and `CornerDownLeft` are GONE with the ⌘K palette they belonged to
-  // (DESIGNER-COMMAND-PALETTE, retired 2026-08-07) — nothing else drew either.
+  // `Command` and `CornerDownLeft` are not imported: nothing here draws them.
   // ── SPEC-NAV-COMPOSITION — the nav's tabs, and its "expanded above" reference mark. `Waypoints` is
   // the Composition tab's glyph: a spine with branches off it, which is the shape the tree draws.
   Compass,

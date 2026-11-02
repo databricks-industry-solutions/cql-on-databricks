@@ -13,8 +13,8 @@ WHAT IT IS FOR:
    library in the closure.
 2. **A section's AI draft and its accounting check** (`DOC-SECTION-EXPLAIN`, `SPEC-EXPLAIN-ACCOUNTING`).
    Coverage needs a denominator, and this is it: every reference site, every read, every terminology
-   binding, every metric key, per define. Not built yet; the library-wide generator and checker that
-   used it were removed (`DOC-EXPLAIN-REMOVE`).
+   binding, every metric key, per define. Not built yet; there is no library-wide generator or checker
+   (`DOC-EXPLAIN-REMOVE`).
 3. **`sourceSpan` derivation.** Spans come from ELM locators converted to body-relative line ranges, never
    counted by eye — a counted range breaks silently when the registry's CQL is reformatted.
 

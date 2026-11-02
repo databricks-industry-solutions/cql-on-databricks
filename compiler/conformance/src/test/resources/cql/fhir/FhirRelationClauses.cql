@@ -2,7 +2,7 @@ library FhirRelationClauses version '1.0.0'
 
 // Shaping/ordering/aggregate clauses over a Relation-encoded retrieve list (LANG-QUERY-SORT,
 // LANG-QUERY-AGGREGATE). `sort` re-orders the per-subject list; `aggregate` folds it (a subject
-// with no rows folds to the seed). (Phase 4b.4c.)
+// with no rows folds to the seed).
 using FHIR version '4.0.1'
 include FHIRHelpers version '4.0.1' called FHIRHelpers
 

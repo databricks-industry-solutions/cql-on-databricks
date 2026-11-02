@@ -260,7 +260,7 @@ object CqlOps {
 
   /** `cql_variant_valid(actualSchemaDdl, expectedDdl)` — a JSON-FREE, UC-safe QA check that what LANDED in
     * a VARIANT field conforms to an expected model schema (a general aid — usable on any VARIANT, e.g. the
-    * retrieve UDTF's `parameters` map, BIND-EXPLICIT-PARAMS). `actualSchemaDdl` is the
+    * retrieve UDTF's `parameters` map). `actualSchemaDdl` is the
     * built-in `schema_of_variant(carrier.__variant)` — NOT `to_json` (no JSON round trip) and NOT the raw
     * VARIANT value (no `org.apache.spark.*` type crosses into this sandbox-safe handler, `ARCH-PURITY`);
     * `expectedDdl` is the FHIR-model schema for the demanded slots (`FhirSchema.rawResourceSchema`-derived).

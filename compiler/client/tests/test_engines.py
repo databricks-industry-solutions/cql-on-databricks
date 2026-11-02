@@ -1,4 +1,4 @@
-"""EVALUATOR-CLIENT-EVALUATE, `DEC-ONE-VERB-ENGINE-OPTION`, `DEC-ENGINE-SESSION-OPTIONS`,
+"""`DEC-ONE-VERB-ENGINE-OPTION`, `DEC-ENGINE-SESSION-OPTIONS`,
 BUILD-CLIENT-SESSION-PARAMETERS — the engine setting, the session's engine settings, and the hand-off to an
 installed engine. Stdlib unittest with fakes: no pyspark, no compile host, no evaluator."""
 import os

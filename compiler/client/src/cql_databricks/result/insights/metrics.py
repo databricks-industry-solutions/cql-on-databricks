@@ -1,7 +1,7 @@
-"""APP-SAMPLE-METRICS (retiring), SPEC-METRIC, SPEC-ATTRITION — the measure's REAL metric set.
+"""SPEC-METRIC, SPEC-ATTRITION — the measure's real metric set.
 
-Every figure the Specification renders, read from the tables the pipeline already wrote. This is what
-retires ``insights/sample.py``'s metric half: same route, same wire shape, same client, real numbers.
+Every figure the Specification renders, read from the tables the pipeline already wrote: the same route and
+wire shape as the sample metrics, with real numbers.
 
 **A MEASURE'S DEFINES SPAN ITS INCLUDE CLOSURE.** A measure reads defines of itself and of each helper library it
 includes, each in its own selected table. So the builder counts across all of them in one query, which is what makes
@@ -89,10 +89,10 @@ def measure_metrics(
     ``cohorts`` is each define's cohort, keyed ``(library, name)``, and every define must have one.
     What this function adds is the figures.
 
-    ``result_type`` is deliberately NOT used to decide the element grain here, unlike the sample builder
-    it replaces. The relation's own schema decides it (`relation.element_count_expr`), because the
-    relation is the thing being counted; a `List<…>` return whose relation carries no usable ordinal has
-    no element count to give, and the result type cannot know that.
+    ``result_type`` is deliberately NOT used to decide the element grain here. The relation's own schema
+    decides it (`relation.element_count_expr`), because the relation is the thing being counted; a `List<…>`
+    return whose relation carries no usable ordinal has no element count to give, and the result type cannot
+    know that.
     """
     missing_cohort = [(lib, name) for lib, name, _ in defines if (lib, name) not in cohorts]
     if missing_cohort:

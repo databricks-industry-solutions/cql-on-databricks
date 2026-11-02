@@ -28,8 +28,7 @@ final case class UcFunctionSpec(
   * `CqlQuantity` case-class Quantity param + `immutable.Map` factors + case-class return).
   *
   * There is NO `cql_choice_nav_*` here: heterogeneous-Choice navigation lowers NATIVELY (demand-projected
-  * top-level slots per union branch, `EMIT-SQL-FLAT-CHOICE`) — Photon-eligible and never emitted as a UDF —
-  * so those UDFs were RETIRED.
+  * top-level slots per union branch, `EMIT-SQL-FLAT-CHOICE`) — Photon-eligible and never emitted as a UDF.
   *
   * The `sqlName`s are exactly the emitted `cql_*` names (cross-checked against [[CqlRuntimeUdfs.catalog]]),
   * and each `handler` resolves to a real method on `…runtime.eval.CqlOps`. */
@@ -51,8 +50,8 @@ object UcFunctionManifest {
     UcFunctionSpec("cql_convert_quantity",   h("convertQuantity"),
       Seq("STRUCT<value: DECIMAL(38,18), unit: STRING>", "MAP<STRING, DECIMAL(38,18)>", "STRING"),
       "STRUCT<value: DECIMAL(38,18), unit: STRING>"),
-    // General QA aid: schema conformance of any VARIANT payload (e.g. the retrieve hint/context envelope,
-    // BIND-EXPLICIT-PARAMS) against a model DDL. Both args are STRING (the actual is `schema_of_variant(v)` —
+    // General QA aid: schema conformance of any VARIANT payload (e.g. the retrieve hint/context envelope)
+    // against a model DDL. Both args are STRING (the actual is `schema_of_variant(v)` —
     // UC-bindable, no raw VARIANT/Spark type in the sandbox handler, no JSON round trip); returns BOOLEAN.
     UcFunctionSpec("cql_variant_valid",      h("variantValid"),     Seq("STRING", "STRING"),                         "BOOLEAN"))
 

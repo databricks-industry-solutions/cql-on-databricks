@@ -1,5 +1,5 @@
-// APP-MEASURE-DOC / APP-LOGIC-VIEW / DESIGNER-TOP-BAR — the artifact (Specification) selector, and
-// since the chrome strip was retired the app's whole "File" surface.
+// APP-MEASURE-DOC / APP-LOGIC-VIEW / DESIGNER-TOP-BAR — the artifact (Specification) selector, and the
+// app's whole "File" surface (there is no chrome strip).
 //
 // Two-column popover: LEFT = recently opened artifacts (fast-switch lane), RIGHT = the full catalog
 // browser (search + scrollable list), plus an ACTION ROW along the bottom.
@@ -9,18 +9,18 @@
 // module switcher puts on the module you are in (`APP-STYLE-GUIDE`: the active row is the one place
 // a menu spends accent).
 //
-// THE FILE MENU IS THIS MENU. A separate File menu listed "Open from Catalog…" as an item — a menu entry
-// whose whole function was to open the menu beside it — next to New measure / New library / Import, which
-// answer the same question this popover already exists to answer: *which artifact am I working on*. They
-// are one decision, so they are one control: browse what exists, or make/ingest a new one. The outbound
-// action sits here too because the popover's head names the artifact it would send.
+// THE FILE MENU IS THIS MENU. There is no separate File menu. An "Open from Catalog…" item would be a
+// menu entry whose whole function is to open the menu beside it, next to New measure / New library /
+// Import, which answer the same question this popover already exists to answer: *which artifact am I
+// working on*. They are one decision, so they are one control: browse what exists, or make/ingest a new
+// one. The outbound action sits here too because the popover's head names the artifact it would send.
 //
-// "Publish to Marketplace" is gone (DESIGNER-ONE-MODULE), with the Data Readiness gate it named.
+// "Publish to Marketplace" is not offered (DESIGNER-ONE-MODULE), so neither is the Data Readiness gate it named.
 //
 // DOC-OPEN-SAVE — New measure, New library and Save as… work; Import CQL… does not yet. It carries that
 // honestly — `disabled`, with the reason in the wrapper's tooltip — but NOT a `soon` tag: see the note on
-// the action row below. The module switcher dropped its tags on the same day and for the same reason, so no
-// menu in this app now leads with a notice about what does not work yet.
+// the action row below. The module switcher carries no tags, for the same reason, so no menu in this app
+// leads with a notice about what does not work yet.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Definition } from "../catalog.ts";
@@ -49,7 +49,7 @@ function pushRecent(id: string) {
 export type FileAction = { kind: "new"; what: "measure" | "library" } | { kind: "include" } | { kind: "saveAs" }
   | { kind: "publish" };
 
-/** The artifact-level file actions, in the order the retired File menu listed them. `trailing` pushes an
+/** The artifact-level file actions, in display order. `trailing` pushes an
  *  action to the row's right end — the divide between "make one" and "do something with this one". An action
  *  with no `act` is not built yet. */
 const ARTIFACT_ACTIONS: { label: string; Icon: typeof Plus; act?: FileAction; trailing?: boolean }[] = [
@@ -228,7 +228,7 @@ export function Navigator({ definition, definitions, onOpenDefinition, dep, onBa
             </div>
           </div>
 
-          {/* The action row — what the retired File menu carried, minus the item that duplicated this
+          {/* The action row: the file actions, minus the item that would duplicate this
               popover. CREATE/INGEST on the left (they make a new artifact to open); the open artifact's
               own EXPORT on the right, under the head that names it. */}
           <div className="mw-navpop-actions">

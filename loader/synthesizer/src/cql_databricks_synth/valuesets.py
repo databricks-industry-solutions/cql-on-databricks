@@ -2,7 +2,7 @@
 
 Loads the tall ``(valueset_id, system, code)`` expansion shape from deck-style NDJSON —
 one ``valueset-<oid>.ndjson`` per set, the same rows the runtime binds
-(``BIND-TERMINOLOGY-TABLE``) — so generator and engine can never disagree on membership.
+(``DATA-ENVIRONMENT-LAYOUT``) — so generator and engine can never disagree on membership.
 """
 
 from __future__ import annotations

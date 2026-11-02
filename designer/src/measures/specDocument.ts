@@ -162,8 +162,8 @@ export interface SpecNarration {
    *  then spends a paragraph on which choice types it covers and why. Concatenating them would make the
    *  one-line projection (`SpecProse.text` in a nav row) a paragraph. This document keeps both separate.
    *
-   *  ALWAYS `authored`: it is a tag in the CQL, so it is the author's assertion whatever the Explain
-   *  toggle is doing (`SPEC-EXPLAIN-VIEW`). The overlay has no counterpart — the XSD carries the triple
+   *  ALWAYS `authored`: it is a tag in the CQL, so it is the author's assertion and the page shows it as
+   *  written (`DOC-EXPLAIN-REMOVE`). The overlay has no counterpart — the XSD carries the triple
    *  and nothing else — so this field is populated from tags alone. */
   comment: SpecProse | null;
   /** `@rationale` — WHY it matters clinically. */
@@ -271,7 +271,7 @@ export interface SpecScope {
  *  same value-set name to different OIDs.
  *
  *  Code counts and expansion dates are NOT here. They belong to the terminology tables
- *  (CONTENT-TERMINOLOGY-SCHEMA), which the document has no read path to yet, so the columns are omitted
+ *  (DATA-ENVIRONMENT-LAYOUT), which the document has no read path to yet, so the columns are omitted
  *  rather than filled from a transcription. */
 export interface SpecAppendix {
   valuesets: { name: string; oid: string | null; library: string }[];
@@ -310,7 +310,7 @@ const fnId = (name: string) => `fn:${name}`;
 /** Build the Specification's derived structure (SPEC-DOCUMENT). See the module header for the three
  *  determinations; every STRUCTURAL input is compiler-derived.
  *
- *  `overlay` contributes PROSE ONLY (APP-NARRATIVE-OVERLAY). It cannot add, remove, reorder or reparent
+ *  `overlay` contributes PROSE ONLY. It cannot add, remove, reorder or reparent
  *  an element — placement is the ELM's determination and stays that way — so a wrong overlay produces
  *  wrong words, never a wrong document. */
 export function buildSpecDocument(

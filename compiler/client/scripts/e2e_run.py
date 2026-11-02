@@ -1,4 +1,4 @@
-"""End-to-end runtime-compile driver (PHASE-10, BUILD-CLIENT, CONF-GATE-SELFDIFF).
+"""End-to-end runtime-compile driver (BUILD-CLIENT).
 
 Runs the WHOLE client loop against live infrastructure: ``load_library(elm)`` -> ``cql(target)`` through a
 ``RemoteProvider`` (HTTP to a running compile host) -> the compiled Spark SQL script is run via

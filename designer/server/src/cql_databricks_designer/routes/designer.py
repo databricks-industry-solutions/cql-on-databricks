@@ -1,8 +1,7 @@
 """Designer Specification document (`SPEC-*`, `APP-*`): its prose and the synthetic deck.
 
-The result derivations this module used to serve — the metric set, a define's profile, the cohort flow
-and the read accounting — moved to the evaluator (`MOVE-DERIVATIONS`), and then into its client
-(`DERIVATIONS-TO-LIBRARY`, `cql_databricks.result.insights`); `routes/runs.py` serves them.
+The result derivations — the metric set, a define's profile, the cohort flow and the read accounting — live
+in the client (`DERIVATIONS-TO-LIBRARY`, `cql_databricks.result.insights`); `routes/runs.py` serves them.
 The Designer renders them; the agent needs them as much as it does. The Data Readiness read is gone
 with its module (DESIGNER-ONE-MODULE).
 

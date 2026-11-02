@@ -21,7 +21,7 @@
     python -m cql_databricks_synth population --recipe loader/synthesizer/recipes/synthetic-small.json --out examples/data
 
 Binding an emitted cohort as the Synthetic Population Large data source (DATA-SYNTH-LARGE) is not this
-CLI's job since SYNTH-SEED-OUT: it is ``python loader/scripts/synthetic-population/load.py``, the same step a
+CLI's job (SYNTH-SEED-OUT): it is ``python loader/scripts/synthetic-population/load.py``, the same step a
 customer runs on their own data, built from the evaluator's seed contract.
 
 Generation is file-based and offline by design (no network egress): ELM comes from the

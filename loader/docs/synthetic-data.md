@@ -65,6 +65,6 @@ required, because the example measures declare their period with no default. The
 landed so far. Landing a cohort again replaces only that cohort.
 
 A 250,000-patient cohort is 560 to 900 MB of NDJSON, uploaded gzipped as 10 to 18 MB. Generating, verifying and
-landing one took 3.5 to 5 minutes end to end on 2026-10-22, about 18 minutes for all four. A measure with no null stratum emits fewer patients: the null share is dropped.
+landing one takes 3.5 to 5 minutes end to end, about 18 minutes for all four. A measure with no null stratum emits fewer patients: the null share is dropped.
 
 The [synthesizer README](../synthesizer/README.md) covers the other generation modes.

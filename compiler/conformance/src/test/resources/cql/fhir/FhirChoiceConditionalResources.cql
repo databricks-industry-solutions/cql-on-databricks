@@ -1,6 +1,6 @@
 library FhirChoiceConditionalResources version '1.0.0'
 
-// LANG-CHOICE-RESOURCE (extends ARCH-COND-UNION Phase B / LANG-CHOICE): a list-valued `if`/`case`
+// LANG-CHOICE-RESOURCE (extends ARCH-COND-UNION / LANG-CHOICE): a list-valued `if`/`case`
 // whose branches return DIFFERENT FHIR RESOURCE types. `if C then [Encounter] else [Condition]` is
 // typed `List<Choice<Encounter, Condition>>` — the heterogeneous-branch union (cqlTrue(C) pushed into
 // the then-arm, its negation into the else-arm) but with whole resource BODIES as the Choice members

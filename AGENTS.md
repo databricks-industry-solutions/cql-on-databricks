@@ -61,7 +61,7 @@ Instructions for any AI coding agent working in this repository.
 
 ## Specs and citations
 
-- Requirement IDs (`LANG-3VL`, `PIPE-STATE-LAYER`) are the source of truth. Cite the ID in the
+- Requirement IDs (`LANG-3VL`, `PIPE-DURABLE-IDENTITY`) are the source of truth. Cite the ID in the
   docstring of code that implements it, and in tests (`PROC-CITE-REQ`).
 - Every ID is a meaningful mnemonic, `<TYPE>-<SLUG>`, never a bare number (`PROC-DESCRIPTIVE-ID`).
   This applies to requirements, plan steps, phases, workstreams, decisions, options and tasks.

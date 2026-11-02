@@ -34,7 +34,7 @@ def router(*, compiler: CompilerClient, contents: EnvironmentContents) -> APIRou
 
     @router.get("/api/modeled-types")
     def modeled_types() -> dict[str, Any]:
-        # DATA-SOURCE-PROFILE: the FHIR resource types the engine actually models (SVC-RESOURCE-SCHEMA), so
+        # The FHIR resource types the engine actually models (SVC-RESOURCE-SCHEMA), so
         # the Data Sources editor offers only bindable entities (APP-NO-UI-MOCK). Best-effort — if the
         # compiler is unreachable the editor falls back to its static list, so a degraded compiler yields
         # an empty set + a flag rather than a hard error.

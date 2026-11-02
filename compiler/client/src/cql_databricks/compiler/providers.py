@@ -1,4 +1,4 @@
-"""Compile providers + credential providers (PHASE-10, BUILD-CLIENT / BUILD-COMPILE-SERVICE).
+"""Compile providers + credential providers (BUILD-CLIENT / BUILD-COMPILE-SERVICE).
 
 How the client REACHES the compiler and how it AUTHENTICATES are two orthogonal, pluggable seams:
 

@@ -1,6 +1,6 @@
 library FhirBareRetrieveList version '1.0.0'
 
-// PHASE-6 prerequisite (DATA-DEFINE-DF, DATA-SKIP-UNFILTERED foundation): a BARE unfiltered-retrieve
+// DATA-DEFINE-DF, DATA-SKIP-UNFILTERED foundation: a BARE unfiltered-retrieve
 // define — the canonical `define E: [Encounter]` measure authors write. It is realized as a Relation
 // frame (rows + __ordinal) that is a VIEW over the source scan, not a collect_list aggregation. The
 // raw-resource result exports by its data-usage lineage identity (DATA-EXPORT, __resource_type/

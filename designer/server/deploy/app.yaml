@@ -27,7 +27,7 @@ env:
   - name: "CQL_APP_TARGET"
     value: "dev"
 
-  # UC catalog = the product (SVC-CATALOG-LAYOUT, PIPE-DEPLOY-CATALOG-VARS). Substituted at stage
+  # UC catalog = the product (SVC-CATALOG-LAYOUT). Substituted at stage
   # time by stage-app.sh from the bundle's uc_catalog variable. A `__PLACEHOLDER__` value is never
   # shipped: with no value to substitute, stage-app.sh DROPS the entry entirely
   # (PIPE-DEPLOY-NO-PLACEHOLDER-ENV) so config.py's fallback chain is what decides.

@@ -26,11 +26,10 @@ from __future__ import annotations
 #: **Only what spans the tools belongs here.** What one tool does is in that tool's own docstring,
 #: which MCP hands over with its schema; repeating it would be the drift this module exists to stop.
 #: What is left is the four things a caller gets wrong when each tool is read in isolation:
-#: whose number it is holding (`SVC-ANSWER-PROVENANCE`), that an output is a place and not an event
-#: (`SVC-TOOL-ADDRESS`), that freshness is evidence to weigh rather than a verdict to relay
-#: (`SVC-TOOL-FRESHNESS`), that nothing here is saved so the honest answer to "change it" is that it
-#: cannot (`SVC-MCP-TOOLS`, `KNOWLEDGE-FAIL-LOUD`), and that CQL the agent writes is reviewed with the
-#: user (`AGENT-CQL-REVIEW`).
+#: whose number it is holding (`SVC-ANSWER-PROVENANCE`), that an output is a place and not an event,
+#: that freshness is evidence to weigh rather than a verdict to relay, that nothing here is saved so the
+#: honest answer to "change it" is that it cannot (`SVC-MCP-TOOLS`, `KNOWLEDGE-FAIL-LOUD`), and that CQL
+#: the agent writes is reviewed with the user (`AGENT-CQL-REVIEW`).
 ANSWERING_INSTRUCTIONS = """\
 You are answering questions about a clinical quality measure and the results CQL on Databricks computed for it.
 Your reader is usually a clinician who is accountable for the measure. They know medicine. They do

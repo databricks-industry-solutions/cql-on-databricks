@@ -1,5 +1,4 @@
-// PHASE-0 — the single testing component (testing-and-conformance.md, modules.md).
-// Collapses what were separate cql-translate-cli / tools / integration-tests modules:
+// The single testing component (testing-and-conformance.md, modules.md). It holds:
 //   * CQL→ELM translation, our own tool on the cqframework cql-to-elm library (TECH-ELM-INPUT);
 //   * the ground-truth reference — the maintained Java CQL engine (engine-jvm), run
 //     IN-PROCESS (no Node subprocess) (CONF-GROUND-TRUTH);
@@ -8,7 +7,7 @@
 
 dependencies {
     implementation project(':compiler:core')
-    // PHASE-10 (BUILD-COMPILE-SERVICE): the compile-service boundary + local host, exercised
+    // BUILD-COMPILE-SERVICE: the compile-service boundary + local host, exercised
     // end-to-end (locally hostable) by CompileHostSpec against the local Connect session.
     implementation project(':compiler:service')
     // CONF-GROUND-TRUTH: the CQF in-memory providers and value normalization (`:compiler:cqf`).
@@ -21,9 +20,9 @@ dependencies {
     // (SparkConnect.session -> CqlRuntimeUdfs.install): ship the JAR (`addArtifact`) + register by name.
     // testImplementation because the install is test-only wiring (the production doorway is the client).
     testImplementation project(':compiler:runtime:udf')
-    // PHASE-10 (2026-07): the JVM execution engine (the direct-execute collect kernel + the session-view
-    // staging materializer) now lives IN conformance (src/test, package `runtime`) — it is validation-only
-    // (the sole production doorway is the Python client), so it dissolved out of a shipped module.
+    // The JVM execution engine (the direct-execute collect kernel + the session-view
+    // staging materializer) lives in conformance (src/test, package `runtime`) — it is validation-only
+    // (the sole production doorway is the Python client), so it is not a shipped module.
     implementation "com.lihaoyi:ujson_${scalaBinaryVersion}:${upickleVersion}"
 
     // The single value-normalizer (JsonNormalize, PROC-DRY) renders the engine's Spark struct
@@ -128,8 +127,7 @@ tasks.named('test') {
     systemProperty 'cqldatabricks.elmDir', layout.buildDirectory.dir('elm').get().asFile.absolutePath
     systemProperty 'cqldatabricks.cqlDir', file('src/test/resources/cql').absolutePath
     // Repo root, so the live client E2E (RuntimeCompileE2ESpec) can locate the sibling `client`
-    // regardless of the corpus location (the test worker's CWD is the module dir). Was previously derived
-    // from `cqlDir.getParentFile` back when the corpus sat at the repo root.
+    // regardless of the corpus location (the test worker's CWD is the module dir).
     systemProperty 'cqldatabricks.rootDir', rootProject.projectDir.absolutePath
     // The single golden folder (CONF-GOLDEN-PLAN): `<goldenDir>/<fixture>/<artifact>`, mirroring the
     // dump folder. Overridable (like `cqldatabricks.dataDir`) so a golden set can be staged/verified outside
@@ -140,7 +138,7 @@ tasks.named('test') {
     // per-row expression re-explosion (a measure's exclusion-arm wall was 102 s). Default 10000; raise only
     // for a deliberately heavier fixture.
     systemProperty 'cqldatabricks.maxRuntimeMs', System.getProperty('cqldatabricks.maxRuntimeMs', '10000')
-    // EMIT-SQL-BARRIER-TABLE: the emit default barrier is a real `CREATE OR REPLACE TABLE`, but the local
+    // The emit default barrier is a real `CREATE OR REPLACE TABLE`, but the local
     // OSS Spark Connect session catalog does not support REPLACE-TABLE-AS-SELECT, so the CONFORMANCE runs
     // default to the OSS-friendly `CACHE TABLE` barrier here (overridable — e.g. `-Dcqldatabricks.emit.barrier=table`
     // when regenerating a deploy artifact for a Databricks endpoint). Product/default emit stays `table`.
@@ -170,7 +168,7 @@ tasks.named('test') {
     // failed to launch can never silently void a required check). Default unset = local skip.
     def requireConnect = System.getProperty('cqldatabricks.requireConnect')
     if (requireConnect != null) systemProperty 'cqldatabricks.requireConnect', requireConnect
-    // PHASE-10 (BUILD-CLIENT, CONF-GATE-SELFDIFF): the Python interpreter that runs the client
+    // BUILD-CLIENT: the Python interpreter that runs the client
     // end-to-end driver (RuntimeCompileE2ESpec). Must have pyspark + the cql_databricks package
     // importable. Unset → the live client E2E skips cleanly (like `requireConnect`), so the suite stays
     // green on a host without a configured pyspark client. e.g. -Dcqldatabricks.pyClient=/path/to/venv/bin/python
@@ -302,7 +300,7 @@ tasks.register('connectServer', JavaExec) {
 
 // SINGLE-CORE sibling of connectServer: local[1] on sc://localhost:15003, for a fair 1-core-vs-1-core
 // Spark-vs-CQF comparison (MeasureCalcOnlySpec / FixtureScaleSpec scaladocs). Only touches :15003, never
-// the :15002 server. Benchmark harness for EMIT-SQL-VARIANT-CHOICE.
+// the :15002 server.
 tasks.register('connectServer1', JavaExec) {
     group = 'cql'
     description = 'Run a SINGLE-CORE local OSS Spark Connect server (sc://localhost:15003, local[1]).'

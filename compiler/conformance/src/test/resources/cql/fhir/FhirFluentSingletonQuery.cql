@@ -3,9 +3,9 @@ library FhirFluentSingletonQuery version '1.0.0'
 // ISOLATES a fluent singleton-query shape (LANG-CHOICE-MODEL / scope-aware clause typing):
 // a fluent function whose parameter is a SINGLETON resource, whose body is a QUERY over that parameter,
 // called on an OUTER query alias. When inlined, the inner query's source is an `AliasRef` to the outer
-// singleton alias. The clause `typeOf` is context-free, so that outer-alias reference used to type as
+// singleton alias. The clause `typeOf` is context-free, so that outer-alias reference types as
 // `Any` — which made the inner singleton-source query lower through the Array path's list `transform`
-// (a datatype mismatch on the resource STRUCT). `SqlQueryLowering.combined` now augments `typeOf` with
+// (a datatype mismatch on the resource STRUCT). `SqlQueryLowering.combined` augments `typeOf` with
 // each source alias's ELEMENT type, so the inner query is correctly a singleton source.
 //
 // `describe(E)` follows the singleton Encounter `E` through a one-element query and returns its status;

@@ -1,6 +1,6 @@
 library FhirDisjunctiveMembership version '1.0.0'
 
-// Phase-3 (EXEC-* SQL backend, LANG-TERMINOLOGY): a value-set membership BURIED in an `or` — NOT a
+// EXEC-* SQL backend, LANG-TERMINOLOGY: a value-set membership BURIED in an `or` — NOT a
 // top-level `where` conjunct, so it cannot be a retrieve/frame semi-join. It must be LIFTED to a
 // per-row boolean flag column (the SQL twin of `QueryLowering.liftMembershipFlags`), then referenced by
 // the residual 3VL predicate. This is the `reasonCode in "VS" or …` shape, and was a SQL-backend

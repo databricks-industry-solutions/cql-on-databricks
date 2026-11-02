@@ -3,9 +3,9 @@
 // traces UP from the criterion that placed them to the guideline recommendation it realizes
 // (ACC-KA-TRACE). Live gates computation (APP-LIVING-MEASURE): Static shows the reading prompt.
 //
-// The surrounding INSPECTOR is gone. APP-WORKBENCH replaced it: the right pane holds assertions
-// about the document, not a second rendering of it, and the population summary and Artifact card it
-// carried moved into the Workbench's pinned Context block. The Patient Lens itself is only passing
+// There is no surrounding INSPECTOR. The right pane is the Workbench (APP-WORKBENCH): it holds assertions
+// about the document, not a second rendering of it, and the population summary and Artifact card sit in
+// the Workbench's pinned Context block. The Patient Lens itself is only passing
 // through — APP-PATIENT-FOCUS makes patient focus a MODE that re-centers the whole document, so a
 // member list in a side panel is a contradiction with a scheduled end. It is exported rather than
 // deleted so the Workbench can keep it reachable until the left pane grows its Members tab.
@@ -58,12 +58,11 @@ function taskCounts(s: RunStage): { done: number; total: number } | null {
  *  whole closure before it runs, then again as each definition is reused or computed — so N-of-M over
  *  that list is the actual unit of work, not an estimate.
  *
- *  What this replaced, and why the shape of the bug matters: the previous bands described the RETIRED
- *  in-process runner's phases (`binding`, `plan`, `collecting` weighted 40–95%), none of which the SDP
- *  route emits. A run therefore read 22% (`compiling`), snapped to **0%** (`profile` matched nothing
- *  and fell through the final `return 0`), then sat at exactly 30% for the entire Job — `executing`
- *  carries no `step`/`total`, so the band's own interpolation term was always zero. Three of the four
- *  frames the backend actually sends were mis-scored, which is why the gauge looked stuck: it was.
+ *  The bands follow the phases the SDP route emits. Bands keyed to the in-process runner's phases (`binding`,
+ *  `plan`, `collecting`, weighted 40–95%) would match none of them: a run reads 22% (`compiling`), snaps to **0%**
+ *  (`profile` matches nothing and falls through the final `return 0`), then sits at exactly 30% for the entire Job,
+ *  because `executing` carries no `step`/`total`, so the band's own interpolation term is always zero. Such bands
+ *  would mis-score three of the four frames the backend sends, and the gauge would look stuck.
  *
  *  Band layout:
  *    connecting 0–5 | compiling 5–15 | computing 15–99 (by task) | done 100 */

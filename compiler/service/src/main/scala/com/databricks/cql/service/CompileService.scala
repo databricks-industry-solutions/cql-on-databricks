@@ -12,7 +12,7 @@ import com.databricks.cql.transpiler.lower.{SqlEvalEnv, SqlFrameLowering}
 
 import scala.collection.mutable
 
-/** One library entry in a multi-library `PIPE-MULTI-LIB` request: the ROOT library as ELM JSON plus
+/** One library entry in a multi-library request: the ROOT library as ELM JSON plus
   * its dependency closure. The same pair a single-library request carries in `elm` + `deps`, but
   * bundled so the caller can ship multiple roots in one request.
   *
@@ -28,7 +28,7 @@ final case class LibraryInput(elmJson: String, deps: Seq[String] = Seq.empty)
   *
   * @param elmJson      the ROOT library as ELM JSON (the interchange form, `EMIT-INTERCHANGE`). Empty when
   *                     `cql` is supplied instead (the service translates CQL → ELM, `BUILD-CLIENT-SESSION`).
-  *                     Ignored when `libraries` is non-empty (`PIPE-MULTI-LIB`).
+  *                     Ignored when `libraries` is non-empty.
   * @param cql          raw CQL TEXT to translate to ELM in-process (`CqlToElmCli`) — the alternative to
   *                     `elmJson`; exactly one is non-empty. Ignored when `libraries` is non-empty.
   * @param deps         the ROOT's dependency libraries as ELM JSON — the caller-supplied include closure
@@ -41,7 +41,7 @@ final case class LibraryInput(elmJson: String, deps: Seq[String] = Seq.empty)
   *                     lowered directly, never merged). An include whose ELM is not supplied fails loudly
   *                     (`CORE-NO-SILENT-MISLOWER`) rather than silently dropping the dependency.
   *                     Ignored when `libraries` is non-empty.
-  * @param libraries    the Data Space manifest (`PIPE-MULTI-LIB`): multiple root libraries, each with its
+  * @param libraries    the Data Space manifest: multiple root libraries, each with its
   *                     own dependency closure. When non-empty, `elm`/`cql`/`deps` are ignored and the
   *                     service links all roots into one merged library with library-qualified define names
   *                     (`{libId}__{define}`), deduplicating shared dependencies. The response shape is
@@ -101,7 +101,7 @@ final case class CompileRequest(
 object CompileRequest {
   /** Parse the wire JSON `{elm, cql?, knowledge?, deps?, libraries?, target?, boundaries?, context?, overrides?,
     * grainFirst?, parameters?, data?, terminology?, runtime?}`. `knowledge` (or `deps`) is the include closure
-    * (`BUILD-COMPILE-LINK`); `libraries` is the `PIPE-MULTI-LIB` Data Space manifest (array of `{elm, deps?}`);
+    * (`BUILD-COMPILE-LINK`); `libraries` is the Data Space manifest (array of `{elm, deps?}`);
     * `data` and `terminology` bind the call sites (`BIND-CALL-SITE`); `runtime.schema` qualifies the `cql_*` calls
     * (EMIT-UDF-QUALIFY). A `sources` or `dataSource` field, the per-type bindings `BIND-CALL-SITE` replaced, is
     * refused, naming it. */
@@ -207,7 +207,7 @@ object DefineShape {
   *                            applies, so a consumer never mistakes an unresolvable bracket for no filter
   *                            (`CORE-NO-SILENT-MISLOWER`).
   * @param valueSetId          the CANONICAL value-set url/oid when `codeFilterKind = "valueset"` — the key
-  *                            the runtime's `valuesets` table is keyed by (`BIND-TERMINOLOGY-TABLE`).
+  *                            the runtime's `valuesets` table is keyed by (`DATA-ENVIRONMENT-LAYOUT`).
   * @param codes               literal `(system, code)` pairs when `codeFilterKind = "codes"`.
   * @param dateProperty        the element a folded date filter applies to.
   * @param dateFiltered        whether a date range folded onto the read. The range itself is NOT published:
@@ -275,7 +275,7 @@ final case class SqlCompileResult(statements: Seq[SqlStatementOut], target: Stri
   *                   `FROM cql_<sibling>` in the query, so SDP traces them as the dependency edges.
   * @param library        the ELM library name that owns this define (e.g. `"MyMeasure"`). For single-library
   *                       plans this is the root library's `identifier.id`; for multi-library
-  *                       (`PIPE-MULTI-LIB`) it is the originating root's id, recovered by splitting the
+  *                       it is the originating root's id, recovered by splitting the
   *                       qualified define name at `__`.
   * @param libraryVersion the ELM library version (e.g. `"1.2.000"`), empty when the source declares none.
   * @param define         the RAW `ExpressionDef.name` from the ELM (e.g. `"Initial Population"` — spaces and
@@ -332,16 +332,16 @@ final class CompileService(terminology: Option[TerminologyProvider] = None) {
   /** PIPELINE PLAN (`PIPE-SQL-DAG-REUSE`): compile the whole library ONCE and cut the resulting DAG at each
     * materialized define into one dataset recipe per materialized define — the reference pipeline's
     * `@dp.materialized_view` bodies, with NO per-node `cql()`. When the request carries a `libraries`
-    * manifest (`PIPE-MULTI-LIB`), all roots are merged into one library-qualified plan. SESSION-FREE. */
+    * manifest, all roots are merged into one library-qualified plan. SESSION-FREE. */
   def compilePipeline(req: CompileRequest): PipelinePlan =
     CompileService.compilePipeline(req)
 
   /** DESCRIBE (`BUILD-COMPILE-SERVICE`): the neutral, pipeline-agnostic graph metadata an external
     * pipeline reads to build its own dataset graph (`LibraryDescribe`). When the request carries a
-    * `libraries` manifest (`PIPE-MULTI-DESCRIBE`), returns a merged graph across all roots. GENERATION
+    * `libraries` manifest, returns a merged graph across all roots. GENERATION
     * mode — the SQL classifier chooses the boundary set. Spark-free: nothing executes. */
   def describe(req: CompileRequest): LibraryGraph = {
-    val loaded = CompileService.normalizedInput(req) // root + linked/pruned dependency closure (BUILD-COMPILE-LINK / PIPE-MULTI-LIB)
+    val loaded = CompileService.normalizedInput(req) // root + linked/pruned dependency closure (BUILD-COMPILE-LINK)
     LibraryDescribe.describe(loaded, CompileService.resolveContext(req, loaded),
       overrides = req.overrides, grainFirst = req.grainFirst,
       terminologyVersion = None)
@@ -397,7 +397,7 @@ object CompileService {
     * mode (`SqlEvalEnv.cutSiblings` on — every reference to a materialized sibling lowers straight to
     * `FROM cql_<sibling>`), then partition the one resulting DAG into a [[DatasetRecipe]] per materialized
     * define. The cut set is exactly the materialized boundaries the SINGLE lowering discovered
-    * (`lowered.materializedDefines`), subsuming the retired proto's per-call `referenceDefines`. Pure (no
+    * (`lowered.materializedDefines`). Pure (no
     * Spark), like [[compileSql]] / [[LibraryDescribe]]; GENERATION mode by default (the classifier chooses
     * the boundaries), or RUNTIME when the caller pins `req.boundaries`. */
   def compilePipeline(request: CompileRequest): PipelinePlan = {
@@ -414,8 +414,7 @@ object CompileService {
       // `emit.object_prefix` override; absent leaves the config default (empty = bare names).
       objectPrefix = req.objectPrefix.getOrElse(Config.resolve(req.overrides).objectPrefix))
     // EMIT-ROOT-INDEPENDENT: every define is named by the library that declares it, the root's own included,
-    // so a define's recipe is the same whichever library is being compiled. `PIPE-MULTI-LIB` keeps its
-    // `{libId}__` names.
+    // so a define's recipe is the same whichever library is being compiled.
     val linked = normalizedInput(req)
     val loaded = if (req.libraries.nonEmpty) linked else LibraryLinker.ownerQualified(linked)
     val ownName: Map[String, String] = loaded.owners.collect {
@@ -479,7 +478,7 @@ object CompileService {
     * `CREATE FUNCTION` prelude are shared, so they are re-inlined into every recipe that needs them. */
   /** Resolve the ELM origin coordinates (library, version, raw define name) for a define name.
     * Single-library (EMIT-ROOT-INDEPENDENT): the library that declares `d` and its name there, from `owners`.
-    * Multi-library (`PIPE-MULTI-LIB`): `d` is `{libId}__{define}` — split to recover the library id and
+    * Multi-library: `d` is `{libId}__{define}` — split to recover the library id and
     * raw define name; the version comes from `libVersions`. */
   private def resolveOrigin(d: String, rootLibrary: String, rootVersion: String,
                             libVersions: Map[String, String],
@@ -682,7 +681,7 @@ object CompileService {
 
   /** The LOADED library a compile normalizes: the ROOT from `elm`/`cql`, FLATTENED with any caller-supplied
     * dependency libraries (`BUILD-COMPILE-LINK`), then with any parameter-VALUE overrides applied
-    * (`BUILD-CLIENT-SESSION`). When the request carries a `libraries` manifest (`PIPE-MULTI-LIB`), all
+    * (`BUILD-CLIENT-SESSION`). When the request carries a `libraries` manifest, all
     * roots are merged via [[LibraryLinker.linkMulti]] into one library with library-qualified defines.
     * Overrides are pre-seeded as parameter DEFAULTS so the existing `ParameterResolver` substitutes them —
     * the engine-supplied override seam it left open. */
@@ -714,7 +713,7 @@ object CompileService {
     * does NO source resolution — a `link` over a closure the caller under-supplied fails loudly
     * (`missing dependency library …`, `CORE-NO-SILENT-MISLOWER`).
     *
-    * When the request carries a `libraries` manifest (`PIPE-MULTI-LIB`), each root is linked with its own
+    * When the request carries a `libraries` manifest, each root is linked with its own
     * deps, then [[LibraryLinker.linkMulti]] merges all roots into one library with library-qualified
     * defines (`{libId}__{define}`). Shared dependencies are deduplicated. */
   def linkedRoot(request: CompileRequest): Library = {
@@ -749,7 +748,7 @@ object CompileService {
     if (req.depCql.isEmpty) Seq.empty
     else req.depCql.flatMap(d => CqlToElmCli.translateText(d, req.depCql).elmJson)
 
-  /** Multi-library linking (`PIPE-MULTI-LIB`): link each root with its own deps, merge all roots into
+  /** Multi-library linking: link each root with its own deps, merge all roots into
     * one library with library-qualified defines, prune to the union of all roots' population defines. */
   private def multiLinkedRoot(req: CompileRequest): Library = {
     val loaded: Seq[(Library, Map[String, Library])] = req.libraries.map { lib =>
@@ -758,7 +757,7 @@ object CompileService {
       (root, depsById)
     }
     val merged = LibraryLinker.linkMulti(loaded)
-    // Prune to the union of all roots' qualified population defines (PIPE-MULTI-LIB).
+    // Prune to the union of all roots' qualified population defines.
     // After linkMulti, root defines are `{libId}__{name}`; collect the qualified population names.
     val qualifiedRoots: Set[String] = loaded.flatMap { case (root, _) =>
       val rootDefNames = root.statements.collect { case e: ExpressionDef => e.name }.toSet

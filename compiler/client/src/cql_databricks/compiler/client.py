@@ -1,4 +1,4 @@
-"""``CqlClient`` — the fluent client session (PHASE-10, ``BUILD-CLIENT-SESSION``).
+"""``CqlClient`` — the fluent client session (``BUILD-CLIENT-SESSION``).
 
 Configured like a ``SparkSession``: one session holds the transpiler endpoint / auth / catalog once, and
 every ``cql()`` / ``describe()`` inherits it (no per-call kwarg sprawl). Each builder call is the top
@@ -7,7 +7,7 @@ every ``cql()`` / ``describe()`` inherits it (no per-call kwarg sprawl). Each bu
 
 Thin sugar over :mod:`cql_databricks.compiler.config` / :mod:`~.library` / :mod:`~.providers`: the session builds
 a resolved conf map + provider, and ``client.cql(source)`` returns a lazy :class:`~.cql.CqlQuery` handle you
-inspect (``elm``/``dag``) or ``exec`` terminally. KISS (locked 2026-07): ONE client, ONE server, NO
+inspect (``elm``/``dag``) or ``exec`` terminally. KISS: ONE client, ONE server, NO
 multi-version routing — a client pins one compiler/terminology version (``BUILD-VERSION-PIN``); multiple
 versions ⇒ separate workspaces.
 
@@ -101,8 +101,8 @@ class CqlClient:
         :class:`~.libraries.LibraryProvider` and ships its resolved ``include`` closure with the compile —
         the only form that makes a real multi-library eCQM work.
 
-        ``engine`` and ``recompute`` override the session's for this one query
-        (EVALUATOR-CLIENT-EVALUATE); a session that set them once passes none of them."""
+        ``engine`` and ``recompute`` override the session's for this one query; a session that set them once
+        passes none of them."""
         lib = self._bind(source, resource=resource, cql=cql, elm=elm, library=library, context=context,
                          data_model=data_model, engine=engine, recompute=recompute)
         return CqlQuery(lib, spark=spark or self._spark)
@@ -309,7 +309,7 @@ class CqlClientBuilder:
         the engine is FHIR-only today, so a non-FHIR value is reserved for future `ARCH-DATAMODEL-TRAIT`."""
         return self._set(config.CONF_DATA_MODEL, name)
 
-    # -- the engine and its session settings (EVALUATOR-CLIENT-EVALUATE, DEC-ENGINE-SESSION-OPTIONS) --
+    # -- the engine and its session settings (DEC-ENGINE-SESSION-OPTIONS) --
     def engine(self, name: str) -> "CqlClientBuilder":
         """Which engine runs this session's queries: ``local`` (the default: this session's compute, nothing
         kept) or ``evaluator`` (the evaluator's compute; results kept and reused). Never a fallback."""

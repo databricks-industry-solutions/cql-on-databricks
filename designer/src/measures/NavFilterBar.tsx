@@ -3,7 +3,7 @@
 // Visibility. Each category is SINGLE-SELECT; selections combine ACROSS categories (multi) and AND
 // together. A badge on the icon shows how many filter categories are active.
 //
-// IT SITS ABOVE THE TAB BODIES AND BELONGS TO NEITHER (APP-MEASURE-FLOW). The filter has to narrow
+// IT SITS ABOVE THE TAB BODIES AND BELONGS TO NEITHER. The filter has to narrow
 // both the Define and Composition arrangements and survive a switch between them, so this file provides
 // a hook plus a presentation component:
 //
@@ -48,7 +48,7 @@ export interface NavFilters {
    *  was handed — ordering is `sortSpecModel`'s and visibility is `filterSpecModel`'s. */
   matchesFilters: (e: SpecEntry) => boolean;
   applyNavFilters: (entries: SpecEntry[]) => SpecEntry[];
-  /** True when anything is narrowing the pane — the Flow tab says so, because `pruneComposition` re-hangs
+  /** True when anything is narrowing the pane — the Composition tab says so, because `pruneComposition` re-hangs
    *  survivors under their nearest surviving ancestor and the depth on screen stops being the real one. */
   narrowed: boolean;
   hasQuery: boolean;
@@ -63,7 +63,7 @@ export interface NavFilters {
 
 export function useNavFilters({ spec, graph, source }: {
   spec: SpecModel; graph: LogicGraph;
-  /** Only used to reset the facets when the artifact changes — node ids belong to the old graph. */
+  /** Resets the facets when the artifact changes: node ids belong to the graph they came from. */
   source: string;
 }): NavFilters {
   const [q, setQ] = useState("");

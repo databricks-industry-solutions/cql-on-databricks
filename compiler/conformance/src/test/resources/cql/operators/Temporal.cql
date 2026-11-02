@@ -2,7 +2,7 @@ library Temporal version '1.0.0'
 
 // Precision-aware date/time and Measurement-Period interval math (LANG-INTERVAL). Comparisons
 // can legitimately return null when precision is insufficient to decide; the interval relations
-// (during/overlaps/before) run over DateTime points. (Phase 3, temporal wave.)
+// (during/overlaps/before) run over DateTime points.
 
 define "YearOnly": @2012
 define "YearMonth": @2012-06

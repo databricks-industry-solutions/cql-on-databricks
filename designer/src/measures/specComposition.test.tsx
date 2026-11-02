@@ -2,7 +2,7 @@
 // ExampleReadingControl 1.0.0 (`__fixtures__/spec-patterns/ExampleReadingControl.cql`). The whole value of this view is that its shape is the measure's actual shape, so
 // the fixture is the compiler's own output rather than a hand-drawn tree that would agree with a guess.
 //
-// The cases that matter are the two the retired `SPEC-INDEX-TREE` got wrong or could not reach:
+// The cases that matter are the two a tree of this shape most easily gets wrong:
 // a define reached from two branches must be expanded ONCE, and a function must be walked THROUGH.
 
 import { describe, expect, it } from "vitest";

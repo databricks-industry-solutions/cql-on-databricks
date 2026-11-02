@@ -1,6 +1,6 @@
 library FhirListWholeListOp version '1.0.0'
 
-// PHASE-6 prerequisite (DATA-LIST-ENCODING, DATA-DEFINE-DF): a list-valued DEFINE consumed by a
+// DATA-LIST-ENCODING, DATA-DEFINE-DF: a list-valued DEFINE consumed by a
 // WHOLE-LIST operator. `E` is realized as a Relation frame (rows + __ordinal); a whole-list operator
 // (`in`, `Count`) is an Array-forcing boundary, so `E` is boxed back via collect_list at the
 // consumption site. This is the regression guard for the encoding split: the boxed list must be

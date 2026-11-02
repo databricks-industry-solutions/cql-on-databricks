@@ -3,13 +3,13 @@
 **KEPT AS THE OVERRIDE'S SURFACE.** Per-read subject counts would come from tables ``RUN-READ-BARRIER``
 materializes, but read materialization is not something a reader's evaluation does: ``CQL_MATERIALIZE_RETRIEVES``
 defaults to ``none``. In ordinary operation this module answers with an EMPTY set, the client renders
-absence, and a read's volume is not available — permanently rather than pending. This is the honest report:
-``SPEC-CLAUSE-PROBE`` rejected clause-level probing because the DEFINE is the accountability boundary.
+absence, and a read's volume is not available — permanently rather than pending. This is the honest report.
+Clause-level probing is not done, because the DEFINE is the accountability boundary.
 
 **THIS MODULE IS NOT DEAD CODE.** ``CQL_MATERIALIZE_RETRIEVES`` is a live authoring switch (``all`` for
 single-measure diagnosis, ``costly`` as the eventual fleet setting), and this is the ONE path that reports
 what it produced. Deleting it would mean rebuilding it the day the override ships; keeping it costs a
-join that answers empty. What follows is the mechanism, unchanged, and it runs only when that switch is on.
+join that answers empty. What follows is the mechanism, and it runs only when that switch is on.
 
 **THE JOIN IS BY DESCRIPTOR, NEVER BY NAME.** A materialized read's name is content-addressed
 (``scan_<type>_<hash8>``) and rebinding a value set intentionally yields a new one, so a name is not an
@@ -17,19 +17,16 @@ identity a client can hold. What identifies one is its resolved descriptor — r
 code property, value-set id — which the orchestrator records beside the read (``pipeline_defines.read``)
 at the moment it writes the barrier. The client asks in the terms it has, derived from the ELM.
 
-**A READ NEVER MATERIALIZED IS ABSENT, NEVER ZERO** (``SPEC-METRIC``). This is now the ordinary case
-rather than the edge one: with the override off nothing is materialized at all, so every read is absent
+**A READ NEVER MATERIALIZED IS ABSENT, NEVER ZERO** (``SPEC-METRIC``). This is the ordinary case:
+with the override off nothing is materialized at all, so every read is absent
 and that is the true report. Emitting 0 would say "this read matched nothing" where the truth is
 "nobody counted".
 
-**WHY IT WAS BUILT, kept as history.** The engine mounts a read as the relation ``retrieve_<Type>``,
-which is per resource TYPE and whose predicates are ADVISORY hints (``DATA-RETRIEVE-VIEW``) — so it could
-count the base resource type but not filtered subsets. Applying the value-set filter here would
-mean re-implementing membership semantics in the client of an engine that owns them, which
-``APP-DECOUPLE`` forbids. ``RUN-READ-BARRIER`` changed the shape of the problem rather than the rule:
-each RESOLVED retrieve became its own table with the filter already applied by the engine's own semantics,
-so counting one was counting a table. That reasoning still holds — it is the materialization it depended
-on that a reader's evaluation no longer performs.
+**WHY IT IS A COUNT OF TABLES.** The client does not apply a retrieve's value-set filter itself. Doing so
+would re-implement membership semantics in the client of an engine that owns them, which ``APP-DECOUPLE``
+forbids. A materialized read (``RUN-READ-BARRIER``) is one resolved retrieve in its own table, already
+filtered by the engine's own semantics, so counting one is counting a table. This module reads that count;
+the materialization itself happens in the pipeline, not in a reader's evaluation.
 """
 
 from __future__ import annotations

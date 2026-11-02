@@ -1,4 +1,4 @@
-// PHASE-S1 / APP-HOME, APP-BROWSE — the Definitions catalog shape.
+// APP-HOME, APP-BROWSE — the Definitions catalog shape.
 //
 // UC-backed (KNOWLEDGE-LAKE-DIRECT): the SPA fetches definitions from /api/libraries/discover (which
 // queries UC Knowledge Source tables directly) and maps them to this shape.

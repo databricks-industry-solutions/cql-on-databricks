@@ -134,8 +134,8 @@ Release note: <the text customers will read>
 | `CHECK-FEATURE-DEPS` | Feature dependencies go one way, HTTP included, and the Apps use Foundation only through its clients and HTTP API ([structure.md](structure.md)). Not automated yet | `BLOCK` |
 | `CHECK-NEUTRALITY` | `compiler/core` and `compiler/runtime/udf` take no Databricks dependency (`./gradlew checkNeutrality`) | `BLOCK` |
 | `CHECK-ONE-PATH` | One implementation path. No silent fallback, no "try X, then Y", no swallowed error. A failure raises a typed error with useful text | `BLOCK` |
-| `CHECK-NO-UPSTREAM-PATCH` | No regex or string patching of an upstream dependency's output | `BLOCK` |
-| `CHECK-DERIVED-DATA` | The frontend doesn't compute from regex or source scans what the compiler provides | `BLOCK` |
+| `CHECK-NO-UPSTREAM-PATCH` | No regex or string patching of a third-party dependency's output. Our own compiler's output is fixed in the compiler, or adapted under a requirement that says why | `BLOCK` |
+| `CHECK-DERIVED-DATA` | The frontend doesn't compute from regex or source scans what the compiler provides. Regex that edits source text, or derives what the compiler doesn't provide, is fine | `BLOCK` |
 | `CHECK-CONFIG` | Settings resolve by `BUILD-RESOLVE`. No new `spark.cqldatabricks.*` key. Workspace settings only in `databricks.local.yml`, local ones only in `.env` | `BLOCK` |
 
 ## Code quality

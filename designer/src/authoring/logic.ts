@@ -1,4 +1,4 @@
-// PHASE-S2 / APP-LOGIC-VIEW — derive the Narrative model from CQL source.
+// APP-LOGIC-VIEW — derive the Narrative model from CQL source.
 //
 // The Narrative view is a single, ordered list of every definition with its CQL on demand
 // (APP-LOGIC-VIEW); the CQL view is the whole library read-only. This module is the pure derivation

@@ -1,9 +1,4 @@
-"""CONTENT-RESOLVER, KNOWLEDGE-LAKE-DIRECT — tag lookup, layout checks, and the corpus, over a fake runner.
-
-Ported from the retired ``test_knowledge_query.py`` (parsing, closure) and ``test_knowledge_sync.py``
-(identity, portable SQL); the corpus tests are new, because the derivation moved from a sync job into the
-load.
-"""
+"""KNOWLEDGE-LAKE-DIRECT — tag lookup, layout checks, and the corpus, over a fake runner."""
 from __future__ import annotations
 
 import json

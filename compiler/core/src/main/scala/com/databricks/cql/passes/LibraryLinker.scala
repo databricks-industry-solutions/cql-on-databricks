@@ -164,10 +164,10 @@ object LibraryLinker {
       })
   }
 
-  // ---- multi-library merge (PIPE-MULTI-LIB) --------------------------------
+  // ---- multi-library merge --------------------------------
 
-  /** Link MULTIPLE root libraries into ONE self-contained library for space-wide pipeline compilation
-    * (`PIPE-MULTI-LIB`). Each root is linked independently with its own dependency closure (via
+  /** Link MULTIPLE root libraries into ONE self-contained library for space-wide pipeline compilation.
+    * Each root is linked independently with its own dependency closure (via
     * [[link]]), then the root's own defines are QUALIFIED with `{libId}__` so that two measures with
     * the same define name ("Denominator") do not collide. Shared dependency defines (e.g. a shared
     * helper library's) are deduplicated by qualified name — they are identical across roots because
@@ -196,7 +196,7 @@ object LibraryLinker {
     mergeLinked(qualified)
   }
 
-  /** Qualify a linked library's ROOT defines with `{libId}__` prefix (`PIPE-MULTI-LIB`). After
+  /** Qualify a linked library's ROOT defines with `{libId}__` prefix. After
     * [[link]], the root's own defines are bare and dependency defines are `{depId}.{name}`. This
     * renames every bare root define/function to `{libId}__{name}` and rewrites all internal
     * references. Context defines (`Patient`) stay bare (they are global across all roots). */
@@ -229,7 +229,7 @@ object LibraryLinker {
       })
   }
 
-  /** Merge independently-qualified linked libraries into one (`PIPE-MULTI-LIB`). Shared dependency
+  /** Merge independently-qualified linked libraries into one. Shared dependency
     * defines (same qualified name across roots) are deduplicated — only the first occurrence is kept
     * (they are identical because [[link]] produces the same qualified IR for the same dependency
     * library). Context declarations and context defines come from the first root (global). */

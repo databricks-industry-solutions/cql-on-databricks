@@ -191,8 +191,8 @@ Then each user signs in once: Catalog, External data, Connections, the connectio
 add the MCP Service as a connector. Genie One shows the tools' results as tables and text; it does not draw MCP
 App views.
 
-Unity Gateway doesn't support registering a Databricks App as your own MCP server yet. The connection works,
-but it is a workaround until that support ships (tracked as AIGOV-487).
+Unity Gateway can't register a Databricks App as your own MCP server, so the deploy reaches the App through
+this HTTP connection instead.
 
 ## What it creates
 

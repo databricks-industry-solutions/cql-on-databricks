@@ -15,11 +15,9 @@
 .mw-tour-wordmark .dot { color: var(--tacc); }
 .mw-tour-tag { font-size: 12px; color: var(--tink-2); }
 .mw-tour-spacer { flex: 1; }
-/* The masthead throughline. It replaces `.mw-tour-live`, a pulsing accent dot beside the word
-   "Glass-box": a LIVE indicator is a claim about state, and nothing on this page is live, so the dot
-   animated for decoration — the one thing section 2 of the design system forbids accent from doing.
-   The treatment it kept is the uppercase micro label; what it dropped is the dot, the keyframes, and
-   the reduced-motion exception they needed (APP-STYLE-GUIDE). */
+/* The masthead throughline is an uppercase micro label, not a live indicator. A LIVE dot beside the word "Glass-box" is a claim
+   about state, and nothing on this page is live. A pulsing dot would animate for decoration, which section 2 of the design system
+   forbids accent from doing (APP-STYLE-GUIDE). */
 .mw-tour-tagline { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--tink-2); }
 
 .mw-tour .eyebrow { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; font-weight: 700; color: var(--tacc); font-family: var(--f-ui); }
@@ -36,15 +34,15 @@
 .mw-tour-hero-cta { display: flex; gap: 12px; margin-top: 26px; flex-wrap: wrap; }
 
 /* EVERY BUTTON RULE HERE IS `.mw`-QUALIFIED, AND THAT IS LOAD-BEARING — not style.
-   `measures.css` line 88 carries the app-wide reset `.mw button { color: inherit; background: none;
-   border: 0 }` at specificity (0,1,1). A bare `.mw-tour-primary` is (0,1,0), so it LOST: every `<button>`
-   on this page — the hero's "Open the example", every "Show me", every "Take me there" — computed no
-   accent fill and inherited ink, rendering as plain text, while the one action that is an `<a>` (the
-   notebooks link, which the reset cannot reach) was the only thing on the page that looked like a
-   button. The ghost buttons lost their border to the same rule, and the close control its panel.
-   Qualified to (0,2,0) they win, and the page has ONE button style again. This is the standing caveat
-   in design-system.md section 6 that has already bitten the pane tabs, the ref lens and the badges;
-   `tourButtonStyle.test.tsx` now pins it here so it cannot come back a fifth time. */
+   `measures.css` carries the app-wide reset `.mw button { color: inherit; background: none;
+   border: 0 }` at specificity (0,1,1). A bare `.mw-tour-primary` is (0,1,0), so it would LOSE: every `<button>`
+   on this page — the hero's "Open the example", every "Show me", every "Take me there" — would compute no
+   accent fill and inherit ink, rendering as plain text, while the one action that is an `<a>` (the
+   notebooks link, which the reset cannot reach) is the only thing on the page that looks like a
+   button. The ghost buttons would lose their border to the same rule, and the close control its panel.
+   Qualified to (0,2,0) they win, and the page has one button style. This is the standing caveat
+   in design-system.md section 6, which also applies to the pane tabs, the ref lens and the badges;
+   `tourButtonStyle.test.tsx` pins it here. */
 .mw .mw-tour-primary { display: inline-flex; align-items: center; gap: 7px; background: var(--tacc); color: #fff;
   font-family: var(--f-ui); font-size: 14px; font-weight: 600; padding: 10px 18px; border-radius: 9px; white-space: nowrap; }
 /* The anchor states its own `color`/`text-decoration` so the global `a { color: var(--accent) }` and the
@@ -73,9 +71,8 @@
 .mw-tour-apps b { color: var(--tink); font-weight: 600; }
 
 /* ── the section art: ONE MARK PER PILLAR (APP-TOUR, APP-STYLE-GUIDE) ───────────────────────
-   Every section used to draw the SAME rotated square — a diamond, which was the Designer module's
-   retired Unicode glyph — while `TourGlyph` built a per-feature class (`g-<id>`) that styled nothing.
-   Seven identical shapes in a panel taking half the row is decoration pretending to be information.
+   A panel of seven identical shapes taking half the row is decoration pretending to be information, so each
+   section draws its own mark.
 
    These are NOT icons and must not borrow the module switcher's lucide marks: five of the seven
    pillars have no module, and a switcher mark names a place you can go — which is exactly what those
@@ -195,8 +192,8 @@
    and actually scrolls; without this wrapper the scroll region grows to content height and the
    overflow:hidden shell clips it (APP-TOUR). The fixed close button stays out of flow. */
 .mw-tour-overlay { position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); }
-/* `.mw`-qualified for the reason given above the primary button: unqualified, the app-wide `.mw button`
-   reset stripped this control's panel and hairline and left a bare glyph floating over the page. */
+/* `.mw`-qualified for the reason given above the primary button: unqualified, the app-wide `.mw button` reset would strip this control's panel and hairline and leave a bare glyph
+   floating over the page. */
 .mw .mw-tour-close { position: fixed; top: 14px; right: 18px; z-index: 210; width: 34px; height: 34px; border-radius: 999px;
   display: grid; place-items: center; padding: 0;
   background: var(--panel); border: 1px solid var(--tline); color: var(--tink-2); font-size: 18px; box-shadow: var(--tshadow); }

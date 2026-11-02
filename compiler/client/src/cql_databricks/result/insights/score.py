@@ -5,7 +5,7 @@ result, like any other define. HL7 CQF Measures makes each population a subset o
 leaves that to the evaluator, so a measure's CQL does not say it: a Numerator written as "HbA1c > 9% or
 missing" is true for every patient without diabetes too. The score is where that rule belongs, and this
 module is its one owner: the Designer, the agent and a notebook score a measure here, so their scores
-agree (`SPEC-POPULATION-CASCADE`, amended 2026-10-29).
+agree (`SPEC-POPULATION-CASCADE`).
 
 **THE SCORING TYPE IS DECLARED, NOT INFERRED** (`SPEC-SCORING-METHODOLOGY`). It comes from
 ``Measure.scoring`` (:func:`parse_scoring`) or from the caller. The population names of a proportion and

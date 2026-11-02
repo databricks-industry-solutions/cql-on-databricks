@@ -5,7 +5,7 @@ import org.junit.runner.RunWith
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.junit.JUnitRunner
 
-/** PHASE-2 slice 1, engine side (DATA-RETRIEVER, ARCH-SET-EVAL): a FHIR `exists [Condition]`
+/** Engine side (DATA-RETRIEVER, ARCH-SET-EVAL): a FHIR `exists [Condition]`
   * measure lowers to a `__subject_id`-keyed Patient-context frame and computes per-patient
   * existence. This asserts the known-correct CQL answer over the sample data (p1/p2 have Conditions,
   * p3 does not; p4/p5 carry the partial-date Conditions added for `FhirPartialPrecision`; p6/p7 carry

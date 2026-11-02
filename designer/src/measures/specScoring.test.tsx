@@ -67,10 +67,10 @@ describe("scoringMethodology", () => {
 });
 
 // ── the scoring model ────────────────────────────────────────────────────────────────────────────
-// THE FAILURE THESE EXIST FOR: every display path in the app hard-assumed a proportion. `POP_ORDER`
-// was the proportion chain and every measure's figures were measured against it; `funnelFromCounts`
-// divided Numerator by Denominator whatever the measure was; the document header printed the literal
-// string "proportion" over all of them. A ratio rendered with a proportion's formula reads
+// THE FAILURE THESE EXIST FOR: every display path in the app hard-assumes a proportion. `POP_ORDER`
+// is the proportion chain and every measure's figures are measured against it; `funnelFromCounts`
+// divides Numerator by Denominator whatever the measure is; the document header prints the literal
+// string "proportion" over all of them.
 // authoritative and is wrong, which is the whole reason this module refuses rather than guesses.
 
 describe("parseScoring", () => {
@@ -108,8 +108,8 @@ describe("populationChain", () => {
 
 describe("removesFrom", () => {
   it("takes a ratio's Numerator Exclusions off the NUMERATOR, never the denominator", () => {
-    // The bug this replaces, precisely: the old rule matched the substring "Exclusions" and subtracted
-    // it from the denominator, which is a subtraction no ratio measure performs.
+    // The failure this guards against: a rule that matches the substring "Exclusions" subtracts it from
+    // the denominator, which is a subtraction no ratio measure performs.
     expect(removesFrom("ratio", "Numerator Exclusions")).toBe("Numerator");
     expect(removesFrom("proportion", "Numerator Exclusions")).toBeNull();
     expect(removesFrom("proportion", "Denominator Exclusions")).toBe("Denominator");

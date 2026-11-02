@@ -1,4 +1,4 @@
-"""Spark I/O for the measure import tables (CONTENT-CATALOG-LAYOUT, CONTENT-INCREMENTAL).
+"""Spark I/O for the measure import tables (CONTENT-INCREMENTAL).
 
 **The Lakehouse publishes standards** (``CONTENT-LAKEHOUSE-STANDARD-ONLY``): a table in the
 authority schema is a standardized FHIR resource type or it does not belong there.  Each row is
@@ -15,8 +15,8 @@ no schema to maintain.
 * ``<catalog>.<authority>.measure`` — FHIR Measure, Knowledge Source type=Measure
 * ``<catalog>.<authority>.library`` — FHIR Library, Knowledge Source type=Library
 
-The ``valueset`` table (tall ``valueset_id, system, code`` matching BIND-TERMINOLOGY-TABLE) lives
-in the schema the caller names (``CONTENT-TERMINOLOGY-SCHEMA``): beside the measures, or in a terminology
+The ``valueset`` table (tall ``valueset_id, system, code``, `DATA-ENVIRONMENT-LAYOUT`) lives
+in the schema the caller names: beside the measures, or in a terminology
 schema of its own that several measure sets share.  It is the
 ONE deliberate exception to the FHIR-resource-shape rule: it is the ENGINE's binding contract, read
 directly at run time, so it follows the engine's shape.
@@ -206,7 +206,7 @@ def load(spark: SparkSession, result: TransformResult, *,
     Together they produce ``<catalog>.<schema>.measure``, etc.
 
     ValueSet expansions are written to ``valueset_schema``, which may be the authority schema or a
-    terminology schema of its own (``CONTENT-TERMINOLOGY-SCHEMA``).
+    terminology schema of its own (`DATA-ENVIRONMENT-LAYOUT`).
     """
     _ensure_schema(spark, catalog, authority_schema)
     counts: dict[str, int] = {}
@@ -235,7 +235,7 @@ def ensure_valueset_table(spark: SparkSession, *, catalog: str | None,
                           valueset_schema: str) -> str:
     """Ensure the ``valueset`` table exists in the terminology schema (empty if no
     expansions loaded yet).  Returns the fully-qualified table name.  Allows a Knowledge
-    Location to point to it immediately (CONTENT-TERMINOLOGY-SCHEMA)."""
+    Location to point to it immediately."""
     _ensure_schema(spark, catalog, valueset_schema)
     fqtn = _qualify(catalog, valueset_schema, "valueset")
     if not spark.catalog.tableExists(fqtn):

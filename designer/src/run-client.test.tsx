@@ -1,4 +1,4 @@
-// SVC-RESOURCE-SCHEMA / DATA-SOURCE-PROFILE (PROC-TDD) — fetchModeledTypes fallback contract: the editor's
+// SVC-RESOURCE-SCHEMA (PROC-TDD) — fetchModeledTypes fallback contract: the editor's
 // type dropdown must get the engine's modeled types when available, and an EMPTY list (never a throw) when
 // the compiler is unreachable/degraded, so it falls back to its static list rather than an empty picker.
 import { describe, it, expect, vi, afterEach } from "vitest";

@@ -4,7 +4,7 @@ A library's address is ``(location, name, version)``. The location decides where
 and where its includes resolve first:
 
 - ``store:<catalog>.<schema>`` — a schema tagged ``cql_databricks_knowledge``. Includes resolve from that store
-  first, then the other tagged stores in scope order (`CLIENT-DISCOVERY-SCOPE`).
+  first, then the other tagged stores in scope order.
 - ``folder:<path>`` — a folder of CQL, laid out as a measure package is (`cql/<Name>-<version>.cql`) or flat.
   Includes resolve from the folder first, sibling-first, then tagged knowledge (`CLIENT-KNOWLEDGE-INCLUDES`).
 

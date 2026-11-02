@@ -141,11 +141,11 @@ whether it came from the rule or the map.
 
 | Replaced | By |
 |---|---|
-| Schema tags `cql_databricks_data_source`, `_terminology`, `_knowledge`; `TaggedResolver` (`CLIENT-DEFAULT-RESOLVER`) | Catalog tags and `EnvironmentResolver` |
-| `catalog_scopes` (`CLIENT-DISCOVERY-SCOPE`); the scope as result trust boundary (`DEC-RESULT-SCOPE`) | The environment. Results are read from the environment's `results` or the caller's own `draft_results` tables |
-| `retrieve_<Type>` functions, `FunctionRelation`, named arguments (`BIND-NAMED-ARGS`), the layout and parameter queries | Published views bound by name |
+| Schema tags `cql_databricks_data_source`, `_terminology`, `_knowledge`; `TaggedResolver` | Catalog tags and `EnvironmentResolver` |
+| `catalog_scopes`; the scope as result trust boundary (`DEC-RESULT-SCOPE`) | The environment. Results are read from the environment's `results` or the caller's own `draft_results` tables |
+| `retrieve_<Type>` functions, `FunctionRelation`, named arguments, the layout and parameter queries | Published views bound by name |
 | `publish_data_source` writing functions (`BIND-PUBLISH`) | It writes the mapping as a published view |
-| Per-user result schemas (`RUN-CLIENT-PRIVATE-PROVISIONING`) | `draft_results` with object isolation |
+| Per-user result schemas | `draft_results` with object isolation |
 | The function branch in `DEC-PROVIDER-RELATION` | Views only for the Apps; per-site choice through a custom resolver in notebooks and Jobs |
 | `DEC-NOTEBOOK-DEFAULT-RESOLVER` | Settled: the default environment |
 | `DEC-PUBLISHED-STORE-LOCATION` | Settled: the environment's standard schemas |

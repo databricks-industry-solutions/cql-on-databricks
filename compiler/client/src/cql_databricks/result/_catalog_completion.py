@@ -26,7 +26,7 @@ from ._durable_delta import table_sql
 
 
 log = logging.getLogger(__name__)
-#: RUN-CLIENT-RESULT-IDENTITY — v2 tables carry the retired hashes and are never reused.
+#: RUN-CLIENT-RESULT-IDENTITY — tables written under another format version are never reused.
 FORMAT = "cql-catalog-result-v3"
 #: The ``cql.durable.format`` table property of every result table.
 TABLE_FORMAT = "cql-catalog-delta-v1"

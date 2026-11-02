@@ -1,10 +1,10 @@
 library FhirListDefineVsFilter version '1.0.0'
 
-// PHASE-6 step 2 (DATA-SKIP-UNFILTERED, ARCH-PUSHDOWN, LANG-TERMINOLOGY): the value-set fold composing
+// DATA-SKIP-UNFILTERED, ARCH-PUSHDOWN, LANG-TERMINOLOGY: the value-set fold composing
 // PER-CONSUMER over a Relation define source. A bare define `AllConditions` is a Relation VIEW over the
 // [Condition] scan; a downstream consumer's `where C.code in "Diabetes"` is realized as the row-level
 // broadcast semi-join over that view (keyed by the define's __ordinal) — the same membership the
-// terminology pushdown folds into a direct retrieve, now composing over the shared broad define instead
+// terminology pushdown folds into a direct retrieve, composing over the shared broad define instead
 // of forcing a collect_list barrier. (The optimizer's retrieve-level fold does not fire on an
 // ExpressionRef source, so optimized ≡ unoptimized here — the self-diff stays a meaningful gate.)
 //

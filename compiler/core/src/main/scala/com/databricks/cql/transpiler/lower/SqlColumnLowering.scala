@@ -190,8 +190,7 @@ object SqlColumnLowering {
       // literals lower to DECIMAL(38,8) (`decimal`), and Spark's addition of two (38,8) operands
       // overflows precision 38 and — under allowPrecisionLoss — rounds the result to scale 7,
       // silently erasing the step (1.0 ± 1e-8 → 1.0000000). Narrowing both operands to DECIMAL(28,8)
-      // keeps the natural sum at (29,8) so the 8th digit survives (the retired proto back end avoided
-      // this because its DataFrame literals kept natural, minimal precision).
+      // keeps the natural sum at (29,8) so the 8th digit survives.
       val decStep = decimal(BigDecimal("0.00000001") * d).cast("decimal(28,8)")
       typeOf(o) match {
         case IntegerType     => go(o) + int(d)
@@ -1258,8 +1257,7 @@ object SqlColumnLowering {
     * set/order (the UNION of demand slots across all members), filling only the slots THIS member carries
     * and nulling the rest — so UNION-ALL aligns by position and a navigation reads a shallow top-level
     * `alias.<slot>` (one extraction per field, no per-arm nesting), collapsing the `NestedColumnAliasing`
-    * O(N²). The demand slots are NATIVE top-level fields (the flat encoding is the sole het-Choice carrier;
-    * the former VARIANT payload alternative was retired — see EMIT-SQL-VARIANT-CHOICE RETIRED). */
+    * O(N²). The demand slots are NATIVE top-level fields (the flat encoding is the sole het-Choice carrier). */
   private[lower] def choiceCarrierArm(armVal: SqlExpr, member: CqlType, members: Seq[CqlType],
                                       demand: Set[String]): SqlExpr = {
     def rtOf(m: CqlType): Option[String] = m match { case NamedType(n) => Some(FhirModel.localName(n)); case _ => None }

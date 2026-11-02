@@ -98,8 +98,7 @@ def test_unreviewed_draft_is_serialisable(schema):
 
 
 def test_narrated_prose_carries_inline_references(schema):
-    """Fixes B6. Inline refs are structural, which is what retires scanning prose for known define
-    names."""
+    """Inline refs are structural, which is what replaces scanning prose for known define names."""
     narrative = ('<Narrative provenance="narrated">Excludes patients meeting '
                  '<ConceptRef library="Exclusions" define="Has End Of Life Care"/>.</Narrative>')
     assert schema.is_valid(_minimal(narrative))

@@ -1,4 +1,4 @@
-"""RUN-CLIENT-RESULT-SETS, SVC-TOOL-FRESHNESS — selected outputs and successful-completion evidence."""
+"""RUN-CLIENT-RESULT-SETS — selected outputs and successful-completion evidence."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

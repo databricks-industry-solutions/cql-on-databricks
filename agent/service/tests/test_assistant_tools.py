@@ -1,4 +1,4 @@
-"""SVC-MCP-TOOLS, SVC-TOOL-ADDRESS, SVC-TOOL-FRESHNESS — the assistant's five tools.
+"""SVC-MCP-TOOLS — the assistant's five tools.
 
 These pin the properties an EXTERNAL caller depends on, which is the whole reason the surface exists
 (`agent/README.md`): that where an output is stored is the complete selection's answer, never the
@@ -105,7 +105,7 @@ class TestGetOutput:
             get_output(ADDRESS, REFERENCE, warehouse=FakeWarehouse())
 
     def test_never_refreshes(self):
-        # SVC-TOOL-FRESHNESS: recomputing is a write, and writes are proposals. A read tool that
+        # Recomputing is a write, and writes are proposals. A read tool that
         # helpfully recomputed would be a second execution path nobody asked for.
         w = self._warehouse()
         get_output(ADDRESS, REFERENCE, warehouse=w)
@@ -160,7 +160,7 @@ class TestQueryData:
 
 class TestGetFreshness:
     def test_reports_successful_completion_not_table_or_source_change_time(self):
-        """RUN-CLIENT-REFRESH-RESUME — explicit replacement for the legacy freshness payload."""
+        """RUN-CLIENT-REFRESH-RESUME — successful completion is the evidence, not table or source change time."""
         evidence = get_freshness(ADDRESS, REFERENCE).to_dict()
         assert evidence == {"format": "cql-completion-v1", "handle": REFERENCE.relation(),
                             "exists": True, "computedAt": "2026-01-01T00:00:00+00:00",

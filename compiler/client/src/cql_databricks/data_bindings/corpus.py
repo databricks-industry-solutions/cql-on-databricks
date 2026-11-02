@@ -1,14 +1,13 @@
-"""CONTENT-RESOLVER, KNOWLEDGE-LAKE-DIRECT — the knowledge corpus, read direct from the tagged tables.
+"""KNOWLEDGE-LAKE-DIRECT — the knowledge corpus, read direct from the tagged tables.
 
 One batch load per knowledge source holds every library (identity, CQL, data requirements) and the
 measure → library edges in memory. Include closure, discovery and source lookups then run over that
 list in Python, which is what they always did; only the read moved, from a Lakebase mirror kept fresh by
 a sync job to the Lakehouse tables themselves.
 
-**The derivations relocate, they do not change** (`CONTENT-NO-DERIVED-COLUMNS`): base64-decoding the CQL
-attachment, parsing the CQL header, and exploding ``Measure.library`` into edges happen here, at load,
-exactly as the retired sync did them. All VARIANT navigation uses ``variant_get``, never the ``:`` path
-operator, which is Databricks-only and fails to parse on OSS Spark.
+**The derivations do not change** (`CONTENT-NO-DERIVED-COLUMNS`): base64-decoding the CQL
+attachment, parsing the CQL header, and exploding ``Measure.library`` into edges happen here, at load.
+All VARIANT navigation uses ``variant_get``, never the ``:`` path operator, which is Databricks-only and fails to parse on OSS Spark.
 
 **Measure resources load lazily** (`KNOWLEDGE-CORPUS-REFRESH`): the whole ``Measure`` is the corpus's
 largest payload and a page touches one at a time, so it is a point read when asked for, cached here.
@@ -106,7 +105,7 @@ class Corpus:
         by_name: dict[str, list[Library]] = {}
         for lib in libraries:
             by_name.setdefault(lib.name, []).append(lib)
-        # CLIENT-DISCOVERY-SCOPE — by name, the earliest scope holding the name wins; newest version within it.
+        # By name, the earliest scope holding the name wins; newest version within it.
         earliest_then_newest = functools.cmp_to_key(lambda a, b: (a.knowledge.position - b.knowledge.position)
                                                     or compare_versions(b.version, a.version))
         self._by_name = {n: sorted(ls, key=earliest_then_newest) for n, ls in by_name.items()}
@@ -117,7 +116,7 @@ class Corpus:
 
     def library(self, name: str, version: str | None = None) -> Library | None:
         """By exact (name, version), earliest scope first; or, when ``version`` is None, the newest version of
-        ``name`` in the earliest scope that holds it (CLIENT-DISCOVERY-SCOPE)."""
+        ``name`` in the earliest scope that holds it."""
         if version is not None:
             return self._exact.get((name, version))
         candidates = self._by_name.get(name)
@@ -152,7 +151,7 @@ class Corpus:
     def resolve_closure(self, source: str, *, prefer: tuple[str, str] | None = None) -> ResolvedClosure:
         """The transitive ``include`` closure of ``source``: dependencies before dependents, each name
         once. An include that pins a version matches only that version; an unpinned one takes the newest by
-        name (CLIENT-DISCOVERY-SCOPE). Includes with no match are surfaced as unresolved.
+        name. Includes with no match are surfaced as unresolved.
 
         ``prefer`` is a store ``(catalog, schema)`` whose own copy of an include wins over every other store's
         (RUN-ADDRESS-LOCATION); an include it lacks resolves from the rest in scope order."""

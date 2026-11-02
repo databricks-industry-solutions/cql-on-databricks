@@ -12,7 +12,7 @@ import com.databricks.cql.sema.FhirModel
   *
   *   - does my `valuesets` table hold an expansion for every canonical URL this measure binds?
   *     ([[Catalog.valueSets]] — the emitted SQL reads `WHERE valueset_id = '<id>'`,
-  *     `SqlEvalEnv.valueSetMount` / `BIND-TERMINOLOGY-TABLE`)
+  *     `SqlEvalEnv.valueSetMount` / `DATA-ENVIRONMENT-LAYOUT`)
   *   - for resource type T, which column is filtered against which set — so a customer table can be
   *     pre-filtered, or a ConceptMap PREIMAGE computed (`BIND-CONCEPTMAP-PREIMAGE`, `data-binding.md`
   *     section 6.3) instead of translating every row.

@@ -12,7 +12,7 @@ import java.io.File
   * (folds in the former single-measure scale specs).
   *
   * WHY THE SQL PATH: the SQL emitter is the primary EXECUTION substrate (`compiler/docs/execution-model.md`
-  * and 11.1 — the 2026-07 backend decision); it is the path that runs the full corpus and scales. So the scale harness lowers via
+  * and 11.1); it is the path that runs the full corpus and scales. So the scale harness lowers via
   * [[SqlDifferential.runThroughput]] (SQL script -> mount -> execute -> force-materialize via `count(*)`,
   * NO Java CQF reference and NO per-subject diff — correctness is vetted on the base deck by
   * [[SqlDifferentialSpec]]; this measures wall time). Data is replicated `factor`x with FRESH patient IDs

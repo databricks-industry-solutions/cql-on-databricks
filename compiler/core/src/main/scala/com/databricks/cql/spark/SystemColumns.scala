@@ -58,7 +58,7 @@ object SystemColumns {
   val ResourceId   = "__resource_id"
   val ResourceType = "__resource_type"
 
-  /** The whole resource carried by a retrieve mount as ONE struct column (DATA-RETRIEVE-VIEW): the
+  /** The whole resource carried by a retrieve mount as ONE struct column (BIND-CONTRACT): the
     * single schema contract `(__subject_id, STRUCT<resource + __resource_type + __resource_id> AS
     * __resource)` every `DataProvider` adapter returns. The struct FLOWS THROUGH the plan — every
     * retrieve consumer navigates it (`__resource.<field>`) rather than rebuilding it. */

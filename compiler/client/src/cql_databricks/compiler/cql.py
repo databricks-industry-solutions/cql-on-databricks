@@ -1,4 +1,4 @@
-"""``cql()`` — the runtime-compiled CQL query surface for Spark (PHASE-10, BUILD-CLIENT).
+"""``cql()`` — the runtime-compiled CQL query surface for Spark (BUILD-CLIENT).
 
 ``cql(source)`` (or ``client.cql(source)``) binds a CQL library — a raw CQL / ELM STRING, a packaged
 ``resource`` path, or a :class:`~.library.Library` — and returns a lazy :class:`CqlQuery` HANDLE. The handle
@@ -52,7 +52,7 @@ def cql(source=None, *, resource: Optional[str] = None, cql: Optional[str] = Non
     CQL) is frozen (`BUILD-CLIENT-COMPAT`), so a bare name would otherwise be raw CQL forever.
 
     ``engine`` and ``recompute`` are the explicit tier of the session's settings
-    (EVALUATOR-CLIENT-EVALUATE, `DEC-ENGINE-SESSION-OPTIONS`); a session sets them once and omits them here."""
+    (`DEC-ENGINE-SESSION-OPTIONS`); a session sets them once and omits them here."""
     needs_bind = isinstance(source, str) or source is None or resource or cql or elm or library
     if needs_bind:
         c = client if client is not None else _lazy_client(spark=spark, endpoint=endpoint)
@@ -157,7 +157,7 @@ class CqlQuery:
         ``boundaries`` selects the compiler's RUNTIME cost-free mode; ``persist_as`` (single named target
         only, `BUILD-META`) also writes ``CREATE TABLE <persist_as> AS SELECT * FROM <target>``. The runtime
         must provide the ``retrieve_<Type>`` functions the plan references: the library's binder chooses
-        them (`CLIENT-EXEC-DISCOVERY`), else they are the bare convention names.
+        them, else they are the bare convention names.
 
         CLIENT-QUERY-REUSE — with a result resolver (an environment's, from :func:`~.zeroconfig.connect`), CQL that
         declares a library, a reusable data resolver and no ``recompute``, a target's frame reads its kept result
@@ -245,7 +245,7 @@ class CqlQuery:
                                     persist_as) for t in targets}
 
     def _exec_on(self, engine: str, targets: List[str], *, boundaries, persist_as) -> dict:
-        """EVALUATOR-CLIENT-EVALUATE — run on another engine (`engines.engine_for`). It compiles and keeps its
+        """Run on another engine (`engines.engine_for`). It compiles and keeps its
         own results, so the local compile knobs do not apply to it and are refused rather than ignored."""
         from .engines import EngineRequest, engine_for
 

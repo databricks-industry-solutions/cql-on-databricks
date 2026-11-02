@@ -160,7 +160,7 @@ class Invocation:
     tool: str
     arguments: dict[str, Any]
     provenance: str
-    #: The relation the call addressed, when it addressed one (`SVC-TOOL-ADDRESS`). A figure's
+    #: The relation the call addressed, when it addressed one. A figure's
     #: reproducible citation is this plus the fingerprint, never a conversation id.
     handle: str | None = None
     error: str | None = None
@@ -185,7 +185,7 @@ class Answer:
     text: str
     invocations: list[Invocation] = field(default_factory=list)
     #: The messages the next turn should send back, so the conversation is the CLIENT's state. The
-    #: server holds no session — the same reason the tools hold no run id (`SVC-TOOL-ADDRESS`).
+    #: server holds no session — the same reason the tools hold no run id.
     messages: list[dict[str, Any]] = field(default_factory=list)
 
     @property
@@ -356,7 +356,7 @@ def _call_tool(server: FastMCP, name: str, arguments: dict[str, Any],
     if payload is None:
         payload = "".join(block.text for block in result.content if hasattr(block, "text"))
     if isinstance(payload, dict):
-        # SVC-TOOL-ADDRESS — the handle is the reproducible citation, so it is lifted onto the
+        # The handle is the reproducible citation, so it is lifted onto the
         # invocation rather than left for the client to dig out of a tool payload it does not parse.
         invocation.handle = payload.get("handle")
     return payload if isinstance(payload, str) else json.dumps(payload, default=str), invocation
@@ -372,7 +372,7 @@ def ask_events(question: str, *, server: FastMCP, selection: Selection | None = 
     before it has anything to say. A client with nothing to show has only a spinner for the whole
     investigation.
 
-    So each tool result is emitted **as it lands**, and this is `THEME-GLASSBOX` rather than a progress
+    So each tool result is emitted **as it lands**, and this is a glass box rather than a progress
     bar: what the reader watches is the actual sequence of reads the answer will be built from — the
     specification, the output, its freshness — which is the same evidence the finished answer cites.
     A percentage would say how long to wait; this says what is being done.
@@ -446,8 +446,8 @@ def answer_text(content: Any) -> str:
     **Some chat endpoints answer with a LIST OF BLOCKS**, not a string:
     ``[{"type": "reasoning", ...}, {"type": "text", "text": "…"}]``. The default endpoint does, and
     without this the block list and a reasoning signature would land in the field the drawer renders. This takes the ``text`` blocks and drops the rest — the reasoning is
-    the model's working, not its answer, and `THEME-GLASSBOX` is served by the invocation list, which
-    says what was actually run rather than what the model said about running it.
+    the model's working, not its answer, and the invocation list says what was actually run rather than
+    what the model said about running it.
 
     The block list still goes back to the endpoint VERBATIM on the next round (`_assistant_message`):
     it is what the endpoint handed us, signature included, and normalizing the conversation would
@@ -490,7 +490,7 @@ def serving_client() -> Any:
     identity would leak across. Locally the shared client already IS the signed-in user
     (`SEC-LOCAL-IDENTITY`), so this costs nothing there.
 
-    The user needs `CAN QUERY` on the endpoint; the App's service principal no longer does.
+    The user needs `CAN QUERY` on the endpoint; the App's service principal does not have it.
     """
     from cql_databricks_common.workspace import user_client
 

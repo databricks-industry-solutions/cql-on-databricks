@@ -63,7 +63,7 @@ export function ProductTour({ onSwitchModule, onOpenExample, onClose }: {
             <span className="mw-tour-wordmark">CQL on Databricks<span className="dot">.</span></span>
             <span className="mw-tour-tag">Product tour</span>
             <span className="mw-tour-spacer" />
-            {/* The throughline, in the page's most prominent micro-slot. It replaced a pulsing "Glass-box"
+            {/* The throughline, in the page's most prominent micro-slot. Not a pulsing "Glass-box"
                 chip: a live dot beside a word that names our design stance rather than the reader's
                 outcome — and "glass-box" is a metaphor that has to be explained before it says anything.
                 "for everyone" rather than "for the rest of us", which reads as rebellion against an
@@ -104,10 +104,10 @@ export function ProductTour({ onSwitchModule, onOpenExample, onClose }: {
                   </ul>
                 )}
                 {f.chips && <div className="mw-tour-chips">{f.chips.map((c) => <span className="mw-tour-chip" key={c}>{c}</span>)}</div>}
-                {/* ONE AFFORDANCE PER SECTION. The workspace path used to print above the button as a grey
-                    mono line, so this section alone offered two things to look at — a muted address and an
-                    accent button — where every other section offers one. The address now rides the button's
-                    `title`, and the line renders ONLY when there is no button to carry it: a deployment
+                {/* ONE AFFORDANCE PER SECTION. The workspace path rides the button's `title`, not a grey mono
+                    line above it: a muted address beside an accent button would give this section two things to
+                    look at where every other section offers one. The line renders ONLY when there is no button to
+                    carry it: a deployment
                     whose host does not resolve still says where the notebooks are. */}
                 {f.workspacePath && !wsHost && <p className="mw-tour-path">{f.workspacePath}</p>}
                 {/* A SECTION WITH NOWHERE TO GO CARRIES NO ACTION AT ALL — not a disabled one, not a

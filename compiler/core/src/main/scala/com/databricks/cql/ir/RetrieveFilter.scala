@@ -5,7 +5,7 @@ package com.databricks.cql.ir
   * (`rules.TerminologyPushdown`) and the lowering (`lower.QueryLowering`) recognize a value-set
   * membership conjunct IDENTICALLY (PROC-DRY) — the rule folds exactly what the lowering would
   * otherwise realize as a semi-join, which is what makes the optimized/unoptimized self-diff a
-  * meaningful gate (CONF-GATE-SELFDIFF).
+  * meaningful gate.
   */
 object RetrieveFilter {
 

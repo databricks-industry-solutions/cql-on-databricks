@@ -138,7 +138,7 @@ class CompilerClient:
 def compile_provider(endpoint: str, token: str | None = None, *, timeout: float = 600.0):
     """The compiler's own client transport (`cql_databricks.compiler.RemoteProvider`) for this process.
 
-    SDP-DEPLOYER — the deployer library speaks the compiler's client types, so the service hands it the
+    The deployer library speaks the compiler's client types, so the service hands it the
     compiler's client rather than ``CompilerClient``. Auth is the same decision as ``CompilerClient``'s,
     made per request (`SEC-APP-TO-APP`, ``app_auth.bearer``); a plan compile is long, hence the timeout.
     """

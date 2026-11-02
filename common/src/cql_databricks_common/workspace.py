@@ -202,7 +202,7 @@ def is_not_found(e: Exception) -> bool:
     `"404" in str(e)` is false (no status code in the text), `"NotFound" in type(e).__name__` is
     false (the type is `ResourceDoesNotExist`), and `"ResourceDoesNotExist" in str(e)` is false
     (that is the type name, not the message). Each variant of the check silently never fired, and
-    the recovery behind it never ran (`PIPE-PIPELINE-RECOVERY`).
+    the recovery behind it never ran.
     """
     from databricks.sdk.errors import NotFound
     return isinstance(e, NotFound)

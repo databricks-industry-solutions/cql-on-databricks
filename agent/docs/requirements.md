@@ -2,8 +2,8 @@
 
 Requirements the agent owns. Requirements that span features, and the rule for where a requirement
 lives, are in [`docs/requirements.md`](../../docs/requirements.md). Each ID is stable, unique across
-every registry, and cited from code (`PROC-CITE-REQ`). A requirement that stops being true moves to a
-Retired section here with a one-line reason, so old citations still resolve.
+every registry, and cited from code (`PROC-CITE-REQ`). A requirement that stops being true is
+deleted, with every citation of it (`PROC-CURRENT-DEFINITION`).
 
 ## MCP server and tools
 

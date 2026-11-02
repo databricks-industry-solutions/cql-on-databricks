@@ -17,7 +17,7 @@ from . import _workspace  # SDK-free at import (its Databricks imports are lazy,
 # Default App name (the `tag → default app name → fail` convention floor); override per deployment.
 DEFAULT_APP_NAME = "cql-databricks-compiler"
 CONF_APP_NAME = "spark.cqldatabricks.databricks.appName"
-# SVC-COMPILER-M2M (SUPERSEDED) — the settings of the retired M2M mode. Setting any of them is an error.
+# Settings of an unsupported caller mode. Setting any of them is an error.
 RETIRED_M2M_CONFS = tuple(f"spark.cqldatabricks.databricks.{name}" for name in (
     "compilerAuth", "compilerClientId", "compilerSecretScope", "compilerSecretKey"))
 
@@ -25,12 +25,12 @@ RETIRED_M2M_CONFS = tuple(f"spark.cqldatabricks.databricks.{name}" for name in (
 # (`_workspace.ambient_subject_token`, `auth_type: runtime`) is an OPAQUE Databricks token, NOT a JWT —
 # Databricks' OIDC endpoint classifies it under this Databricks-specific type URI. Using the generic
 # `...:token-type:jwt` here makes `/oidc/v1/token` reject it with `400 invalid_request` (validated on a
-# development workspace 2026-07). This is a platform-specific INPUT the plugin supplies; the exchange logic
+# development workspace). This is a platform-specific INPUT the plugin supplies; the exchange logic
 # itself stays in the OSS client (`APP-DECOUPLE`).
 DATABRICKS_PAT_TOKEN_TYPE = "urn:databricks:params:oauth:token-type:personal-access-token"
 
 # SVC-EXCHANGE-RETRY — a Job's exchange sometimes fails with `invalid_grant` for a few minutes, then
-# succeeds: on the night of 2026-10-10, every first attempt of two examples-Job runs failed and every retry a
+# succeeds: in observed runs every first attempt failed and every retry a
 # minute or two later got past it. The cause is unknown and could not be reproduced on demand, so the exchange
 # retries that one error for up to this long before it fails. Remove this when the platform stops returning it.
 EXCHANGE_RETRY_ERRORS = ("invalid_grant",)
@@ -42,7 +42,7 @@ def app_credentials(app_name: str, *, conf_hint: str):
 
     Resolves the App URL from the workspace App registry, then builds the RFC 8693 exchange from the
     workspace OIDC endpoint, the App's OAuth client id (audience) and the ambient identity token. Shared by
-    the Compiler Service provider and the evaluator's engine (EVALUATOR-CLIENT-EVALUATE), so a notebook
+    the Compiler Service provider and the evaluator's engine, so a notebook
     reaches every App the same way. ``conf_hint`` names the setting that overrides ``app_name``, for the
     error."""
     from cql_databricks.compiler import OAuth2TokenExchange
@@ -84,8 +84,8 @@ def make_provider(conf: Mapping[str, str]):
     # Imported from the OSS client (a runtime dependency); the exchange logic is NOT reimplemented here.
     from cql_databricks.compiler import RemoteProvider
 
-    # SVC-COMPILER-M2M is SUPERSEDED by SVC-EXCHANGE-RETRY: the token exchange is the only path. A Job that still
-    # sets the retired M2M settings fails here rather than quietly running on the exchange instead.
+    # The token exchange is the only path (`SVC-EXCHANGE-RETRY`). A Job that still sets the retired M2M
+    # settings fails here rather than quietly running on the exchange instead.
     retired = [key for key in RETIRED_M2M_CONFS if conf.get(key)]
     if retired:
         raise ValueError(f"{', '.join(retired)} retired with SVC-COMPILER-M2M: remove them; the compiler App "

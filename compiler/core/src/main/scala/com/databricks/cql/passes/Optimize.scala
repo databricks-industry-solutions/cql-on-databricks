@@ -13,17 +13,15 @@ import com.databricks.cql.rules.{Batch, DateRangePushdown, PeriodRangePushdown, 
   * error on non-convergence — ARCH-HAZARDS), never an edit to a lowering monolith. Because lowering
   * stays pure (ARCH-PURITY), reordering/rewriting kernel nodes here is sound.
   *
-  * Faithfulness gate (CONF-GATE-SELFDIFF). `config.optimizeRetrievePushdown` is the on/off switch:
+  * Faithfulness gate. `config.optimizeRetrievePushdown` is the on/off switch:
   *   - OFF ⇒ execute the measure EXACTLY as written (the optimizer-faithfulness ground truth);
   *   - ON  ⇒ run the pushdown batch.
   * The two paths must produce identical results on the whole corpus; that empty self-diff is what
   * proves a rewrite rule introduced no bug (Gate 4). Gate 3 proves the optimized path is still
   * spec-faithful against the Java reference.
   *
-  * PHASE-5 SCOPE. The pass and its pipeline wiring land FIRST, with [[pushdownRules]] initially
-  * empty, so the self-diff harness exists and is green BEFORE the first rule — every subsequent
-  * pushdown rule is then gated two ways from birth (spec-faithful vs the reference, optimizer-
-  * faithful vs the unoptimized self). Rules arrive one at a time into `pushdownRules`.
+  * Each rule in [[pushdownRules]] is gated two ways: spec-faithful vs the reference, and
+  * optimizer-faithful vs the unoptimized self-diff.
   */
 object Optimize {
 
@@ -33,7 +31,7 @@ object Optimize {
 
   /** Run the optimizer over a normalized library, gated by `config`. With pushdown OFF (or no rules
     * yet) this is the IDENTITY, so Lower sees the measure exactly as written — which is precisely
-    * the unoptimized ground truth the self-diff gate compares against (CONF-GATE-SELFDIFF).
+    * the unoptimized ground truth the self-diff gate compares against.
     *
     * `onRuleFired` receives `(batch, rule, iteration)` for plan-diff traceability (ARCH-IR) — the
     * trace you need when a measure's rate moves; the default discards it. */

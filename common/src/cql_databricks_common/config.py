@@ -1,6 +1,6 @@
 """Config resolution for the CQL on Databricks backend (SVC-COMPILE-ENDPOINT, SVC-DEPLOY-TARGETS).
 
-Env-based, mirroring the retired Node paths.ts so local↔Databricks is a host:port change (same HTTP
+Env-based, so local↔Databricks is a host:port change (same HTTP
 contract). Every knob has a sensible local default; a deployed App overrides via the environment.
 """
 from __future__ import annotations
@@ -95,7 +95,7 @@ def target() -> str:
 
 
 def warehouse_id() -> str | None:
-    """The serverless SQL warehouse id for UDTF auto-provisioning (SDP-SPACE, DATA-VIEW-SCAFFOLD).
+    """The serverless SQL warehouse id for UDTF auto-provisioning (DATA-VIEW-SCAFFOLD).
     When set, Data Source deploy auto-creates missing retrieve UDTFs on it (RUN-CLIENT-WAREHOUSE-CONNECTOR)."""
     return os.environ.get("WAREHOUSE_ID") or os.environ.get("CQL_WAREHOUSE_ID") or None
 

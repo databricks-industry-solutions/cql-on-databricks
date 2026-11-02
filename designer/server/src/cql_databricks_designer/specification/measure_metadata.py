@@ -60,10 +60,9 @@ def _scoring(resource: dict[str, Any]) -> str | None:
     """``Measure.scoring`` as a plain code, or None.
 
     SPEC-SCORING-METHODOLOGY — the published resource is the AUTHORITY for how a measure is scored, and
-    it is normative FHIR rather than anything we derive. Until this landed the only source was
-    ``Identity/@scoring`` on a hand-written Specification instance, which is a transcription of exactly
-    this field: three libraries carry one, so every other measure had no scoring at all and the header
-    printed the literal "proportion" over all of them regardless.
+    it is normative FHIR rather than anything we derive. The alternative, ``Identity/@scoring`` on a
+    hand-written Specification instance, is a transcription of exactly this field: three libraries carry
+    one, so every other measure has no scoring at all.
 
     The same argument as SPEC-DERIVED-APPENDIX for value-set OIDs — a hand-copied value goes stale
     silently, and the source of truth is one HTTP hop away.

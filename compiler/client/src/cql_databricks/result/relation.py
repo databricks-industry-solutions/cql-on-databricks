@@ -8,7 +8,7 @@ reader call a subject "met" that the other did not, which is the two-surfaces-di
 ``APP-SPEC-MODEL`` exists to prevent.
 
 **THE VALUE COLUMN IS NOT ALWAYS ``__val``.** Measured against a live results schema
-(a multi-library measure's results schema, 2026-08-03):
+(a multi-library measure's results schema):
 
 ===========================  ==================================================================
 relation shape               columns

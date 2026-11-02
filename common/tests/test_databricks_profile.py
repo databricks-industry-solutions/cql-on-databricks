@@ -1,7 +1,7 @@
 """SVC-DEPLOY-ENV-LOCAL, SVC-LOCAL-CONFIG-BUNDLE — the Databricks profile comes from config, never source.
 
-Every local tool used to default to a profile NAME baked into the code, so retargeting a workspace meant
-editing source in ten places. The resolver reads it from the gitignored config instead; these lock in
+Local tools take the profile from config, never from a name baked into the code, so retargeting a
+workspace is a config edit. The resolver reads it from the gitignored config instead; these lock in
 the order (explicit, databricks.local.yml, environment), that `.env` is never a source, and that
 nothing is invented when no config names one.
 """

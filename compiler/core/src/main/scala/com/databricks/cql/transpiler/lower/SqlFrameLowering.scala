@@ -124,7 +124,7 @@ object SqlFrameLowering {
     val matDefs      = mutable.LinkedHashSet.empty[String] // RAW define names staged as a barrier (the boundary set describe reports)
 
     // The base relation `__frame_base`, a named view every scalar define reads for the subject universe:
-    //   - subject-grouped context -> the per-subject context resource (DATA-RETRIEVE-VIEW), carrying the
+    //   - subject-grouped context -> the per-subject context resource, carrying the
     //     context struct (`Patient`);
     //   - ungrouped (Unfiltered/Population) -> a single synthetic-subject row (ARCH-SET-EVAL), the
     //     degenerate one-subject case, seeded with no data (`SELECT '*' AS __subject_id FROM (SELECT 1)`).
@@ -302,10 +302,10 @@ object SqlFrameLowering {
     // inlined partial-precision date towers into calls to small SQL-body UDFs (+ a `CREATE FUNCTION`
     // prelude). The lowering above is untouched; the fold inlines back to the identical plan, so results
     // are unchanged (default OFF → script byte-identical).
-    // The SQL-emit readability fold (`temporalUdfs`, `SqlTemporalFold`) was retired as a config knob
-    // (2026-07); the opaque temporal-operator UDFs already collapse the towers at operator granularity,
-    // so the script keeps any inline remnants as-is (the fold was default-off).
-    val script  = SqlScript(stmts.toSeq, tgt)
+    // The SQL-emit readability fold (`temporalUdfs`, `SqlTemporalFold`) is not wired to a config knob;
+    // the opaque temporal-operator UDFs already collapse the towers at operator granularity,
+    // so the script keeps any inline remnants as-is.
+val script  = SqlScript(stmts.toSeq, tgt)
     SqlLoweredLibrary(script, defines.map(_.name), relDefs.toSet, listMeta.toMap,
       nullDefines = nullDefs.toSet, decisions = decisions.toSeq, materializedDefines = matDefs.toSet,
       materializedReads = reads, objectPrefix = env.config.objectPrefix)

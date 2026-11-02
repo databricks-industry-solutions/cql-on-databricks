@@ -285,8 +285,7 @@ export function scoringMethodology(
 }
 
 /** SPEC-POPULATION-CASCADE — the subjects every criterion under a population is counted among: in every
- *  `allOf` population and in no `noneOf` one. The population's OWN figure is counted as written (amended
- *  2026-10-29); only the score, which the client computes, is cascaded. `label` names that cohort; null is every evaluated
+ *  `allOf` population and in no `noneOf` one. The population's OWN figure is counted as written; only the score, which the client computes, is cascaded. `label` names that cohort; null is every evaluated
  *  subject, which the caller names.
  *
  *  HL7 CQF Measures makes each population a subset of the one before it and leaves that to the

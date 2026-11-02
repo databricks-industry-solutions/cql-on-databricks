@@ -56,8 +56,8 @@ final case class SqlEvalEnv(
       * `passes.RetrieveDemand.analyze` (the SAME pure Spark-free pass). A plain retrieve's scanned
       * `__resource` is pruned to `Narrow(fields)` — identity lineage + only the top-level fields
       * navigated anywhere in the linked library (+ scan-filter fields) — instead of the whole modeled
-      * body; `Full` (a whole-body escape / het-Choice arm) keeps the whole struct (routed to the VARIANT
-      * carrier in a later phase). Empty → no pruning (every retrieve keeps the full body). */
+      * body; `Full` (a whole-body escape / het-Choice arm) keeps the whole struct. Empty → no pruning (every retrieve keeps the
+      * full body). */
     retrieveDemand: Map[String, com.databricks.cql.passes.RetrieveDemand.Demand] = Map.empty,
     /** `DATA-RETRIEVE-BARRIER-OPT`: the FILTERED reads this lowering materialized as their own objects,
       * mapped from every [[com.databricks.cql.ir.Retrieve]] node that reads them to the object
@@ -87,8 +87,7 @@ final case class SqlEvalEnv(
     /** PIPE-SQL-DAG-REUSE — the cross-dataset DAG-cut boundary set. When `Some`, a REFERENCE to a define
       * in this set resolves to a bare read of its PUBLISHED dataset ([[SqlNames.datasetName]]) instead of
       * its local object — so a dependent recipe reads a materialized SIBLING as a declared
-      * dataset (`spark.table(cql_<sibling>)`) rather than re-inlining it. This is the SQL-back-end analog
-      * of the retired proto's `EvalEnv.referenceDefines`.
+      * dataset (`spark.table(cql_<sibling>)`) rather than re-inlining it.
       *
       * It is a MUTABLE set (mirroring the mutable `hoistCounter`) that [[SqlFrameLowering]] GROWS as it
       * materializes each define: because `Schedule` lowers a define AFTER its dependencies, by the time a

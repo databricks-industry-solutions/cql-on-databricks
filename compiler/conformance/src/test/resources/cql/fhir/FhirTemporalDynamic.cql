@@ -1,6 +1,6 @@
 library FhirTemporalDynamic version '1.0.0'
 
-// PHASE-8 (LANG-INTERVAL): precision-aware temporal comparison where BOTH operands are runtime data
+// LANG-INTERVAL: precision-aware temporal comparison where BOTH operands are runtime data
 // (neither is a compile-time bound) — a Condition.recordedDate (varying per-row precision) compared
 // against an Encounter.period (a FHIR Period -> Interval<DateTime>). The static-bound lexical
 // optimization does NOT apply here, so this gates the general precision-aware comparator against the

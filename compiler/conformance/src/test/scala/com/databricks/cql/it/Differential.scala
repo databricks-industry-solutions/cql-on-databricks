@@ -17,8 +17,7 @@ import org.scalatest.Assertions._
   *
   * ONE path for every context, data model, and value type (PROC-DRY): a scalar/Unfiltered library and a
   * FHIR Patient measure are the same code differing only in the injected dependencies (PROC-SOLID). The
-  * proto/DataFrame back end that once lived here retired with the SQL primary decision (EXEC-SQL-BACKEND);
-  * this object kept only the parts both paths shared, which are now the SQL path's alone. */
+  * The SQL path (EXEC-SQL-BACKEND) is the only execution path; this object holds the parts it uses. */
 object Differential {
 
   /** One differential case: the fixture plus the explicitly-injected engine and reference
@@ -72,7 +71,7 @@ object Differential {
     def nullValue: ujson.Value = ujson.Null
   }
 
-  /** PHASE-8 grain-first opt-in (ARCH-GRAIN). The fixtures whose
+  /** Grain-first opt-in (ARCH-GRAIN). The fixtures whose
     * lowering runs grain-first (list defines carried as `Relation`s, NOT boxed onto a wide frame).
     * Every OTHER fixture lowers byte-unchanged with the flag off. Membership also flips the simplified
     * subject key on (`Corpus`/`SparkFhirData`). Extra names can be opted in for a one-off run via
@@ -150,7 +149,7 @@ object Differential {
     * WHOLE corpus with every filtered read promoted to its own barrier object. The barrier is a pure
     * restructuring — the object holds exactly the rows the inlined form produced — so a full-corpus run
     * under `all` must diff CLEAN against the reference, exactly as the optimized-vs-unoptimized self-diff
-    * does (`CONF-GATE-SELFDIFF`). That run is the correctness gate for the feature; the compiler-level
+    * does. That run is the correctness gate for the feature; the compiler-level
     * specs only prove the emit SHAPE. Defaults to the production `none`, so an ordinary run is unchanged. */
   def withMaterialize(config: Config): Config =
     config.copy(

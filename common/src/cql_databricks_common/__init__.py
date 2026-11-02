@@ -1,9 +1,9 @@
 """Shared server infrastructure: what more than one feature's server or tool needs and none of them owns.
 
-`COMMON-LIBRARY`, `DEC-COMMON-HOME` (split 2026-10-10). Not part of Foundation's public interface, and the
+`COMMON-LIBRARY`, `DEC-COMMON-HOME`. Not part of Foundation's public interface, and the
 client (`cql_databricks.*`) does not depend on it. A module belongs here only when two or more features
 import it; a module one feature uses lives in that feature (the Designer's `serve`, `cache_stamp`,
-`data_bindings`, `dto` and `specification.model` moved to
+`data_bindings`, `dto` and `specification.model` live in
 `cql_databricks_designer`).
 
 | module | who uses it |

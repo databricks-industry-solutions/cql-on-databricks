@@ -1,5 +1,5 @@
 """CLIENT-KNOWLEDGE-INCLUDES — tagged knowledge resolves library references, after cells and the folder, earliest
-scope first (`CLIENT-DISCOVERY-SCOPE`). Synthetic libraries only."""
+scope first. Synthetic libraries only."""
 from __future__ import annotations
 
 import shutil

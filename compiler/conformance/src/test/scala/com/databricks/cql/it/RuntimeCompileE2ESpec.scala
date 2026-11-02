@@ -9,8 +9,8 @@ import org.scalatestplus.junit.JUnitRunner
 
 import java.io.File
 
-/** The LIVE, end-to-end runtime-compile gate (PHASE-10, `BUILD-CLIENT` / `BUILD-COMPILE-SERVICE`,
-  * `CONF-GATE-SELFDIFF`): drive the WHOLE OSS loop and self-diff its result against the in-JVM
+/** The LIVE, end-to-end runtime-compile gate (`BUILD-CLIENT` / `BUILD-COMPILE-SERVICE`):
+  * drive the WHOLE OSS loop and self-diff its result against the in-JVM
   * direct-execute truth.
   *
   * Per fixture:
@@ -49,7 +49,7 @@ final class RuntimeCompileE2ESpec extends AnyFunSuite {
   private val driver: File    = new File(clientDir, "scripts/e2e_run.py")
 
   /** A data-free scalar fixture (no adapters) — the purest locally-hostable case. */
-  test("Arithmetic: runtime-compiled cql() self-diffs clean vs direct-execute (CONF-GATE-SELFDIFF)") {
+  test("Arithmetic: runtime-compiled cql() self-diffs clean vs direct-execute") {
     runCase("Arithmetic", Context.Unfiltered, data = None, terminology = None)
   }
 

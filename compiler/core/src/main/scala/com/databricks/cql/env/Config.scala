@@ -13,7 +13,7 @@ package com.databricks.cql.env
   */
 final case class Config(
     /** Retrieve predicate pushdown (ARCH-PUSHDOWN). `false` = execute exactly as
-      * written — the optimizer-faithfulness ground truth (CONF-GATE-SELFDIFF). */
+      * written — the optimizer-faithfulness ground truth. */
     optimizeRetrievePushdown: Boolean = true,
     /** The single cost-driven materialization policy (DATA-MATERIALIZE-POLICY, `data-format.md`
       * section 6.2): `none` (never), `all` (every candidate), or `costly` (cost × reuse over
@@ -39,7 +39,7 @@ final case class Config(
       * `materialize.retrieves = costly` (`DATA-RETRIEVE-BARRIER-OPT`). `2` mirrors the define-level
       * shared-cut-point threshold. Ignored under `none`/`all`. */
     materializeRetrieveMinReuse: Int = 2,
-    /** PHASE-10 (`BUILD-COMPILE-SERVICE`) — the COMPILER MODE selector.
+    /** `BUILD-COMPILE-SERVICE` — the COMPILER MODE selector.
       * `None` (default) is GENERATION mode: the materialization boundary set is CHOSEN here by the cost
       * model ([[materializeMode]] × `Cost.score`). `Some(keys)` is RUNTIME mode: lower against a FIXED,
       * pre-decided boundary set — [[com.databricks.cql.lower.MaterializationPolicy]] materializes
@@ -68,13 +68,13 @@ final case class Config(
       * `None` (the default) disables the dump entirely, so production builds never touch the
       * filesystem or pay any cost (`com.databricks.cql.debug.StageDump`). */
     debugDumpDir: Option[String] = None,
-    /** PHASE-8 grain-first lowering (ARCH-GRAIN). When `true`,
+    /** Grain-first lowering (ARCH-GRAIN). When `true`,
       * list-valued defines are carried as `Relation`s (rows at the natural resource grain) and the
       * `Array` boxing is deferred to a SINGLE coercion at the output boundary, instead of the
       * per-define collect_list→posexplode→re-collect round-trip that folds every define onto one
-      * wide frame (the Phase 8 plan blowup). DEFAULTS OFF so every existing fixture lowers
-      * byte-unchanged; flipped on for the two grain-first target fixtures and verified against the
-      * plan-shape goldens before the default flips. */
+      * wide frame, which blows up the plan. DEFAULTS OFF so every existing fixture lowers
+      * byte-unchanged; the grain-first fixtures turn it on and are checked against the plan-shape
+      * goldens. */
     grainFirst: Boolean = false,
     /** ARCH-COND-UNION (`transformation-catalog.md` section 24, `engine-design.md` section 6). When
       * `true`, a LIST-valued `if`/`case` whose branches are all relation-valued is lowered to a UNION
@@ -82,7 +82,7 @@ final case class Config(
       * per-subject gate — every branch stays `Relation`-encoded, so NO `collect_list`/`posexplode`
       * boxing of the conditional enters the plan. DEFAULTS OFF: off = today's boxed `when/otherwise`
       * lowering (the ground truth); on = the union rewrite, proven result-preserving by the
-      * optimized-vs-unoptimized self-diff (CONF-GATE-SELFDIFF), exactly as `optimize.retrieve_pushdown`
+      * optimized-vs-unoptimized self-diff, exactly as `optimize.retrieve_pushdown`
       * is. Requires `grainFirst` (the union is realized as a `Relation` define). Scalar conditionals
       * are unaffected (they stay columnar `when/otherwise`, `ColumnLowering`). */
     optimizeConditionalUnion: Boolean = false,
@@ -95,7 +95,7 @@ final case class Config(
       * CTE-def relation (a Spark temp view referenced by name) rather than inlined into one threaded
       * frame — so the unresolved plan is a faithful define-once / reference-many DAG (`read named_table`
       * leaves), reads define-by-define, and materialization barriers (`localCheckpoint`) attach ONLY to
-      * these CTE-def nodes. DEFAULT ON (validated diff-clean vs the Java reference, CONF-GATE-SELFDIFF,
+      * these CTE-def nodes. DEFAULT ON (validated diff-clean vs the Java reference, CONF-GATE-MEASURE,
       * across materialize modes). It activates ONLY where a [[Materializer]] is injected (a session to
       * register the views into); a server-free or materializer-less host falls back to inlining, so those
       * plans stay byte-unchanged. The naming layer is always-on under the flag; the cost policy
@@ -103,13 +103,13 @@ final case class Config(
       * (kept temp/session-scoped, never persisted). Set `-Dcqldatabricks.cteDefs=false` to force inlining. */
     cteDefs: Boolean = true,
     /** ARCH-PROJECT-FUSE (`engine-design.md`). VESTIGIAL under the `__resource` struct contract
-      * (DATA-RETRIEVE-VIEW): the retrieve mount now carries `__subject_id` built ONCE in the shared view
+      * (`BIND-CONTRACT`): the retrieve mount carries `__subject_id` built ONCE in the shared view
       * and the resource as the `__resource` struct, so a narrow consumer references the key directly and
       * navigates the resource through `__resource` — there is no flat raw-read + key-expr fusion to do.
-      * The flag is retained for config compatibility but no longer changes lowering (the mount supersedes
+      * The flag is kept for config compatibility and changes no lowering (the mount supersedes
       * it); it may be removed once no caller sets it. */
     projectFuse: Boolean = true,
-    /** DATA-RETRIEVE-VIEW (`engine-design.md`). When `true` (default), a Retrieve is lowered as a single
+    /** When `true` (default), a Retrieve is lowered as a single
       * SHARED, named CTE-def view (`retrieve_<Type>`) — the `DataProvider`'s mounted resource frame
       * registered ONCE via the [[Materializer]] seam and referenced by every consumer (read-once /
       * reference-many), instead of inlining the source scan at each use site. The retrieve's predicates
@@ -117,7 +117,7 @@ final case class Config(
       * identical whether or not a downstream adapter prunes the scan — the view is the schema contract,
       * pushdown is an advisory optimization the adapter MAY honor. Like `cteDefs`, it activates ONLY where a
       * [[Materializer]] is injected; a materializer-less/server-free host falls back to inlining (plans
-      * byte-unchanged). Validated diff-clean vs the Java reference (CONF-GATE-SELFDIFF). Set
+      * byte-unchanged). Validated diff-clean vs the Java reference (CONF-GATE-MEASURE). Set
       * `-Dcqldatabricks.retrieveViews=false` to force per-use inlining. */
     retrieveViews: Boolean = true,
     /** BIND-CAPABILITY-OVERLAP: OFF by default. When true, a `DEMAND − AVAILABLE` binding-coverage gap is
@@ -135,7 +135,7 @@ final case class Config(
     "materialize.skip_unfiltered_retrieves" -> materializeSkipUnfilteredRetrieves.toString,
     "materialize.retrieves"                 -> materializeRetrieves.key,
     "materialize.retrieve_min_reuse"        -> materializeRetrieveMinReuse.toString,
-    // Compiler mode (PHASE-10): the fixed boundary set if RUNTIME mode (sorted for determinism), else
+    // Compiler mode: the fixed boundary set if RUNTIME mode (sorted for determinism), else
     // `<cost>` for GENERATION mode (the cost model chooses). Recorded so a runtime-compiled artifact
     // pins the exact boundaries it lowered against (CORE-DETERMINISM / BUILD-VERSION-PIN).
     "materialize.boundaries"                -> materializeBoundaries.map(_.toSeq.sorted.mkString(",")).getOrElse("<cost>"),

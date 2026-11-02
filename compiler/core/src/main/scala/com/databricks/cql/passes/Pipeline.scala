@@ -21,11 +21,10 @@ import com.databricks.cql.verify.{DefineGraph, Verifier}
   * the public contract.
   *
   * SCOPE. Load, Resolve (cycle detection), Type/Encoding, Normalize (function inlining +
-  * the fixpoint rewrite batch), Lower, and Schedule are real through Phase 4. The Optimize
-  * slot (retrieve pushdown, ARCH-PUSHDOWN) is wired here in Phase 5 via [[optimize]] and
-  * gated by `config.optimizeRetrievePushdown`; its rule batch grows one rule at a time
-  * (ARCH-SEAMS), each kept green against the optimized-vs-unoptimized self-diff
-  * (CONF-GATE-SELFDIFF). The verifier scaffold runs at pass boundaries (CONF-VERIFIER).
+  * the fixpoint rewrite batch), Lower, and Schedule. The Optimize slot (retrieve pushdown,
+  * ARCH-PUSHDOWN) is wired here via [[optimize]] and gated by `config.optimizeRetrievePushdown`;
+  * its rule batch grows one rule at a time (ARCH-SEAMS), each kept green against the
+  * optimized-vs-unoptimized self-diff. The verifier scaffold runs at pass boundaries (CONF-VERIFIER).
   *
   * Verifiers run when `config.verifiersEnabled` (CONF-VERIFIER, test/debug builds). A
   * verifier failure points at the pass boundary that produced it.
@@ -52,7 +51,7 @@ final class Pipeline(config: Config) {
   }
 
   /** Optimize pass (ARCH-PIPELINE, ARCH-PUSHDOWN): the retrieve-pushdown rule batch, gated by
-    * `config.optimizeRetrievePushdown` (default on; off = execute as written, CONF-GATE-SELFDIFF).
+    * `config.optimizeRetrievePushdown` (default on; off = execute as written).
     * Runs between Normalize and Lower on the kernel IR; fired rules append to the same plan-diff
     * trace as Normalize. The `config` defaults to the pipeline's frozen build config, but the
     * differential/self-diff harnesses pass `env.config` so Optimize and Lower agree on the switch. */

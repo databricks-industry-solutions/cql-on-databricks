@@ -1,10 +1,10 @@
 /* APP-AUDIENCE / APP-STYLE-GUIDE — the CQL on Databricks CANONICAL DESIGN TOKENS + global resets, and
    nothing else.
 
-   The component styles that used to fill this file (the classic top bar, shell, left nav, Home,
-   detail, community, the AI pane, Authoring, the classic evaluation + narrative + data-requirement
-   views) went with the classic shell they belonged to: that codebase was unreachable from
-   `main.tsx` and has been deleted (DESIGNER-TOP-BAR). What remains is the single source of VALUES
+   No component styles live in this file. The classic shell's styles (the classic top bar, shell, left nav, Home,
+   detail, community, the AI pane, Authoring, the classic evaluation + narrative + data-requirement views) are not
+   kept: that codebase is unreachable from `main.tsx`, so it has no styles here (DESIGNER-TOP-BAR).
+   What this file holds is the single source of VALUES
    — the Databricks palette primitives and the canonical semantic tokens the workspace's `.mw`
    `--t*` set aliases (design-system.md section 2) — plus the document-level resets and the three
    type registers. The workspace's own components live in `measures/measures.css`.

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Deploy CQL on Databricks as ONE Databricks Asset Bundle (SVC-DEPLOY-BUNDLE) and START its Apps. The whole
 # install/redeploy story in one command. Steps:
-#   1. (Retired 2026-10-10: the Designer's Lakebase is removed, SPLIT-LAKEBASE SUPERSEDED.)
 #   2. Stage each App's payload (SVC-PACKAGING) — with the deploy-resolved volume path baked in.
 #   3. `databricks bundle deploy` — CREATES the runtime schema (SVC-CATALOG-LAYOUT) + volume, the Apps, perms.
 #   4. Populate the runtime volume: the compiler App's JRE + 3 oversized jars (SVC-PACKAGING) and the
@@ -133,8 +132,8 @@ _maintenance_principal="$(bash "$here/scripts/deploy/grant-maintenance-access.sh
 [ -n "$_maintenance_principal" ] || { echo "!!! the maintenance principal setup printed no application ID"; exit 1; }
 export BUNDLE_VAR_maintenance_principal="$_maintenance_principal"
 
-# Export catalog + warehouse vars so stage-app.sh bakes them into each App's app.yaml
-# (PIPE-DEPLOY-CATALOG-VARS). Values come from the resolved bundle variables (authoritative).
+# Export catalog + warehouse vars so stage-app.sh bakes them into each App's app.yaml.
+# Values come from the resolved bundle variables (authoritative).
 _designer_catalog="$(jqpy "v=d.get('variables') or {};print((v.get('designer_catalog') or {}).get('value') or '')")"
 _warehouse_id="$(jqpy "v=d.get('variables') or {};print((v.get('warehouse_id') or {}).get('value') or '')")"
 # APP-ASSISTANT — the FM endpoint NAME. The App resolves it from the signed-in user (`SEC-OBO`), which
@@ -225,13 +224,6 @@ _designer_app="$(jqpy "a=(d.get('resources') or {}).get('apps') or {};print((a.g
   "$venv_py" "$here/scripts/deploy/provision-run-log.py" --catalog "$_designer_catalog" --warehouse "$_warehouse_id" \
     --designer-app "$_designer_app" --readers-group "$readers_group"
 )
-
-# [5.85] is retired (DOC-EXPLAIN-REMOVE): there is no narration cache table (APP-NARRATIVE-OVERLAY, SUPERSEDED).
-# [5.9] is retired (SVC-COMPILER-M2M SUPERSEDED): a Job reaches the compiler App with its own identity
-# through the token exchange (SVC-EXCHANGE-RETRY), so the deploy provisions no compiler caller.
-# [5.5/7] is retired: the Designer's Lakebase is removed.
-# [6/7] is retired (CARVE-CONTENT): there are no config rows to seed and no knowledge sync. The
-# knowledge corpus is read from the tagged tables (KNOWLEDGE-LAKE-DIRECT).
 
 echo "==> [6.7/7] publish the example notebooks to /Shared (SVC-EXAMPLE-NOTEBOOKS)"
 # Runs after [3/7], which creates the runtime Volume the notebooks' %pip cells name. Overwrites in place, so

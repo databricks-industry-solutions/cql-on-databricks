@@ -81,7 +81,7 @@ def prepare(compiler, **changes):
 
 
 def test_preparation_binds_actual_addresses_typed_period_and_include_closure_once():
-    """RUN-CLIENT-IDENTITY — compiler contracts supply targets and identity; no SQL string patches."""
+    """RUN-CLIENT-RESULT-IDENTITY — compiler contracts supply targets and identity; no SQL string patches."""
     compiler = Compiler()
     prepared = prepare(compiler)
     request = compiler.requests[0]

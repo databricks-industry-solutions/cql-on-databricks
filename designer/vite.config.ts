@@ -1,7 +1,6 @@
-// PHASE-S1 / APP-SHELL — Vite config for the CQL on Databricks SPA (README.md).
+// APP-SHELL — Vite config for the CQL on Databricks SPA (README.md).
 //
-// The SPA is client-only in S1 (mock catalog, no engine round-trips). The Node BFF
-// (src/server.ts, PHASE-S0) is a separate Node entrypoint and is not part of this bundle —
+// The SPA calls the Python backend in designer/server over HTTP; that backend is not part of this bundle.
 // Vite only bundles what is reachable from index.html -> /src/main.tsx.
 
 /// <reference types="vitest/config" />

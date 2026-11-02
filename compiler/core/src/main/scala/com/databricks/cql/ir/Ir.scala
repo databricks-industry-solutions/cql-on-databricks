@@ -7,7 +7,7 @@ package com.databricks.cql.ir
   * (the Scala compiler forces every kernel node to be handled or explicitly rejected —
   * ARCH-ROBUSTNESS pillar 1), and a place to attach engine metadata.
   *
-  * PHASE-0 SCOPE. We model the library structure fully (so any measure round-trips)
+  * SCOPE. We model the library structure fully (so any measure round-trips)
   * plus a representative core of expression nodes. Every ELM node we do NOT yet model
   * is lifted into an explicit `UnknownExpr` / `UnknownStatement` that round-trips
   * losslessly here but is REJECTED loudly at Lower-time as an `UnsupportedNode`
@@ -710,7 +710,7 @@ final case class Retrieve(dataType: String,
                             * (`"ToDateTime"`/`"ToDate"`), recorded by the date pushdown so the scan
                             * filter reconstructs an IDENTICAL predicate — and thus the SAME precision
                             * (DateTime vs Date) — to the unoptimized `where` (exact self-diff,
-                            * CONF-GATE-SELFDIFF, ARCH-PUSHDOWN). `None` until a date range is folded. */
+                            * ARCH-PUSHDOWN). `None` until a date range is folded. */
                           datePointConverter: Option[String] = None,
                           /** A COARSE, non-lossy scan PRE-FILTER for a Period-property temporal `where`
                             * (`[X] C where C.<period> during <literal interval>`), set by the
@@ -723,7 +723,7 @@ final case class Retrieve(dataType: String,
                             * bare-year prefix sorts before its dated values, so partial dates (`"2023"`)
                             * are included correctly. Unlike the exact point-`dateRange` fold this KEEPS
                             * the precise `during` conjunct downstream (it is only a superset gate), so
-                            * results are identical with the rule on or off (CONF-GATE-SELFDIFF). `None`
+                            * results are identical with the rule on or off. `None`
                             * until folded. */
                           periodScanFilter: Option[(String, String, String)] = None) extends Expr {
   val elmType = "Retrieve"

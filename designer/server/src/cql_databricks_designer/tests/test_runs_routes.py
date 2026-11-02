@@ -373,7 +373,7 @@ def test_reopen_miss_is_an_answer_and_creates_nothing(setup):
 
 
 def test_designer_has_no_published_results_route(setup):
-    """RUN-CLIENT-PUBLISHED (amended 2026-10-10) — the Designer never reads Job-published results."""
+    """RUN-CLIENT-PUBLISHED — the Designer never reads Job-published results."""
     client, _ = setup
     assert client.post("/api/published-selection", json={}).status_code == 404
 

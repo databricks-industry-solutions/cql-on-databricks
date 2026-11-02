@@ -21,8 +21,7 @@ The client's secret is returned only when the client is created, and goes straig
 never printed, stored or asked for. A connection that must be created or repointed therefore gets a new client,
 and each user signs in again.
 
-Ported from the sibling cdc-demo repository's ``scripts/register_mcp.py``. Unlike it, this fails the deploy on
-any error, takes its group from ``databricks.local.yml`` and has no M2M mode.
+It fails the deploy on any error, takes its group from ``databricks.local.yml`` and has no M2M mode.
 
     DATABRICKS_CONFIG_PROFILE=<profile> python scripts/deploy/register_agent_mcp.py --app mcp-cql-databricks \\
         --schema <catalog.schema> --users-group <group> --account-profile <account profile>

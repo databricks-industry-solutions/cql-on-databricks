@@ -1,13 +1,13 @@
 """APP-COHORT-ALGEBRA, APP-DECISIVE-COUNT — where the cohort went, and why it left.
 
-The measure flow (`APP-MEASURE-FLOW`) draws a spine of populations and, once there is a run, a rail
+The measure flow draws a spine of populations and, once there is a run, a rail
 of everything that departed from each one. The spine's counts are `insights/metrics.py`'s. This module
 answers the harder half: of the subjects who entered a gate and did not pass it, which criterion was
 responsible.
 
 **IT IS A SET DIFFERENCE, NOT A NEGATION.** "How many were in the Initial Population and failed the
-encounter criterion" is an anti-join on subject id over relations the run already materialized
-(`SDP-ALL-DEFINES`). Nothing is inferred, no negative expression is authored, and no second run is paid
+encounter criterion" is an anti-join on subject id over relations the run already materialized.
+Nothing is inferred, no negative expression is authored, and no second run is paid
 for. The universe is bounded — the subjects the measure was evaluated against — so the complement of a
 criterion within it is a fact, not the unprovable negative it can look like.
 

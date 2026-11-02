@@ -198,7 +198,7 @@ class CompilerRouterSpec extends AnyFunSuite {
     assert(patient("modeled").bool)
     assert(patient("patientContext").bool) // Patient is keyed by its own id (DATA-SUBJECT-KEY)
     val ddl = patient("ddl").str
-    // The mount contract's identity lineage is always present (DATA-RETRIEVE-VIEW); `id` backs the key.
+    // The mount contract's identity lineage is always present (BIND-CONTRACT); `id` backs the key.
     assert(ddl.contains("__resource_type"), s"ddl=$ddl")
     assert(ddl.contains("__resource_id"), s"ddl=$ddl")
     assert(schemas("Condition")("patientContext").bool) // carries a `subject` reference

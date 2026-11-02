@@ -6,7 +6,7 @@ the single `BUILD-RESOLVE` precedence: explicit kwarg > ``spark.cqldatabricks.*`
 loud FAIL. The resolved FHIR catalog / value-set table / versions are carried to the compiler as
 `CompileRequest` overrides under the stable keys in ``config`` (the host-injected provider bakes the concrete
 tables). The data a run reads is not a setting: the library's binder chooses it at compile time
-(`CLIENT-EXEC-DISCOVERY`, :mod:`.binding`).
+(:mod:`.binding`).
 
 Spark conf and file reads are lazy so the module imports (and unit-tests) with no Spark present.
 """
@@ -105,7 +105,7 @@ class Library:
     # only the five compiler-override keys, so the `spark.cqldatabricks.runtime.udfJar` CONF was silently
     # dropped and only the env var ever worked.
     udf_jar: Optional[str] = None
-    # EVALUATOR-CLIENT-EVALUATE (`DEC-ENGINE-SESSION-OPTIONS`): which engine runs this library, and what the
+    # `DEC-ENGINE-SESSION-OPTIONS`: which engine runs this library, and what the
     # evaluator engine needs, resolved by the same `BUILD-RESOLVE` precedence as every setting above.
     engine: str = config.LOCAL_ENGINE
     #: The raw ``(start, end)`` of the measurement period, as the caller or the session gave it.
@@ -152,7 +152,7 @@ class Library:
         that NAMES a precision now truncates both operands to it), so a coarse bound is harmless there too.
         """
         bound = self.with_parameter("Measurement Period", measurement_period_literal(start, end))
-        # EVALUATOR-CLIENT-EVALUATE: the evaluator engine takes the raw bounds and applies the declared type.
+        # The evaluator engine takes the raw bounds and applies the declared type.
         return replace(bound, measurement_period=(start, end))
 
     def explain_elm(self) -> str:
@@ -270,7 +270,7 @@ def load_library(resource: Optional[str] = None, *, elm: Optional[str] = None,
     if prefix == "auto":
         prefix = _auto_prefix(root, resource, elm_text, cql)
 
-    # EVALUATOR-CLIENT-EVALUATE, BUILD-CLIENT-SESSION-PARAMETERS — the engine and its session settings.
+    # BUILD-CLIENT-SESSION-PARAMETERS — the engine and its session settings.
     from .engines import parse_flag, parse_period
     engine_name = config.resolve_setting("CQL engine", explicit=engine, conf=resolved_conf,
                                          conf_key=config.CONF_ENGINE, env=config.ENV_ENGINE,

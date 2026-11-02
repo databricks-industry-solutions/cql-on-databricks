@@ -378,9 +378,8 @@ object SqlQueryLowering {
     (cd.codeSystem.flatMap(cs => lib.codeSystems.find(_.name == cs).map(_.id)).getOrElse(""), cd.id)
   }
 
-  /** BIND-EXPLICIT-PARAMS: the retrieve UDTF's SEVEN EXPLICIT positional arguments — everything the
-    * compiler statically knows about ONE retrieve, spelled out as named/typed SQL parameters (the
-    * opaque `(context VARIANT, hints VARIANT)` envelope pair this replaced was RETIRED, 2026-08):
+  /** The retrieve UDTF's SEVEN EXPLICIT positional arguments — everything the
+    * compiler statically knows about ONE retrieve, spelled out as named/typed SQL parameters:
     *
     * {{{
     * retrieve_<Type>(value_set, code_property, codes, date_property, date_low, date_high, parameters)
@@ -403,15 +402,15 @@ object SqlQueryLowering {
     *     resolved default is a compile-time literal, keyed by its CQL NAME in the define's own library
     *     ([[com.databricks.cql.passes.ParameterScope]], EMIT-ROOT-INDEPENDENT). A MAP because those names are not SQL identifiers
     *     (`'Measurement Period'` has a space) and the set is open per library; VARIANT values because
-    *     a default is not always a string — an interval lands as a `{low, high}` VARIANT OBJECT (this
-    *     is where the retired `context.measurementPeriod` field went), a scalar as a VARIANT SCALAR.
+    *     a default is not always a string — an interval lands as a `{low, high}` VARIANT
+    *     OBJECT, a scalar as a VARIANT SCALAR.
     *
     * Every argument is a FOLDABLE literal, so a guard on any of them — `library[0].id = '…'`,
     * `try_variant_get(parameters['Measurement Period'], '$.low', 'string')`, `cardinality(codes) > 0` —
     * folds at ANALYSIS time and Catalyst eliminates the body's non-matching `UNION` arms
     * (BIND-PUSHDOWN, verified against Spark 4.1.2: an array/map/struct argument folds exactly as well
     * as a scalar). ABSENT is a NULL (or an empty array/map), never a wrong literal
-    * (CORE-NO-SILENT-MISLOWER) — a binding tests presence exactly as it used to test a missing VARIANT
+    * (CORE-NO-SILENT-MISLOWER) — a binding tests presence exactly as it tests a missing VARIANT
     * key. Advisory only: [[filteredRetrieve]] re-applies every filter ABOVE the call, so a binding that
     * ignores all seven arguments still returns a correct un-pruned superset (BIND-CAPABILITY).
     *
@@ -600,7 +599,7 @@ object SqlQueryLowering {
   /** Scan a retrieve's resources applying its scan-level filters: the value-set/single-code terminology
     * membership and the date-range / period pre-filter (the SQL twin of `QueryLowering.filteredRetrieve`).
     * Returns a relation exposing the mount's `(__subject_id, __resource)`. Navigates the code/date
-    * property THROUGH the `__resource` struct of the mount (DATA-RETRIEVE-VIEW). */
+    * property THROUGH the `__resource` struct of the mount (BIND-CONTRACT). */
   private[lower] def filteredRetrieve(r: Retrieve, rt: String, env: SqlEvalEnv, lib: Library,
                                       typeOf: Expr => CqlType): SqlRel =
     // DATA-RETRIEVE-BARRIER-OPT: when this read was materialized as its own object, READ it instead of
@@ -632,7 +631,7 @@ object SqlQueryLowering {
     }
     // Date-range scan filter (ARCH-PUSHDOWN): keep resources whose `<dateProperty>` point is in the
     // range — the SAME `point in range` predicate the unoptimized `where` lowers, navigated through the
-    // `__resource` struct so the optimized scan and the `where` are identical (CONF-GATE-SELFDIFF).
+    // `__resource` struct so the optimized scan and the `where` are identical.
     val dateFiltered = (r.dateProperty, r.dateRange) match {
       case (Some(dp), Some(range)) =>
         val conv = r.datePointConverter.getOrElse("ToDateTime")
@@ -686,7 +685,7 @@ object SqlQueryLowering {
     * re-emitted at [[filteredRetrieve]]) — a runtime `__resource.<date>` operand, so it is exactly the
     * operator tower the UDF collapses (a literal-only predicate still const-folds via the `aC/bC` guard in
     * `SqlColumnLowering`). Aligns the pushdown-ON scan predicate with the pushdown-OFF residual `where`
-    * (which `applyWhere` already lowers UDF-first), preserving the emit-identical self-diff (CONF-GATE-SELFDIFF)
+    * (which `applyWhere` already lowers UDF-first), preserving the emit-identical self-diff
     * while cutting the analyzer's per-site cost. The coarse Period pre-filter (raw string `>=`/`<`) stays
     * native by construction (it is emitted directly, not through this path). */
   private[lower] def resourceScanPredicate(pred: Expr, typeOf: Expr => CqlType = _ => CqlType.AnyType): SqlExpr =
@@ -850,8 +849,8 @@ object SqlQueryLowering {
     *
     * The context base has NO retrieve predicates, but it is still passed the compilation-global
     * arguments (`library`, `parameters`) — those do not depend on a retrieve, and a binding for the
-    * context type deserves the same evaluation metadata as any other (BIND-EXPLICIT-PARAMS). It
-    * previously received two EMPTY envelopes, so a `Patient` binding could see nothing at all. */
+    * context type deserves the same evaluation metadata as any other, so a `Patient`
+    * binding sees the library and parameters. */
   private[lower] def contextRel(env: SqlEvalEnv, lib: Library): Option[SqlRel] =
     if (env.context.hasSubjectGrouping)
       Some(SqlRel.Select(

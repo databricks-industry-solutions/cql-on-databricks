@@ -1,9 +1,9 @@
-// SPEC-DEFINE-SECTIONS / SPEC-LIBRARY-DENSITY — what a full define section STATES about a declaration.
+// SPEC-DEFINE-SECTIONS — what a full define section STATES about a declaration.
 //
 // The gap these pin: `CqlPane` renders a variant's BODY, and a body is the source slice with the
-// `define …:` header stripped off it (`specModel.ts`, `stripHeader`). So a function rendered as a full
-// section disclosed its logic and nothing about its interface — no parameter list, and for an overload
-// group no sign that the other declarations existed — while the Compact row a click away showed both.
+// `define …:` header stripped off it (`specModel.ts`, `stripHeader`). Guards against a function rendered as a full
+// section disclosing its logic and nothing about its interface — no parameter list, and for an overload
+// group no sign that the other declarations exist — while a compact row shows both.
 // Density is how MUCH of a declaration shows; it may not change what the declaration IS.
 //
 // THE FIXTURE is ELM built here, not Compiler-Service output: `params` is derived from a FunctionDef's
@@ -136,10 +136,10 @@ describe("MeasureNarrative — a section with no prose (SPEC-CQL-VIEW)", () => {
     const block = denom.querySelector(".mw-cqlblock")!;
     expect(block.classList.contains("open")).toBe(true);
     expect(block.querySelector(".mw-cql")!.textContent).toContain('"Initial Population"');
-    // NOTHING AROUND IT AT ALL. This section is the one that had the most furniture: a derived English
-    // sentence — *"Everything in X applies here. It is stated once, in its own section."* — which became
-    // a "Builds on" label over its references, and is now gone outright (`SPEC-NO-UI-PROSE`). A
-    // re-stating population renders its heading, its CQL, and no derived row of any kind.
+    // NOTHING AROUND IT AT ALL. This section carries no derived prose: a sentence like
+    // *"Everything in X applies here. It is stated once, in its own section."* and a "Builds on" label
+    // over its references are not rendered (`SPEC-NO-UI-PROSE`). A re-stating population renders its
+    // heading, its CQL, and no derived row of any kind.
     expect(denom.textContent).not.toContain("stated once, in its own section");
     expect(denom.textContent).not.toContain("applies here");
     expect(denom.textContent).not.toContain("Builds on");
@@ -159,8 +159,8 @@ describe("MeasureNarrative — a section with no prose (SPEC-CQL-VIEW)", () => {
 //
 // THE FAILURE THESE PIN, measured on a published measure whose own CQL carries no tags at all, so
 // every authored sentence in its closure is a `@description` or `@comment` in its shared helper
-// libraries — and the page rendered the descriptions as truncated one-liners on compact rows and
-// dropped the comments on the floor. A reader looking for the author's words could not find them.
+// libraries. Guards against the page rendering the descriptions as truncated one-liners on compact
+// rows and dropping the comments on the floor: a reader looking for the author's words must find them.
 
 /** A library whose one define documents itself the way a shared helper's interval function does: a one-line
  *  `@description` and a paragraph of `@comment` finishing the answer. */
@@ -226,16 +226,16 @@ describe("MeasureNarrative — authored tags (SPEC-NARRATIVE-TAGS)", () => {
   });
 });
 
-/** The define sections' names, in render order. `data-crit-name` is the cross-lens selection key, so it
+/** The define sections' names, in render order. `data-crit-name` is the cross-view selection key, so it
  *  is also the thing a nav row has to line up with. */
 function sectionNames(container: HTMLElement): string[] {
   return [...container.querySelectorAll(".mw-define")].map((el) => el.getAttribute("data-crit-name") ?? "");
 }
 
 describe("MeasureNarrative — marks on the heading row", () => {
-  it("draws no Validation verdict, even on a run (REND-BADGES superseded)", () => {
+  it("draws no Validation verdict, even on a run", () => {
     // There is no scorekey to check a run against, so a seal could only ever say "no findings" while
-    // reading as "correct". A live run with real counts is the case that used to draw `pass`.
+    // reading as "correct". A live run with real counts is the case that would otherwise draw `pass`.
     const lib = measure();
     const model = buildSpecModel({ root: lib, includes: [] });
     const metrics = {
@@ -276,8 +276,8 @@ describe("MeasureNarrative — marks on the heading row", () => {
   });
 
   it("refuses interpreted prose rather than showing it unmarked (DOC-EXPLAIN-REMOVE)", () => {
-    // Nothing the server serves is `narrated` any more. If something ever is, the page fails loud: the
-    // mark that told a reader it was not the author's words is gone, so showing it would misattribute it.
+    // Nothing the server serves is `narrated`. If something ever is, the page fails loud: no mark tells
+    // a reader it was not the author's words, so showing it would misattribute it.
     const lib = measure();
     const model = buildSpecModel({ root: lib, includes: [] });
     const overlay = {
@@ -303,7 +303,7 @@ describe("MeasureNarrative — marks on the heading row", () => {
 
 describe("MeasureNarrative — a define section states its interface (SPEC-DEFINE-SECTIONS)", () => {
   it("prints a function's declared parameter list beside its name", () => {
-    // The signature the Compact row prints as `(unit String)`. Without it the section showed `fn ToUnit`
+    // The signature the Compact row prints as `(unit String)`. Without it the section would show `fn ToUnit`
     // over a body reading `"Unit Label"`, which reads as a function that takes nothing.
     renderDoc();
     expect(screen.getByText("(unit String)")).toBeTruthy();
@@ -344,7 +344,7 @@ describe("MeasureNarrative — a define section states its interface (SPEC-DEFIN
 /** The OPEN LENS, wherever it is in the document.
  *
  *  IT IS NOT UNDER THE TEST'S CONTAINER, and that is the behaviour rather than an inconvenience: the lens
- *  portals into a `.mw` host on the body (`SPEC-REF-LENS`), because inside `.mw-doc` — a scrollport — it was
+ *  portals into a `.mw` host on the body (`SPEC-REF-LENS`), because inside `.mw-doc` — a scrollport — it would be
  *  clipped at the reading column's edge and no z-index escapes an ancestor's clip. Queried through this
  *  helper rather than `container.querySelector` at twenty call sites so that the day it moves again there is
  *  one line to change. */
@@ -383,9 +383,9 @@ function renderReads() {
 
 describe("MeasureNarrative — selecting a read (SPEC-NAV-COMPOSITION)", () => {
   it("selects the read when its row is expanded, rather than only opening it", () => {
-    // Opening a read to look at its evidence IS telling the pane which read you are looking at. The
-    // head used to swallow the click on its way to the row, so the workbench stayed scoped to whatever
-    // was selected before while the reader stared at something else.
+    // Opening a read to look at its evidence IS telling the pane which read you are looking at. Guards
+    // against the head swallowing the click on its way to the row, which leaves the workbench scoped to
+    // whatever was selected before while the reader stares at something else.
     const { container, picked } = renderReads();
     const row = container.querySelector(".mw-dreq-row")!;
     const key = row.getAttribute("data-crit-name")!;
@@ -397,8 +397,8 @@ describe("MeasureNarrative — selecting a read (SPEC-NAV-COMPOSITION)", () => {
   });
 
   it("opens the lens on a CQL token rather than moving the reader (SPEC-REF-LENS)", () => {
-    // A press used to JUMP, so a reader who wanted to know what a token meant paid for a trip they did
-    // not ask for. It now opens the lens, and the trip is a control inside it.
+    // A press does not JUMP: a reader who wants to know what a token means would otherwise pay for a trip
+    // they did not ask for. It opens the lens, and the trip is a control inside it.
     const { container, picked } = renderReads();
     // SPEC-CQL-VIEW — the fixture's sections carry no prose, so their CQL is OPEN and the token is there
     // without asking for it.
@@ -408,15 +408,15 @@ describe("MeasureNarrative — selecting a read (SPEC-NAV-COMPOSITION)", () => {
     expect(token).toHaveAttribute("aria-expanded", "false");
 
     fireEvent.click(token!);
-    // The press moved NOTHING. That is the whole point of the change.
+    // The press moves NOTHING. That is the whole point.
     expect(picked).toEqual([]);
     expect(token).toHaveAttribute("aria-expanded", "true");
     expect(lensBox()).not.toBeNull();
   });
 
   it("does not open on hover — hover only says the name is a link", () => {
-    // Two gestures competing for one word is what made the old lens odd: it appeared over the sentence
-    // the reader was still reading. The underline carries the affordance; the press carries the lens.
+    // Two gestures competing for one word is what makes a hover lens odd: it appears over the sentence
+    // the reader is still reading. The underline carries the affordance; the press carries the lens.
     const { container } = renderReads();
     fireEvent.click(container.querySelector<HTMLButtonElement>(".mw-cqlblock-toggle")!);
     const token = container.querySelector<HTMLButtonElement>("button.cql-link.rd")!;
@@ -446,10 +446,10 @@ describe("MeasureNarrative — selecting a read (SPEC-NAV-COMPOSITION)", () => {
   });
 
   it("opens the lens OUTSIDE the reading column, where nothing can clip it (SPEC-REF-LENS)", () => {
-    // The clamp this replaces existed because the box lived inside `.mw-doc`, a scrollport: it was clipped
-    // at the column's right edge, and with the inspector pane immediately beyond that edge it read as
-    // sliding under the pane. Holding the inspector's own tabs made the box tall enough for the same thing
-    // to happen downwards, which a horizontal clamp could not have fixed at any width.
+    // A horizontal clamp is not enough: the box inside `.mw-doc`, a scrollport, is clipped at the column's
+    // right edge, and with the inspector pane immediately beyond that edge it reads as sliding under the
+    // pane. Holding the inspector's own tabs makes the box tall enough for the same thing to happen
+    // downwards, which a horizontal clamp cannot fix at any width.
     const { container, port } = renderReads();
     fireEvent.click(container.querySelector<HTMLButtonElement>(".mw-cqlblock-toggle")!);
     fireEvent.click(container.querySelector<HTMLButtonElement>("button.cql-link.rd")!);
@@ -458,7 +458,7 @@ describe("MeasureNarrative — selecting a read (SPEC-NAV-COMPOSITION)", () => {
     expect(box).not.toBeNull();
     expect(port.contains(box)).toBe(false);
     // The host carries `mw`: the workspace's `.mw button` reset and every rule that out-specifies it — the
-    // lens's own action corner included (`refLens.test.tsx`) — reach inside a box that is no longer a
+    // lens's own action corner included (`refLens.test.tsx`) — reach inside a box that is not a
     // descendant of the workspace only because of that class.
     expect(box!.closest(".mw")).not.toBeNull();
     expect(box!.style.position === "" ? getComputedStyle(box!).position : box!.style.position)
@@ -470,7 +470,7 @@ describe("MeasureNarrative — selecting a read (SPEC-NAV-COMPOSITION)", () => {
 //
 // Asserted against `lensPlacement` rather than through a rendered popover, because jsdom computes no
 // geometry: a placement test driven through the DOM would be asserting the rects the test itself stubbed.
-// The function IS the behaviour, and these are the cases that made the old absolute placement wrong.
+// The function IS the behaviour, and these are the cases where absolute placement goes wrong.
 
 describe("reference lens placement (SPEC-REF-LENS)", () => {
   /** A 1400×900 window with a 340px inspector pane on the right — so the lens's field ends at 1060,
@@ -488,8 +488,8 @@ describe("reference lens placement (SPEC-REF-LENS)", () => {
   });
 
   it("flips ABOVE the anchor when the box would run off the bottom", () => {
-    // The case a horizontal clamp could never have handled, and the one that arrived with the inspector's
-    // tabs: a reference pressed near the foot of a long document opened a box whose lower half was below
+    // The case a horizontal clamp could never handle, and the one the inspector's tabs bring in. Guards
+    // against a reference pressed near the foot of a long document opening a box whose lower half is below
     // the scrollport. 820 + 6 + 520 exceeds 888, and there is 802px of room above.
     const at = lensPlacement({ top: 820, bottom: 838, left: 300 }, W, H, field);
     expect(at.top).toBe(294);   // 820 − 6 − 520
@@ -498,8 +498,8 @@ describe("reference lens placement (SPEC-REF-LENS)", () => {
   it("NEVER covers the inspector pane, which is the reading it exists to be compared against", () => {
     // WHAT THIS GUARDS. Clamped only to the viewport, a reference in the right half
     // of a line put 640px of lens on top of a 340px pane — and since the lens renders the pane's own markup
-    // in the pane's own material, the overlap was reported as the two sharing one tab state. They never
-    // did; one box was hiding the other.
+    // in the pane's own material, the overlap would be reported as the two sharing one tab state. They do
+    // not; one box hides the other.
     const at = lensPlacement({ top: 100, bottom: 118, left: 1000 }, W, H, field);
     expect(at.left + W).toBeLessThanOrEqual(PANE_LEFT);
     expect(at.left).toBe(field.right - W);
@@ -540,20 +540,19 @@ describe("reference lens placement (SPEC-REF-LENS)", () => {
 // ── ONE WAY TO REACH A DEFINE (SPEC-DEFINE-REF / SPEC-REF-LENS) ───────────────────────────────────
 //
 // A define reached from anywhere in this document is ONE object with one lens and one set of verbs, so
-// there is one mark for it and one gesture. `.mw-linkbtn` was a second, accent-inked "jump to" control
-// with two call sites — the population "Builds on" row, since removed entirely, and a data requirement's
-// call sites — and it is deleted.
+// there is one mark for it and one gesture. There is no second, accent-inked "jump to" control
+// (`.mw-linkbtn`).
 
 describe("MeasureNarrative — one way to reach a define (SPEC-DEFINE-REF)", () => {
   it("names a data requirement's call sites as inline references, not jump buttons", () => {
-    // These used to be one of the document's two `.mw-linkbtn`s: same destination as a bound phrase,
-    // different ink and a different gesture, which is how one reference comes to disagree with another.
+    // These are not one of the document's `.mw-linkbtn`s: that would be the same destination as a bound phrase
+    // with different ink and a different gesture, which is how one reference comes to disagree with another.
     const { container, picked } = renderReads();
     fireEvent.click(container.querySelector<HTMLButtonElement>(".mw-dreq-head")!);
     const site = container.querySelector<HTMLButtonElement>(".mw-dreq-facts .mw-defref")!;
     expect(site).not.toBeNull();
-    // The one mark everything lens-able carries — NOT the accent "jump to" control, which no longer
-    // exists anywhere in the document.
+    // The one mark everything lens-able carries — NOT the accent "jump to" control, which does not
+    // exist anywhere in the document.
     expect(container.querySelector(".mw-linkbtn")).toBeNull();
 
     // A press opens the lens and moves NOBODY, exactly as it does on a CQL token.
@@ -569,13 +568,13 @@ describe("MeasureNarrative — one way to reach a define (SPEC-DEFINE-REF)", () 
 // The property under test is a SHARED COMPONENT, not a resemblance. `InspectorScope` is what the pane
 // renders and what the lens renders, so "pinned and popped show the same thing" cannot be broken by
 // editing one of them — and these assert the seam rather than the pixels, because the seam is the claim.
-// What stood here before was a lens that said "pin it to see them here", which made asking what a define
+// A lens that said "pin it to see them here" would make asking what a define
 // produced cost the reader their place in the document (`Pin` moves the selection, and the selection is
 // also the you-are-here mark).
 
 describe("MeasureNarrative — the reference lens is the inspector (SPEC-REF-LENS)", () => {
   /** Open the lens on a define reference — a data requirement's call site, which is where the document
-   *  names a define outside its own section now that the "Builds on" row is gone. */
+   *  names a define outside its own section. There is no "Builds on" row. */
   function openDefineLens() {
     const { container, picked } = renderReads();
     fireEvent.click(container.querySelector<HTMLButtonElement>(".mw-dreq-head")!);
@@ -586,8 +585,8 @@ describe("MeasureNarrative — the reference lens is the inspector (SPEC-REF-LEN
 
   it("renders the pane's OWN tab strip and body, not a summary of them", () => {
     const { lens } = openDefineLens();
-    // `.mw-wb-tabs` / `.mw-wb-body` are the inspector's markup. A lens that grew its own lookalike classes
-    // is the failure mode this replaced.
+    // `.mw-wb-tabs` / `.mw-wb-body` are the inspector's markup. A lens that grows its own lookalike classes
+    // is the failure mode this guards against.
     const strip = lens.querySelector(".mw-wb-tabs")!;
     expect(strip).not.toBeNull();
     expect([...strip.querySelectorAll("[role=tab]")].map((t) => t.textContent))
@@ -606,20 +605,20 @@ describe("MeasureNarrative — the reference lens is the inspector (SPEC-REF-LEN
     // Disabled tabs are always selectable: a disabled tab cannot say why it is disabled, but the body
     // can. Removing ambiguous presentation is cleaner than trying to paint the disabled state louder.
     //
-    // `APP-STABLE-LAYOUT` gets stronger, not weaker: the strip is now identical in shape AND in
-    // behaviour for every selection, where its interactivity used to change as the profile landed.
+    // `APP-STABLE-LAYOUT` holds for every selection: the strip is identical in shape AND in
+    // behaviour, where its interactivity would otherwise change as the profile lands.
     const { lens } = openDefineLens();
     const tabs = [...lens.querySelectorAll<HTMLButtonElement>("[role=tab]")];
     expect(tabs).toHaveLength(3);
     for (const t of tabs) expect(t).not.toBeDisabled();
-    // And a `title` that no longer pretends to carry the reason: the body carries it.
+    // And a `title` does not pretend to carry the reason: the body carries it.
     for (const t of tabs) expect(t.getAttribute("title")).toBe(t.textContent);
   });
 
   it("names the missing DATA SOURCE rather than blaming the definition", () => {
-    // The state that made always-selectable safe. With no `profileScope` these tabs used to read "No
+    // The state that makes always-selectable safe. With no `profileScope` these tabs would read "No
     // profile for this definition" / "No sample for this definition" — which blames the definition for the
-    // reader not having chosen an evaluation, on tabs they can now actually open. `SPEC-METRIC`: an absence
+    // reader not having chosen an evaluation, on tabs they can actually open. `SPEC-METRIC`: an absence
     // is named, and one a reader can act on names the control that acts.
     const { lens } = openDefineLens();
     const open = (name: string) =>
@@ -646,7 +645,7 @@ describe("MeasureNarrative — the reference lens is the inspector (SPEC-REF-LEN
     expect(head.querySelector(".mw-spec-kind")).not.toBeNull();
     expect(head.querySelector(".nm")).not.toBeNull();
     expect(head.querySelector(".mw-el-metric")).toBeNull();
-    // Both verbs, still in the corner — and only those two (`LensActions` dropped the Ask verb: three
+    // Both verbs, still in the corner — and only those two (`LensActions` has no Ask verb: three
     // icons in a lens's header corner are a toolbar, and this corner holds a pair).
     expect([...head.querySelectorAll(".mw-reflens-acts button")].map((b) => b.getAttribute("aria-label")))
       .toEqual(["Open this section", "Pin to the inspector"]);
@@ -677,14 +676,14 @@ describe("MeasureNarrative — the reference lens is the inspector (SPEC-REF-LEN
   });
 
   it("says nothing about pinning to see the data, because the data is already here", () => {
-    // The retired `LensPending`. Asserted as an absence because it is the whole point of the change: a lens
+    // The `LensPending` footer is absent. Asserted as an absence because it is the whole point: a lens
     // whose answer was "go somewhere else" gave back the one thing it existed to protect.
     const { lens } = openDefineLens();
     expect(lens.textContent).not.toContain("pin it to see them here");
   });
 
   it("keeps Pin as a TOGGLE reporting the pane's scope, and dismisses on it", () => {
-    // Pin no longer buys the answer — it makes the scope persist past the dismissal. The gesture is
+    // Pin does not buy the answer — it makes the scope persist past the dismissal. The gesture is
     // unchanged, which is why it is asserted: a reader who had learnt it must not have to relearn it.
     const { lens, picked, named } = openDefineLens();
     // The name the reference states, which is the name the pin must scope to — a define's selection token
@@ -699,7 +698,7 @@ describe("MeasureNarrative — the reference lens is the inspector (SPEC-REF-LEN
 // ── The Libraries section (SPEC-DEFINITIONS / APP-SPEC-MODEL) ──────────────────────────────────
 
 /** The measure plus one include, which is the only shape that can show the merge at all: with no
- *  includes there was never a second section to merge. */
+ *  includes there is never a second section to merge. */
 function renderWithInclude() {
   const root = measure();
   const helpers = library("Shared", [
@@ -720,8 +719,8 @@ describe("MeasureNarrative — one Libraries section (SPEC-DEFINITIONS / APP-SPE
     // surfaces disagreeing about how the document is organised is the same defect as two disagreeing
     // about a count — worse, if anything, because a reader navigates by the shape.
     // Read off the section TITLES — `SpecSection` renders its title in a collapse button, not a heading
-    // element, so a role query would find the library group titles instead. (`.mw-spec-sec-title`, was
-    // `-eyebrow`: the micro-label style that name described now belongs to the library head.)
+    // element, so a role query would find the library group titles instead. (`.mw-spec-sec-title`.
+    // The micro-label style belongs to the library head.)
     const { container } = renderWithInclude();
     const sections = [...container.querySelectorAll(".mw-spec-sec-title")].map((el) => el.textContent);
     expect(sections).toContain("Libraries");
@@ -730,9 +729,9 @@ describe("MeasureNarrative — one Libraries section (SPEC-DEFINITIONS / APP-SPE
   });
 
   it("gives the root a library group of its own, FIRST, like any other library", () => {
-    // It used to have no heading at all — its name is the document's title — which left its defines
-    // flat while every include's sat inside a named block. Two declarations a reader reaches the same
-    // way were presented as different kinds of thing. What the root keeps is first place.
+    // The root has a heading of its own, though its name is the document's title. Without one its defines
+    // would sit flat while every include's sat inside a named block: two declarations a reader reaches the
+    // same way would be presented as different kinds of thing. What the root keeps is first place.
     const { container } = renderWithInclude();
     const groups = [...container.querySelectorAll(".mw-defs-lib-title")]
       .map((el) => el.firstChild?.textContent);
@@ -746,7 +745,7 @@ describe("MeasureNarrative — one Libraries section (SPEC-DEFINITIONS / APP-SPE
     //
     // The count is SCOPED TO THE ROOT'S OWN GROUP, only, not across all libraries.
     const { container } = renderWithInclude();
-    // The count is a SIBLING of the title now, in the card header — it is a fact about the group rather than
+    // The count is a SIBLING of the title, in the card header — it is a fact about the group rather than
     // part of the collapse target, so it sits outside the button the title is in.
     const head = container.querySelector(".mw-defs-lib-head")!;
     const group = head.closest(".mw-defs-lib")!;
@@ -755,8 +754,8 @@ describe("MeasureNarrative — one Libraries section (SPEC-DEFINITIONS / APP-SPE
   });
 
   it("does NOT render a library as a heading (APP-STYLE-GUIDE)", () => {
-    // A library card's name is a CARD TITLE, not a rung in the document's heading ladder. It was an `h2`,
-    // which put it in the outline a screen reader builds and made a reader rank it against the criterion
+    // A library card's name is a CARD TITLE, not a rung in the document's heading ladder. An `h2` would
+    // put it in the outline a screen reader builds and make a reader rank it against the criterion
     // names below it. Any non-heading element does; what must hold is that it is not h1-h6 — and that the
     // ANCHOR rides it, since the nav scrolls to `lib.domId` whether the card is open or shut.
     const { container } = renderWithInclude();
@@ -818,8 +817,8 @@ describe("MeasureNarrative — one Libraries section (SPEC-DEFINITIONS / APP-SPE
   it("names the section Summary and the prose card Overview, not the reverse", () => {
     // The word `overview` names this prose everywhere it is modelled — `doc.overview`, `OverviewHeading`,
     // `#mw-sec-overview` — so renaming the CARD would leave the code and the page disagreeing about the one
-    // term a reader and a maintainer share. The section above it, which now holds the result too, took the
-    // broader name instead.
+    // term a reader and a maintainer share. The section above it, which also holds the result, takes the
+    // broader name.
     const { container } = renderWithInclude();
     expect(container.querySelector("#mw-sec-overview .mw-spec-sec-title")!.textContent).toBe("Summary");
     const titles = [...container.querySelectorAll("#mw-sec-overview .mw-spec-card-title")]
@@ -839,7 +838,7 @@ describe("MeasureNarrative — one Libraries section (SPEC-DEFINITIONS / APP-SPE
   });
 
   it("folds every titled card, and drops its header rule when shut (APP-SPEC-COLLAPSE)", () => {
-    // Retrieves and Value sets were the two asked for; their peers hold the same kind of content through the
+    // Retrieves and Value sets are the two named; their peers hold the same kind of content through the
     // same component, and a fold that worked on one table and not the one beside it would read as a bug.
     const { container } = renderWithInclude();
     const cards = [...container.querySelectorAll(".mw-spec-card")];
@@ -860,11 +859,10 @@ describe("MeasureNarrative — one Libraries section (SPEC-DEFINITIONS / APP-SPE
   });
 
   it("renders EVERY library as full sections — the density control is gone", () => {
-    // SPEC-LIBRARY-DENSITY, retired 2026-08-09. Compact gave a define one row and its narration a
-    // truncated one-liner, and the derived default opened a library Compact exactly when nobody had
-    // NARRATED it — which is exactly where the AUTHOR's own `@description` and `@comment` live
-    // (a published measure's whole authored corpus can sit in its helper libraries). The libraries with the most
-    // authored prose were the ones the page said the least about.
+    // Guards against the page choosing a compact density for a library exactly when nobody has NARRATED it.
+    // That is where the AUTHOR's own `@description` and `@comment` live (a published measure's whole authored
+    // corpus can sit in its helper libraries). The libraries with the most authored prose are the ones the
+    // page would say the least about.
     const { container } = renderWithInclude();
     expect(container.querySelectorAll(".mw-seg-btn")).toHaveLength(0);
     expect(container.querySelectorAll(".mw-defs-rows")).toHaveLength(0);
@@ -895,7 +893,7 @@ describe("MeasureNarrative — one Libraries section (SPEC-DEFINITIONS / APP-SPE
 
   it("collapses ONE define section to its heading row, and does not move the selection", () => {
     // APP-SPEC-COLLAPSE — collapsed, the section is name + kind + figure, which is the catalogue
-    // line Compact used to print. The caret STOPS PROPAGATION: `.mw-define` selects on click, and
+    // line. The caret STOPS PROPAGATION: `.mw-define` selects on click, and
     // shutting a section says nothing about which criterion is under review (APP-LOGIC-VIEW).
     const selected: string[] = [];
     const root = measure();
@@ -918,7 +916,7 @@ describe("MeasureNarrative — one Libraries section (SPEC-DEFINITIONS / APP-SPE
   });
 });
 
-// ── APP-MEASURE-FLOW — a selection lands on a VISIBLE section ─────────────────────────────────
+// ── A selection lands on a VISIBLE section ─────────────────────────────────
 //
 // The nav tints its row and the workspace scrolls, but a collapsed card, library group or define
 // section would leave the reader staring at a shut container the selection is inside of. Each level
@@ -944,7 +942,7 @@ function revealDoc() {
   return { at, ...render(at(null)) };
 }
 
-describe("MeasureNarrative — selection reveals its section (APP-MEASURE-FLOW)", () => {
+describe("MeasureNarrative — selection reveals its section", () => {
   it("opens the collapsed Libraries card when a define is selected", () => {
     const { at, container, rerender } = revealDoc();
     const head = [...container.querySelectorAll(".mw-spec-sec-head")]
@@ -1128,7 +1126,7 @@ describe("MeasureNarrative — a read named in the prose (SPEC-READ-REF)", () =>
 
   it("reports the scope it set on Pin, not on the phrase", () => {
     // Selection is ONE value and doubles as the document's you-are-here mark, so `Pin` is a toggle and
-    // says so. The PHRASE stopped being one — its press opens the lens now.
+    // says so. The PHRASE is not one — its press opens the lens.
     const first = renderReadRef({ profile: "Observation" });
     const key = first.retrieves.find((r) => r.profiles.includes("Observation"))!.key;
     first.unmount();
@@ -1152,9 +1150,9 @@ describe("MeasureNarrative — a read named in the prose (SPEC-READ-REF)", () =>
   });
 
   it("carries the count when the evaluation did materialize it", () => {
-    // Still a real branch of the RENDERER, and tested directly, even though production no longer supplies
+    // Still a real branch of the RENDERER, and tested directly, even though production does not supply
     // a count: `CQL_MATERIALIZE_RETRIEVES` is a live authoring switch and this is what it looks like
-    // (`SPEC-READ-METRICS`, retired as a reader-facing figure and kept as the override's surface).
+    // (kept as the override's surface).
     const first = renderReadRef({ profile: "Observation" });
     const key = first.retrieves.find((r) => r.profiles.includes("Observation"))!.key;
     first.unmount();
@@ -1165,10 +1163,9 @@ describe("MeasureNarrative — a read named in the prose (SPEC-READ-REF)", () =>
 
   it("opens the INSPECTOR's read scope, not a summary of it (SPEC-REF-LENS)", () => {
     // The lens renders `ReadScope` — the same component the pane renders for a selected read — so what a
-    // reader gets from a phrase in a sentence and what they get from pinning it are one rendering. This
-    // replaced a `ReadLensBody` that held a thinner version of the same facts, and the reason for sharing
-    // rather than matching is that the two had ALREADY drifted once (the prose lens stated a count while the
-    // CQL token's stated `mustSupport`).
+    // reader gets from a phrase in a sentence and what they get from pinning it are one rendering. The
+    // reason for sharing rather than matching is that two copies drift: the prose lens could state a count
+    // while the CQL token states `mustSupport`.
     const { container, retrieves } = renderReadRef({ profile: "Observation" });
     fireEvent.click(container.querySelector<HTMLButtonElement>(".mw-readref")!);
 
@@ -1191,8 +1188,8 @@ describe("MeasureNarrative — a read named in the prose (SPEC-READ-REF)", () =>
   });
 
   it("states the absence it can now explain, which as a summary it could not", () => {
-    // The lens is the inspector's surface now, so `ReadScope`'s explanation comes with it: the standing
-    // reason a read has no count to give (`SPEC-READ-METRICS`), not a per-run "not counted" guess.
+    // The lens is the inspector's surface, so `ReadScope`'s explanation comes with it: the standing
+    // reason a read has no count to give (`SPEC-READ-REF`), not a per-run "not counted" guess.
     const { container } = renderReadRef({ profile: "Observation" });
     fireEvent.click(container.querySelector<HTMLButtonElement>(".mw-readref")!);
     expect(lensBox()!.textContent).toContain("not countable here");
@@ -1202,8 +1199,8 @@ describe("MeasureNarrative — a read named in the prose (SPEC-READ-REF)", () =>
 // ── SPEC-TERMINOLOGY-REF — a value set or code named in a clinical sentence ──────────────────────
 //
 // The LAST of `SPEC-EXPLAIN-ACCOUNTING`'s outward coverage, and the one closest to what a clinical
-// reviewer actually asks: terminology decides which patients match, and it was the only linkable thing
-// the narrative could mention without letting anyone follow it.
+// reviewer actually asks: terminology decides which patients match, so a value set or code named in a
+// sentence must be followable like every other reference.
 
 function renderTermRef(opts: { library?: string; name?: string;
   /** SPEC-DATA-REQUIREMENTS — a declared execution parameter, which the inline fixture's ELM has none
@@ -1256,8 +1253,8 @@ const PARAM = { name: "Measurement Period", type: "Interval<DateTime>", library:
 
 describe("MeasureNarrative — Parameters are a data requirement (SPEC-DATA-REQUIREMENTS)", () => {
   it("files Parameters UNDER Data requirements, so the one homeless heading has a section", () => {
-    // It was a bare `h2` at the foot of Libraries, which made it the only heading in the document that
-    // could not collapse and the only one whose indent answered to nothing. A parameter is a value the
+    // A bare `h2` at the foot of Libraries would make it the only heading in the document that
+    // could not collapse and the only one whose indent answers to nothing. A parameter is a value the
     // logic cannot run without — a required binding supplied at execution, exactly as a read is one
     // supplied by the data — so this is where it belongs on the merits as well.
     const { container } = renderTermRef({ parameters: [PARAM] });
@@ -1279,9 +1276,9 @@ describe("MeasureNarrative — Parameters are a data requirement (SPEC-DATA-REQU
     const { container } = renderTermRef({ parameters: [PARAM] });
     for (const id of ["mw-dr-reads", "mw-app-params"]) {
       const el = container.querySelector(`#${id}`)!;
-      // A CARD TITLE now — the third element this has been in a day, and the last: an `h2` competed with
-      // the resource names under it, an eyebrow was a subdivision of a card with nothing else in it, and a
-      // card is what the thing is — one of two kinds of requirement the section states.
+      // A CARD TITLE: an `h2` would compete with the resource names under it, an eyebrow would subdivide a
+      // card with nothing else in it, and a card is what the thing is — one of two kinds of requirement the
+      // section states.
       expect(el.className, id).toBe("mw-spec-card-title");
       expect(el.closest(".mw-spec-card"), id).not.toBeNull();
     }
@@ -1304,10 +1301,8 @@ describe("MeasureNarrative — Parameters are a data requirement (SPEC-DATA-REQU
 
   it("counts every read on the subdivision's own label, so it agrees with the groups under it", () => {
     // A label may never carry a number its own rows do not add up to — the same rule the library groups are
-    // held to. The count moved onto the eyebrow with the label; the arithmetic is unchanged.
-    // The count came off the label when Retrieves became a card: a card title states what the card IS, and
-    // the per-resource headings inside it still carry the arithmetic. What must hold is that those add up
-    // to the rows rendered — the rule the library groups are also held to.
+    // held to. A card title states what the card IS; the per-resource headings inside it carry the
+    // arithmetic. What must hold is that those add up to the rows rendered.
     const { container } = renderTermRef();
     const perType = [...container.querySelectorAll("#mw-sec-datareq h3[id^='mw-dr-'] .mw-dreq-n")]
       .reduce((sum, n) => sum + Number(n.textContent), 0);
@@ -1433,7 +1428,7 @@ describe("MeasureNarrative — a parameter cited in an Overview field (SPEC-PARA
   });
 
   it("keeps the paragraph breaks a quoted markdown field carries", () => {
-    // The split `paragraphs()` used to do, now done over the SEGMENTS so it no longer costs the
+    // The paragraph split is done over the SEGMENTS, not by `paragraphs()`, so it does not cost the
     // references. Both halves have to survive — the break AND the reference — because reading the
     // plain text was what made them exclusive: honouring one meant flattening the other away.
     const { container } = renderOverviewParam({ tail: "\n\nA second paragraph." });

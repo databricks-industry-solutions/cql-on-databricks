@@ -2,7 +2,7 @@ package com.databricks.cql.lower
 
 /** The list/value encoding a lowered fragment is in (DATA-VALUE-TAXONOMY, DATA-LIST-ENCODING). A tracked
   * physical property read by the pure passes (`TypeEncoding`, `LetQueryInliner`) that decide a define's
-  * grain. Retained in the `lower` package after the proto back end retired (EXEC-SQL-BACKEND); the SQL
+  * grain. Kept in the `lower` package (EXEC-SQL-BACKEND); the SQL
   * emitter carries the same distinction through its own relation/scalar lowering. */
 sealed trait Encoding
 object Encoding {

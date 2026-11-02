@@ -17,10 +17,10 @@ import org.apache.spark.sql.{Column, DataFrame, SparkSession, functions => F}
   * `regexp_extract` in the hot path. (The production ingest-time/partitioned key is deferred.) */
 final class SparkFhirData(spark: SparkSession, dataDir: String) extends DataProvider {
 
-  // DATA-RETRIEVE-VIEW: mount the resource frame as the single `(__subject_id, __resource)` schema
+  // BIND-CONTRACT: mount the resource frame as the single `(__subject_id, __resource)` schema
   // contract — the subject key plus the resource packed into one struct ([[ResourceStruct.of]]). The
   // sample-data adapter IGNORES the advisory pushdown hints (value-set / date predicates — the engine
-  // re-applies every predicate at its natural position, CONF-GATE-SELFDIFF), but it DOES honor the
+  // re-applies every predicate at its natural position), but it DOES honor the
   // ARCH-RETRIEVE-PROJECT `project` demand: narrow the read schema + the struct to the navigated fields.
   // Honoring is a pure read/proto optimization — the engine re-projects the mount to the same set as a
   // correctness guard, so a narrowed vs full read is identical (as pushdown-on vs -off is).

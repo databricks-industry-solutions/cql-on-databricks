@@ -5,7 +5,6 @@ library FhirMultiSource version '1.0.0'
 // (a __subject_id-keyed Cartesian product); `with`/`without` are semi-/anti-joins whose `such that`
 // may reference the source alias (the two-sided join). Returns project clean FHIR primitives
 // (a resource `id` renders type-prefixed in the reference, so the differential uses `status`).
-// (Phase 4b.4.)
 using FHIR version '4.0.1'
 include FHIRHelpers version '4.0.1' called FHIRHelpers
 

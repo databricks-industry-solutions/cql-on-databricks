@@ -50,9 +50,7 @@
     --fun-1: var(--navy-600); --fun-2: var(--navy-500); --fun-3: var(--navy-400); --fun-4: var(--navy-300);
     /* The canonical `:root` semantic tokens, remapped to the workspace-dark values so that anything
        still styled against them (theme.css's own `.eyebrow` / `.muted` globals) themes with the
-       workspace rather than staying light (APP-STYLE-GUIDE). This used to exist for embedded
-       classic-shell components; those are deleted (DESIGNER-TOP-BAR), and the remap is kept for the
-       globals alone. Base tokens like `--paper` are deliberately NOT remapped. */
+       workspace rather than staying light (APP-STYLE-GUIDE). The classic-shell components have no call here (DESIGNER-TOP-BAR), so the remap serves the globals alone. Base tokens like `--paper` are deliberately NOT remapped. */
     --surface: var(--panel); --surface-2: var(--panel-2); --surface-3: var(--panel-2);
     --ink: var(--tink); --ink-2: var(--tink-2); --ink-3: var(--tink-3); --line: var(--tline); --line-2: var(--tline-2);
     --warn: var(--twarn); --warn-soft: var(--twarn-w); --good: var(--tgood); --good-soft: var(--tgood-w);
@@ -72,9 +70,7 @@
   --fun-1: var(--navy-600); --fun-2: var(--navy-500); --fun-3: var(--navy-400); --fun-4: var(--navy-300);
   /* The canonical `:root` semantic tokens, remapped to the workspace-dark values so that anything
      still styled against them (theme.css's own `.eyebrow` / `.muted` globals) themes with the
-     workspace rather than staying light (APP-STYLE-GUIDE). This used to exist for embedded
-     classic-shell components; those are deleted (DESIGNER-TOP-BAR), and the remap is kept for the
-     globals alone. Base tokens like `--paper` are deliberately NOT remapped. */
+     workspace rather than staying light (APP-STYLE-GUIDE). The classic-shell components have no call here (DESIGNER-TOP-BAR), so the remap serves the globals alone. Base tokens like `--paper` are deliberately NOT remapped. */
   --surface: var(--panel); --surface-2: var(--panel-2); --surface-3: var(--panel-2);
   --ink: var(--tink); --ink-2: var(--tink-2); --ink-3: var(--tink-3); --line: var(--tline); --line-2: var(--tline-2);
   --warn: var(--twarn); --warn-soft: var(--twarn-w); --good: var(--tgood); --good-soft: var(--tgood-w);
@@ -83,24 +79,15 @@
   --pshadow:0 8px 20px -6px rgba(0,0,0,.5),0 22px 54px -18px rgba(0,0,0,.7);
 }
 
-/* `.mw-tokens` is GONE (DESIGNER-TOP-BAR): it existed only to carry the --t* aliases and button
-   resets to the module switcher when that rendered OUTSIDE .mw, in the retired classic top bar.
-   The switcher is now the top bar's own breadcrumb segment, always inside .mw, so the second token
-   carrier — and the light-only exception it forced — is closed (design-system section 7). */
+/* The module switcher is the top bar's own breadcrumb segment, always inside `.mw`, so the --t* aliases and button resets reach it with no second token carrier (DESIGNER-TOP-BAR, design-system section 7). */
 
 .mw *, .mw *::before, .mw *::after { box-sizing: border-box; }
 /* No `font: inherit` here: its (0,1,1) specificity would override every single-class button font-size
    rule (e.g. .mw-fopt) back to 14px. The global `button { font: inherit }` (theme.css) is the baseline. */
 .mw button { color: inherit; cursor: pointer; background: none; border: 0; }
 .mw .mono { font-family: var(--f-mono); }
-/* `.mw-linkbtn` IS DELETED, NOT MOVED (SPEC-REF-LENS). It was an in-flow "jump to" link — 12px/600/accent
-   — and it had exactly two call sites, both naming a DEFINE: the population "Builds on" row (since removed
-   entirely) and the call sites under a data requirement. A define reached from anywhere is one object with
-   one lens and one set of verbs (SPEC-DEFINE-REF), so a second, accent-inked way to reach one was a
-   parallel affordance that only ever disagreed with the first — and in a reading sentence it was the one
-   place accent landed on words, which design-system.md section 2 reserves for selection and the primary
-   CTA. Both call sites are `DefineLink` under `.mw-defref` now. The rule is gone rather than left unused
-   so a future section cannot reach for it. */
+/* No `.mw-linkbtn` rule (SPEC-REF-LENS). An in-flow "jump to" link in accent ink is a second way to reach a define.
+   A define reached from anywhere is one object with one lens and one set of verbs (SPEC-DEFINE-REF), so a second, accent-inked way to reach one is a parallel affordance that only ever disagrees with the first. In a reading sentence it would also put accent on words, which design-system.md section 2 reserves for selection and the primary CTA. Define links are `DefineLink` under `.mw-defref`. Having no rule means a future section cannot reach for it. */
 .mw .tnum { font-variant-numeric: tabular-nums; }
 .mw :focus-visible { outline: 2px solid var(--tacc); outline-offset: 2px; border-radius: 4px; }
 /* Inputs inside bordered containers signal focus via the container's border-color, not a redundant outline. */
@@ -118,12 +105,10 @@
 
 /* The one bar, THREE ZONES with one question each: what you are reading (the breadcrumb of
    menus, module ▸ artifact) · how it is computed (Explain · Data Source · the compute pill) · the app's
-   own toggles. Execution moved from the right zone to the CENTRE, which had stood empty since the lens
-   bar went (APP-ONE-SURFACE) — it is the reader's second subject after the measure itself, and on the
-   right it shared an edge with the controls touched once a session.
+   own toggles. Execution is in the CENTRE, not the right zone: it is the reader's second subject after the measure itself (APP-ONE-SURFACE), and on the right it shared an edge with the controls touched once a session.
    The `1fr auto 1fr` track list is what keeps the centre centred ON THE BAR rather than between whatever
    its neighbours happen to be, so opening a measure with a long title does not slide the compute pill.
-   52px, the height the toolbar already was — the 34px strip above it is GONE, not compressed. */
+   52px, the toolbar's height, with no strip above it. */
 .mw-bar { flex: none; height: 52px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
   padding: 0 12px 0 10px; background: var(--panel); border-bottom: 1px solid var(--tline); }
 .mw-bz-left { justify-self: start; display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -137,8 +122,8 @@
    Border, size and weight are identical in every state, so toggling never reflows the bar
    (APP-STABLE-LAYOUT).
 
-   QUALIFIED `.mw .mw-icon-btn` (0,2,0). `.mw button { color: inherit }` (line 88) is (0,1,1), and a bare
-   `.mw-icon-btn` (0,1,0) loses to it — the resting colour never painted until this was qualified.
+   QUALIFIED `.mw .mw-icon-btn` (0,2,0). `.mw button { color: inherit }` is (0,1,1), and a bare
+   `.mw-icon-btn` (0,1,0) loses to it, so the resting colour would never paint.
 
    ONE ACCENT ELEMENT, AND IT IS THE GLYPH. A 2px `--tacc` bar is the open/selected mark for things that
    sit in a ROW and are chosen among (`.mw-selpill.open`, the lens underline); these are independent
@@ -160,8 +145,7 @@
    ink, so the accent glyph stays the one unmistakable signal. */
 .mw .mw-icon-btn[aria-pressed="true"] { background: var(--texpl-w); color: var(--tacc); }
 /* DESIGNER-TOP-BAR — the bar's right terminus: tour · appearance, toggles of the APP's own state. Still one cluster, still tighter
-   than the zone's own 10px — but 6px, not the 2px it was while `.mw-icon-btn` was a ghost. Now that each
-   button carries a hairline, three of them at 2px read as one SEGMENTED CONTROL — near-touching outlines
+   than the zone's own 10px — but 6px, not 2px: each button carries a hairline, and three of them at 2px read as one SEGMENTED CONTROL — near-touching outlines
    are exactly how a segment is drawn — which would say the three are mutually exclusive. They are
    independent switches. 6px separates them as buttons while staying visibly tighter than the gap to the
    execution row beside them. No container around the group: a box around three boxes is one border too
@@ -179,14 +163,13 @@
 .mw-error button:hover { opacity: 1; }
 
 /* The Open menu — the artifact selector, and the app's whole File surface (Navigator). It leads the bar's
-   left zone (the module label is gone). A fill step on hover, not a border tint
+   left zone. A fill step on hover, not a border tint
    alone. Because it already rests on `--panel-2`, its hover step is `--tline-2` — the same
    one-past-panel-2 fill the other filled controls in this bar use (the pill's steppers). */
 .mw-artifact-sel { display: flex; align-items: center; gap: 9px; background: var(--panel-2); border: 1px solid var(--tline); border-radius: 9px; padding: 5px 9px 5px 8px; transition: background .12s, border-color .12s; }
 .mw-artifact-sel:hover { background: var(--tline-2); border-color: var(--tink-3); }
 .mw-artifact-sel:hover .caret { color: var(--tink-2); }
-/* The `.kind` chip is GONE — an accent-wash MEASURE token beside a measure's own title,
-   on the control whose whole job is naming what is open. Nothing renders it; the rule went with it. */
+/* No `.kind` chip. An accent-wash MEASURE token beside a measure's own title is wrong on the control whose whole job is naming what is open. Nothing renders it, and there is no rule for it. */
 .mw-artifact-sel .who { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; text-align: left; }
 .mw-artifact-sel .who .nm { font-size: 13px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; }
 .mw-artifact-sel .who .ver { font-family: var(--f-mono); font-size: 9.5px; color: var(--tink-3); }
@@ -197,7 +180,7 @@
 .mw-nav-back { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--tline); background: var(--panel-2); border-radius: 8px; padding: 6px 10px 6px 8px; color: var(--tink); font-family: var(--f-ui); font-size: 12px; white-space: nowrap; }
 .mw-nav-back:hover { border-color: var(--tacc); color: var(--tacc); }
 
-/* APP-LENSES — the lens bar (UI font; serif is reserved for reading/clinical guidance, not chrome).
+/* The lens bar (UI font; serif is reserved for reading/clinical guidance, not chrome).
    Active differs by color + accent underline only — weight is constant, so selecting never reflows the
    bar (APP-STABLE-LAYOUT). CQL + Data Requirements are visually SECONDARY utility views. */
 .mw-viewbar { display: inline-flex; align-items: stretch; gap: 2px; }
@@ -211,47 +194,22 @@
 .mw-viewbar .util[aria-pressed="true"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; border-radius: 2px 2px 0 0; background: var(--tink-3); }
 .mw-viewbar-sep { width: 1px; background: var(--tline); margin: 6px 6px; align-self: stretch; }
 
-/* DESIGNER-SPACE-CONTEXT — Data Source name badge in the toolbar. */
+/* Data Source name badge in the toolbar. */
 
-/* THE BAR'S CONTROLS ARE OUTLINES, NOT RAISED WELLS. Read this once for
-   the whole family — `.mw-param`, `.mw-selpill-trigger`, `.mw-icon-btn`: NO resting fill,
-   a `--tline` hairline, radius 9px, 30px tall, `--tline-2` on hover, and a `--texpl-w` wash when a
-   two-state one is ON.
+/* THE BAR'S CONTROLS ARE OUTLINES, NOT RAISED WELLS. Read this once for the whole family — `.mw-param`, `.mw-selpill-trigger`, `.mw-icon-btn`: NO resting fill, a `--tline` hairline, radius 9px, 30px tall, `--tline-2` on hover, and a `--texpl-w` wash when a two-state one is ON.
 
-   IT WAS `--panel-2` ON HALF OF THEM, and the split was the defect. Explain and the three app toggles
-   rested transparent while the compute pill and the parameter steppers rested raised, so one row of
-   objects that are the same kind of thing — a context control in the bar's centre zone — came in two
-   materials, and the eye reads that difference as a difference in KIND. Reported as "Explain looks
-   lighter than the Compute and Measurement Period dropdowns", which is exactly what it was.
+   A RAISED WELL ON SOME OF THEM IS THE DEFECT. One row of objects that are the same kind of thing — a context control in the bar's centre zone — must not come in two materials, because the eye reads that difference as a difference in KIND. Explain and the three app toggles rest transparent, so a raised compute pill and raised parameter steppers beside them would split the row.
 
-   THE LIGHTER SIDE WON, for two reasons beyond the reporter's preference. The bar is 52px of chrome over
-   a reading surface, and five filled wells across it is the heaviest the chrome can be while claiming to
-   be subordinate to the document. And it makes `design-system.md` section 6's standing claim TRUE — the
-   artifact selector keeps its `--panel-2` fill "as the one identity control", which it was not while four
-   other controls wore the same fill; now the one raised object in the bar is the one that names what is
-   open. What is NOT given up is affordance: every control here keeps its hairline and its radius, which
-   is what the ghost-until-hover form (retired the same day) did not have.
+   THE LIGHTER SIDE IS THE CHOICE, for two reasons. The bar is 52px of chrome over a reading surface, and five filled wells across it is the heaviest the chrome can be while claiming to be subordinate to the document. And it keeps design-system.md section 6's standing claim TRUE: the artifact selector keeps its `--panel-2` fill "as the one identity control", so the one raised object in the bar is the one that names what is open. What is NOT given up is affordance: every control here keeps its hairline and its radius, which a ghost-until-hover form does not have.
 
    APP-EXEC-PARAMS — the EXECUTION PARAMETER stepper (`ExecParamBar.tsx`): `‹ value ›` in the bar,
    one per parameter the measure is run with.
-   This is the retired `.mw-period` widget generalised, not restored — nothing here knows what a
-   measurement period is, so a measure package that declares three parameters gets three steppers.
+   Nothing here knows what a measurement period is, so a measure package that declares three parameters gets three steppers.
 
-   It went INTO the compute pill in 2026-08 on the argument that every axis deciding what a run computes
-   belongs behind one control, and came back OUT for the property a parameter does not
-   share with the pill's other axes: the data source and the Live switch are set once and left, while a
-   parameter is dialled while reading, and every count, rate and funnel on the page is scoped to it.
-   Behind a caret it was neither legible nor one press away, which is why the pill's trigger ended up
-   printing it — one fact drawn twice, and a trigger whose width was a function of whichever measure was
-   open.
+   A parameter is not an axis of the compute pill. The pill's axes (the data source and the Live switch) are set once and left, while a parameter is dialled while reading, and every count, rate and funnel on the page is scoped to it. Behind a caret it would be neither legible nor one press away, and the pill's trigger would print it too: one fact drawn twice, with a trigger whose width is a function of whichever measure is open.
 
-   The NAME is in the `title`, not on the control: the value is what is wanted at a glance, the name is
-   wanted once, and a label per stepper grows the bar by a word per parameter.
-   The value box is fixed-width with TABULAR digits so stepping never moves the arrows under the cursor
-   (APP-STABLE-LAYOUT) — the whole point of a control pressed repeatedly — and the arrows are DISABLED
-   at the ends of the domain rather than wrapping (the original stepper did plain year ± 1 and walked
-   into periods with no data). Selectors are two classes deep to out-specify the `.mw button` reset
-   (background:none; border:0), which is (0,1,1) and would otherwise blank the fill. */
+   The NAME is in the `title`, not on the control: the value is what is wanted at a glance, the name is wanted once, and a label per stepper grows the bar by a word per parameter.
+   The value box is fixed-width with TABULAR digits so stepping never moves the arrows under the cursor (APP-STABLE-LAYOUT) — the whole point of a control pressed repeatedly — and the arrows are DISABLED at the ends of the domain rather than wrapping, so a step never lands on a period with no data. Selectors are two classes deep to out-specify the `.mw button` reset (background:none; border:0), which is (0,1,1) and would otherwise blank the fill. */
 .mw .mw-param { display: inline-flex; align-items: center; flex: none; height: 30px; padding: 0 2px;
   background: none; border: 1px solid var(--tline); border-radius: 9px; }
 .mw .mw-param .pv { min-width: 60px; text-align: center; font-family: var(--f-ui); font-size: 13px;
@@ -280,19 +238,15 @@
 .mw-selpill .mw-selpill-trigger { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 30px; white-space: nowrap;
   background: none; border: 1px solid var(--tline); border-radius: 9px; padding: 0 7px 0 9px; color: var(--tink);
   transition: background .12s ease, border-color .15s; }
-/* The family's hover step, gained when the resting fill went (`DESIGNER-TOP-BAR`): a border tint alone
-   was a legible answer to the pointer while the control was already raised, and is not once it is an
-   outline. `--tline-2`, the same step Explain and the icon buttons take. */
+/* The family's hover step (`DESIGNER-TOP-BAR`) is a fill of `--tline-2`, the same step Explain and the icon buttons take. A border tint alone answers the pointer only on a raised control, not on an outline. */
 .mw-selpill .mw-selpill-trigger:hover { background: var(--tline-2); border-color: var(--tink-3); }
 /* open-state indicator is a straight BAR (matching the lens active underline) — never a curved ring. */
 .mw-selpill.open .mw-selpill-trigger { border-color: var(--tink-3); }
 .mw-selpill.open .mw-selpill-trigger::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 2px; border-radius: 2px 2px 0 0; background: var(--tacc); }
-/* APP-COMPUTE-ACTIVITY — the RUN HAIRLINE on the collapsed trigger. The stage badge lives on the
-   popover's info line, so until this the one control that says a run is happening could not say how far
-   along it was without being opened — and "is this worth waiting for?" should not cost an interaction.
+/* APP-COMPUTE-ACTIVITY — the RUN HAIRLINE on the collapsed trigger. The stage badge lives on the popover's info line, so the collapsed trigger, the one control that says a run is happening, has to say how far along it is — and "is this worth waiting for?" should not cost an interaction.
    2px, the bottom edge, `--fun-3` over a `--tline-2` track: the SAME material as the badge's bar
    (`.mw-selpill-info .badge.running`), so collapsed and expanded are one idiom at two sizes. A FILL, not
-   an animation, for the reason the trigger dot stopped pulsing — a permanent motion in the corner of a
+   an animation, for the reason the trigger dot does not pulse — a permanent motion in the corner of a
    reading surface. `::before`, because `::after` is the open-state accent bar; and `:not(.open)` because
    when the pill IS open the badge states the same thing in words, and two bars on one edge is two marks
    for one fact. Inset to the border radius so the line does not run past the pill's corners. */
@@ -303,18 +257,12 @@
 .mw-selpill-trigger .caret { display: grid; place-items: center; color: var(--tink-2); transition: transform .15s, color .15s; }
 .mw-selpill-trigger:hover .caret, .mw-selpill.open .mw-selpill-trigger .caret { color: var(--tink); }
 .mw-selpill.open .mw-selpill-trigger .caret { transform: rotate(180deg); }
-/* THE TRIGGER IS DOT + CARET — no value, and no min-width. It printed the first execution
-   parameter between 2026-08 and now, on the argument that a wordless trigger makes the control's state a
-   tooltip. That argument was about the PARAMETERS, which the pill was holding hostage; they are dialled
-   in the bar now (`.mw-param`), so what a value here would restate is the data source — named in the
-   menu itself — or the run's engagement, which is what the dot IS. The pill
-   shrinks to what only it can say, and stops being the widest thing in the bar's centre. */
+/* THE TRIGGER IS DOT + CARET — no value, and no min-width. The parameters are dialled in the bar (`.mw-param`), so what a value here would restate is the data source, named in the menu itself, or the run's engagement, which is what the dot is. The pill shows only what only it can say, and is not the widest thing in the bar's centre. */
 /* Status dot — COLOUR ONLY, and it does not pulse.
    The dot sits in the toolbar for the whole session, so an infinite animation is a permanent moving
    object in the corner of the eye of someone trying to read a clinical specification. Colour already
    carries the state (gray = nothing engaged, accent = engaged), and the run's actual progress has a
-   surface that reports it properly: the stage badge's progress fill at the head of the popover. A pulse
-   said "something is happening" without saying what, next to a control that says both. */
+   surface that reports it properly: the stage badge's progress fill at the head of the popover. A pulse says "something is happening" without saying what, next to a control that says both. */
 .mw-selpill-trigger .dot, .mw-selpill-row .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--tinfo); flex: none; }
 .mw-selpill-trigger .dot.none, .mw-selpill-row .dot.none { background: var(--tink-3); }
 .mw-selpill-trigger[data-status="live"] .dot, .mw-selpill-row[data-status="live"] .dot { background: var(--tacc); }
@@ -344,7 +292,7 @@
 .mw-selpill-sub { position: absolute; top: -6px; right: calc(100% + 6px); min-width: 220px; max-width: 280px; z-index: 41;
   background: var(--panel); border: 1px solid var(--tline); border-radius: 11px; box-shadow: var(--pshadow); padding: 6px; }
 /* APP-EXECUTION-PILL — a submenu row carries its own label as an EYEBROW above the value,
-   the popover's group-heading type moved into the row; taller than a plain row so the pair breathes. */
+   the popover's group-heading type sits in the row; taller than a plain row so the pair breathes. */
 .mw-selpill-subrow { padding-top: 7px; padding-bottom: 7px; }
 .mw-selpill-subrow .tx { gap: 2px; min-width: 0; }
 .mw-selpill-subrow .hd { font-family: var(--f-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: .1em;
@@ -364,12 +312,7 @@
 
 @media (prefers-reduced-motion: reduce) { .mw-selpill-trigger .dot { animation: none !important; } }
 
-/* APP-COMPUTE-ACTIVITY — the popover's head: the stage badge, and nothing else. It used
-   to share the line with the word "Serverless" behind a `Zap`, which is why it was pushed right by
-   `margin-left:auto`. Serverless is the only runtime there has ever been, so that line stated a constant
-   in the position of a control; with it gone the badge is the head, and it starts where every row below
-   it starts. A lone chip held against the right edge reads as something pinned to a corner rather than
-   the first thing the popover says. */
+/* APP-COMPUTE-ACTIVITY — the popover's head: the stage badge, and nothing else. A "Serverless" label would state a constant in the position of a control, because Serverless is the only runtime. The badge is the head, and it starts where every row below it starts. A lone chip held against the right edge reads as something pinned to a corner rather than the first thing the popover says. */
 .mw-selpill-info { display: flex; align-items: center; gap: 7px; padding: 4px 8px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--tline-2); }
 /* The popover is a fixed narrow width, so a long status wraps inside the badge rather than
    widening it. The shown status is two lines: "Last Data Refresh" over its time (`.tx` / `.when`). 8px radius is fully round at one line's height. */
@@ -403,18 +346,13 @@
   font-family: var(--f-mono); color: var(--tink); background: var(--panel-2); border: 1px solid var(--tline); }
 .mw-published-picker p { font-size: 12px; line-height: 1.5; }
 .mw-published-picker [role="alert"] { color: var(--tcrit); }
-/* `.mw-pop-sep` and the `.kbd` shortcut slot went with the account menu — it was the only
-   popover with a divided body and the only one that printed a key cap. Deleted rather than kept "in case":
-   an unused rule in a 2000-line stylesheet is read as a pattern by the next person to open it. */
+/* No `.mw-pop-sep` and no `.kbd` shortcut slot: no popover has a divided body or prints a key cap. An unused rule in a 2000-line stylesheet is read as a pattern by the next person to open it, so these are not kept. */
 
 /* ── shared popover language (APP-DESIGN-SYSTEM) ─────────────────────────────────────────────
-   ONE row-list style for the artifact selector (.mw-navpop) — the module switcher (.mw-modpop) went with
-   DESIGNER-ONE-MODULE: a titled
+   ONE row-list style for the artifact selector (.mw-navpop): a titled
    head + a list of rows (glyph chip · name/description · trailing tag). Monochrome by default; the accent
    is reserved for the active row.
-   Both the `.mw-filepop` File menu and the `.mw-acctpop` account menu are RETIRED (DESIGNER-TOP-BAR) —
-   the File items live in the Open menu's action row below and in the Validate lens; the account menu's
-   three toggles are buttons in the bar itself. */
+   There is no `.mw-filepop` File menu or `.mw-acctpop` account menu (DESIGNER-TOP-BAR): the File items live in the Open menu's action row below and in the Validate lens, and the three app toggles are buttons in the bar itself. There is no module switcher popover (DESIGNER-ONE-MODULE). */
 .mw-navpop { padding: 0; overflow: hidden; }
 .mw-navpop { width: 780px; }
 /* Two-column layout: included libraries (narrow context) | catalog browser (wide, scrollable). */
@@ -445,7 +383,7 @@
 .mw-navpop-chip.on { background: var(--tacc-w); border-color: color-mix(in srgb, var(--tacc) 40%, transparent); color: var(--tacc-i); }
 .mw-navpop-chip-sep { width: 1px; height: 16px; background: var(--tline); flex: none; align-self: center; }
 
-/* DESIGNER-TOP-BAR — the Open menu's ACTION ROW: what the retired File menu carried. A footer strip on
+/* DESIGNER-TOP-BAR — the Open menu's ACTION ROW, which holds the File actions. A footer strip on
    the sunken `--panel-2` (the popover's own "about this menu" register, as the scoring well is in the
    document), so the browse columns above it stay the subject and the actions read as a tray under them.
    Actions are ghost chips at `caption`; the accent stays reserved for the active catalog row. */
@@ -453,13 +391,8 @@
   background: var(--panel-2); border-top: 1px solid var(--tline-2); }
 .mw-navpop-act { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 7px;
   font-size: 11px; font-weight: 600; color: var(--tink-2); white-space: nowrap; transition: background .12s, color .12s; }
-/* THE ACTIONS READ AS FINISHED. They used to advertise their own deadness — dimmed to 55%,
-   each with a mono `soon` tag — and four of those along the foot of the menu meant most of what a reader
-   met on opening it was a list of things that do not work. The dimming and the tags are gone: normal ink,
-   normal hover, the row reads as a tray of actions.
-   THEY ARE STILL `disabled`, so nothing fires that cannot happen — what was dropped is the ADVERTISEMENT,
-   not the guard. `pointer-events` therefore stay ON via the wrapper, which is what carries the `title`: a
-   disabled button neither hovers nor shows a tooltip, so the explanation would have gone with the tag. */
+/* THE ACTIONS READ AS FINISHED. A dimmed action with a mono `soon` tag advertises that it does not work, and a foot of those would make most of what a reader meets on opening the menu a list of things that do not work. So: normal ink, normal hover, and the row reads as a tray of actions.
+   THEY ARE STILL `disabled`, so nothing fires that cannot happen. What is left out is the ADVERTISEMENT, not the guard. `pointer-events` stay ON via the wrapper, which carries the `title`: a disabled button neither hovers nor shows a tooltip, so the explanation would be lost without it. */
 .mw-navpop-act-wrap { display: inline-flex; }
 .mw-navpop-act-wrap:hover .mw-navpop-act { background: var(--panel); color: var(--tink); }
 .mw-navpop-act:disabled { cursor: default; }
@@ -494,9 +427,7 @@
 
 /* body grid — APP-STABLE-LAYOUT.
    THE LAYOUT IS KNOWN FROM THE VIEWPORT, so it is settled on the first paint and never moves as
-   content arrives. The middle track was `minmax(0, auto)`, which sizes to CONTENT: during the compile
-   it collapsed to the width of the word "Compiling…" and shoved the inspector off the right edge, then
-   snapped back when the document landed. `1fr` takes what is left of the row whether or not anything
+   content arrives. The middle track is `minmax(0, 1fr)`, not `minmax(0, auto)`: auto sizes to CONTENT, so during the compile the track would collapse to the width of the word "Compiling…" and shove the inspector off the right edge, then snap back when the document lands. `1fr` takes what is left of the row whether or not anything
    has rendered into it, which is the whole point of knowing the layout in advance.
 
    The side panes SCALE with the viewport rather than sitting at a fixed width, so a wide screen puts
@@ -544,9 +475,7 @@
 /* ── PANE TAB STRIP — the ONE control that switches which arrangement a side pane is showing ───────
    (`APP-PANE-TABS`, design-system section 6.) Both side panes use it: the Define nav's
    Outline · Composition (`SPEC-NAV-COMPOSITION`) and the workbench's Data · Assistant
-   (`APP-WORKBENCH`). ONE declaration, not one per pane — they were two rule sets differing in six
-   properties (weight, resting ink, icon colour, size, gap, underline radius) for a control doing the
-   same job on two sides of the same screen, which is the `.mw-el-metric` trap in a different key
+   (`APP-WORKBENCH`). ONE declaration, not one per pane: two rule sets would differ in six properties (weight, resting ink, icon colour, size, gap, underline radius) for one control doing the same job on two sides of the same screen, which is the `.mw-el-metric` trap in a different key
    (design-system section 7): a component's rules go in one place.
 
    It is the LENS BAR's language at pane scale — colour plus a straight accent underline, weight
@@ -562,17 +491,11 @@
    without competing with the lens bar at the top of the screen.
 
    SPECIFICITY: qualified with `.mw` so the selectors are (0,2,1) and clear the global
-   `.mw button { color: inherit }` reset at (0,1,1). This is not hypothetical — `.mw-wb-tab` was a bare
-   (0,1,0) class, so its resting `color` was DEAD: the workbench tabs rendered at full `--tink` at rest
-   and dimmed to `--tink-2` on hover (the `:hover` rule, at (0,2,0), was the only colour that landed), so
-   the hover read backwards and an inactive tab was indistinguishable from the active one but for the
-   bar. The design system records this exact reset as a caveat; a bare single class is never enough. */
+   `.mw button { color: inherit }` reset at (0,1,1). This is not hypothetical: a bare `.mw-wb-tab` (0,1,0) would lose its resting `color` to that reset, so the tabs would sit at full `--tink` at rest, and the `:hover` rule (at (0,2,0)) would be the only colour that lands. The hover would read backwards, and an inactive tab would be indistinguishable from the active one but for the bar. The design system records this exact reset as a caveat; a bare single class is never enough. */
 /* THE STRIP SCROLLS; THE PANE-STATE CONTROL DOES NOT. At `normal` the workbench is
-   300px (`--wb-w`'s floor) and its five labelled tabs measure ~450px, so the strip overflowed and
-   `.mw-pane-ctls` — the LAST flex item — was pushed past the pane's edge: the resize control was
-   invisible at exactly the size a reader most wants it, and reachable only by expanding the pane with a
-   control they could not see. The overflow also landed on `.mw-workbench` (an `overflow-y: auto` box
-   computes `overflow-x` to `auto` too), so the whole pane scrolled sideways.
+   300px (`--wb-w`'s floor) and its five labelled tabs measure ~450px, so the strip overflows and
+   `.mw-pane-ctls` — the LAST flex item — would be pushed past the pane's edge: the resize control is invisible at exactly the size a reader most wants it, and reachable only by expanding the pane with a control they cannot see. The overflow would also land on `.mw-workbench` (an `overflow-y: auto` box
+   computes `overflow-x` to `auto` too), so the whole pane would scroll sideways.
    Contained here rather than fixed by shrinking the tabs: five one-word labels in 276px is ~50px each,
    which is a glyph and no word. The tabs scroll, the control sticks to the scrollport's edge, and no
    scrollbar is drawn — one appearing and disappearing with the pane size is exactly the shift
@@ -583,9 +506,7 @@
    resolves to its own min-content height. `.mw-workbench` is a column flex box in a grid track of fixed
    height: the moment `.mw-wb-body` is taller than the pane, flex shrink runs BEFORE overflow, the body
    and the scope row are both incompressible (min-content; `min-height: 26px`), and the entire deficit
-   lands on the one item that admits it. The strip collapsed to its own hairline — the tabs did not
-   disappear, they were 0px tall — and it did so ONLY when the selection's content overran the window,
-   which is why it read as intermittent. The strip is chrome and never gives up height; the body scrolls,
+   lands on the one item that admits it. Without it the strip would collapse to its own hairline, with the tabs 0px tall rather than gone, and only when the selection's content overran the window, which reads as intermittent. The strip is chrome and never gives up height; the body scrolls,
    which is what `.mw-workbench`'s `overflow-y` is for. `APP-STABLE-LAYOUT`: a control that is there
    for one define and gone for the next is the shift the requirement forbids, in its strongest form. */
 .mw-nav-tabs, .mw-wb-tabs { display: flex; flex: none; align-items: stretch; gap: 2px; padding: 0 2px;
@@ -599,15 +520,13 @@
   font-weight: 500; color: var(--tink-2); border-radius: 0; letter-spacing: -.01em; white-space: nowrap; }
 .mw .mw-nav-tabs button:hover, .mw .mw-wb-tabs button:hover { color: var(--tink); }
 .mw .mw-nav-tabs button svg, .mw .mw-wb-tabs button svg { color: var(--tink-3); flex: none; }
-/* DOC-SCOPE-OPEN — with Scope as a third tab the labels no longer fit a normal-width pane beside its size
+/* DOC-SCOPE-OPEN — with Scope as a third tab the labels do not fit a normal-width pane beside its size
    control, so the strip drops the tab glyphs and keeps the words. The collapsed rail still draws them. */
 .mw .mw-nav-tabs[data-tabs="3"] button[role="tab"] svg { display: none; }
 .mw .mw-nav-tabs button[aria-selected="true"], .mw .mw-wb-tabs button[aria-selected="true"] { color: var(--tink); }
 .mw .mw-nav-tabs button[aria-selected="true"] svg, .mw .mw-wb-tabs button[aria-selected="true"] svg { color: var(--tacc); }
 .mw .mw-nav-tabs button[aria-selected="true"]::after,
-/* `bottom: 0`, not `-1px`: the strip is a scroll container now, so anything outside the tab's padding
-   box is clipped by the scrollport and the underline rendered at half height. It sits ON the strip's
-   hairline instead of under it, which is where it read anyway. */
+/* `bottom: 0`, not `-1px`: the strip is a scroll container, so anything outside the tab's padding box is clipped by the scrollport, and a `-1px` underline renders at half height. It sits ON the strip's hairline. */
 .mw .mw-wb-tabs button[aria-selected="true"]::after { content: ""; position: absolute; left: 6px;
   right: 6px; bottom: 0; height: 2px; border-radius: 2px 2px 0 0; background: var(--tacc); }
 
@@ -664,7 +583,7 @@
    is legible as an indent instead of being spent on the disclosure triangle. Sizes carry the level too:
    a top-level section is the `micro` eyebrow, a sub-group is `caption` and NOT uppercased — a library
    is a code identifier whose camel case ("FHIRHelpers") is the name, so upper-casing it both destroys
-   the name and made a nested group look like a peer of the section containing it (APP-STYLE-GUIDE). */
+   the name and makes a nested group look like a peer of the section containing it (APP-STYLE-GUIDE). */
 /* Weight 500, NOT the scale's 700 for `micro`: DM Mono ships no bold face (the app loads 400/500), so
    700 here buys a browser-SYNTHESIZED bold — smeared stems at 9.5px with .1em tracking. 500 is the
    heaviest real weight the eyebrow can have (APP-STYLE-GUIDE). */
@@ -692,7 +611,7 @@
 .mw-node.active::before { width: 2px; background: var(--tacc); }
 .mw-node.rel-down::before { width: 2px; background: color-mix(in srgb, var(--tacc) 55%, transparent); }
 .mw-node.rel-up::before { width: 2px; background: color-mix(in srgb, var(--tinfo) 55%, transparent); }
-/* APP-MEASURE-FLOW — ROOTED is the Flow spine's population, the one the tree below hangs from. It is
+/* ROOTED is the population the tree below hangs from. It is
    the BAR ALONE, no wash, because rooted and active are two different facts that coincide only at the
    moment of the click: rooting on `Denominator` and then selecting a define inside it leaves them on two
    rows, and a reader has to see both. The bar-alone form is already sanctioned for exactly this reason
@@ -736,8 +655,7 @@
    DATA BAR BEHIND IT, growing leftwards from the figure — the table idiom, where the bar and the number
    it scales are one cell. Down the populations, which lead in reporting order, the bars taper.
 
-   It was a hairline on the row's bottom edge first, and that read as an UNDERLINE: every row looked
-   like a link and the longest bars looked like a selected row. A bar behind a figure cannot be read as
+   A hairline on the row's bottom edge would read as an UNDERLINE: every row would look like a link, and the longest bars would look like a selected row. A bar behind a figure cannot be read as
    anything but a magnitude. Layout is unaffected either way — the bar is absolute within the figure's
    own box, so the gutter chip still lands under its heading's first letter (APP-NAV-DEPTH). */
 /* A FIXED track width, not `min-width`. Sized to content, each row's bar would be a share of a
@@ -791,19 +709,12 @@
 .mw-node .k.rd { color: var(--tink-3); background: none; border-color: var(--tline); }
 .mw-node.leaf { cursor: default; }
 
-/* ── APP-MEASURE-FLOW — the Flow tab's SPINE ────────────────────────────────────────────────────
-   The populations, in the measure's own order, as the route the rest of the tab hangs off.
+/* ── The spine (`.mw-flow-spine`) ─────────────────────────────────────────────────
+   The populations, in the measure's own order, as the route the rest of the tree hangs from.
 
-   It is the TOP LEVEL, so it declares no `--nav-step` and takes no indent: the tree below it is one
-   `.mw-nav-nested` step in, exactly where the Composition tab's first level sat, and giving the spine a
-   step of its own would push every row under it one column right of where the other arrangement puts
-   the same define (APP-NAV-DEPTH — asserted in `navDepth.test.tsx`).
+   It is the TOP LEVEL, so it declares no `--nav-step` and takes no indent: the tree below it is one `.mw-nav-nested` step in, exactly where the Composition tab's first level sits, and giving the spine a step of its own would push every row under it one column right of where the Composition tab puts the same define (APP-NAV-DEPTH — asserted in `navDepth.test.tsx`).
 
-   The connector is the guide-rail idiom already in this file, not a drawn diagram: the same 1px
-   `--tline` line `.mw-nav-nested` descends through the rows it owns. What makes it read as a spine
-   rather than a list is that it runs THROUGH the rows rather than beside a heading — so it is inset to
-   the same 5px column their selection bars clear, and stops short at each end so it reads as a segment
-   with a start and a finish. */
+   The connector is the guide-rail idiom already in this file, not a drawn diagram: the same 1px `--tline` line `.mw-nav-nested` descends through the rows it owns. What makes it read as a spine rather than a list is that it runs THROUGH the rows rather than beside a heading — so it is inset to the same 5px column their selection bars clear, and stops short at each end so it reads as a segment with a start and a finish. */
 .mw-flow-spine { position: relative; margin-bottom: 4px; }
 .mw-flow-spine::before {
   content: ""; position: absolute; left: 11px; top: 12px; bottom: 12px;
@@ -811,22 +722,13 @@
 /* The spine's rows sit above the rail, so a rooted row's accent bar is not crossed by it. */
 .mw-flow-spine > .mw-node { position: relative; z-index: 1; }
 
-/* ── APP-MEASURE-FLOW — the DRAWN spine ─────────────────────────────────────────────────────────
+/* ── The drawn spine (`.mw-spine`) ─────────────────────────────────────────────────
    Cards down a column, an arrow between each pair, and what LEFT on a dashed line off to the right.
-   The Flow tab's ONLY rendering — width buys room, not a different drawing.
+   Width buys room, not a different drawing.
 
-   CARDS, NOT BARS. The first cut filled each stage with a saturated ramp step at full width and drew
-   a stack of solid blocks: a heatmap column, not a route. A flow reads as a flow when the marks are
-   OUTLINED and the space between them carries the connective tissue — an arrow says "and then", a
-   dashed line leaving right says "and these left". So the border carries the tone, the fill is a wash
-   of it, and the gaps do the work.
+   CARDS, NOT BARS. A stage filled at full width with a saturated ramp step reads as a stack of solid blocks: a heatmap column, not a route. A flow reads as a flow when the marks are OUTLINED and the space between them carries the connective tissue — an arrow says "and then", a dashed line leaving right says "and these left". So the border carries the tone, the fill is a wash of it, and the gaps do the work.
 
-   THE RAMP IS ORDINAL AND VALIDATED. `--fun-2` → `--fun-4`, the design system's own chart ramp and the
-   one `Funnel.tsx` walks, so two drawings of one measure cannot come out different colours. It starts
-   at step 2 on purpose: `--fun-1` measures 1.58:1 against the panel and fails the 2:1 light-end floor
-   an ordinal ramp is held to. `--fun-2..4` pass every check in light and dark (single hue, monotone
-   lightness, >= .06 step gaps, light end clear of the surface). The terminal pair is the reserved
-   status colours, and each carries a LABEL as well as a hue. */
+   THE RAMP IS ORDINAL AND VALIDATED. `--fun-2` → `--fun-4`, the design system's own chart ramp and the one `Funnel.tsx` walks, so two drawings of one measure cannot come out different colours. It starts at step 2 on purpose: `--fun-1` measures 1.58:1 against the panel and fails the 2:1 light-end floor an ordinal ramp is held to. `--fun-2..4` pass every check in light and dark (single hue, monotone lightness, >= .06 step gaps, light end clear of the surface). The terminal pair is the reserved status colours, and each carries a LABEL as well as a hue. */
 .mw-spine { display: flex; flex-direction: column; padding: 2px 2px 10px; }
 .mw-spine-row { display: flex; flex-direction: column; }
 
@@ -925,17 +827,11 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    meaning fixed by WHERE it lands rather than by what is already selected.
 
    APP-NAV-DEPTH — THE SLOT IS NOT THE INDENT. A collapsible row is a `.mw-node`, so its children are
-   `.mw-node`s too, and the only thing that can separate a parent row from a child row is the indent. The
-   row paid for its own twisty out of that indent and the tree came out not flat but INVERTED. Measured in
-   Chrome against the shipped stylesheet: the twisty was an unsized `<button>`, so it took the UA's own
-   padding (24px wide, `1px 6px`), and a population's label column landed at x=47 while the labels of the
-   defines beneath it sat at x=24 — children drawn 23px to the LEFT of their own parent, which is exactly
-   the failure the requirement's "never spend the indent on the disclosure triangle" names. Nothing about
-   that is visible in a source read; the declarations look right.
+   `.mw-node`s too, and the only thing that can separate a parent row from a child row is the indent. A row that pays for its own twisty out of that indent comes out not flat but INVERTED. Measured in Chrome against the shipped stylesheet, an unsized `<button>` takes the UA's own padding (24px wide, `1px 6px`), and a population's label column lands at x=47 while the labels of the defines beneath it sit at x=24 — children drawn 23px to the LEFT of their own parent. That is exactly the failure the requirement's "never spend the indent on the disclosure triangle" names. A source read does not show it: the declarations look right.
 
    So: the slot is fixed and declared (`--nav-twisty`), the row's padding matches a plain `.mw-node`'s so
    the two kinds of row share a left edge, and a collapsible row's children clear the slot as well as the
-   step. Measured after: 24 → 40 → 56, one 16px step per level at every level — the tree convention, where
+   step. Measured: 24 → 40 → 56, one 16px step per level at every level — the tree convention, where
    a parent's label column is its children's twisty column. */
 .mw-node.mw-node-open { padding-left: 8px; gap: 0; }
 .mw-node.mw-node-open + .mw-nav-nested { --nav-step: calc(var(--nav-indent) + var(--nav-twisty)); }
@@ -972,10 +868,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    it is a note about the view, not a caution about the measure, so no semantic hue. */
 .mw-nav-note { margin: 2px 4px 8px; padding: 4px 0 4px 9px; border-left: 1px solid var(--tline);
   font-family: var(--f-ui); font-size: 11px; line-height: 1.45; color: var(--tink-3); }
-/* APP-DEP-COUNTS LEFT THE NAV ROW. `.mw-node .dep` — two fixed-width cells holding
-   "uses ↓ · used-by ↑" — is deleted rather than left dormant: dead selectors are how a class comes back
-   by accident. The counts now sit ONCE, in the inspector's Dependencies block, where the direction is a
-   word instead of an arrow glyph and the row gets its width back for the figure and the name. What the
+/* APP-DEP-COUNTS ARE NOT IN THE NAV ROW. The counts sit ONCE, in the inspector's Dependencies block, where the direction is a word instead of an arrow glyph and the row keeps its width for the figure and the name. There is no `.mw-node .dep` rule (it held two fixed-width cells, "uses ↓ · used-by ↑"): dead selectors are how a class comes back by accident. What the
    nav keeps is the better half of the same idea — selecting a row tints its whole transitive closure
    (`.mw-node.rel-down` / `.rel-up` below), which says WHICH rather than how many. */
 /* APP-NAV-FILTER — a filter ICON beside the search opens ONE popover of all predefined filter
@@ -1014,7 +907,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-fopt .lb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mw-fopt .chk { margin-left: auto; flex: none; color: var(--tacc-i); }
 
-/* Artifact meta, relocated to the right Inspector (APP-STABLE-LAYOUT: inspection, not navigation). */
+/* Artifact meta, in the right Inspector (APP-STABLE-LAYOUT: inspection, not navigation). */
 .mw-artmeta { display: flex; flex-direction: column; }
 .mw-spec-pop, .mw-spec-def { border-radius: 8px; scroll-margin-top: 16px; }
 .mw-spec-pop.flash, .mw-spec-def.flash { animation: mw-flash 1.1s ease; }
@@ -1051,25 +944,18 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    running text — to wrap inside a measure of a measure. Prose keeps its own ~66ch cap per element
    (`.mw-spec p`), which is what protects readability; the DOCUMENT takes the room it is given. */
 .mw-doc-inner.read { max-width: min(1120px, 100%); }
-/* THE PAPER STAYS, SIZED TO ITS PROSE. Widening the card to 1320px did not give the extra width a
-   job: prose sits at its correct ~66ch measure and the rest became dead gutter, which reads worse
-   than the narrow version it replaced. So the card is capped near the reading measure, and the
+/* THE PAPER STAYS, SIZED TO ITS PROSE. Widening the card to 1320px gives the extra width no job: prose sits at its correct ~66ch measure and the rest becomes dead gutter, which reads worse than the narrow card. So the card is capped near the reading measure, and the
    elements that are NOT sentences — the composition index, the CQL, the reference tables — break out
    past the prose margin instead of wrapping inside a column meant for text. */
 .mw-spec .mw-cqlblock, .mw-spec .mw-narr-table, .mw-spec .mw-defs-rows { max-width: none; }
-/* NO negative margin on tables. `margin-inline: -20px` was meant to let a table break out past the
-   prose measure, and it did — straight out of the page. Two things go wrong at once: a device table
+/* NO negative margin on tables. `margin-inline: -20px` lets a table break out past the prose measure, and straight out of the page. Two things go wrong at once: a device table
    sits inside `.mw-dev-tablewrap` (`overflow-x: auto`), where a negative LEFT margin puts the first
    column outside the scroll container's origin, and horizontal scrolling only reaches to the right —
-   so the Code column was permanently unreachable. The Appendix tables, which have no wrapper, simply
-   hung 20px left of every heading and paragraph on the page. Tables now start at the prose margin and
-   grow rightwards, which is what `max-width: none` above is already for. */
+   so the Code column is permanently unreachable. The Appendix tables, which have no wrapper, hang 20px left of every heading and paragraph on the page. Tables start at the prose margin and grow rightwards, which is what `max-width: none` above is for. */
 .mw-cql { max-width: none; }
-/* (The reading measure is set once, authoritatively, at the end of this file — see
-   "ONE READING MEASURE". A duplicate here used to lose to a later `.mw-spec p` of equal specificity,
-   so the 74ch it declared never applied.) */
+/* (The reading measure is set once, at the end of this file — see "ONE READING MEASURE". A duplicate here would lose to a later `.mw-spec p` of equal specificity.) */
 
-/* APP-LENSES — Operational / Analytical tile grids: non-sequential, responsive; wide tiles span 2
+/* Operational / Analytical tile grids: non-sequential, responsive; wide tiles span 2
    columns when there's room (APP-LIVING-CHARTS). */
 .mw-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; align-items: start; }
 .mw-tile { background: var(--panel); border: 1px solid var(--tline); border-radius: 12px; box-shadow: var(--tshadow); overflow: hidden; }
@@ -1131,10 +1017,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-measure-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .mw-chip { font-family: var(--f-mono); font-size: 9.5px; color: var(--tink-2); background: var(--panel-2); border: 1px solid var(--tline); border-radius: 6px; padding: 3px 8px; }
 .mw-chip.inv { color: var(--twarn); background: var(--twarn-w); border-color: transparent; }
-/* `.mw-measure-title` (26px serif 400) IS DELETED — no call site anywhere in `src`. It was a
-   fourth serif title step, off the scale and off the document's one heading style, waiting for someone to
-   reach for it. A dead rule that encodes a retired ladder is worse than no rule: it reads as a live
-   option. Same pass removed `.mw-spec-include-title` and `.mw-concept-title`. */
+/* No `.mw-measure-title` rule (26px serif 400). It would be a fourth serif title step, off the scale and off the document's one heading style, and a dead rule that encodes a ladder the scale no longer has reads as a live option. The same applies to `.mw-spec-include-title` and `.mw-concept-title`. */
 .mw-prose p { margin: 0 0 10px; color: var(--tink-2); font-size: 13px; line-height: 1.62; max-width: 62ch; }
 
 .mw-pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--f-mono); font-size: 11px; padding: 3px 9px; border-radius: 999px; font-weight: 600; }
@@ -1185,16 +1068,11 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 
 /* ── Narrative: a published measure technical spec (spec register on oat) ── */
 /* APP-STYLE-GUIDE — THE DOCUMENT IS A PAGE; A SECTION IS A CARD.
-   The paper used to be ONE sheet holding every section, and the levels were then ranked by type alone:
-   a 9.5px accent eyebrow for a top-level section, above entries set in 16px serif. Type cannot win that
-   argument — anything with a fill or a rule below it reads as the parent of the section that contains it,
-   which is exactly what happened when the library head got a band.
+   Ranking by type alone cannot win: a 9.5px accent eyebrow for a top-level section, above entries set in 16px serif, loses to anything with a fill or a rule below it. Such a thing reads as the parent of the section that contains it, which is what a band on the library head does.
    So the levels are ranked by MECHANISM, each one different, and the strongest is at the top:
      L1 section — CONTAINMENT: a card on the ground, with a ruled card header (`.mw-spec-sec`).
      L2 entry — the serif NAME, on the content edge: a population, a define, a group inside a card.
-   TWO LEVELS, NOT THREE. A library used to be L2 and is no longer a level at all — it is a
-   MARK on the entries below it (`.mw-defs-lib-title`, now a `div`), the same kind of thing as the kind
-   chip on a define, and it sits beside the ladder rather than inside it.
+   TWO LEVELS, NOT THREE. A library is not a level of the ladder. Its name is a ground label naming the library card below it (`.mw-defs-lib-title`, a `div`), the same kind of mark as the kind chip on a define, and it sits beside the ladder rather than inside it.
    Every heading at L1 and L2 is set in the SAME type (`.mw-spec h2, .mw-spec h3, .mw-spec-sec-title`).
    The card is what makes a section a section; nothing else needs a size of its own to say what it is.
    The document's own head — eyebrow, title, `.mw-spec-meta` — stays OUT of the cards, on the ground: the
@@ -1207,27 +1085,19 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-spec { color: var(--tink); }
 .mw-spec-eyebrow { font-family: var(--f-ui); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--tink-3); font-weight: 600; }
 /* WEIGHT 600, for the same reason every heading below it is: at 400 the document's own name
-   was the LIGHTEST text on a page whose every heading is 600, so size was carrying the ranking alone and
-   weight was arguing against it. This is the page's name rather than a heading inside it, so it keeps its
+   would be the LIGHTEST text on a page whose every heading is 600, so size would carry the ranking alone and weight would argue against it. This is the page's name rather than a heading inside it, so it keeps its
    own step (31px) — the one place the document still ranks by size, because there is exactly one of it. */
 .mw-spec-title { font-family: var(--f-serif-display); font-weight: 600; font-size: 31px; line-height: 1.12; letter-spacing: -.015em; margin: 5px 0 8px; text-wrap: balance; }
 .mw-spec-meta { font-family: var(--f-mono); font-size: 11px; color: var(--tink-3); letter-spacing: .02em; margin-bottom: 26px; }
-/* `.mw-spec section { margin-bottom: 26px }` IS DELETED, and it was a live defect.
-   Every define is a `<section>`, so that rule (a class AND a type: 0,1,1) beat `.mw-define`'s own margin
-   (0,1,0) and gave EVERY ROW IN THE DOCUMENT a 26px bottom margin — measured, the gap between two
-   collapsed rows was 26px on top of a 41px row, so a shut define cost 67px. It is the same trap as
-   `.mw-spec h3` v `.mw-define-title`, in the same file, on the same component: a generic descendant
-   selector reaching into something it was never written for, with nothing failing. Section spacing now
-   belongs to the thing that IS a section — the card — and cannot reach a row again. */
+/* No `.mw-spec section { margin-bottom: 26px }`: it is a live defect. Every define is a `<section>`, so that rule (a class AND a type: 0,1,1) beats `.mw-define`'s own margin (0,1,0) and gives EVERY ROW IN THE DOCUMENT a 26px bottom margin. Measured, the gap between two collapsed rows is 26px on top of a 41px row, so a shut define costs 67px. It is the same trap as `.mw-spec h3` v `.mw-define-title`, in the same file, on the same component: a generic descendant selector reaching into something it was never written for, with nothing failing. Section spacing belongs to the thing that IS a section — the card — and cannot reach a row. */
 /* THE SECTION IS A GROUND EYEBROW PLUS A CARD.
-   The section's name used to sit INSIDE its card, on a ruled header. It now sits on the GROUND above the
-   card, and the card holds content and nothing else. Two things drove it, in this order:
+   The section's name sits on the GROUND above the card, and the card holds content and nothing else. Two things drive it, in this order:
    1. A LIBRARY IS A CARD, and it needed its own name on its own header. With the section's name also on a
-      card header, "LIBRARIES" and "ExampleMeasure" were the same object at two depths.
+      card header, "LIBRARIES" and "ExampleMeasure" would be the same object at two depths.
    2. ONE RULE FOR THE WHOLE DOCUMENT: a name on the ground introduces the paper below it. That holds for a
       section with one card (Overview) and for a section with twelve (Libraries) without a second pattern —
       the ground eyebrow names the group, and a card header names a card when a group has more than one.
-   THE SECTION ITSELF NOW CARRIES NOTHING but the token and the spacing. `--spec-pad-x` stays here, and stays
+   THE SECTION ITSELF CARRIES NOTHING but the token and the spacing. `--spec-pad-x` stays here, and stays
    30px, because three things measure against it: the body's padding, the ground eyebrow's indent, and
    `.mw-spec-caret`'s gutter offset. One value, so the eyebrow's text, the card's content and every caret in
    the section land on the same vertical line.
@@ -1235,7 +1105,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    it, and it is rendered outside `SpecSection` for that reason. */
 .mw-spec-sec { --spec-pad-x: 30px; margin: 0 0 18px; }
 .mw-spec-sec:last-child { margin-bottom: 0; }
-/* THE CARD. Everything the section header used to provide as chrome, minus the header. A section whose
+/* THE CARD. Everything the section header provides as chrome, minus the header. A section whose
    children are already cards (Libraries) gets NO body — see `SpecSection`'s `cards` prop — because a card
    inside a card is the "out-ranks its parent" trap in reverse: two nested containments, and the inner one
    wins for being nearer the content. */
@@ -1251,19 +1121,16 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    family, same step, same weight, same ink. UPPERCASE NAMES A SECTION, SENTENCE CASE NAMES A CARD. Case is
    enough because the two never compete on anything else — the eyebrow sits on the canvas with no fill or
    rule, the title sits on a ruled header inside the card it names — and it is the one axis left after
-   family, size, weight and colour were each spent elsewhere in this document. */
+   family, size, weight and colour are each spent elsewhere in this document. */
 .mw-spec-card, .mw-defs-lib-card { --spec-pad-x: 30px; background-color: var(--panel);
   border: 1px solid var(--tline); border-radius: 10px; box-shadow: var(--tshadow);
   padding: 0 var(--spec-pad-x) 20px; }
 .mw-spec-card + .mw-spec-card { margin-top: 12px; }
-/* THE HEADER RULE IS `--tline-2`, THE INNER-DIVIDER WEIGHT. At `--tline` it was the same token,
-   weight and bleed as the CARD'S OWN BORDER 48px above it, so a reader met two identical horizontals in one
-   card and the second one read as a second edge — "a line underneath the title" that has to be got used to.
+/* THE HEADER RULE IS `--tline-2`, THE INNER-DIVIDER WEIGHT. At `--tline` it would be the same token, weight and bleed as the CARD'S OWN BORDER 48px above it, so a reader would meet two identical horizontals in one card and the second would read as a second edge — "a line underneath the title" that has to be got used to.
    That is the objection this document already sustains against a bled rule above the eyebrow, arriving one
    level up. It is an INNER divider inside a container, which is what `--tline-2` is the token for, and what
    every other in-card header here already uses (`.mw-tile-head`, `.mw-cell-head`, `.mw-val-head`).
-   It also de-conflicts the two horizontals a card can hold: the header divider is now a hairline at
-   inner-divider contrast, the subdivision mark (`.mw-spec-mark::after`) a 3px bar at rule contrast, so they
+   It also de-conflicts the two horizontals a card can hold: the header divider is a hairline at inner-divider contrast, the subdivision mark (`.mw-spec-mark::after`) a 3px bar at rule contrast, so they
    rank rather than tie. NOT REMOVED, and not inset: the rule is the card title's mechanism — a ground
    eyebrow is defined by carrying no fill and no rule, so a title on an unruled header is the same object as
    a section name, and an inset rule stops being a divider and becomes an underline under the title, which is
@@ -1294,48 +1161,35 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* A shut section is its eyebrow and nothing else. */
 .mw-spec-sec.collapsed .mw-spec-sec-head { margin-bottom: 0; }
-/* THE SECTION TITLE. Renamed from `.mw-spec-sec-eyebrow`: the accent micro-label style it named has moved
-   down to the library head, and a class called "eyebrow" that renders a 21px serif title is a name that
-   lies to the next reader.
-   A REGISTER OF ITS OWN: sans `control`, uppercase, `.1em`, secondary ink. It briefly shared
-   the document's one heading style, and that could not hold once a resource type became a heading — the
-   card title "Data requirements" and the entry "Condition" inside it rendered identically, the same
-   collision one level up. Containment alone was not enough to separate them.
+/* THE SECTION TITLE (`.mw-spec-sec-title`). Not named "eyebrow": that name belongs to the accent micro-label style, which the library head carries, and a class called "eyebrow" over a title is a name that lies to the next reader.
+   A REGISTER OF ITS OWN: sans `control`, uppercase, `.1em`, primary ink. It does not share the document's one heading style: a resource type is a heading too, and the card title "Data requirements" and the entry "Condition" inside it would render identically, the same collision one level up. Containment alone does not separate them.
    WHY SANS UPPERCASE and not a bigger serif: the card header is a CONTROL that collapses a chapter, and it
    is the one thing in the document body that is chrome rather than prose. Register — family and case —
    ranks it against 21px serif names without competing on size, which is the guide's rule for adjacent
    levels. Uppercase gets its tracking, per section 1.
-   PRIMARY INK, and the open question from earlier the same day is now closed by looking at it. `--tink-2`
-   was chosen from a mockup and read WRONG in place: the card title was quieter than the lava eyebrow inside
-   it, so a subdivision out-ranked the card containing it — the failure ("it's so strong it looks
-   like the L1 items should be its children") arriving by COLOUR rather than by fill. Two reasons it had to
-   be `--tink`: an uppercase 13px label has little mass to spend, so ink is most of what it has; and this
+   PRIMARY INK. `--tink-2` reads WRONG in place: the card title is quieter than the lava eyebrow inside it, so a subdivision out-ranks the card containing it — the failure ("it's so strong it looks
+   like the L1 items should be its children") arriving by COLOUR rather than by fill. Two reasons it is `--tink`: an uppercase 13px label has little mass to spend, so ink is most of what it has; and this
    heading IS the section's collapse control, which the library-label note already argued may not sit at
-   caption contrast. The ranking now reads title (mass + case + primary ink + a ruled, bled header) over
-   eyebrow (11px + accent), which is the order the cards are actually in. */
+   caption contrast. The ranking reads title (mass + case + primary ink + a ruled, bled header) over
+   eyebrow (11px + accent), which is the order the cards are in. */
 .mw-spec-sec-title { display: block; font-family: var(--f-ui); font-size: 13px; font-weight: 600;
   letter-spacing: .1em; text-transform: uppercase; color: var(--tink); }
 /* APP-SPEC-COLLAPSE — each section header is a clickable row (caret + eyebrow) that toggles its own
    body; there is no collapse/expand-all control. */
 /* ONE GUTTER COLUMN FOR EVERY CARET, AND TEXT ON THE CONTENT EDGE.
-   Three collapse controls share this idiom — the section head, the library band and the define row — and
-   each used to buy its gutter with a negative margin plus a gap, which does not survive contact with the
-   content edge: the pull has to equal caret + gap EXACTLY or the text lands off it, and it never did.
-   Measured, the section eyebrow and the library label both sat 7px right of every name on the page.
+   Three collapse controls share this idiom — the section head, the library card header and the define row — and
+   each buys its gutter with a negative margin plus a gap, which does not hold at the content edge: the pull has to equal caret + gap EXACTLY or the text lands off it.
    So the caret comes OUT OF FLOW in all three: it is absolutely placed at `-16px`, the column the define
    row's caret already occupies (which is itself set by the change bar 6px further out — see
    `.mw-define::before`), and the text then simply starts where the paragraph does. `margin: auto 0` with
    `top: 0; bottom: 0` centres it without a `transform`, which `.collapsed` needs for its rotation. */
 /* `padding: 0` IS LOAD-BEARING. `.mw button` resets colour, background and border but NOT the UA's
    `padding: 1px 6px`, so every bare button in the workspace holds its text 6px inside its own box — which
-   is invisible until something has to line up with it. That 6px is exactly what held this eyebrow and the
-   library label off the content edge after the carets came out of flow. Same declaration on the other two
+   is invisible until something has to line up with it. That 6px is exactly what would hold this eyebrow and the library label off the content edge once the carets are out of flow. Same declaration on the other two
    collapse controls; the reset itself is left alone, because widening it to `padding: 0` would silently
    deflate every button in the workspace that leans on the UA value. */
 /* THE CARD HEADER. Bled to the card's edges and ruled underneath, so a section is marked by an area a
-   reader cannot scroll past rather than by a label they can. `width` is the calc because a `<button>` is
-   shrink-to-fit even as a flex container — `width: 100%` was already here for that reason, and the bleed
-   adds the padding back on both sides. */
+   reader cannot scroll past rather than by a label they can. `width` is the calc because a `<button>` is shrink-to-fit even as a flex container, so `width: 100%` is not enough; the bleed adds the padding back on both sides. */
 /* THE GROUND EYEBROW. On the canvas, not on paper — so no fill, no rule and no bleed; what it introduces is
    the card below it, and a rule under a label that already has a card edge 8px beneath it is two boundaries
    for one division. `padding-left` is the section's own `--spec-pad-x`, which puts the label on the SAME
@@ -1357,29 +1211,19 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    serif `title`: 21px, weight 600, `-.01em`. It is the treatment the POPULATION criterion's heading
    already had, promoted to the default, so the document has ONE heading and not five that a reader has
    to compare against each other to rank.
-   THE CARD TITLE IS NO LONGER IN THIS SET (revised later the same day). It joined it, and then a resource
-   type became a heading too — at which point "Data requirements" and the "Condition" inside it were the
-   same type, which is the collision this rule exists to remove, displaced one level up. The card title now
-   carries its own register (see `.mw-spec-sec-title`); everything that is a NAME still shares this.
-   WHAT THIS REPLACES: a ladder of four sizes (31 / 21 / 16 / 11) in which each level's meaning came from
-   its size relative to its neighbours. That is a hierarchy a reader has to MEASURE, and it never held —
-   `Description` rendered identically to the card header above it, a define's name rendered identically
-   to the `Condition` group heading that is not its parent, and the library label out-shouted both by
-   accident (see `.mw-defs-lib-title`).
+   THE CARD TITLE IS NOT IN THIS SET. A card title would be a heading of this type too, and then a resource type becomes a heading as well: "Data requirements" and the "Condition" inside it would be the same type, the collision this rule exists to remove, displaced one level up. The card title carries its own register (see `.mw-spec-sec-title`); everything that is a NAME still shares this.
+   NOT A LADDER OF SIZES (31 / 21 / 16 / 11), where each level's meaning comes from its size relative to its neighbours. That is a hierarchy a reader has to MEASURE, and it does not hold: `Description` renders identically to the card header above it, a define's name renders identically to the `Condition` group heading that is not its parent, and the library label out-shouts both by accident (see `.mw-defs-lib-title`).
    DEPTH IS CARRIED BY CONTAINMENT, not by type: the card and its ruled header, the group rule, the
    entry's change bar and its caret gutter. Those say where a thing sits; the type says only that it is a
-   heading. This also retires the separate rule that bolded a spec cell's heading — with 600 as the
-   default there is nothing left for it to distinguish.
+   heading. No separate rule bolds a spec cell's heading: with 600 as the default there is nothing left for it to distinguish.
    IF A LEVEL MUST BE QUIETER it becomes an EXPLICIT level with its own rule and its own reason (CQL
    functions are the standing candidate), never a step shaved off this one.
-   NO `line-height` HERE ON PURPOSE: the inherited 1.5 is what a population's heading runs at today, and
+   NO `line-height` HERE ON PURPOSE: the inherited 1.5 is what a population's heading runs at, and
    this rule is that heading. `.mw-define-toggle`'s height is sized to the line box it produces.
 
    19px, NOT THE SCALE'S `title` 21. This is the most-repeated type on the page — one per
-   define, forty per measure — and at 21 it was carrying more voice than a name needs once the card title
-   stopped competing with it. 19 is a NEW STEP, and it is declared as one in `design-system.md` rather than
-   left as an ad-hoc value: there is nothing between `subtitle` 16 and `title` 21, and 16 is where this type
-   was before today, when it disappeared into the prose beneath it. If the scale is to stay at eight steps,
+   define, forty per measure — and at 21 it carries more voice than a name needs, now that the card title does not compete with it. 19 is a NEW STEP, and it is declared as one in `design-system.md` rather than
+   left as an ad-hoc value: there is nothing between `subtitle` 16 and `title` 21, and 16 is where this type disappears into the prose beneath it. If the scale is to stay at eight steps,
    the honest alternative is 16 and this rule goes back — that is a decision about the scale, not about
    this component, which is why it is written down in both places. */
 .mw-spec h2, .mw-spec h3 { font-family: var(--f-serif-display); font-weight: 600;
@@ -1392,16 +1236,8 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 /* APP-DESIGN-SYSTEM — the same type pill the define nav uses (pop/def/fn/vs/rd), carried into the
    spec headers so a criterion reads with its type. Sized down for the header register; kept off the
    serif baseline so it aligns as a chip, not a word. */
-/* `font-weight: 400` IS PINNED, and it is a fix. The chip declared no weight, so it INHERITED
-   one — and a population's chip is the only one that renders INSIDE its heading (`<h2><span class="pop">`),
-   where every other kind chip is a sibling of the heading in a `.mw-define-head` / row. So `pop` alone
-   inherited the heading's 600 while `def`, `fn` and `rd` sat at 400, and the left nav's identical chip
-   (`.mw-node .k`, same two-tier mapping, deliberately) sat at 400 too. One kind was bolder than the others
-   for a reason that was purely structural, and the SAME kind was bolder in the document than in the nav —
-   which "a kind may not be one colour in the nav and another in the document" exists to prevent.
-   It was also a SYNTHESIZED bold: DM Mono ships 400 and 500 and nothing above, so 600 on a 9.5px tracked
-   mono chip is the smeared-stem case section 1 of the style guide warns about. 400 matches the nav, matches
-   every other kind, and is a face that exists. */
+/* `font-weight: 400` IS PINNED. The chip declares no weight, so it would INHERIT one — and a population's chip is the only one that renders INSIDE its heading (`<h2><span class="pop">`), where every other kind chip is a sibling of the heading in a `.mw-define-head` / row. Without the pin, `pop` alone would inherit the heading's 600 while `def`, `fn` and `rd` sit at 400, and the left nav's identical chip (`.mw-node .k`, same two-tier mapping, deliberately) sits at 400 too. One kind would be bolder than the others for a purely structural reason, and the SAME kind would be bolder in the document than in the nav — which "a kind may not be one colour in the nav and another in the document" exists to prevent.
+   The inherited bold would also be SYNTHESIZED: DM Mono ships 400 and 500 and nothing above, so 600 on a 9.5px tracked mono chip is the smeared-stem case section 1 of the style guide warns about. 400 matches the nav, matches every other kind, and is a face that exists. */
 .mw-spec-kind { display: inline-block; flex: none; align-self: center; font-family: var(--f-mono); font-size: 9.5px; font-weight: 400; text-transform: uppercase; letter-spacing: .04em; padding: 2px 6px; border-radius: 4px; vertical-align: middle; margin-right: 10px; color: var(--tink-2); background: var(--tline-2); border: 1px solid transparent; }
 .mw-spec h2 .mw-spec-kind { margin-right: 0; }  /* the h2 flex gap already spaces the pill from the name */
 /* A POPULATION CRITERION IS IN THE SAME LIST AS THE DEFINES, so its chip goes on the same rail. The root library group renders its populations and then its
@@ -1410,16 +1246,13 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    about the prose, not the row's status. */
 .mw-spec-pop > h2 .mw-spec-kind { order: 3; margin-left: auto; min-width: 30px; text-align: center; }
 .mw-spec-pop > h2 .mw-el-metric { order: 4; margin-left: 0; }
-/* `.mw-spec h3 .mw-spec-kind { top: -1px }` IS DELETED. It was an optical nudge for a 16px
-   `h3` against a 21px `h2` — with one heading style the two rows are the same row, and a chip that sits
-   1px higher in one of them is the drift, not the fix. */
+/* No `.mw-spec h3 .mw-spec-kind { top: -1px }`. It would be an optical nudge for a 16px `h3` against a 21px `h2`: with one heading style the two rows are the same row, and a chip that sits 1px higher in one of them is the drift, not the fix. */
 /* TWO TIERS, NOT FIVE HUES (APP-STYLE-GUIDE). POPULATIONS AND DEFINES ARE THE MEASURE —
    everything else on this list is supporting cast — so the loud pair take the two most separable hues and
-   the rest recede. The old mapping spent `info` on BOTH `fn` and `vs` (identical chips for two different
-   kinds) while `def`, the most common criterion in any library, was the same neutral grey as `rd`.
+   the rest recede. A mapping that spends `info` on BOTH `fn` and `vs` gives identical chips for two different kinds, and it leaves `def`, the most common criterion in any library, the same neutral grey as `rd`.
 
    AMBER AND BLUE, because they survive colour-vision deficiency: green-vs-grey is the pair that fails
-   first (and did — it read as grey to the reader who asked for this), and lava is reserved for selection
+   first, and lava is reserved for selection
    and the primary CTA. THE TIERS ALSO DIFFER BY FILL, not only hue: the loud pair is a wash, the quiet
    tier is hollow with a hairline, so the distinction survives with no colour perception at all. The base
    rule carries a transparent border so both tiers are the same size and nothing shifts.
@@ -1436,7 +1269,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    threshold, a timing rule — and a reader who can see `def` and `fn` are the same family is reading the
    truth. Blue letters on a hollow chip, which is the "touch of colour" a supporting kind can carry without
    competing with the criterion above it. Terminology and reads stay fully neutral: they are DATA, not
-   logic, and that is the distinction the hue now draws. */
+   logic, and that is the distinction the hue draws. */
 .mw-spec-kind.fn { color: var(--tinfo); background: none; border-color: var(--tline); }
 .mw-spec-kind.vs, .mw-spec-kind.rd { color: var(--tink-3); background: none; border-color: var(--tline); }
 /* SPEC-TERMINOLOGY-REF — a direct reference CODE, beside `vs` for a value set. Both are terminology, so
@@ -1446,22 +1279,14 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-spec-kind.cd { color: var(--tink-3); background: none; border-color: var(--tline); }
 .mw-spec p { font-family: var(--f-ui); font-size: 14px; line-height: 1.68; color: var(--tink-2); max-width: 66ch; margin: 0 0 10px; }
 .mw-spec p b { font-weight: 600; color: var(--tink); }
-/* `.mw-spec-pop { margin-bottom: 18px }` and `.mw-spec-def { margin-bottom: 12px }` ARE DELETED — they were DEAD, and the dead value is what made this worth touching at all.
-   Both are `.mw-spec-cell` too, and `.mw-spec-cell { margin: 0 -14px 8px }` is declared LATER at equal
-   specificity (0,1,0), so it won: what rendered was 8px, not 18 or 12. Nothing failed; the file simply
-   stated a rhythm it did not have, which is how "why is the space between populations bigger?" came to have
-   no answer in the CSS. The 8px it actually uses now comes from one declaration.
-   THE RHYTHM ITSELF IS UNCHANGED BY THIS. A population still sits further from its neighbour than a define
-   does (28px against 16px), because a cell carries 10px of vertical padding for its selection affordance
-   where a define carries 9/7. That difference is a real decision and is still open; deleting a dead rule is
-   not the place to make it. */
+/* No `.mw-spec-pop { margin-bottom: 18px }` or `.mw-spec-def { margin-bottom: 12px }`: both are dead, because both are `.mw-spec-cell` too, and `.mw-spec-cell { margin: 0 -14px 8px }` is declared LATER at equal specificity (0,1,0), so it wins. A cell's rhythm is the 8px that one declaration sets. A stated value that never renders is how "why is the space between populations bigger?" comes to have no answer in the CSS.
+   THE RHYTHM ITSELF: a population still sits further from its neighbour than a define does (28px against 16px), because a cell carries 10px of vertical padding for its selection affordance where a define carries 9/7. That difference is a real decision and is still open; a dead rule is not the place to make it. */
 
 /* APP-SPEC-CELLS — criterion sections as notebook-style cells. Hover marks the cell and floats an
    action bar; selection (nav or click) persists as the margin BAR alone, never a fill
    (APP-LOGIC-VIEW). Chrome is absolutely positioned so it never reflows the reading column
    (APP-STABLE-LAYOUT). Bled into the container padding for breathing room. */
-/* HOVER IS THE SAME MARK AS SELECTION, IN GREY (APP-STYLE-GUIDE). Hover used to fill the
-   cell and outline it; over a page of prose that is a panel sliding under whatever sentence the pointer
+/* HOVER IS THE SAME MARK AS SELECTION, IN GREY (APP-STYLE-GUIDE). Hover does not fill the cell or outline it: over a page of prose that is a panel sliding under whatever sentence the pointer
    happens to rest on, and it competed with the selection bar for the same "which cell is this" reading.
    One mark, two colours: `line` = the CANDIDATE (the cell the pointer would act on), accent = the SELECTED
    cell. A reader learns the gutter once, and the document never repaints behind the text.
@@ -1479,10 +1304,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-spec-cell:hover::before { background: var(--tline); }
 .mw-spec-cell.selected::before { background: var(--tacc); }
 .mw-spec-cell.selected > h2, .mw-spec-cell.selected > h3 { color: var(--tacc-i); }
-/* `.mw-spec-cell > h2, > h3 { font-weight: 600 }` IS DELETED. It was the ONLY heading on the
-   page at 600 — "bolder titles carry the delineation" — and that is now the document's default, so the
-   rule distinguished nothing. Its removal is the point of the change rather than a tidy-up: a population
-   was reading as a different KIND of heading from every other named thing in the document. */
+/* No `.mw-spec-cell > h2, > h3 { font-weight: 600 }`. It would be the ONLY heading on the page at 600 — "bolder titles carry the delineation" — and 600 is the document's default, so the rule would distinguish nothing. Leaving it out is the point, not a tidy-up: a population would otherwise read as a different KIND of heading from every other named thing in the document. */
 .mw-cell-actions { position: absolute; top: -12px; right: 12px; display: flex; gap: 2px; padding: 3px;
   background: var(--panel); border: 1px solid var(--tline); border-radius: 9px; box-shadow: var(--tshadow);
   opacity: 0; transform: translateY(3px); transition: opacity .12s ease, transform .12s ease; z-index: 3; pointer-events: none; }
@@ -1517,12 +1339,9 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    legs are mono because they are counts, and each is tinted by its population ROLE — the same
    good/info/crit mapping the funnel below them uses, so the strip and the bars are one reading.
 
-   `.mw-spec-figure` retired here with its only call site: a population heading now renders the same
-   `Metric` every define does, and a second inline-figure style is a second answer to one question.
+   No `.mw-spec-figure` style: a population heading renders the same `Metric` every define does, and a second inline-figure style would be a second answer to one question.
 
-   A CARD LIKE EVERY OTHER SECTION. It used to be a strip between two rules inside the one
-   paper; with sections as cards it was the only top-level block left sitting on the bare ground, which
-   read as though the reported rate were part of the masthead rather than a section of the document. It
+   A CARD LIKE EVERY OTHER SECTION. With sections as cards, a block left on the bare ground is the only top-level block unboxed, and it reads as though the reported rate were part of the masthead rather than a section of the document. It
    takes the card treatment verbatim — same fill, border, radius and shadow — and NOT a card HEADER: it
    has no title of its own and is not collapsible, so a header would be an empty bar. */
 .mw-spec-result { --spec-pad-x: 30px; display: flex; flex-direction: column; gap: 14px;
@@ -1603,21 +1422,18 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
   background: var(--texpl-w); border: 1px solid var(--tline); border-radius: 999px; padding: 1px 6px; }
 
 /* SPEC-DEFINITIONS — included library sections rendered as headed regions in the continuous
-   document. An H1 divider + type chip marks each include boundary; a mono meta line sits beneath. The
+   document. A ruled top edge marks each include boundary, and a mono meta line sits beneath. The
    section carries scroll-margin so left-nav clicks land with breathing room. */
 .mw-spec-include { margin-top: 36px; padding-top: 28px; border-top: 1px solid var(--tline); scroll-margin-top: 16px; }
-/* `.mw-spec-include-title` (25px serif 400) and its `.mw-spec-kind` child ARE DELETED — no call site. The include boundary the comment above describes is now a library group inside the
-   Libraries card, marked by `.mw-defs-lib-title`; this was the pre-card treatment left behind. */
+/* No `.mw-spec-include-title` (25px serif 400) and no `.mw-spec-kind` child: no call site. The library groups in the Libraries card are marked by `.mw-defs-lib-title`. */
 .mw-spec-include-meta { font-family: var(--f-mono); font-size: 11px; color: var(--tink-3); letter-spacing: .02em; margin-bottom: 20px; }
 .mw-spec-include.flash { animation: mw-flash 1.1s ease; }
 
-/* ── APP-NARRATIVE-OVERLAY — narration served with the Specification ── */
-/* APP-NARRATIVE-PROVENANCE — there is NO masthead legend. `.mw-spec-legend` was a one-paragraph note
-   under the header rule stating the document's two voices; it was built and removed the same day. The
+/* APP-NARRATIVE-PROVENANCE — there is NO masthead legend. A one-paragraph note
+   under the header rule stating the document's two voices would be chrome. The
    header is where a reader looks for the measure's IDENTITY, and a paragraph of product explanation in
    that slot is chrome in the most valuable position on the page — explaining a mark that already states
-   its own case wherever it appears. The eyebrow's `· narrated` tag stays gone with it: it coloured
-   provenance `info`, a semantic hue provenance may not borrow (design-system section 2). */
+   its own case wherever it appears. The eyebrow has no `· narrated` tag: it would colour provenance `info`, a semantic hue provenance may not borrow (design-system section 2). */
 .mw-narr-label { font-style: normal; font-family: var(--f-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--tink-3); margin-right: 6px; }
 /* Appendix tables */
 .mw-narr-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 8px 0 18px; }
@@ -1674,10 +1490,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
   min-height: 26px; }
 .mw-wb-scope .nm { font-size: 12px; }
 .mw-wb-scope .all { font-size: 12px; color: var(--tink-3); }
-/* APP-PANE-STATE — the pane's size control sits at the END OF THE SCOPE ROW, in the slot the scope's
-   "clear" X used to hold. An X at the end of a pane header reads as *close this pane*, which is the
-   convention it was borrowing and not the act it performed; the collapse/expand control is what a reader
-   reaches to that corner for. Moving it here also gives the tab strip its trailing width back.
+/* APP-PANE-STATE — the pane's size control sits at the END OF THE SCOPE ROW, in the corner a "clear" X would take. An X at the end of a pane header reads as *close this pane*; the collapse/expand control is what a reader reaches to that corner for. The tab strip keeps its trailing width.
    `margin-left: auto` is inherited from `.mw-pane-ctls`; only the strip-specific sticky treatment has to
    be undone, since a scope row is not a scroll container. */
 .mw-wb-scope .mw-pane-ctls { position: static; padding-left: 0; background: none; }
@@ -1852,10 +1665,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 /* Open, the row is the head of a block rather than one of a list, and it says so in COLOUR AND THE
    GLYPH — never in weight.
 
-   `font-weight: 600` here reflowed the label on every expand: the text got wider, so the label and
-   everything trailing it shifted under the pointer at the moment of the click. That is exactly the
-   reflow `APP-STABLE-LAYOUT` forbids and the same defect `paneTabs.test.tsx` already pins for the
-   tab strip ("selecting never changes the weight") — a rule this row was outside of, so it kept it.
+   A `font-weight: 600` here would reflow the label on every expand: the text gets wider, so the label and everything trailing it shifts under the pointer at the moment of the click. That is the reflow `APP-STABLE-LAYOUT` forbids, and the same defect `paneTabs.test.tsx` pins for the tab strip ("selecting never changes the weight").
 
    What carries the state instead is what the design system settled for every other toggle in this app:
    the glyph takes the accent (it already flips Plus to Minus, so it is the one element that has changed
@@ -1887,7 +1697,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-wb-foot > summary .mv { margin-left: auto; text-transform: none; letter-spacing: 0; font-family: var(--f-ui); font-size: 10px; font-style: italic; }
 .mw-wb-foot[open] > summary { margin-bottom: 11px; }
 
-/* Retained from the retired Inspector: the Patient Lens' own internals, unchanged. */
+/* The Patient Lens' own internals. */
 .mw-mini-funnel { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 12px 0 6px; gap: 2px; }
 .mw-mini-funnel span { display: block; height: 100%; border-radius: 2px; }
 
@@ -1901,8 +1711,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-prow.sel { background: var(--tacc-w); }
 /* Patient Lens row = a leading abbreviated LANDING chip in the nav/Define type-chip language
    (.mw-node .k; APP-STYLE-GUIDE) + the member name. The chip carries GEOMETRY ONLY so the shared
-   single-class .mw-land-* colors below still win (no color/bg set here). Drops the old identical-per-row
-   "DE" avatar and the descriptor line that duplicated the chip. */
+   single-class .mw-land-* colors below still win (no color/bg set here). No per-row "DE" avatar and no descriptor line, which would duplicate the chip. */
 .mw-prow .k { width: 40px; flex: none; text-align: center; font-family: var(--f-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; padding: 3px 0; border-radius: 4px; }
 .mw-prow .pn { flex: 1; min-width: 0; font-size: 12px; color: var(--tink); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mw-land-numerator { color: var(--twarn); background: var(--twarn-w); }
@@ -1983,10 +1792,10 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-golive:hover { background: var(--tacc); color: #fff; }
 .mw-golive .pulse { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .mw-static-cta { text-align: center; } .mw-static-cta .mw-desc { max-width: 46ch; margin: 0 auto; }
-/* .badge.static moved to .mw-selpill-info (APP-COMPUTE-ACTIVITY). */
+/* The static badge is styled under `.mw-selpill-info` (APP-COMPUTE-ACTIVITY). */
 .mw-spec-static { color: var(--tink-3); font-weight: 600; }
 
-/* APP-VALIDATE-LENS — the Validate lens: a stack of finding sections (compilation, data gaps,
+/* The Validate lens: a stack of finding sections (compilation, data gaps,
    structural findings, tools). Reading-column width; card-lite sections. */
 .mw-validate { display: flex; flex-direction: column; gap: 14px; }
 .mw-val-sec { background: var(--panel); border: 1px solid var(--tline); border-radius: 12px; box-shadow: var(--tshadow); overflow: hidden; }
@@ -2009,16 +1818,15 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-finding .dt { font-size: 12px; color: var(--tink-2); line-height: 1.45; }
 .mw-val-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
-/* DESIGNER-PUBLISH-GATE — the terminal action of the go/no-go, above a hairline that separates the
+/* The terminal action of the go/no-go, above a hairline that separates the
    VERDICT from what the verdict authorises. The button is the accent `.mw-run` (the one primary action of
    the lens) and it is DISABLED until the verdict clears it; the paragraph beneath states which condition
    is holding it, because a disabled control that does not say why is indistinguishable from a broken one. */
 .mw-publish { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--tline-2);
   display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 
-/* APP-MAP-LENS — the feasibility sections (coverage, magnitude, go/no-go), now inside Validate: the
-   Map lens is retired and these moved rather than being rebuilt, so they keep the shared lens-section
-   primitives (.mw-val-sec/head/body) they already used. The go/no-go readout reuses .mw-score with a
+/* The feasibility sections (coverage, magnitude, go/no-go) keep the shared lens-section
+   primitives (.mw-val-sec/head/body). The go/no-go readout reuses .mw-score with a
    `ready` (good) variant; magnitude gets its own expected/actual rows. */
 .mw-score.ready { background: var(--tgood-w); border-color: color-mix(in srgb, var(--tgood) 30%, transparent); }
 .mw-score.ready .big { color: var(--tgood); }
@@ -2030,13 +1838,13 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-mag-row b { font-family: var(--f-mono); font-size: 18px; color: var(--tink); letter-spacing: -.01em; }
 .mw-mag-row .u { font-size: 11.5px; color: var(--tink-2); }
 
-/* APP-SCHEDULING — the Scheduling screen hosting the relocated Operational tiles (APP-LENSES). */
+/* The Scheduling screen hosting the Operational tiles. */
 .mw-sched-app { height: 100vh; display: flex; flex-direction: column; }
 .mw-sched { flex: 1; min-height: 0; overflow: auto; padding: 26px 0 40px; }
 .mw-sched-intro { margin-bottom: 18px; }
 .mw-sched-intro .mw-spec-title { margin: 4px 0 8px; }
 
-/* ── APP-ANALYZE-LENS — the consumption surface ────────────────────────────────────── */
+/* ── The consumption surface ────────────────────────────────────── */
 .mw-analyze { display: flex; flex-direction: column; gap: 14px; }
 
 
@@ -2053,11 +1861,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
   border: 1px solid var(--tline); border-radius: 12px; box-shadow: var(--tshadow); }
 .mw-concept-loose { background: none; box-shadow: none; border-style: dashed; }
 .mw-concept-head { display: flex; align-items: baseline; gap: 10px; }
-/* `.mw-concept-title` (16px serif 400) IS DELETED — no call site: another copy of the
-   retired 16px entry name. NOTE for whoever is next here: `.mw-concept`, `-loose`, `-head` and `-toggle`
-   have no call sites either — only `.mw-concept-lede` is still rendered. They are left alone deliberately,
-   because a retired COMPONENT is a different question from a retired type step, and it deserves its own
-   look rather than being swept up in a typography pass. */
+/* No `.mw-concept-title` (16px serif 400): no call site, and a second 16px entry name is off the type scale. NOTE for whoever is next here: `.mw-concept`, `-loose`, `-head` and `-toggle` have no call sites either — only `.mw-concept-lede` is still rendered. They are left alone deliberately, because an unused COMPONENT is a different question from an unused type step, and it deserves its own look rather than being swept up in a typography pass. */
 .mw-concept-toggle { flex: none; align-self: center; color: var(--tink-3); }
 .mw-concept-lede { margin: 8px 0 4px; font-size: 14px; line-height: 1.6; color: var(--tink-2); max-width: 65ch; }
 
@@ -2092,8 +1896,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    The delta is NEUTRAL INK. Narrowing is not a failure state and the semantic hues encode state only
    (design-system.md section 2); `crit` is spent on the one criterion that genuinely removes.
 
-   This rule was THREE identical copies of a pill style, the first two dead to the third at equal
-   specificity — the trap the style guide records. One copy now. */
+   One copy of a pill style. Three identical copies would leave the first two dead to the third at equal specificity, the trap the style guide records. */
 .mw-el-metric { flex: none; margin-left: auto; display: inline-flex; align-items: baseline; gap: 5px;
   font-size: 11px; font-weight: 500; color: var(--tink-2); white-space: nowrap; }
 .mw-el-metric .tnum { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
@@ -2147,19 +1950,15 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    place. A 297-entry library has to stay skimmable, so there is no cell chrome, no per-entry paragraph
    and no always-open disclosure here. */
 /* A LIBRARY IS A CARD, AND ITS NAME SITS ON THE GROUND ABOVE IT.
-   THE PROBLEM, and it took three attempts to name correctly: a reader scrolling the document did not
-   register that they had reached the next library. Every attempt before this one made the LABEL louder — a
-   filled full-bleed band (withdrawn: it out-ranked the card containing it), lava (withdrawn: it out-shouted
-   the clinical names it sits above), a 3px bar (scrolled past). The position was the defect, not the volume:
+   THE PROBLEM: a reader scrolling the document does not register that they have reached the next library. Making the LABEL louder does not fix it: a filled full-bleed band out-ranks the card containing it, lava out-shouts the clinical names it sits above, and a 3px bar is scrolled past. The position is the defect, not the volume:
    **a label inside a card cannot out-rank the card it is inside.**
    THE FIX IS THE MECHANISM, not the tuning. A card edge is what this design already ranks sections by, so a
    library becomes a card — a border, a radius, a shadow and a gap of ground, which cannot be scrolled past.
    The name moves OUT onto the ground, where it is in no card and nothing can out-rank it; the page head
    already establishes the ground as a place a label can live.
    It is also the honest model. A library HAS its own name, count, collapse and nav target — every property
-   of a section — and had been drawn as a subdivision of a section it does not belong to.
-   The eyebrow gets sharper rather than redundant: `.mw-spec-mark` now means exactly one thing, a subdivision
-   WITHIN a card (`Retrieves` / `Parameters`), instead of covering two different relationships. */
+   of a section — and drawing it as a subdivision of a section it does not belong to would misstate the model.
+   The eyebrow is sharper for it: `.mw-spec-mark` means exactly one thing, a subdivision WITHIN a card (`Retrieves` / `Parameters`), not two different relationships. */
 .mw-defs-lib { position: relative; margin: 12px 0 0; }
 .mw-defs-lib:first-of-type { margin-top: 0; }
 /* THE CARD, and it carries its own HEADER — the library's name. Same border, radius, shadow and
@@ -2172,47 +1971,14 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 /* The card chrome, its header, its collapsed state and its caret are declared ONCE, with `.mw-spec-card` —
    a library card and a titled card are the same object. Only the title's register differs. */
 /* APP-STYLE-GUIDE / SPEC-DEFINITIONS — A LIBRARY IS A LABEL, NOT A TITLE (decided),
-   AND AS OF NOT A HEADING EITHER: the element is a `div`, so a library no longer occupies a
-   rung in the document's heading ladder — in the markup or in the outline a screen reader builds from it.
-   That is what finally settles the rule below. It used to be an `h2`, so `.mw-spec h2` (0,1,1) beat the
-   bare class (0,1,0) and every library head rendered at 21px SERIF — the `title` step — while the rule
-   said 12px DM Sans: the declared values were dead and what shipped was the accident. The `.mw-spec`
-   qualification that fixed that is GONE with the `h2`, because a class competing with nothing needs no
-   armour, and armour left behind is the next reader's puzzle.
-   The accident was also wrong on the merits, three ways. It INVERTED the section it sits under: the
-   document's top-level mark is a 9.5px uppercase eyebrow, so a container read louder than both its
-   parent and the clinical names inside it. It spent the loudest step in the document on PLUMBING —
-   `FHIRHelpers` (251 entries) and the other helpers got the same 21px as the measure's own library, down
-   the longest stretch of the page. And it CONTRADICTED THE OUTLINE, where the same library is the
-   quietest row in the pane (`.mw-dag-group.mw-sub`, 11px ink-3): one model, two surfaces, opposite
-   lessons about what a library is worth (`APP-SPEC-MODEL`). `SPEC-DEFINITIONS` had already decided
-   this — the catalogue is subordinate and "must not out-weigh the narrated sections above it".
-   TWO DELIBERATE DEPARTURES from the values as they were written, because they were written when this
-   was a catalogue caption and it is now a COLLAPSE CONTROL holding the population criteria: primary
-   `--tink` rather than `--tink-2` (a heading that is also a control should not sit at caption contrast,
-   least of all at 12px on dark), and the head keeps a 24px `min-height` below, so the click target does
-   not shrink with the type. The count stays mono `--tink-3`; the caret and its gutter pull are
-   untouched, so the carets still line up down the reading column.
-   Hierarchy here is carried by REGISTER — mono identifier in a band, against serif content — not by a
-   step or two of size: 21 against a define's 16 is a hierarchy a reader has to measure.
+   AND NOT A HEADING EITHER: the element is a `div`, so a library occupies no rung in the document's heading ladder — in the markup or in the outline a screen reader builds from it. Nothing competes with the bare class, so it needs no `.mw-spec` qualifier: a class competing with nothing needs no armour, and armour left behind is the next reader's puzzle.
+   A heading here would be wrong on the merits, three ways. It would INVERT the section it sits under: the document's top-level mark is a 9.5px uppercase eyebrow, so a container would read louder than both its parent and the clinical names inside it. It would spend the loudest step in the document on PLUMBING — `FHIRHelpers` (251 entries) and the other helpers would get the same 21px as the measure's own library, down the longest stretch of the page. And it would CONTRADICT THE OUTLINE, where the same library is the quietest row in the pane (`.mw-dag-group.mw-sub`, 11px ink-3): one model, two surfaces, opposite lessons about what a library is worth (`APP-SPEC-MODEL`). SPEC-DEFINITIONS decides this: the catalogue is subordinate and "must not out-weigh the narrated sections above it".
+   TWO DELIBERATE DEPARTURES from a caption's values: this is a COLLAPSE CONTROL holding the population criteria, so primary `--tink` rather than `--tink-2` (a heading that is also a control should not sit at caption contrast, least of all at 12px on dark), and the head keeps a 24px `min-height` below, so the click target does not shrink with the type. The count stays mono `--tink-3`; the caret and its gutter pull are untouched, so the carets still line up down the reading column.
+   Hierarchy here is carried by REGISTER — mono identifier in a label, against serif content — not by a step or two of size: 21 against a define's 16 is a hierarchy a reader has to measure.
 
-   THE MARK THE SECTION HEAD USED TO WEAR. At 12px neutral the label
-   was correct and unfindable — "you scroll through these big sections on definitions, then get to this
-   small heading and miss it". A BAND fixed the finding and broke the ranking: a filled full-bleed row
-   out-shouts a section, so L2 read as the parent of L1. With L1 now carrying a card and a card header,
-   the level below it can take the accent micro-label the section head has vacated, and that is what this
-   is: micro, tracked — a MARK rather than a heading. (It was LAVA when this was written, "the only accent
-   below the page head, so it lands exactly where the reader's attention kept failing". The accent is gone
-   as of and the 3px bar does the finding instead — see the rule itself for why.)
-   MONO AND SENTENCE CASE, which is the one departure from that style. A library name is an identifier you
-   would type into an `include`, so mono is the honest register — and `text-transform: uppercase` turns
-   `BloodPressureControlScreeningDemo` into a 33-character all-caps run that reads as a smear where the
-   camel case reads as a name. Weight 500 is the ceiling: DM Mono ships nothing above it. */
-/* TWO LABELS, TWO ROLES, AND THEY WERE ONE DECLARATION UNTIL THE CARD LANDED.
-   `.mw-defs-lib-title` and `.mw-spec-mark` shared a rule for one afternoon, on the argument that a library
-   and `Retrieves` are the same thing — a subdivision of a card. Making a library a CARD retires that
-   argument: a library is now a SECTION, named from the ground, while `Retrieves` / `Parameters` are still
-   subdivisions inside one. Same type, deliberately — both are mono identifiers-or-labels at the same step —
+   THE MARK. A label at 12px neutral is correct and unfindable: "you scroll through these big sections on definitions, then get to this small heading and miss it". A BAND fixes the finding and breaks the ranking: a filled full-bleed row out-shouts a section, so L2 reads as the parent of L1. With L1 carrying a card and a card header, the level below takes the micro, tracked label: a MARK rather than a heading. It has no accent: the 3px bar does the finding instead (see the rule itself for why).
+   MONO AND SENTENCE CASE, which is the one departure from that style. A library name is an identifier you would type into an `include`, so mono is the honest register — and `text-transform: uppercase` turns `BloodPressureControlScreeningDemo` into a 33-character all-caps run that reads as a smear where the camel case reads as a name. Weight 500 is the ceiling: DM Mono ships nothing above it. */
+/* TWO LABELS, TWO ROLES. A library is a SECTION, named from the ground, while `Retrieves` / `Parameters` are subdivisions inside a card, so `.mw-defs-lib-title` and `.mw-spec-mark` are declared apart. Same type, deliberately — both are mono identifiers-or-labels at the same step —
    but they diverge where the roles do, so they are declared apart with the difference stated:
      GROUND LABEL (`.mw-defs-lib-title`) — names the card BELOW it. Primary ink; no trailing bar, because
        the card's own edge is the boundary and a bar on the ground would draw a line to nothing.
@@ -2245,28 +2011,20 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    THE TRAILING RULE is what makes a subdivision look like one: the label NAMES the division and the bar
    DRAWS it, running out to the card's right edge (hence the negative margin — it cancels `--spec-pad-x` by
    name, so it stays on the edge if the card is re-padded). Chosen over a bled rule ABOVE the label, which
-   echoed the card header's own rule one step weaker; and over a filled band, withdrawn
-   because a fill out-ranks the card containing it. `align-items: center` rather than `baseline`: the bar is
+   echoed the card header's own rule one step weaker; and not a filled band, because a fill out-ranks the card containing it. `align-items: center` rather than `baseline`: the bar is
    a graphic, not a word, so it centres on the label's box.
-   NO ACCENT. Lava made
-   `ExampleMeasure` the most eye-catching thing in its card — louder than `Initial Population`,
-   which is what the reader came for. The loudest signal in the document was spent on PLUMBING, the same
-   objection that took a 21px serif off the library head, arriving by colour. Accent returns to what
-   `design-system.md` section 2 reserves it for: SELECTION and the primary CTA. The rule this hands back is
+   NO ACCENT. Lava would make `ExampleMeasure` the most eye-catching thing in its card — louder than `Initial Population`, which is what the reader came for. The loudest signal in the document would be spent on PLUMBING, the same objection that rules out a 21px serif on the library head, arriving by colour. Accent stays with what `design-system.md` section 2 reserves it for: SELECTION and the primary CTA. The rule this hands back is
    that FINDABILITY IS NOT IMPORTANCE — reach for structure before reaching for the accent. */
 .mw-spec-mark { font-family: var(--f-mono); font-size: 11px; font-weight: 500;
   letter-spacing: .04em; color: var(--tink-2); display: flex; align-items: center; gap: 10px;
   margin-right: calc(-1 * var(--spec-pad-x)); }
-/* 3px, UP FROM A 1px HAIRLINE. At hairline weight the rule was the same object as the forty
-   `border-top`s it was competing with, and it read as a divider rather than as the subdivision's own mark.
+/* 3px, NOT A 1px HAIRLINE. At hairline weight the rule is the same object as a `border-top`, and it reads as a divider rather than as the subdivision's own mark.
    At 3px it is a BAR — the same weight and the same token family as the change bar in the gutter
    (`.mw-define::before`), which is the document's other 3px rule, so a reader meets one idiom for "this is
    a mark, not a border".
-   `--tline`, ONE STEP UP FROM `--tline-2`. With the label's accent withdrawn, the bar is the
-   whole of what makes a subdivision findable, so it takes the RULE weight rather than the inner-divider
+   `--tline`, ONE STEP UP FROM `--tline-2`. With no accent on the label, the bar is the whole of what makes a subdivision findable, so it takes the RULE weight rather than the inner-divider
    weight. This is the same trade the change bar already records: 3px of `line` reads because it is three
-   times the area of the hairlines around it. Still no fill — a fill out-ranks its own card, which is why
-   the band went in August.
+   times the area of the hairlines around it. Still no fill: a fill out-ranks its own card.
    SQUARE ENDS, no radius, matching the change bar. It runs INTO the card's border by design — the negative
    margin above is what puts it there. If the bar meeting the border reads wrong at this weight, the fix is
    to drop that margin and end it on the content edge instead; the bleed is the part that says the
@@ -2275,8 +2033,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
   content: ""; flex: 1 1 auto; height: 3px; background: var(--tline); }
 /* The eyebrow opens a subdivision, so it carries the space between one and the next. */
 .mw-spec-mark { margin-top: 0; margin-bottom: 8px; }
-/* `.mw-spec-div` IS DELETED: the two subdivisions it spaced — Retrieves and Parameters — are
-   cards now, and `.mw-spec-card + .mw-spec-card` spaces them. */
+/* No `.mw-spec-div` rule: the two subdivisions it spaced — Retrieves and Parameters — are cards, and `.mw-spec-card + .mw-spec-card` spaces them. */
 .mw-defs-lib-head .n, .mw-spec-mark .n { flex: none; font-family: var(--f-mono); font-size: 11px;
   font-weight: 400; color: var(--tink-3); }
 
@@ -2312,8 +2069,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-narr-lede { margin: 8px 0 4px; font-size: 14.5px; line-height: 1.65; color: var(--tink); max-width: 66ch; }
 
 /* SPEC-NARRATIVE-TAGS — "Why this matters" and "How to read it" are SIBLINGS of the lede, not
-   quotations of it. The 2px rail + 12px indent set them one level in, which read as an aside and,
-   next to the Logic/CQL control, collided with it. The micro-label is enough to separate them: it is
+   quotations of it. A 2px rail and 12px indent would set them one level in, which reads as an aside and, next to the Logic/CQL control, collides with it. The micro-label is enough to separate them: it is
    already a distinct typographic register, and a shared left edge is what makes the three lanes read
    as one criterion answering three questions (APP-STABLE-LAYOUT — one reading column). */
 .mw-narr-block { margin: 10px 0 4px; max-width: 68ch; }
@@ -2338,54 +2094,29 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-nongoals li { position: relative; padding-left: 16px; font-size: 13px; line-height: 1.6; color: var(--tink-2); }
 .mw-nongoals li::before { content: "—"; position: absolute; left: 0; color: var(--tink-3); }
 
-/* `.mw-spec-precedence` IS DELETED with its only call site. It styled the statement of which
-   artifact wins when the document and the CQL disagree — a claim ABOUT the document, which is why it was
-   set apart from the prose in the first place, and ultimately why it is no longer printed at all
-   (see `MeasureNarrative`, Overview). The field still travels; nothing renders it. */
+/* No `.mw-spec-precedence` rule: it has no call site. It styled the statement of which artifact wins when the document and the CQL disagree, a claim ABOUT the document, which is why it is set apart from the prose and why nothing prints it (see `MeasureNarrative`, Overview). The field still travels; nothing renders it. */
 
-/* SPEC-EXPLAIN-VIEW / APP-NARRATIVE-PROVENANCE — the EXPLAIN chip: our reading of the logic, marked
+/* APP-NARRATIVE-PROVENANCE — the EXPLAIN chip: our reading of the logic, marked
    once over the run of prose it covers. APP-STYLE-GUIDE (design-system section 8, "EXPLAIN chip").
 
-   THE MARK IS ON THE RUN, NOT ON EVERY FIELD. It was a chip per field, leading each paragraph, so a
-   reader parsed a metadata token before every clinical claim — three or four times per define, forty
-   defines to a page. That design assumed narration was the exception; no shipped Specification instance
-   has a single `authored` field, so the mark fired on everything and stopped being a mark. Adjacent
-   fields of one provenance now share one chip, and `authored` prose falls outside the run with its
-   byline instead. The Explain toggle gets a legible job out of the same change: it removes labelled
-   groups rather than a sprinkle of tokens.
+   THE MARK IS ON THE RUN, NOT ON EVERY FIELD. A chip per field, leading each paragraph, makes a reader parse a metadata token before every clinical claim — three or four times per define, forty defines to a page. That assumes narration is the exception; no shipped Specification instance has a single `authored` field, so the mark would fire on everything and stop being a mark. Adjacent fields of one provenance share one chip, and `authored` prose falls outside the run with its byline instead. The Explain toggle has a legible job: it removes labelled groups rather than a sprinkle of tokens.
 
-   NO WELL. A filled, bordered container was the first attempt and it lost twice: stacked against the
-   CQL block below it, two framed boxes per define read as competing structure rather than as prose and
-   its code, and on paper the fill either wastes toner or drops out — a specification that has to print
-   cannot put meaning in a background. The chip carries the whole signal and the prose stays on the
-   page's own surface, which is also what keeps the reading column's left edge dead straight.
+   NO WELL. A filled, bordered container loses twice: stacked against the CQL block below it, two framed boxes per define read as competing structure rather than as prose and its code, and on paper the fill either wastes toner or drops out — a specification that has to print cannot put meaning in a background. The chip carries the whole signal and the prose stays on the page's own surface, which is also what keeps the reading column's left edge dead straight.
 
-   NEUTRAL. Whose words a sentence is, is not a state of the measure, so nothing here borrows
-   good/info/warn/crit and nothing competes with the metric pill inches away — the fill is `--texpl-w`,
-   a translucent tint of ink, and the toolbar toggle that turns these runs on wears the same one. */
+   NEUTRAL. Whose words a sentence is, is not a state of the measure, so nothing here borrows good/info/warn/crit and nothing competes with the metric pill inches away — the fill is `--texpl-w`, a translucent tint of ink, and the toolbar toggle that turns these runs on wears the same one. */
 .mw-narr-run { margin: 12px 0 8px; }
 .mw-narr-run > :last-child { margin-bottom: 0; }
 /* THE AUTHOR'S WORDS ARE DARKER. Interpreted prose stays at `ink-2`, authored prose takes full `--tink` —
    a hierarchy that needs no legend, costs no chrome and prints. `display: contents` because this is a
    STYLING HOOK, not a container: it must not put a box, a margin or a second structure in the reading
-   column. Invisible on today's corpus (zero authored fields) and correct the moment Accept produces one. */
+   column. Invisible on the current corpus (zero authored fields) and correct the moment Accept produces one. */
 .mw-narr-authored { display: contents; }
 .mw-spec .mw-narr-authored > p, .mw-spec .mw-narr-authored .mw-narr-block > p { color: var(--tink); }
 
-/* THE RUN SIGNS ITSELF, IT IS NOT LABELLED (trial — supersedes the EXPLAIN chip that led
-   each run). The chip's problem was never its styling: it marked ~100% of the prose, because no shipped
-   instance has a single `authored` field, and a mark that fires on everything is a letterhead. It was
-   also ASYMMETRIC with the thing it contrasts against — interpretation got a bordered token while the
-   author's own words got a quiet em-dash byline, so the two voices spoke two unrelated visual languages
-   and the louder one was the common case.
-   So both voices now sign, in ONE register: `.mw-spec-attrib`'s. A byline is the oldest convention in
-   publishing for "these are someone's words", it sits AFTER the prose where a signature belongs (nothing
-   stands between the reader and the clinical claim any more), it holds the reading rail dead straight,
-   and it prints. WHO on the line, HOW in the tooltip — the same division `Attrib` uses.
-   NOT MONO, NOT UPPERCASE, NO FILL, NO BORDER: every one of those said "metadata token about this
-   paragraph". A signature is prose about prose, so it is set in the reading face. */
-/* The label is the mark's accessible name and its tooltip; it is not drawn, because drawing it is what
-   this replaced. Standard visually-hidden: still in the a11y tree, no box on the page. */
+/* THE RUN SIGNS ITSELF, IT IS NOT LABELLED (trial). A chip marks ~100% of the prose, because no shipped instance has a single `authored` field, and a mark that fires on everything is a letterhead. It is also ASYMMETRIC with what it contrasts against: interpretation gets a bordered token while the author's own words get a quiet em-dash byline, so the two voices speak two unrelated visual languages, and the louder one is the common case.
+   So both voices sign, in ONE register: `.mw-spec-attrib`'s. A byline is the oldest convention in publishing for "these are someone's words", it sits AFTER the prose where a signature belongs (nothing stands between the reader and the clinical claim), it holds the reading rail dead straight, and it prints. WHO on the line, HOW in the tooltip — the same division `Attrib` uses.
+   NOT MONO, NOT UPPERCASE, NO FILL, NO BORDER: every one of those would say "metadata token about this paragraph". A signature is prose about prose, so it is set in the reading face. */
+/* The label is the mark's accessible name and its tooltip; it is not drawn: a drawn label is the chip this replaces. Standard visually-hidden: still in the a11y tree, no box on the page. */
 
 /* SPEC-MEASURE-METADATA — attribution for prose quoted from its author.
    NOT a chip. The Narrative chip marks the exceptional case a reader must not miss; an attribution is
@@ -2440,25 +2171,15 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 @media (prefers-reduced-motion: reduce) { .mw * { transition: none !important; animation: none !important; } }
 
 
-/* SPEC-LIBRARY-DENSITY — Compact / Verbose, per library, from a toolbar that surfaces on hover.
+/* Compact / Verbose, per library, from a toolbar that surfaces on hover.
    Same idiom as the criterion cell's action bar (`.mw-cell-actions`): absolutely positioned so it
    never reflows the reading column (APP-STABLE-LAYOUT), invisible until the section is under the
    pointer, and pinned to the library's own heading so there is no doubt what it governs. Text rather
    than icons — there is no glyph for "verbose" a reader would guess right, and a control whose
    meaning has to be discovered by clicking is not a control. */
-/* NO BAND, AND NO STICKINESS (both tried and withdrawn). A `--panel-2` fill bled to the
-   paper's edge did make the boundary unmissable, and it made the library read as the parent of the section
-   containing it — "it's so strong it looks like the L1 items should be its children". A fill also had to be
-   sticky to earn its keep, and sticky is the part that cannot be had without one.
-   ALL OF THAT IS SETTLED BY THE CARD. The band, the accent and the trailing bar were three
-   attempts at one job — telling a scrolling reader they had reached the next library — and each was a
-   label trying to out-rank the card it sat inside. The library IS the card now, so the boundary is an edge
-   and the name is simply that card's header. Sticky is still absent and still costs nothing: a card edge
-   does not need to persist to be noticed.
-   THIS IS THE CARD HEADER, and it is the same object as `.mw-spec-sec-head` used to be — bled to the card's
-   edges and ruled underneath, so the boundary is an area a reader cannot scroll past rather than a label they
-   can. It keeps a `min-height`: it IS the collapse control, and at a 13px label the row's own height is what
-   keeps the target comfortable rather than the type. */
+/* NO BAND, AND NO STICKINESS. A `--panel-2` fill bled to the paper's edge makes the boundary unmissable, and it makes the library read as the parent of the section containing it — "it's so strong it looks like the L1 items should be its children". A fill would also have to be sticky to earn its keep, and sticky is the part that cannot be had without one.
+   THE CARD SETTLES IT. The library is a card, so the boundary is an edge and the name is simply that card's header. Sticky is absent, and costs nothing to leave out: a card edge does not need to persist to be noticed.
+   THIS IS THE CARD HEADER, the same object as `.mw-spec-sec-head` — bled to the card's edges and ruled underneath, so the boundary is an area a reader cannot scroll past rather than a label they can. It keeps a `min-height`: it IS the collapse control, and at a 13px label the row's own height is what keeps the target comfortable rather than the type. */
 /* Geometry shared with `.mw-spec-card-head`; see that rule. `flex: 1` on the toggle is what gives a long
    library name the row to itself so it ellipsises rather than pushing the count off the card. */
 /* APP-SPEC-COLLAPSE — the library heading IS the collapse control, the same idiom as a top-level
@@ -2467,16 +2188,10 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    resting state says "control" — a `.mw-seg-btn`-style affordance on every library would put a row of
    chrome down the document's left edge, which is the reading column APP-STABLE-LAYOUT protects.
    The count stays OUTSIDE the button: it is a fact about the group, not part of the target. */
-/* THE CARET HANGS IN THE GUTTER and the NAME SITS ON THE CONTENT EDGE. The pull-plus-gap
-   version of this put the label 7px right of every name on the page — measured — because the pull has to
-   equal caret + gap exactly and `-19px` against a 13px caret and a 7px gap is one off. Out of flow it
-   cannot drift: the button starts where the paragraphs start, and the caret is placed in the shared
+/* THE CARET HANGS IN THE GUTTER and the NAME SITS ON THE CONTENT EDGE. A pull-plus-gap version puts the label off the content edge, because the pull has to equal caret + gap exactly: `-19px` against a 13px caret and a 7px gap is one off. Out of flow it cannot drift: the button starts where the paragraphs start, and the caret is placed in the shared
    `-16px` column (see `.mw-spec-caret`). The button still OWNS the caret, so the whole label plus its
    caret remains one hit target. */
-/* `position: static` on the toggle, and the caret's gutter offset, are declared with `.mw-spec-card-toggle`.
-   Recording the bug they fixed, because it is invisible once right: the toggle was `position: relative`, so
-   the caret sat 16px left of the BUTTON rather than in the header's gutter — and during the pass when this
-   label lived on the ground with no padding to borrow, that put it outside the card entirely. */
+/* `position: static` on the toggle, and the caret's gutter offset, are declared with `.mw-spec-card-toggle`. The toggle must not be `position: relative`: the caret would sit 16px left of the BUTTON rather than in the header's gutter, and with the label on the ground, with no padding to borrow, it lands outside the card entirely. */
 .mw-lib-actions { position: absolute; top: -6px; right: 0; display: flex; gap: 2px; padding: 3px;
   background: var(--panel); border: 1px solid var(--tline); border-radius: 9px;
   box-shadow: var(--tshadow); opacity: 0; transform: translateY(3px);
@@ -2498,19 +2213,10 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    read. Functions keep the compact `.mw-defrow` treatment — they are machinery, and a library that
    declares 251 overloads of ToString must not out-weigh the logic above it. */
 /* Padding and the bleed that cancels it are CONSTANT — hover and selection paint, they never resize.
-   Anything conditional here (the old rule added padding on `.selected` only) re-indents every line of
+   Anything conditional here (padding added only on `.selected`, say) re-indents every line of
    the section under the reader on click, and drags the separator rule sideways with it. */
-/* 9px / 7px, was 14px / 4px with a collapsed-only 10px bottom (tightened). A COLLAPSED ROW IS
-   A LIST ROW, and it was carrying section padding: 48px of pitch for 24px of content, which over a
-   251-declaration library is ~2,000px of nothing. The collapsed-only override is gone with it — a row is
-   now one height open or shut, so toggling no longer moves the heading a few pixels under the pointer
-   that just pressed it. Not tighter than this: these sections expand IN PLACE, and a row that is snug
-   shut is cramped open. */
-/* NO RULE BETWEEN SECTIONS. Every define carried a `border-top`, which put a hairline between
-   each define and the next down the whole card — and with the eyebrow now drawing a rule of its own at each
-   subdivision, the document had two rules of the SAME weight (`--tline-2`) doing different jobs: one
-   marking a subdivision, forty marking nothing but adjacency. The one that means something stays. Spacing
-   and the change-bar gutter separate one section from the next, which is what they were already doing. */
+/* 9px / 7px. A COLLAPSED ROW IS A LIST ROW: section padding on a shut row is 48px of pitch for 24px of content, which over a 251-declaration library is ~2,000px of nothing. A row is one height open or shut, with no collapsed-only padding, so toggling does not move the heading a few pixels under the pointer that just pressed it. Not tighter than this: these sections expand IN PLACE, and a row that is snug shut is cramped open. */
+/* NO RULE BETWEEN SECTIONS. A `border-top` on every define would put a hairline between each define and the next down the whole card. With the eyebrow drawing a rule of its own at each subdivision, the document would have two rules of the SAME weight (`--tline-2`) doing different jobs: one marking a subdivision, forty marking nothing but adjacency. The one that means something stays. Spacing and the change-bar gutter separate one section from the next. */
 .mw-define { position: relative; padding: 9px 12px 7px 14px; margin: 0 -12px 0 -14px; }
 /* APP-SPEC-CELLS — a define carries the same action bar a population criterion does, on the same
    hover/selected trigger. `.mw-define` is `position: relative` above, which is what anchors it. */
@@ -2519,9 +2225,8 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 /* APP-LOGIC-VIEW / APP-STYLE-GUIDE (design-system section 6, "Selection in the reading document")
    — neither hover nor selection fills. Both are the SAME margin bar, told apart by colour: the hairline
    `line` for the hovered candidate, accent for the selected section (see `.mw-spec-cell::before` for why
-   the candidate is a rule weight rather than an ink). A wash under the selected section stayed
-   painted for as long as the selection lasted — on a page of prose, a coloured panel behind the sentence
-   someone is reading — and a hover fill repainted the document under the pointer on the way there.
+   the candidate is a rule weight rather than an ink). A wash under the selected section would stay painted for as long as the selection lasted — on a page of prose, a coloured panel behind the sentence
+   someone is reading — and a hover fill would repaint the document under the pointer on the way there.
    The bar sits OUTSIDE the section's own bleed (-6px), in the paper's left margin, on the same vertical
    line as `.mw-spec-cell::before`: the idiom a reader knows from a change bar in a redlined spec. */
 .mw-define::before { content: ""; position: absolute; left: -6px; top: 10px; bottom: 6px;
@@ -2532,11 +2237,10 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-define.eliminated { opacity: .62; }
 /* APP-STYLE-GUIDE — ONE LEFT EDGE FOR NAMES, A RIGHT RAIL FOR STATUS.
    The row reads name → signature → provenance, then a rail carrying what the row IS and what it DID.
-   THE KIND CHIP MOVED RIGHT, and that is what buys the alignment: leading, it sat between the caret and
-   the name, so the name started 45px inside the content edge AND stepped 6px sideways by kind (`pop`/`def`
-   chips are 32.3px, `fn`/`rd` 26.2px), giving a jagged scan column in any library with a mixed kind set.
-   Right-aligned and min-width'd it becomes a straight column of its own, which is more scannable than the
-   ragged one it replaced. It DOES diverge from the Outline, where kind chips lead — accepted: that pane is
+   THE KIND CHIP SITS ON THE RIGHT, and that is what buys the alignment: leading, it sits between the caret and
+   the name, so the name starts 45px inside the content edge AND steps 6px sideways by kind (`pop`/`def`
+   chips are 32.3px, `fn`/`rd` 26.2px), a jagged scan column in any library with a mixed kind set.
+   Right-aligned and min-width'd it is a straight column of its own, which is more scannable than a ragged one. It DOES diverge from the Outline, where kind chips lead — accepted: that pane is
    a narrow list where the left edge is the only place chrome can go, while the document is a wide reading
    column whose left edge belongs to content. */
 .mw-define-head { display: flex; align-items: baseline; gap: 9px; }
@@ -2550,12 +2254,8 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    so the serif titles keep one dead-straight left edge down the whole library — a caret in flow would
    indent every heading by its own width to buy an affordance most readers never press. It is quiet at
    rest and only takes ink on hover of the section, which is where the reader already is.
-   COLLAPSED, THE HEADING ROW IS THE WHOLE SECTION: name, kind chip and figure, which is exactly the
-   catalogue line the retired Compact density printed (`SPEC-LIBRARY-DENSITY`). */
-/* OUT OF FLOW, so the NAME starts on the content edge. In flow the caret spent its own
-   width plus the row gap, which put every define's name 25px right of the paragraph belonging to it —
-   and the kind chip used to add another 45 on top. The document then had four left edges and the one
-   element a reader scans was on none of them.
+   COLLAPSED, THE HEADING ROW IS THE WHOLE SECTION: name, kind chip and figure, one catalogue line. */
+/* OUT OF FLOW, so the NAME starts on the content edge. In flow the caret would spend its own width plus the row gap, which puts every define's name 25px right of the paragraph belonging to it — and a kind chip on the left would add another 45 on top. The document would then have four left edges, and the one element a reader scans would be on none of them.
    It cannot simply be pulled further left instead: the section's change bar (`.mw-define::before`) sits
    6px outside the padding box, and a caret pulled far enough to put the name on the edge would have the
    accent bar struck through it. Absolute keeps the caret exactly where it is — in the gutter, just right
@@ -2563,33 +2263,27 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    `top` is the row's own padding-top and `height` the title's line box, so the glyph centres on the name;
    both numbers are the ones declared above, and this rule has to move if they do. */
 /* `height` IS THE TITLE'S LINE BOX: 19px at the inherited 1.5 = 28.5px. The caret centres on that box, so
-   it tracks the heading's size and has to be re-derived whenever the document's one heading style changes —
-   it has already moved twice today (24px at 16px type, 31.5px at 21px). */
+   it tracks the heading's size and has to be re-derived whenever the document's one heading style changes (24px at 16px type, 31.5px at 21px). */
 .mw-define-toggle { position: absolute; left: -2px; top: 9px; width: 16px; height: 28.5px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
   color: transparent; transition: color .12s ease; }
 .mw-define:hover .mw-define-toggle, .mw-define.collapsed .mw-define-toggle,
 .mw-define-toggle:focus-visible { color: var(--tink-3); }
 .mw-define-toggle:hover { color: var(--tacc); }
-/* NO COLLAPSED-ONLY PADDING (removed). It existed because the base padding was section-sized
-   and a shut section's bottom padding was dead space; with the base now list-sized, the two states want
-   the same value — and a row that changed height on toggle moved the heading a few pixels under the
-   pointer that had just pressed it. */
+/* NO COLLAPSED-ONLY PADDING. The two states want the same value: the base padding is list-sized, and a row that changed height on toggle would move the heading a few pixels under the pointer that had just pressed it. */
 /* APP-STYLE-GUIDE — QUALIFIED BY `.mw-spec` ON PURPOSE, and it is a fix rather than a flourish.
    This is an `h3` inside the document, so `.mw-spec h3` (a class AND a type: 0,1,1) outranked
    `.mw-define-title` (0,1,0) and handed every define heading the DOCUMENT's heading margins —
-   `16px 0 4px`. The declared `margin: 0` here lost silently, and the visible damage was not the space:
-   the row is `display: flex; align-items: baseline`, so a 24px title in a 44px outer box made the flex
-   LINE 44px tall, and the kind chip — `align-self: center`, centred on the line — floated ~6px above
-   the name it labels. Every `DEF` / `FN` pill in the document sat high, and the row reserved 20px of
-   vertical space nothing drew in.
+   `16px 0 4px`. The declared `margin: 0` here would lose silently, and the visible damage would not be the space:
+   the row is `display: flex; align-items: baseline`, so a 24px title in a 44px outer box makes the flex
+   LINE 44px tall, and the kind chip — `align-self: center`, centred on the line — floats ~6px above
+   the name it labels. Every `DEF` / `FN` pill in the document would sit high, and the row would reserve 20px of vertical space nothing draws in.
    The trap is the one the style guide already records for `.mw-el-metric`: a component's own rule
    losing to a generic descendant selector at higher specificity, where nothing fails loudly and the
    dead declaration still reads as if it were in force. Match the ancestor and the component wins.
 
-   ONLY THE MARGIN IS DECLARED NOW. The face, size and weight are the document's one heading
-   style, which this `h3` gets for free — a define's name is a heading like any other, and its own copy of
-   the type (16px serif 400) was the thing that made it read as a caption over the prose beneath it rather
+   ONLY THE MARGIN IS DECLARED. The face, size and weight are the document's one heading
+   style, which this `h3` gets for free — a define's name is a heading like any other, and its own copy of the type (16px serif 400) would make it read as a caption over the prose beneath it rather
    than as the name of the entry. The margin still has to be stated here, and still has to be qualified,
    for the reason above: it is the one declaration a define needs that the document's rule would
    otherwise supply wrongly. */
@@ -2604,33 +2298,26 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    is presentational only: it hides nothing the open section does not state in full, and it makes no claim
    about the data (trimming the types out of the string here would be the client-side derivation
    `coding-standards.md` forbids — the row wants the ELM's operand NAMES, which is a parser change). */
-/* RE-SIZED FOR THE 21px NAME: `caption` 11px → `meta` 12px. These numbers were chosen
-   against a 16px title, and a signature two steps below its name reads as a footnote to it rather than as
-   part of it. One step down from the name's register is the relationship this wants. */
+/* RE-SIZED FOR THE 21px NAME: `meta` 12px. A signature at `caption` reads as a footnote to the name rather than as part of it; one step down from the name's register is the relationship this wants. */
 .mw-define-head .sig { font-family: var(--f-mono); font-size: 12px; color: var(--tink-3);
   max-width: 26ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* When narration renamed it, the define's real name still has to be visible — it is the name the
    CQL, the run counts and every other tool use. */
-/* SPEC-ELEMENT-GLOSS — the one-line gloss under a define's name. PROSE, so it is set in the reading
-   face rather than the mono this slot used when it held the machine name: it is a sentence a clinician
+/* SPEC-ELEMENT-GLOSS — the one-line gloss under a define's name. PROSE, so it is set in the reading face: it is a sentence a clinician
    reads, not an identifier. Quiet (`ink-3`) because the heading above it is the subject and this is the
    aside. */
-/* 13px `control`, up from an off-scale 12.5px. It sits directly under the name and was sized
-   against a 16px one; under 21px it read as fine print rather than as the line that qualifies the
-   heading. `control` is also an actual step on the scale, which 12.5 never was. */
+/* 13px `control`, an actual step on the scale (12.5 is not). It sits directly under the name, and at 21px it reads as the line that qualifies the heading rather than as fine print. */
 .mw-define-gloss { font-family: var(--f-ui); font-size: 13px; line-height: 1.45;
   color: var(--tink-3); margin-top: 3px; }
-/* 9.5px `micro`, up from an off-scale 9px — and now IDENTICAL to `.mw-spec-kind`, which shares this row.
+/* 9.5px `micro`, IDENTICAL to `.mw-spec-kind`, which shares this row.
    Two badges on one line at 9 and 9.5 is a difference nobody can read as intentional. */
 .mw-define-unused { font-family: var(--f-mono); font-size: 9.5px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .08em; color: var(--tink-3); border: 1px solid var(--tline); border-radius: 999px;
   padding: 1px 6px; }
 
 /* SPEC-CQL-VIEW / APP-STYLE-GUIDE — the CQL block, labelled the way a fenced code block is.
-   There WAS a tab strip above this box, from when Logic and CQL were two panes to switch between.
-   With one pane a tab is a heading for a section of one: it read as document structure that does not
-   exist, and it cost a whole row of chrome per define on a page that renders one per define. The
-   language now sits inside the block, top-right, quiet — the convention every reader already knows
+   There is no tab strip above this box: Logic and CQL are not two panes to switch between.
+   With one pane a tab is a heading for a section of one: it reads as document structure that does not exist, and it costs a whole row of chrome per define on a page that renders one per define. The language sits inside the block, top-right, quiet — the convention every reader already knows
    from markdown, so it names the block without announcing it.
 
    NO overflow here. The reference lens is positioned inside this box, and any `overflow` value other
@@ -2648,15 +2335,11 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 /* SPEC-CQL-VIEW — CLOSED, the block is a single quiet row and takes no card treatment: forty of them
    down a clinical page would be forty boxes holding nothing. The card arrives with the content. */
 .mw-cqlblock:not(.open) { background: none; border-color: transparent; }
-/* THE CONTROL DOES NOT MOVE WHEN IT OPENS. It used to: the card's `10px 14px` padding and its
-   1px border arrived with the content, so the word a reader had just clicked jumped 15px right and 7px
-   down, out from under the pointer. A disclosure that displaces its own trigger makes the second click
+/* THE CONTROL DOES NOT MOVE WHEN IT OPENS. If the card's `10px 14px` padding and its 1px border arrived with the content, the word a reader had just clicked would jump 15px right and 7px down, out from under the pointer. A disclosure that displaces its own trigger makes the second click
    land somewhere else, and on a page of forty of them it reads as the page lurching.
    So the CARD BLEEDS OUTWARD instead of insetting its contents: `-15px` of margin against `1px` of border
    plus `14px` of padding puts the interior back at exactly the reading rail, where the closed row already
-   sat. The toggle's own padding is identical in both states. What the border now aligns with is the
-   criterion's own bled edge rather than the prose rail — which is free, because the EXPLAIN chip whose pill
-   edge used to line up with this border is retired. */
+   sat. The toggle's own padding is identical in both states. What the border aligns with is the criterion's own bled edge rather than the prose rail — which costs nothing, because no EXPLAIN chip's pill edge lines up with this border. */
 .mw-cqlblock.open { margin-left: -15px; margin-right: -15px; padding: 0 14px 12px; }
 /* The disclosure. It is a real control and reads as one, but at the meta size and in ink-3 — the CQL
    is the authority and it is still not what most readers of this page came for, so the row that opens
@@ -2668,8 +2351,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 /* NO `.open` OVERRIDE HERE. The padding is the card's top breathing room when open and the row's own when
    closed, and it is the same number in both — which is what keeps the trigger still. */
 .mw-cqlblock-toggle:hover { color: var(--tink-2); }
-/* ONE LABEL, NOT A LABEL PLUS A HINT. The row read `CQL Show the logic` — a mono micro-tag and a
-   sentence fragment saying the same thing twice, in two registers. `Show CQL` names the thing and the verb
+/* ONE LABEL, NOT A LABEL PLUS A HINT. A row reading `CQL Show the logic` puts a mono micro-tag and a sentence fragment saying the same thing twice, in two registers. `Show CQL` names the thing and the verb
    in two words, so the mono tag has nothing left to add. */
 .mw-cqlblock-toggle .hint { font-family: var(--f-ui); font-size: 11px; }
 /* Keep the first line clear of the label. Applied to the whole block rather than the first line so
@@ -2690,7 +2372,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-cql-edit:hover:not(:disabled) { color: var(--tacc); border-color: color-mix(in srgb, var(--tacc) 45%, var(--tline)); }
 .mw-cql-edit:disabled { cursor: default; }
 .mw-cqlblock:hover .mw-cql-edit:disabled, .mw-defrow-body:hover .mw-cql-edit:disabled { opacity: .55; }
-/* The block while its editor is open: the disclosure row is gone, so the card keeps its top breathing room. */
+/* The block while its editor is open has no disclosure row, so the card keeps its top breathing room. */
 .mw-cqlblock.editing { padding-top: 10px; border-color: var(--tacc); }
 .mw-defedit { border: 1px solid var(--tline); border-radius: 6px; overflow: hidden; background: var(--panel); }
 .mw-defedit-bar { display: flex; align-items: center; gap: 10px; padding: 4px 8px 4px 12px; border-bottom: 1px solid var(--tline-2);
@@ -2701,15 +2383,13 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-defedit-bar button:hover { border-color: var(--tacc); color: var(--tacc); }
 
 /* The nav's quiet trailing line: an empty state ("None read.") or a footnote explaining what a
-   section is for. It had NO RULE AT ALL — seven call sites each carried `style={{ padding }}` inline,
-   in two different values, so the one class meant two things and its typography was whatever the nav
-   happened to inherit. Padding is the only thing that legitimately differed, so it is the modifier:
+   section is for. Padding is the only thing that legitimately differs between its uses, so it is the modifier:
    base is the tight empty-state line, `.section` the roomier note under a whole group. */
 .mw-nav-foot { font-family: var(--f-ui); font-size: 11px; line-height: 1.5; color: var(--tink-3);
   padding: 2px 10px; }
 .mw-nav-foot.section { padding: 8px 10px; }
 
-/* SPEC-INDEX-TREE — the logic index: one line per define reached, to the leaf.
+/* SPEC-NAV-COMPOSITION — the logic index: one line per define reached, to the leaf.
    Reference matter, so it is quieter than the narrated prose above it: `meta` size, ink-2, 14px per
    level. The qualifier is a mono micro-label — the one sanctioned chrome use of mono
    (design-system section 1) — because it reads as a typographic mark rather than a word. The
@@ -2750,7 +2430,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    alone is what lets it be a real surface — readable width, readable type, pressable controls. */
 /* INLINE, not inline-flex: this sits inside <pre>, where anything that establishes its own
    formatting context breaks the preformatted flow and inserts line breaks the source does
-   not have. NO `position: relative` any more — the lens is portaled out and placed from a measurement of
+   not have. NO `position: relative` — the lens is portaled out and placed from a measurement of
    this element's viewport rect (`useRefLens`), so a containing block here would anchor nothing. What the
    wrapper is still for is being the thing that gets measured, and being what a press-outside test asks
    about. */
@@ -2761,9 +2441,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    fill, no pointer surface of its own, because the box inside it is `fixed` and each lens places itself. */
 .mw-lens-layer { position: absolute; top: 0; left: 0; }
 
-/* SIZED FOR THE INSPECTOR, not for a sentence. It began as a 190px tooltip, became a 600×340 panel sized
-   for charts, and now holds the inspector's own three tabs (`SPEC-REF-LENS`) — so the floors
-   are the pane's content floors: a chart narrower than ~560px of content box cannot carry an axis with
+/* SIZED FOR THE INSPECTOR, not for a sentence. It holds the inspector's own three tabs (`SPEC-REF-LENS`), so the floors are the pane's content floors: a chart narrower than ~560px of content box cannot carry an axis with
    readable labels, and one shorter than ~200px of plot area reports a shape rather than a value.
 
    THE HEIGHT IS A FLOOR, NOT A FIXED SIZE. `min-height` with a flexing body means the box is stable at
@@ -2772,12 +2450,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    with three tabs of real distributions the natural height can exceed any screen, and a popover that runs
    off the bottom of the window is one whose lower half does not exist.
 
-   FIXED, AND CLIPPED BY NOTHING. It used to be `position: absolute` inside its anchor, which
-   put it inside `.mw-doc` — a scrollport — where nothing escapes the ancestor's clip whatever its z-index,
-   and the inspector pane sitting just beyond that edge made an overhanging lens read as sliding under the
-   pane. That cost a measured left-clamp, which only ever handled the horizontal axis; once the box grew to
-   hold the pane's tabs the vertical case stopped being theoretical. It now renders into `.mw-lens-layer`
-   and `useRefLens` writes both coordinates from a measurement of the anchor against the viewport, flipping
+   FIXED, AND CLIPPED BY NOTHING. Not `position: absolute` inside its anchor: that would put it inside `.mw-doc` — a scrollport — where nothing escapes the ancestor's clip whatever its z-index, and the inspector pane sitting just beyond that edge would make an overhanging lens read as sliding under the pane. A horizontal-only clamp cannot handle the vertical case, and the box is tall enough to hold the pane's tabs, so the vertical case is real. It renders into `.mw-lens-layer`, and `useRefLens` writes both coordinates from a measurement of the anchor against the viewport, flipping
    above the anchor when there is more room there. So it may freely exceed the reading column: the column
    is narrow for prose, and the evidence for a claim is not prose. */
 .mw-reflens { position: fixed; z-index: 40;
@@ -2826,11 +2499,9 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
   text-transform: uppercase; letter-spacing: .08em; color: var(--tink-3); }
 .mw-reflens-type { font-family: var(--f-mono); font-size: 11.5px; color: var(--tink-2); }
 .mw-reflens-note { font-size: 12px; color: var(--tink-3); }
-/* The evidence region — now the TERMINOLOGY lens's alone. Every other reference's lens body is the
+/* The evidence region is the TERMINOLOGY lens's alone. Every other reference's lens body is the
    inspector's `.mw-wb-body` (`SPEC-REF-LENS`), because a define and a read are things the pane
-   can be scoped to and a value set is not. `-sites` / `-sitelist` / `-eyebrow` went with `ReadLensBody`,
-   and `-pending` went with `LensPending`: the notice it styled told a reader to pin a lens for cuts the
-   lens now holds. */
+   can be scoped to and a value set is not. No `-sites`, `-sitelist`, `-eyebrow` or `-pending` rules: the lens holds its own cuts, so no notice tells a reader to pin one. */
 .mw-reflens-body { flex: 1; display: flex; flex-direction: column; gap: 9px; }
 
 /* SPEC-REF-LENS — the lens's two verbs, in the header's top-right corner.
@@ -2838,8 +2509,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    Icon-only ghost buttons — at this size a labelled chip reads as content rather than as chrome.
 
    SPECIFICITY: the global `.mw button` reset is (0,1,1) and would blank these buttons' fill, so the
-   rules are qualified with `.mw` to (0,2,1) — the standing caveat in design-system.md section 6, which
-   has already bitten the pane tabs (`APP-PANE-TABS`). Verified by cascade test, not by screenshot. */
+   rules are qualified with `.mw` to (0,2,1) — the standing caveat in design-system.md section 6, which also applies to the pane tabs (`APP-PANE-TABS`). Verified by cascade test, not by screenshot. */
 .mw-reflens-acts { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
 .mw .mw-reflens-acts button { display: grid; place-items: center; width: 22px; height: 22px;
   border-radius: 6px; color: var(--tink-3);
@@ -2861,16 +2531,9 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    "prose you can press", so they get one treatment and differ only in what opens. Hover firms the
    underline; selected takes the accent, because that reports the pane's scope and is the one state worth
    spending accent on (design-system.md section 6). */
-/* ONE TREATMENT FOR EVERYTHING LENS-ABLE IN PROSE (`SPEC-REF-LENS`). A read, a define and a cited figure
-   are three kinds of inline reference and ONE affordance to a reader — "prose you can press" — so they
-   get one mark. They had drifted: `.mw-defref` drew the dotted `text-decoration` this comment describes
-   while `.mw-readref .ph` drew a SOLID 1px rule via `box-shadow`, so two phrases in one sentence were
-   underlined differently for the same job. The dotted rule wins; the box-shadow copy is deleted.
+/* ONE TREATMENT FOR EVERYTHING LENS-ABLE IN PROSE (`SPEC-REF-LENS`). A read, a define and a cited figure are three kinds of inline reference and ONE affordance to a reader — "prose you can press" — so they share one mark: the dotted underline on `.mw-defref`, `.mw-readref .ph` and `.mw-mref`.
 
-   HOVER FIRMS THE UNDERLINE AND DOES NOT SPEND THE ACCENT (design-system section 2: accent is for
-   selection and the primary CTA). The accent arrives on the OPEN lens and on the pane's current scope,
-   which are the states worth it. The figure keeps its mono/tabular face — it is data — and takes the same
-   underline, because being followable is not a property of the typeface. */
+   HOVER FIRMS THE UNDERLINE AND DOES NOT SPEND THE ACCENT (design-system section 2: accent is for selection and the primary CTA). The accent arrives on the OPEN lens and on the pane's current scope, which are the states worth it. The figure keeps its mono/tabular face — it is data — and takes the same underline, because being followable is not a property of the typeface. */
 .mw .mw-defref, .mw .mw-readref .ph, .mw button.mw-mref {
   font: inherit; color: inherit; padding: 0; text-align: left;
   text-decoration: underline dotted color-mix(in oklch, var(--tink-3) 60%, transparent);
@@ -2910,7 +2573,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
   text-underline-offset: 3px; }
 .mw .cql-link.rd:hover { color: var(--tink); text-decoration: underline solid var(--tink-3); }
 
-/* SPEC-INDEX-TREE — data dependencies. A retrieve is what the logic READS and a value set is what it
+/* SPEC-NAV-COMPOSITION — data dependencies. A retrieve is what the logic READS and a value set is what it
    reads it against; neither is a section in this document, so neither is a link. They are typed
    distinctly from the defines around them because confusing "reads Encounters" with "depends on a
    criterion called Encounters" is exactly the misreading the index exists to prevent. */
@@ -2931,10 +2594,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 
 .mw-dev-table { margin: 8px 0 6px; }
 .mw-dev-tablewrap { overflow-x: auto; }
-/* `checkAgainst` used to render here as "checked against the ELM code literal on line 9". It is
-   AUTHORING metadata — what a lint must diff the rows against — and putting it under a clinical table
-   showed the reader a sentence about our build process, in two words the voice bans. The attribute
-   stays as the checkable contract and now rides on the table's tooltip; the reader-facing half of the
+/* `checkAgainst` is AUTHORING metadata — what a lint must diff the rows against — and putting it under a clinical table would show the reader a sentence about our build process, in two words the voice bans. The attribute is the checkable contract and rides on the table's tooltip; the reader-facing half of the
    same guarantee is the citation on every row. */
 
 /* SPEC-NARRATIVE-DEVICES — the citation. A superscript in the citation idiom readers already know
@@ -2944,11 +2604,9 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw .mw-cite:hover { color: var(--tacc); text-decoration: underline; }
 .mw .mw-cite.on { color: var(--tacc); }
 /* The other end of the citation: the lines the claim is about, and the payoff for the whole device —
-   so it is unmissable. A tinted wash alone lost the race against the syntax palette already in the
-   block, and a reader who clicked a number had to hunt for what had changed.
+   so it is unmissable. A tinted wash alone loses the race against the syntax palette already in the block, so a reader who clicked a number would have to hunt for what had changed.
 
-   NO display change, no border, no padding: `inline-block` here re-flowed the code every time a
-   citation was followed, which defeats the purpose — the reader clicks to find a line and the line
+   NO display change, no border, no padding: `inline-block` here would re-flow the code every time a citation is followed, which defeats the purpose — the reader clicks to find a line and the line
    moves. Everything that carries the emphasis is paint. `clone` keeps the wash and the ring
    continuous where a marked run wraps; the outline is a `box-shadow` rather than a border for the
    same no-reflow reason. The one-shot flash draws the eye to the region on arrival and then gets out
@@ -2967,9 +2625,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    THE PAPER IS THE MEASURE. Prose fills the column it is given and stops where the paper stops, the
    same as every heading, table and code block on the page. There is no per-element `ch` cap.
 
-   There used to be eight, at 62 / 64 / 65 / 66 / 68 / 70 / 72 / 74ch, two of them dead to an
-   identical-specificity rule further down the file. Consolidating them to one number did not fix the
-   thing a reader actually sees: a `ch` cap under a wider paper means every paragraph stops short of
+   Per-element `ch` caps, even consolidated to one number, do not fix the thing a reader actually sees: a `ch` cap under a wider paper means every paragraph stops short of
    the heading above it, so the document has a ragged right edge that tracks nothing in the content —
    headings, tables and CQL run to the margin, sentences do not. Two competing measures on one page
    read as a rendering fault, because that is what it looks like.
@@ -3040,15 +2696,12 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    and `--wb-w` are the same values the grid is built from, and the collapsed/expanded overrides above
    rewrite them, so there is no second declaration of where the column starts.
 
-   IT IS NOT A GRID ITEM, and that is the load-bearing part rather than a style choice. Written as
-   `grid-column: 2; grid-row: 1` it looked right, passed a cascade test, and BROKE THE WHOLE WORKSPACE:
+   IT IS NOT A GRID ITEM, and that is the load-bearing part rather than a style choice. Written as `grid-column: 2; grid-row: 1` it passes a cascade test and still BREAKS THE WHOLE WORKSPACE:
    grid auto-placement flows around an explicitly-placed item, so the three panes — none of which
    declares a column — shifted one track each, putting the document where the inspector goes and
-   wrapping the inspector to a second row. Caught by screenshotting the real stylesheet, which is the
-   only thing that could catch it: jsdom does no layout, so every computed-style assertion still
-   passed. Out of flow, the drawer cannot participate in placement at all.
+   wrapping the inspector to a second row. Only a screenshot of the real stylesheet catches it: jsdom does no layout, so every computed-style assertion still passes. Out of flow, the drawer cannot participate in placement at all.
 
-   The two rejected alternatives, for the record. A FOURTH TRACK resizes the document every time the
+   The two rejected alternatives. A FOURTH TRACK resizes the document every time the
    drawer opens, which is the reflow `APP-STABLE-LAYOUT` forbids and the property the placement was
    chosen for. A CHILD OF `.mw-doc` scrolls away with the prose — a conversation that leaves the screen
    when the reader scrolls is not a drawer, it is a paragraph.
@@ -3104,7 +2757,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
   font-size: 13px; font-weight: 500; color: var(--tink-2); }
 
 /* APP-ASSISTANT-MARKDOWN — the answer's prose, rendered from markdown (`markdown.tsx`) rather than
-   printed as preformatted text. `white-space: pre-wrap` is GONE and its loss is the point: it made
+   printed as preformatted text. Not `white-space: pre-wrap`: it made
    every newline the model happened to type a line break, so a bulleted answer arrived as a column of
    literal hyphens and a table as a wall of pipes. The blocks below are the set the renderer parses and
    the set `assistant/ask.py` advertises to the model — one contract, stated in both places.
@@ -3185,15 +2838,14 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
 .mw-ask-chart .plot .ax { stroke: var(--tline); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .mw-ask-chart .ends { display: flex; justify-content: space-between; gap: 12px; margin: 5px 0 0;
   font-family: var(--f-mono); font-size: 10px; color: var(--tink-3); }
-/* SVC-ANSWER-PROVENANCE — a chart's numbers were TRANSCRIBED by the model, never resolved by the
+/* SVC-ANSWER-PROVENANCE — a chart's numbers are TRANSCRIBED by the model, never resolved by the
    client, so the statement is unconditional. Hueless for the standing reason: whose number a figure is
    is not a state of the measure. */
 .mw-ask-chart .pv { margin-top: 7px; font-size: 10.5px; line-height: 1.45; color: var(--tink-3); }
 
-/* THE TURN IN FLIGHT IS ONE LINE, OVERWRITTEN (`THEME-GLASSBOX`, `APP-STABLE-LAYOUT`).
-   It was a growing list, and the list was the problem: a real answer is a sequence of calls, so by the
-   time the answer landed the reader's own question had been pushed off the top of a drawer that is a
-   third of the column — and four consecutive derivations printed the same phrase four times, which
+/* THE TURN IN FLIGHT IS ONE LINE, OVERWRITTEN (`APP-STABLE-LAYOUT`).
+   A growing list is the problem: a real answer is a sequence of calls, so by the time the answer lands the reader's own question has been pushed off the top of a drawer that is a
+   third of the column — and four consecutive derivations would print the same phrase four times, which
    reads as a stuck loop rather than as work. What is being done is what the reader wants WHILE waiting;
    what was done is an audit, and it belongs to the finished answer (`.mw-ask-thought`), one press away.
    The line is `aria-live` so a screen reader hears the step change without being read the whole log. */
@@ -3201,7 +2853,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
   font-size: 12px; color: var(--tink-2); }
 .mw-ask-thinking .ph[data-failed] { color: var(--tfail); }
 
-/* The same steps, kept: the log the live line overwrote, collapsed beside the sources. */
+/* The same steps, kept: the log the live line overwrites, collapsed beside the sources. */
 .mw-ask-trace { list-style: none; margin: 8px 0 0; padding: 0;
   display: flex; flex-direction: column; gap: 4px; }
 .mw-ask-trace li { display: flex; align-items: center; gap: 8px;
@@ -3242,7 +2894,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
   font-family: var(--f-ui); }
 
 /* The sources trail, collapsed by default: the ADDRESS is what makes an answer reproducible
-   (`SVC-TOOL-ADDRESS`), and a reader who wants it wants all of it, while a reader reading the prose
+   and a reader who wants it wants all of it, while a reader reading the prose
    wants none of it in the way. */
 .mw-ask-sources { margin-top: 10px; }
 .mw .mw-ask-sources summary { cursor: pointer; font-size: 11px; color: var(--tink-3);
@@ -3274,7 +2926,7 @@ button.mw-spine-card:hover { box-shadow: var(--tshadow); }
    because Enter is the real send path and this is its visible restatement. Surface fill + hairline is
    the sanctioned "ordinary action" look (section 6, Buttons).
    `.mw`-qualified because the `.mw button` reset carries `background: none; border: 0` at (0,1,1) and
-   would silently strip both from a bare class — the standing caveat, and the fifth surface to meet it. */
+   would silently strip both from a bare class — the standing caveat, which applies here as it does on the other surfaces. */
 .mw .mw-ask-send { flex: none; padding: 8px 15px; border-radius: 8px;
   background: var(--panel); border: 1px solid var(--tline); color: var(--tink);
   font-family: var(--f-ui); font-size: 13px; font-weight: 600; }

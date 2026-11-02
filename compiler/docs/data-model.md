@@ -106,8 +106,8 @@ instead of a measure meeting it at run time. [docs/decisions/resource-schema.md]
 records the comparison.
 
 `VARIANT` appears in one place: the retrieve function's `parameters MAP<STRING, VARIANT>` argument
-(`BIND-EXPLICIT-PARAMS`). The heterogeneous-choice `VARIANT` encoding is retired
-(`EMIT-SQL-VARIANT-CHOICE`).
+The heterogeneous-choice `VARIANT` encoding is not used; the flat carrier
+(`EMIT-SQL-FLAT-CHOICE`) replaces it.
 
 ### 4.5 Demand-pruned resources — `ARCH-RETRIEVE-PROJECT`, `ARCH-RESOURCE-HANDLE`
 

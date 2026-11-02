@@ -24,7 +24,7 @@ like FHIR's. Keying on the resource type alone would make `Encounter` mean which
 load first, which is the collision `SPEC-ANCHOR` already records for two libraries declaring one define
 name. An uncurated `(model, type)` yields NOTHING rather than a guess.
 
-NOT A PROBE (`SPEC-CLAUSE-PROBE`, rejected). Nothing here evaluates a sub-expression or re-applies a
+NOT A PROBE. Nothing here evaluates a sub-expression or re-applies a
 filter. Every extraction reads values that are already sitting in a materialized relation, which is what
 makes it a report about stored data rather than a second opinion about CQL semantics (`APP-DECOUPLE`).
 """
@@ -144,9 +144,9 @@ EXTRACTORS: dict[str, dict[str, tuple[Element, ...]]] = {
         # emit to carry nested extensions, which is an engine-side question (`APP-DECOUPLE`), not a
         # cleverer accessor here.
         "Patient": (
-            # A NOTE ONLY WHERE THERE IS SOMETHING TO SAY. The line under a cut used to be a uniform
-            # "Read from the Patient binding", which every cut already implies and no reader acts on —
-            # filler in the position a caveat belongs. Marital status gets none for the same reason.
+            # A NOTE ONLY WHERE THERE IS SOMETHING TO SAY. A uniform "Read from the Patient binding" line under
+            # a cut would say what every cut already implies, which no reader acts on — filler in the position a
+            # caveat belongs. Marital status gets none for the same reason.
             _scalar("sex", "gender", "Sex", "{r}.gender",
                     "Administrative gender as recorded, which is not necessarily clinical sex."),
             _scalar("marital", "maritalStatus", "Marital status",

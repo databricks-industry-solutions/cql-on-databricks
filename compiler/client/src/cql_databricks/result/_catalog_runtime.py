@@ -115,7 +115,7 @@ def _result(kept: KeptResult) -> CompletedResult:
 
 
 def _columns(run: SqlRunner, outcomes: Sequence[Outcome]) -> tuple[Outcome, ...]:
-    """RUN-CLIENT-PORTABLE-HANDLE — one bulk column-descriptor read per result schema, not per-table verification.
+    """One bulk column-descriptor read per result schema, not per-table verification.
     A closure reusing results from another schema (an official result, `RUN-CLIENT-RESULT-OWNERSHIP`) reads that
     schema too."""
     columns: dict[tuple[str, str, str], list] = {}
@@ -365,7 +365,7 @@ def request_identity(definitions: Sequence[Definition], targets: Mapping[str, st
 
 @dataclass(frozen=True)
 class CatalogSelection:
-    """RUN-CLIENT-PORTABLE-HANDLE — self-contained descriptors; reads address current result tables.
+    """Self-contained descriptors; reads address current result tables.
 
     RUN-CLIENT-RESULT-IDENTITY — every result's table is named for its definition's fingerprint, in the
     destination or the schema it was reused from, so a reader checks each name without recomputing it.
@@ -415,7 +415,7 @@ class CatalogSelection:
     def completed(cls, session_id: str, destination: tuple[str, str], targets: Mapping[str, str],
                   definitions: Sequence[Definition], outcomes: tuple[Outcome, ...], *,
                   computed_since: datetime | None = None) -> CatalogSelection:
-        """RUN-CLIENT-PORTABLE-HANDLE — return a handle only after all checkpoint writes finish.
+        """Return a handle only after all checkpoint writes finish.
 
         The selection ID moves whenever any result in it is recomputed, here or in the schema it was reused from."""
         selection_id = _hash({"destination": list(destination), "targets": dict(targets),
@@ -426,7 +426,7 @@ class CatalogSelection:
                    datetime.now(timezone.utc), computed_since)
 
     def to_dict(self) -> dict:
-        """RUN-CLIENT-PORTABLE-HANDLE — no tokens, SQL, or lookup-table foreign keys."""
+        """No tokens, SQL, or lookup-table foreign keys."""
         return {"format": FORMAT, "session_id": self.session_id, "selection_id": self.selection_id,
                 "destination": list(self.destination), "targets": dict(self.targets),
                 "definitions": [asdict(d) for d in self.definitions],
@@ -439,7 +439,7 @@ class CatalogSelection:
                 "computed_since": self.computed_since.isoformat() if self.computed_since else None}
 
     def to_json(self) -> str:
-        """RUN-CLIENT-PORTABLE-HANDLE — canonical, portable serialization."""
+        """Canonical, portable serialization."""
         return _json(self.to_dict())
 
     @property
@@ -455,7 +455,7 @@ class CatalogSelection:
 
     @classmethod
     def from_json(cls, payload: str) -> CatalogSelection:
-        """RUN-CLIENT-PORTABLE-HANDLE — validate locally without recompiling or reading a metadata table."""
+        """Validate locally without recompiling or reading a metadata table."""
         raw = json.loads(payload)
         if raw.pop("format") != FORMAT:
             raise ValueError("unsupported portable result handle format")

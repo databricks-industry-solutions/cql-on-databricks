@@ -6,7 +6,7 @@ import org.junit.runner.RunWith
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.junit.JUnitRunner
 
-/** The compiler's neutral, pipeline-agnostic METADATA capability (PHASE-10): `describe` returns a
+/** The compiler's neutral, pipeline-agnostic METADATA capability: `describe` returns a
   * [[LibraryGraph]] — the define nodes, the dependency edges, the cost-chosen boundary set, and the
   * pinned versions — that an EXTERNAL pipeline reads to build its own graph. This repo describes; it does
   * not generate a pipeline. SPARK-FREE: `describe` runs the pure SQL lowering, so it needs no session and
@@ -61,7 +61,7 @@ final class LibraryDescribeSpec extends AnyFunSuite {
   }
 
   /** EMIT-DESCRIBE-RETRIEVE-TYPES: describe names every type a library retrieves, so a caller binds exactly
-    * the data a run needs (CLIENT-EXEC-DISCOVERY). A bare `exists [Condition]` navigates no field, so the
+    * the data a run needs (CLIENT-DATA-RESOLVER). A bare `exists [Condition]` navigates no field, so the
     * demand map leaves it out; the type list must not. */
   test("describe lists every retrieved type, including a retrieve that navigates no field") {
     // Patient context is itself a `[Patient]` retrieve (HL7 CQL 1.5 Author's Guide, "Context": the context

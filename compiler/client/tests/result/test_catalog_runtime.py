@@ -1,4 +1,4 @@
-"""RUN-CLIENT-CATALOG-CHECKPOINTS, RUN-CLIENT-PORTABLE-HANDLE, RUN-CLIENT-RESULT-IDENTITY, RUN-CLIENT-RESULT-OWNERSHIP —
+"""RUN-CLIENT-CATALOG-CHECKPOINTS, RUN-CLIENT-RESULT-IDENTITY, RUN-CLIENT-RESULT-OWNERSHIP —
 synthetic catalog execution."""
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -33,7 +33,7 @@ class CatalogRunner:
     def __init__(self, destination=None):
         self.destination = destination or DESTINATION
         self.tables = {}
-        #: CLIENT-DISCOVERY-SCOPE — other result schemas: ``{(catalog, schema): {name: tags}}``.
+        #: Other result schemas: ``{(catalog, schema): {name: tags}}``.
         self.sources = {}
         self.calls = []
         self.fail_write = ""
@@ -335,7 +335,7 @@ def test_published_resolution_never_writes_on_miss_or_on_hit():
 
 
 def test_portable_handle_round_trip_has_full_descriptors_without_compiler_or_index():
-    """RUN-CLIENT-PORTABLE-HANDLE — compiler origins, shapes and cutoff travel with the handle."""
+    """Compiler origins, shapes and cutoff travel with the handle."""
     run = CatalogRunner()
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=1)
     outcomes = run_on(prepared(), ("output",), destination=DESTINATION, run=run, computed_since=cutoff)
@@ -350,7 +350,7 @@ def test_portable_handle_round_trip_has_full_descriptors_without_compiler_or_ind
 
 @pytest.mark.parametrize("damage", ["fingerprint", "schema", "table", "missing"])
 def test_corrupt_portable_handle_is_rejected_locally(damage):
-    """RUN-CLIENT-PORTABLE-HANDLE — never reconstruct damaged descriptors through another path."""
+    """Never reconstruct damaged descriptors through another path."""
     run = CatalogRunner()
     outcomes = run_on(prepared(), ("output",), destination=DESTINATION, run=run)
     selected = CatalogSelection.completed("synthetic", DESTINATION, {"Output": "output"},
@@ -368,7 +368,7 @@ def test_corrupt_portable_handle_is_rejected_locally(damage):
         CatalogSelection.from_json(json.dumps(raw))
 
 
-# --- CLIENT-DISCOVERY-SCOPE: results read from other result scopes ------------------------------------------
+# --- results read from other result scopes ------------------------------------------
 
 SHARED = ("shared_catalog", "published")
 
@@ -394,7 +394,7 @@ def test_one_calculation_has_one_table_name_in_every_destination_and_for_every_u
 
 
 def test_a_define_the_destination_lacks_is_reused_from_a_later_result_scope_by_name():
-    """CLIENT-DISCOVERY-SCOPE — nothing is written: both defines are the shared scope's tables, found under the
+    """Nothing is written: both defines are the shared scope's tables, found under the
     names this calculation gives them."""
     run = CatalogRunner()
     publish(run)

@@ -8,7 +8,7 @@ argument name diverge with nothing failing until an agent called it.
 
 SSE, and no JSON sibling beside it. A real answer is a SEQUENCE of tool calls rather than one round, so
 a client that waited for the whole loop would show a spinner over an investigation the reader is
-entitled to watch — `THEME-GLASSBOX` rather than a progress bar.
+entitled to watch — a glass box rather than a progress bar.
 """
 from __future__ import annotations
 
@@ -59,8 +59,8 @@ class AssistantAskRequest(BaseModel):
     """APP-ASSISTANT — one turn of the drawer's conversation.
 
     **`messages` carries the conversation, and the server holds no session.** The client sends back
-    what the last answer returned, for the same reason the tools carry no run id
-    (`SVC-TOOL-ADDRESS`): a server-side conversation would make an answer reproducible only from
+    what the last answer returned, for the same reason the tools carry no run id:
+    a server-side conversation would make an answer reproducible only from
     inside the conversation that produced it. Module scope, per `MeasureMetricsRequest`'s note about
     postponed annotations.
     """
@@ -88,7 +88,7 @@ def router(*, mcp_server: FastMCP) -> APIRouter:
         # SSE, AND THAT IS THE ONLY SHAPE — there is no second JSON endpoint beside it (one path per
         # feature). A real answer is a SEQUENCE of tool calls, not one round, so a client that waited
         # for the whole loop would show a spinner for an investigation the reader is entitled to
-        # watch: each tool result is emitted AS IT LANDS, which is `THEME-GLASSBOX` rather than a
+        # watch: each tool result is emitted AS IT LANDS, which is a glass box rather than a
         # progress bar — the reads the answer will be built from are the same evidence it cites.
         #
         # READ-ONLY, and that is a product statement rather than a limitation of this route

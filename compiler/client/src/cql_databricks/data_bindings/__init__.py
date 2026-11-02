@@ -1,4 +1,4 @@
-"""data-bindings (DEC-DATA-BINDINGS-HOME): an environment's content, a feature of its own since SPLIT-CONTENT.
+"""data-bindings (DEC-DATA-BINDINGS-HOME): an environment's content, a feature of its own (SPLIT-CONTENT).
 
 No store, no Lakebase and no App: an environment's store tables are the store of record, written by ``measure_import``
 (``CONTENT-IMPORT-MEASURES``), and read through its published views (``BIND-PUBLISHED-VIEW``). This library reads the

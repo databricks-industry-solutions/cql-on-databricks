@@ -345,7 +345,7 @@ object SqlDifferential {
       // ~127 MB statement would then OOM the dump, so elide the oversized ones — sizes stay in diagnostics).
       writeArtifact(dir, c.library, "sql", renderScriptSafe(lowered))
       // Write the per-statement SIZE breakdown BEFORE execution (sizes only, no timing) so the diagnostic
-      // survives even if a later statement stalls — the report is no longer end-of-run-only. The
+      // survives even if a later statement stalls — the report is written before the run, not only at its end. The
       // post-execution write (below) overwrites it with runtimes once the run completes.
       writeArtifact(dir, c.library, "diagnostics.txt", diagnosticsReport(c.library, lowered, None))
     }
@@ -384,7 +384,7 @@ object SqlDifferential {
 
     // EVERY emitted define is diffed, not just the population roots (`CONF-GATE-MEASURE`).
     //
-    // This used to prune to `c.link.roots` — the 4-5 population defines — which left the bulk of a
+    // Pruning to `c.link.roots` (the 4-5 population defines) left the bulk of a
     // measure's logic uncompared: 19 of 23 defines in one measure of the time, 16 of 21 in another. An intermediate define could
     // be arbitrarily wrong and the gate stayed green unless the error happened to flip a POPULATION outcome
     // for some patient in the sample. That is how a mis-lowered dependency-library define shipped and
@@ -395,7 +395,7 @@ object SqlDifferential {
     // reference side, so a qualified name could not be looked up. `GroundTruthRunner.evaluateAcross` now
     // requests each library's own defines from that library and re-qualifies the results, so the whole
     // closure is comparable. `c.link.roots` still drives PRUNING at compile time (production-faithful);
-    // it no longer narrows what gets diffed.
+    // it does not narrow what gets diffed.
     val allNames = lowered.names
     val depIds = c.link.map(_.deps.map(_.id).toSet).getOrElse(Set.empty)
     // Split `{depId}.{name}` back to its owning library; anything unqualified belongs to the root.

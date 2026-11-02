@@ -1,12 +1,12 @@
 library FhirNumerator version '1.0.0'
 
-// PHASE-5: a realistic measure-shaped numerator combining BOTH retrieve pushdowns on one broad
+// A realistic measure-shaped numerator combining BOTH retrieve pushdowns on one broad
 // retrieve — a value-set code filter AND a Measurement-Period date filter. The terminology and
 // date-range pushdown rules each fold their conjunct into the single `[Condition]` retrieve, so the
 // OPTIMIZED kernel shows scan pruning (the retrieve carries `codes` + `dateProperty`/`dateRange`,
 // the `where` gone — golden-plan evidence, CONF-GOLDEN-PLAN), while the UNOPTIMIZED form keeps a
 // bare retrieve + a two-conjunct `where` (membership semi-join + date column filter). The self-diff
-// proves the two are result-identical (CONF-GATE-SELFDIFF); physical data-skipping on the pushed
+// proves the two are result-identical; physical data-skipping on the pushed
 // filters is then Catalyst/Photon's job (ARCH-PUSHDOWN: domain rewrite here, physical pruning below).
 using FHIR version '4.0.1'
 include FHIRHelpers version '4.0.1' called FHIRHelpers

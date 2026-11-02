@@ -31,7 +31,7 @@ def _get_app(app_name: str):
 
     Resilient to Databricks SDK version drift across runtimes: the typed ``apps`` wrapper differs by SDK
     version, and the SERVERLESS runtime ships a stale SDK whose Apps wrapper calls a DEAD
-    ``/preview/apps/instances/...`` path (validated on the reference workspace 2026-07: ``NotFound``). So we
+    ``/preview/apps/instances/...`` path (validated on the reference workspace: ``NotFound``). So we
     hit the STABLE current REST path (``GET /api/2.0/apps/{name}``) directly via the low-level
     ``api_client`` first — that works on both classic and serverless — and only fall back to the typed
     ``apps.get`` wrapper if ``api_client.do`` is unavailable. Fails soft so an unresolved lookup falls

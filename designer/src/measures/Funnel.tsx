@@ -4,7 +4,7 @@
 // --tfail and exceptions on --twarn. When a patient is selected in the Patient Lens, a lava pin marks each
 // stage they reach.
 //
-// EVERY POPULATION IS ITS OWN BAR, COUNTED AS WRITTEN (`SPEC-POPULATION-CASCADE`, amended 2026-10-29).
+// EVERY POPULATION IS ITS OWN BAR, COUNTED AS WRITTEN (`SPEC-POPULATION-CASCADE`).
 // Raw Denominator Exclusions can hold patients who were never in the Denominator, so drawing them as a
 // segment inside the Denominator's bar would subtract two unrelated sets. The cascade belongs to the
 // score, which the client computes (`RUN-CLIENT-MEASURE-SCORE`); the Numerator's figure is that score,

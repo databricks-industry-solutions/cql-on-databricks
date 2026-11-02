@@ -16,8 +16,8 @@ import com.databricks.cql.ir._
   * Idempotent + convergent (ARCH-HAZARDS): only an UNFILTERED retrieve source (`codes` empty) whose
   * alias a top-level membership conjunct tests is folded, ONE conjunct per application; the folded
   * source then carries `codes`, and the conjunct is gone, so no further match — the FixedPoint batch
-  * converges. Result-preservation is gated by the optimized-vs-unoptimized self-diff
-  * (CONF-GATE-SELFDIFF): the unoptimized lowering realizes the same membership as a semi-join.
+  * converges. Result-preservation is checked by the optimized-vs-unoptimized self-diff:
+  * the unoptimized lowering realizes the same membership as a semi-join.
   */
 object TerminologyPushdown extends NodeRule {
   val name = "TerminologyPushdown"

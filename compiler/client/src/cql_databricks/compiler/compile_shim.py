@@ -12,7 +12,7 @@ ONE shim remains, entirely client-side, without touching the compiler area (`APP
 
 **UDF schema qualification is now ordinary configuration**, set in :func:`~cql_databricks.compiler.zeroconfig.connect`
 as a first-class field rather than mutating the request body. The client's ``.udf_schema(...)`` method sends
-``runtime.schema`` without the body mutation that used to be needed here.
+``runtime.schema`` as a field, with no body mutation.
 This reduces the places where the accelerator and the engine can disagree about the same wire.
 
 The UDF schema is still DISCOVERED, not configured: UC itself records where the catalog was registered, so

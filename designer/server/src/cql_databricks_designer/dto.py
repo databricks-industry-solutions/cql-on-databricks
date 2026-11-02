@@ -1,9 +1,7 @@
 """Request models that more than one PACKAGE needs — and a note on why each is here.
 
-It began as `routes/dto.py`, holding the one model several routers shared. SPLIT-PACKAGES turned
-"several routers" into "several packages": `TranslateRequest` is below. A model two packages construct
-cannot live in either without making one depend on the other for a dataclass. (`KnowledgeBindingDto` was
-here too; it went with the Data Source record, `DATA-SOURCE-UC-TAG`.)
+A model two packages construct cannot live in either without making one depend on the other for a
+dataclass.
 
 `TranslateRequest` is shared by three endpoints that belong to three DIFFERENT systems:
 
@@ -45,7 +43,7 @@ class TranslateRequest(BaseModel):
     include_elm: bool = False
 
 
-# APP-SAMPLE-METRICS, SPEC-READ-REF, APP-COHORT-ALGEBRA — the insight request bodies of the Designer's
+# SPEC-READ-REF, APP-COHORT-ALGEBRA — the insight request bodies of the Designer's
 # `/api/libraries/…` routes (`routes/runs.py`).
 
 class DefineRefDto(BaseModel):
@@ -144,7 +142,7 @@ class CohortFlowRequest(BaseModel):
     result_set: dict | None = Field(default=None, alias="resultSet")
 
 class MeasureMetricsRequest(BaseModel):
-    """APP-SAMPLE-METRICS — the metric request body.
+    """APP-SPEC-MODEL — the metric request body.
 
     MODULE SCOPE, not nested in `create_app`. This file uses postponed annotations, so FastAPI resolves
     a handler's types through the MODULE namespace: a locally-defined body model is unresolvable there

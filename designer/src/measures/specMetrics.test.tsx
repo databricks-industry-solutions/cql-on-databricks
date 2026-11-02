@@ -4,7 +4,7 @@
 // A wrong base is the worst available failure here — the figure is precise, plausible, and about the
 // wrong denominator — so the rules are pinned rather than the pixels.
 //
-// POPULATIONS ARE COUNTED AS WRITTEN (amended 2026-10-29). A population's figure is its own define's
+// POPULATIONS ARE COUNTED AS WRITTEN. A population's figure is its own define's
 // subjects, a share of every evaluated patient. Only the score is cascaded, and the CLIENT computes it
 // (RUN-CLIENT-MEASURE-SCORE); it arrives on the metrics payload as `score`. A criterion is still counted
 // among the patients entering the population it sits under.

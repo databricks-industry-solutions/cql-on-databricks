@@ -1,4 +1,4 @@
-// PHASE-S2/S5 (PROC-TDD) / APP-LOGIC-VIEW, APP-DEP-COUNTS — dependency-graph derivation.
+// APP-LOGIC-VIEW, APP-DEP-COUNTS (PROC-TDD) — dependency-graph derivation.
 import { describe, it, expect } from "vitest";
 import { buildLogicGraph, closureOf } from "./logicGraph.ts";
 

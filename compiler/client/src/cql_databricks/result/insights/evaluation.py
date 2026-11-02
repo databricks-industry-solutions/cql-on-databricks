@@ -44,7 +44,7 @@ class ClosureLibrary:
 
 
 class ClosureSource(Protocol):
-    """Where a derivation's closure is (DESIGNER-RUNS-SDP): ``{library_name: ClosureLibrary}`` for the complete
+    """Where a derivation's closure is: ``{library_name: ClosureLibrary}`` for the complete
     selection ``eval_id`` of ``root`` (its ``draft``, or ``""``) on ``data_source_id``.
 
     ``selection_reading.SelectionClosure`` is the implementation: it adapts the compiler's metadata of one complete

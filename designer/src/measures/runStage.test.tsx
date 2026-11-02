@@ -1,8 +1,8 @@
 // SVC-RUN-STAGE / RUN-PROGRESS-TASKS (PROC-TDD) — the streaming run's two reads of the SSE frames:
 // what the FINAL RESULT is built from, and what the compute gauge measures.
 //
-// Both regressions these cover had the same cause — the frontend read a vocabulary only the retired
-// in-process runner sent — and both were invisible to the type system, so the frames below are
+// Both regressions these cover have the same cause — the frontend reads a vocabulary only the in-process runner
+// sent — and both are invisible to the type system, so the frames below are
 // transcribed from what `/api/run-stream` actually emits rather than from the TS interface.
 import { webcrypto } from "node:crypto";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -132,7 +132,7 @@ describe("runMeasureStreaming (SVC-RUN-STAGE)", () => {
   it("resolves ok for the frame sequence a real run sends", async () => {
     // THE REPORTED BUG: this sequence resolved to "stream ended unexpectedly" on every success.
     stubStream([
-      { stage: "compiling", message: "Creating per-library pipeline (PIPE-PER-LIBRARY)" },
+      { stage: "compiling", message: "Creating per-library pipeline" },
       { stage: "profile", steps: [{ name: "compile_pipeline", elapsed_ms: 1200 }], total_ms: 1400 },
       { stage: "executing", status: "running", tasks: [task("a", "completed"), task("b", "running")] },
       DONE,
@@ -289,7 +289,8 @@ describe("stageProgress (RUN-PROGRESS-TASKS)", () => {
   });
 
   it("advances WITHIN the compute phase, instead of pinning at one value", () => {
-    // The bug: `executing` carries no step/total, so the old band was 0.30 + 0.10*0 for the whole Job.
+    // The failure this guards against: `executing` carries no step/total, so the band would be
+    // 0.30 + 0.10*0 for the whole Job.
     const at = (done: number, total: number) => stageProgress({
       stage: "executing",
       tasks: Array.from({ length: total }, (_, i) => task(`t${i}`, i < done ? "completed" : "pending")),

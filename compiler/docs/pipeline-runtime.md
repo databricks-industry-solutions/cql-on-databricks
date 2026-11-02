@@ -57,7 +57,7 @@ every filtered read. Bare retrieves are never published. A read recipe has `kind
 needs. The service does no library lookup: the caller resolves the include closure and sends it. A
 missing dependency fails the compile (`CORE-NO-SILENT-MISLOWER`).
 
-`libraries` compiles several measures into one merged plan (`PIPE-MULTI-LIB`, `PIPE-MULTI-DESCRIBE`).
+`libraries` compiles several measures into one merged plan.
 When it is present, `elm`, `cql` and `deps` are ignored:
 
 ```json
@@ -89,7 +89,7 @@ about whether the source data changed: the data source serves as-of data.
 
 - `SqlDagReuseSpec` (`PIPE-SQL-DAG-REUSE`): one recipe per materialized define, sibling reads declared,
   and per-subject results identical to the fully inlined script.
-- `MultiLibPipelineSpec` (`PIPE-MULTI-LIB`): qualified recipe names, the single-library path unchanged,
+- `MultiLibPipelineSpec`: qualified recipe names, the single-library path unchanged,
   shared dependencies merged.
 
 ## 6. The interactive client — `BUILD-CLIENT-SESSION`, `BUILD-CLIENT-QUERY`, `BUILD-CLIENT-POPULATIONS`

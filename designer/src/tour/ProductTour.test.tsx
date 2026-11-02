@@ -30,9 +30,8 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("ProductTour — every pillar draws its own mark (APP-TOUR)", () => {
   it("has a `g-<id>` rule in tour.css for every section in the registry", () => {
-    // The art panel drew the SAME diamond seven times while the component built a per-feature class
-    // that styled nothing. Now the class is load-bearing, which moves the failure: a section added
-    // without its rule renders an empty stage. Asserted against the real stylesheet rather than the
+    // Each section's class is load-bearing: a section added without its rule renders an empty stage. Asserted
+    // against the real stylesheet rather than the
     // rendered output, because jsdom computes no `::before`/`::after` geometry to look at.
     const css = readFileSync("src/tour/tour.css", "utf8");
     const missing = TOUR_FEATURES.filter((f) => !css.includes(`.g-${f.id} span`)).map((f) => f.id);
@@ -61,8 +60,8 @@ describe("ProductTour — one section per pillar (APP-TOUR)", () => {
 describe("ProductTour — a section with nowhere to go carries no action (APP-TOUR)", () => {
   it("renders an action only for the sections that have a destination", async () => {
     // Three of the seven pillars are the product's direction rather than a screen. They must close on
-    // their chips: a disabled or dead "coming soon" button is the defect this requirement was already
-    // fixed for once. Asserted as an identity against the registry so adding a section cannot drift.
+    // their chips: a disabled or dead "coming soon" button is the defect this requirement exists to prevent.
+    // Asserted as an identity against the registry so adding a section cannot drift.
     const { container } = renderTour();
     await screen.findByRole("link", { name: /Open the notebooks/ });
     const withDestination = TOUR_FEATURES.filter((f) => f.example || f.module || f.workspacePath);
@@ -82,9 +81,9 @@ describe("ProductTour — the published notebooks (SVC-EXAMPLE-NOTEBOOKS)", () =
   });
 
   it("offers ONE affordance — the button, wearing the same class as every other action", async () => {
-    // The section used to print the path as a grey mono line ABOVE the button, so it alone showed two
-    // things where every other section shows one, and the muted line read as the weaker of the two.
-    // The address rides the button now; the standalone line is the no-host fallback only.
+    // The address rides the button, and the standalone line is the no-host fallback only. A grey mono
+    // line ABOVE the button would show two things where every other section shows one, and the muted line
+    // would read as the weaker of the two.
     renderTour();
     const link = await screen.findByRole("link", { name: /Open the notebooks/ });
     expect(link.className).toBe("mw-tour-primary");

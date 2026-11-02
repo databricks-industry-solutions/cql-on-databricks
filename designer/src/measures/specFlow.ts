@@ -11,7 +11,7 @@
 //
 // WHAT A GATE IS. One population, the cohort entering it, and the sibling criteria a subject has to get
 // past. Nothing here decides whether a population IS a conjunction — the ELM operator that would settle
-// that is not derived anywhere (`APP-FLOW-SPINE`, deferred), so the polarity comes from the
+// that is not derived anywhere (deferred), so the polarity comes from the
 // population's ROLE, which the scoring type already tells us: an exclusion population is the
 // disjunction, everything else on the chain is the conjunction. That is a narrower claim than reading
 // the operator and it is one we can actually support.

@@ -1,6 +1,6 @@
 library FhirValueSetWhere version '1.0.0'
 
-// PHASE-5 5c (LANG-TERMINOLOGY, ARCH-PUSHDOWN): the UNOPTIMIZED twin of FhirValueSetQuery — an
+// LANG-TERMINOLOGY, ARCH-PUSHDOWN: the UNOPTIMIZED twin of FhirValueSetQuery — an
 // UNFILTERED retrieve plus a value-set-membership `where`. This is exactly what a measure author
 // writes and what the terminology pushdown rewrites into `[Condition: "Diabetes"]` (the optimized
 // form 5b lowers). Lowering the membership `where` (a row-level semi-join on the combined frame) is

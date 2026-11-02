@@ -156,10 +156,10 @@ class ReadReference:
 class DefineReference:
     """SPEC-DEFINE-REF — a phrase in the prose that NAMES ANOTHER ELEMENT, bound to the define it names.
 
-    THE GAP THIS CLOSES. `ConceptRef` / `RuleRef` have been in `SPEC-XSD` since the first draft — the
-    schema comment says today's renderer "scans prose for known define names, a heuristic this element
-    exists to retire" — and until now the loader FLATTENED them to plain text, so no instance used one
-    and the retirement never happened. The consequence was visible on the page: *example condition
+    THE GAP THIS CLOSES. `ConceptRef` / `RuleRef` are in `SPEC-XSD`, and its schema comment says today's
+    renderer "scans prose for known define names, a heuristic this element exists to retire". Without this
+    element the loader flattens them to plain text, so no instance uses one and the heuristic stays. The
+    consequence is visible on the page: *example condition
     diagnosis* was a followable reference inside a CQL block and inert prose in the sentence that
     explained it, which is exactly backwards for a document whose whole premise is that the reader
     should not need the code (`SPEC-EXPLAIN-ACCOUNTING`).

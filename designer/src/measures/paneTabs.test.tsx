@@ -2,11 +2,11 @@
 // of declarations. This is a CASCADE test, not a rendering test: it loads the real stylesheet and asks
 // the engine what actually won, which is the only way to catch the failure it exists for.
 //
-// THE FAILURE IT EXISTS FOR. `.mw-wb-tab` was a bare single class — specificity (0,1,0) — and the global
-// `.mw button { color: inherit }` reset is (0,1,1), so the workbench tab's RESTING colour never applied.
-// Measured against the shipped bundle: an inactive tab computed to `var(--tink)`, identical to the
-// active one, so the two were distinguishable only by the underline; and `:hover` at (0,2,0) was the one
-// colour rule that landed, which made hovering DIM the tab. Nothing about that is visible in the source
+// THE FAILURE IT EXISTS FOR. `.mw-wb-tab` is a bare single class — specificity (0,1,0) — and the global
+// `.mw button { color: inherit }` reset is (0,1,1), so the workbench tab's RESTING colour never applies.
+// Measured against the shipped bundle, an inactive tab computes to `var(--tink)`, identical to the
+// active one, so the two are distinguishable only by the underline; and `:hover` at (0,2,0) is the one
+// colour rule that lands, which makes hovering DIM the tab.
 // — the declaration is right there and reads correctly — and a screenshot shows a tab strip that looks
 // plausible. The design system records this reset as a standing caveat (section 6, "Specificity
 // caveat"); this test is that caveat made enforceable for the control it bit.
@@ -88,8 +88,8 @@ describe("pane tab strip (APP-PANE-TABS)", () => {
   });
 
   it("the workbench's control still resolves in the SCOPE ROW it moved to", () => {
-    // APP-PANE-STATE — the control moved out of `.mw-wb-tabs` and into `.mw-wb-scope`, the slot the
-    // scope's "clear" X used to hold. Its rules were qualified per-container, so the move takes it out
+    // APP-PANE-STATE — the control sits in `.mw-wb-scope`, not `.mw-wb-tabs`. Its rules are qualified
+    // per-container, so a move takes it out
     // of every selector that styled it: `.mw button { color: inherit; background: none; border: 0 }` at
     // (0,1,1) is then the only thing left, and the control renders as an unsized, uncoloured glyph. That
     // is the failure this file exists for, one container along, and it is invisible in the source.
@@ -112,7 +112,7 @@ describe("pane tab strip (APP-PANE-TABS)", () => {
   it.each(STRIPS)("%s: the strip never gives up its own height (APP-STABLE-LAYOUT)", (strip) => {
     // THE FAILURE THIS EXISTS FOR. `overflow-x: auto` makes the strip a scroll container, which resolves
     // its flex-item `min-height: auto` to ZERO — so in `.mw-workbench`'s column flex box the whole of a
-    // long body's overflow was absorbed by the tab strip, which collapsed to its own hairline. The tabs
+    // long body's overflow was absorbed by the tab strip, which collapses to its own hairline. The tabs
     // were present, selectable by keyboard and 0px tall, and it happened only when the selection's
     // content overran the window, so it read as tabs that "sometimes disappear". jsdom does no layout —
     // this asserts the declaration that makes the shrink impossible.
@@ -151,8 +151,8 @@ describe("pane tab strip (APP-PANE-TABS)", () => {
 });
 
 // APP-STABLE-LAYOUT, generalised beyond the tab strip. The rule this file already pins for tabs
-// ("selecting never changes the weight") was being broken one control over: `.mw-wb-meter.open > .row
-// .lb` set `font-weight: 600`, so expanding a Preview record made its label wider and shifted the label
+// ("selecting never changes the weight") is being broken one control over: `.mw-wb-meter.open > .row
+// .lb` sets `font-weight: 600`, so expanding a Preview record makes its label wider and shifts the label
 // and everything trailing it — under the pointer, at the moment of the click. Weight is the one property
 // that cannot carry a state in this app, because it is the one that reflows; colour and glyphs are paint.
 //

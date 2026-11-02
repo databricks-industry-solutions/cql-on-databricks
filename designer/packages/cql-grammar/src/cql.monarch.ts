@@ -1,4 +1,4 @@
-// PHASE-S0 / APP-GRAMMAR (designer/README.md).
+// APP-GRAMMAR (designer/README.md).
 //
 // A Monaco Monarch tokenizer for CQL — client-side syntax highlighting only (keystroke-live, no
 // round-trip). This is deliberately NOT a parser: real diagnostics/validation come from the

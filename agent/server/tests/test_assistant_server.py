@@ -106,8 +106,8 @@ class TestPublishedSurface:
         assert set(_tools(server)) == EXPECTED_TOOLS
 
     def test_the_question_answering_surface_is_still_five(self, server):
-        # The load-bearing half. `SVC-MCP-SKILLS` added two tools that answer nothing about a
-        # measure, and the research tools (SVC-MCP-TOOLS, amended 2026-10-29) are a named group of
+        # The load-bearing half. `SVC-MCP-SKILLS` adds two tools that answer nothing about a
+        # measure, and the research tools (SVC-MCP-TOOLS) are a named group of
         # their own; neither may let a new question shape arrive among the data tools.
         assert set(_tools(server)) - SKILL_TOOLS - RESEARCH_TOOLS == DATA_TOOLS
 
@@ -189,12 +189,12 @@ class TestSkillSurface:
         instructions = server.instructions.lower()
         assert "your derivation" in instructions          # SVC-ANSWER-PROVENANCE
         assert "one complete selection" in instructions  # RUN-CLIENT-RESULT-SETS
-        assert "evidence, not a verdict" in instructions  # SVC-TOOL-FRESHNESS
+        assert "evidence, not a verdict" in instructions
         assert "nothing you do is saved" in instructions  # SVC-MCP-TOOLS, KNOWLEDGE-FAIL-LOUD
         assert "review cql with the user" in instructions # AGENT-CQL-REVIEW
 
     def test_the_readonly_rule_bounds_the_STORE_and_not_the_subject(self, server):
-        """SPEC-EXPLAIN-AGAIN — re-explaining is generation, and generation is what this is for.
+        """Re-explaining is generation, and generation is what this is for.
 
         The read-only rule bounds the STORE, not the SUBJECT — a distinction that matters because
         the Designer's Explain control sends re-explanation requests. The contract is asserted

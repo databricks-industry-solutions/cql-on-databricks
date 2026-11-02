@@ -67,8 +67,7 @@ An arrow means "depends on".
     interfaces and the shipped data, terminology and knowledge resolvers (`CLIENT-RESOLVERS`), the environments
     (`CLIENT-ENVIRONMENT-RESOLVER`) and the value-set digest.
   - `cql_databricks.data_bindings`: the resolver, which finds schemas by UC tag, checks their tables and
-    columns, and reads a library closure (`CONTENT-RESOLVER`); the knowledge and terminology layouts; the
-    runtime knowledge views (`DATA-BINDINGS`); the data-source declaration.
+    columns, and reads a library closure; the knowledge and terminology layouts; the data-source declaration.
   - `cql_databricks.result` (`RESULT-INTO-CLIENT`): durable bulk calculations (`materialize`). They run in your
     SQL session, reuse your own and the official results, and write result tables you own (`RUN-CLIENT-DURABLE`,
     `CLIENT-RESULT-RESOLVER`). Reading results: the membership

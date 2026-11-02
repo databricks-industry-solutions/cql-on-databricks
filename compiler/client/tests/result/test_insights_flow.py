@@ -368,7 +368,7 @@ def test_a_gate_WITH_a_base_enters_from_that_population_and_needs_no_binding():
 
 
 def test_the_binding_call_names_no_measure():
-    # EMIT-ROOT-INDEPENDENT, DATA-CONFORMANCE-MEASURE-SELECT — the data source is the population, so the
+    # EMIT-ROOT-INDEPENDENT — the data source is the population, so the
     # evaluated cohort is the bound Patient retrieve called with no argument.
     sql = _captured_sql(gates=[ENTRY_GATE])
     assert f"FROM {PATIENT_VIEW})" in sql

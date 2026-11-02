@@ -70,21 +70,18 @@ The Apps, the bundle, packaging and local runs.
 | `APP-PER-FEATURE` | The Designer, agent, and compiler each have their own App; each feature App serves requests as the signed-in user with its own identity and persisted state, so they scale independently. |
 | `APP-PLANES` | Three separated planes: Presentation (React/TypeScript SPA + Python/FastAPI backend-for-frontend), Compiler Service (JVM), and the OSS CQL engine in a sibling repo. |
 | `CONTENT-ENV-CONSOLIDATE` | Single root .env file or databricks.local.yml for workspace settings; .env keeps local-run settings and secrets. Per-component .env files eliminated. |
-| `DEPLOY-AGENT-REGISTRATION` | Genie One calls only MCP servers connected through Unity Gateway, so the deploy registers the agent App there (`scripts/deploy/register_agent_mcp.py`): a UC HTTP MCP connection to the App's `/mcp` that signs each user in through an OAuth app integration, and an MCP Service over it in `agent_skills_schema`. Per user only, so each tool call runs as the signed-in user (`SEC-OBO`); a shared service-principal credential is never used. The workspace offers no dynamic client registration, so the deploy creates the integration through the account API, with the account admin's account-level CLI profile `agent_account_profile` names. The deploy checks that profile before it builds anything. The client's secret goes from the account API straight into the connection, and is never printed, stored or asked for. A connection that must be created or repointed gets a new client. A connection already pointing at the App is kept with no account call, so only creating or repointing it needs an account admin; without `agent_account_profile` the deploy leaves such a connection alone and says Genie One is not connected. Unity Gateway doesn't support registering a Databricks App as your own MCP yet, so this connection is a workaround until it does (AIGOV-487). `agent_users_group` gets `EXECUTE` on the service, never `USE CONNECTION`. Idempotent, and fails the deploy on any error. |
+| `DEPLOY-AGENT-REGISTRATION` | Genie One calls only MCP servers connected through Unity Gateway, so the deploy registers the agent App there (`scripts/deploy/register_agent_mcp.py`): a UC HTTP MCP connection to the App's `/mcp` that signs each user in through an OAuth app integration, and an MCP Service over it in `agent_skills_schema`. Per user only, so each tool call runs as the signed-in user (`SEC-OBO`); a shared service-principal credential is never used. The workspace offers no dynamic client registration, so the deploy creates the integration through the account API, with the account admin's account-level CLI profile `agent_account_profile` names. The deploy checks that profile before it builds anything. The client's secret goes from the account API straight into the connection, and is never printed, stored or asked for. A connection that must be created or repointed gets a new client. A connection already pointing at the App is kept with no account call, so only creating or repointing it needs an account admin; without `agent_account_profile` the deploy leaves such a connection alone and says Genie One is not connected. Unity Gateway can't register a Databricks App as your own MCP, so the deploy reaches the App through this connection. `agent_users_group` gets `EXECUTE` on the service, never `USE CONNECTION`. Idempotent, and fails the deploy on any error. |
 | `DEPLOY-WORKSPACE-SETTINGS` | The deploy turns on each workspace setting it relies on only when its bundle variable is true, as a workspace admin, before the Apps are built: Databricks Apps (`enable_databricks_apps`), user authorization for Apps (`enable_apps_user_authorization`, `SEC-OBO`), Unity Gateway (`enable_unity_gateway`, `DEPLOY-AGENT-REGISTRATION`) and Unity Gateway skills in Genie (`enable_genie_uc_skills`, `DEPLOY-AGENT-SKILLS`). Each is workspace-wide, so it is the implementer's choice and defaults to false. False leaves the setting as it is and never turns it off. Fails the deploy on any error. |
 | `DEPLOY-AGENT-SKILLS` | The deploy publishes every skill in `agent/skills/` except `clinical-explain`, the Designer's narration contract; `scripts/deploy/publish_skills.py` lists them. Each skill's `SKILL.md` is published as it is, the same file the agent serves through `get_skill`, to two places: as a Unity Catalog skill in `agent_skills_schema`, readable by `agent_users_group`, an account group, which Genie One loads; and to the workspace skills folder `/Workspace/.assistant/skills/`, which Genie Code loads (Genie Code reads no UC skills). The deploy creates that folder and grants `workspace_users_group` CAN_READ, a workspace group, since a new one is readable by admins alone and a workspace object takes workspace groups, which Unity Catalog does not; only a workspace admin can create it, so another deployer gets `/Shared/CqlDatabricks/skills` and a loud warning. No skill holds a deployment value to fill in. It runs as the bundle script `publish_skills`, since a bundle has no resource type for either place. Idempotent, and fails the deploy on any error. |
 | `DEPLOY-APP-GRANTS` | Each App receives its own service principal. Its schema grants are bundle resources in `databricks.yml`, naming the App's principal (`${resources.apps.<key>.service_principal_client_id}`): the Designer's principal gets `USE SCHEMA` and `SELECT` on the default environment's `knowledge` and `terminology` (`KNOWLEDGE-LAKE-DIRECT`), and nothing on a store or a result. `USE CATALOG` on `uc_catalog`, for the Designer's and the agent's principals, is granted by `scripts/deploy/grant-app-access.sh` after the bundle deploy: a bundle grants on a catalog only when it holds the catalog, and `uc_catalog` is the deployer's. No App principal holds a catalog-wide data privilege, which every user's table in `draft_results` would inherit; one an earlier deploy granted is revoked. The compiler App touches no data and gets nothing. The Designer and agent Apps each declare the compiler App as a resource, so the bundle creates them one after the other: created at once, their two writes to the compiler App's permissions conflict and leave one App unrecoverable. |
 | `DEPLOY-DEFAULT-ENVIRONMENT` | The deploy builds the default environment in `uc_catalog` (`SVC-CATALOG-LAYOUT`). Its schemas, those of `DATA-ENVIRONMENT-LAYOUT`, are bundle resources in `databricks.yml`, with their schema grants: `app_users_group` gets `USE SCHEMA` and `SELECT` on `data`, `terminology`, `knowledge` and `results`, and `USE SCHEMA` and `CREATE TABLE` on `draft_results` (`RUN-CLIENT-DRAFT-RESULTS`); the stores get no grant; the Designer's principal is `DEPLOY-APP-GRANTS`'s. A bundle's grants on a schema are its whole grant list. After the bundle deploy, the deploy fills the schemas: the synthetic small population (`DATA-SYNTH-SMALL`) in `data_store`, the example measures and their value sets in `knowledge_store` and `terminology_store` (`CONTENT-EXAMPLE-PRELOAD`), the published views, each selecting its store, and the environment tags, with the layout version this release's client supports (`CLIENT-ENVIRONMENT`). It sets `cql_databricks_environment_default = true` only if no catalog the deployer can see has it. Then it makes the two grants the bundle cannot: `USE CATALOG` on `uc_catalog` to `app_users_group`, because the bundle does not hold the catalog, and `USE SCHEMA` and `MANAGE` on `draft_results` to the maintenance principal (`RUN-CLIENT-MAINTENANCE`), which the deploy creates, so no other reader of the bundle knows it. `app_users_group` must be an account group: Unity Catalog grants take account principals only. Idempotent, and fails the deploy on any error. |
 | `DEPLOY-ENVIRONMENT-TAG-POLICIES` | The three environment tags (`CLIENT-ENVIRONMENT`) are governed tags, so owning a catalog is not enough to make it an environment or the default. With `govern_environment_tags` true, the default, the deploy makes their tag policies before it tags a catalog: `cql_databricks_environment` allows any value, `cql_databricks_environment_version` the layout versions this release's client supports, and `cql_databricks_environment_default` only `true`. It sets a policy's values when they differ. The deployer and each of the project's admins (`DEPLOY-PROJECT-ADMINS`) get the assigner role on each policy; no one else is granted it. A bundle has no tag-policy resource, so this is a bundle script, `environment_tag_policies`, which `deploy.sh` runs. Creating a policy needs the create privilege on governed tags, and an account holds at most 1,000 governed tags. With `govern_environment_tags` false the deploy makes no policy and warns that anyone who can tag a catalog can make it an environment or the default. Idempotent, and fails the deploy on any error. |
 | `DEPLOY-PROJECT-ADMINS` | The `admins` bundle variable lists the project's admins besides the deployer: users by email, service principals by application ID, or groups; empty by default. Every deploy, as the deployer, who must be a workspace admin, adds each to the workspace when it is not in it, then to the workspace's `admins` group; a group must already be in the workspace, else the deploy fails, naming it. It never removes anyone. The same principals assign the environment tags (`DEPLOY-ENVIRONMENT-TAG-POLICIES`). Fails the deploy on any error. |
-| `DEPLOY-GENIE-CODE-SKILLS` | SUPERSEDED by `DEPLOY-AGENT-SKILLS`, which publishes every skill to both Unity Catalog and the workspace skills folder in one step. |
 | `DEPLOY-LAKEBASE-SCHEMA` | Database DDL lives only in the deploy definition. Code assumes its tables exist and fails loud if they don't. Seed scripts issue DML only. No feature uses Lakebase today. |
 | `DEPLOY-SHIPPED-SOURCES` | The deploy's own data is the package `shipped_sources`, in `scripts/deploy/shipped_sources`: the example preload (`CONTENT-EXAMPLE-PRELOAD`), the population lander every shipped data source lands through, the shipped sources' names, their FHIR resource schemas (`CONTENT-IMPORTER-FHIR-SCHEMAS`) and the change-log exemplar (`DATA-CHANGE-LOG`). It is installed in the repository venv and never shipped to the Volume. The example measures go through the client's import (`CONTENT-IMPORT-MEASURES`). `loader/scripts/synthetic-population/load.py` lands the large population through the same lander. |
-| `DEPLOY-SEED-DATA-SOURCES` | SUPERSEDED by `DEPLOY-DEFAULT-ENVIRONMENT`: the deploy loads the default environment's stores; there is no `data_sources` table and no seed script. |
 | `PIPE-DEPLOY-NO-PLACEHOLDER-ENV` | Deployment never ships unsubstituted `__PLACEHOLDER__` env variables; all substitutions happen at bundle time before any service starts. |
 | `RUN-CLEANUP` | A scheduled maintenance Job deletes session jobs idle beyond seven days, selected by tags, never while running. |
 | `RUN-CLIENT-MAINTENANCE` | One daily `cql-databricks-designer-maintenance` Job expires completed draft results across users after configurable retention by UC tags, in the `draft_results` schema of each environment the deploy grants it `MANAGE` on (`RUN-CLIENT-DRAFT-RESULTS`). The deploy owns the Job (`databricks.yml`, `scripts/jobs/maintenance.py`) and the principal it runs as (`scripts/deploy/maintenance_principal.py`); the expiry is `cql_databricks.result.maintenance`. The schedule deploys paused until a run is checked on the workspace. |
-| `RUN-CLIENT-PRIVATE-PROVISIONING` | SUPERSEDED by `RUN-CLIENT-DRAFT-RESULTS`: draft results share one `draft_results` schema in each environment, isolated per table; no user has a schema of their own and there is no `designer_results_catalog`. |
 | `SVC-ANSWER-PROVENANCE` | Distinguish engine-computed answers from agent-derived answers via provenance metadata on each result. |
 | `SVC-APP-TOPOLOGY` | Three independent apps: Compiler (JVM), Designer (Python/React), and agent (Python/MCP). |
 | `SVC-CATALOG-LAYOUT` | Unity Catalog structure: the deployment's catalog (bundle variable `uc_catalog`, no default; set in `databricks.local.yml`) holds the `runtime` schema for the `cql_*` functions and the `artifacts` volume. In the default deployment it is also the default environment (`DEPLOY-DEFAULT-ENVIRONMENT`), and its other schemas are the environment's (`DATA-ENVIRONMENT-LAYOUT`). Every environment's runs use this one `runtime`. No catalog name appears in source. |
@@ -137,9 +134,6 @@ The data-source contract several features share, and data-source features no one
 | `DATA-PROVENANCE` | For any result value, the compiler traces retrieve view to source tables via UC lineage and optional LLM narration. Diagnostic only; describes and audits, never remaps. |
 | `DATA-PUSHDOWN-DIAG` | A diagnostic to verify binding pushdown: call the mount twice (hints populated vs. empty) and report the row-count delta. Secondary tool for implementers; not required by the engine's own gates. |
 | `DATA-RESOLUTION` | Retrieve-to-source resolution is engine-owned. The compiler reads the catalog metadata for observability but neither implements nor overrides the engine's best-match algorithm over `cql.*` properties. |
-| `DATA-SOURCE-DESCRIPTION` | SUPERSEDED by `CLIENT-ENVIRONMENT`: an environment, not a data source, carries the description, as its catalog comment. |
-| `DATA-SOURCE-SCOPE` | SUPERSEDED by `CLIENT-ENVIRONMENT`: an environment holds data, terminology, knowledge and results together; none is resolved outside it. |
-| `DATA-SOURCE-UC-TAG` | SUPERSEDED by `CLIENT-ENVIRONMENT`: an environment is a catalog tagged `cql_databricks_environment`; no schema is tagged `cql_databricks_data_source`, and `list_data_sources` is removed. |
 | `DATA-SUGGEST-TERMINOLOGY` | The compiler suggests terminology entries for user confirmation: unmapped codes ranked by frequency and similarity, and miscoding detection from cross-field correlations. Grounded, never fabricated. |
 | `DATA-VIEW-SCAFFOLD` | The compiler generates starter retrieve-view DDL with `cql.*` properties as a template. The customer adopts and owns the deployed object; the compiler authors the shell, never the view. |
 
@@ -173,7 +167,6 @@ Measures and libraries as governed, versioned content.
 | ID | Requirement |
 |---|---|
 | `KNOWLEDGE-FAIL-LOUD` | Knowledge read failures propagate rather than returning empty results; failed loads are retried on next access and never cached. |
-| `REG-CONFORMANCE-DECK` | SUPERSEDED by `CONTENT-EXAMPLE-PRELOAD`: decks existed only for published test content, and the example measures ship in `examples/`. |
 | `REG-CRUD` | Draft → validate (clean diagnostics) → publish (immutable, indexed) → fork; performed as the signed-in user. |
 | `REG-CURATION` | Seed marketplace with trusted publishers (standards bodies, quality vendors, centers of excellence); open publication later once community trust is load-bearing. |
 | `REG-DISCOVERY` | Search/browse the Delta index by name/tags/resources/value sets/author/status; no separate search service. |
@@ -195,84 +188,3 @@ How the rest of the system uses the compiler.
 | `ACC-KNOWLEDGE-LEVELS` | Content follows the HL7 CQF knowledge levels: L1 narrative, L2 semi-structured, L3 structured (FHIR Library, CQL, ELM), L4 executable (compiled SQL). A measure links its levels. |
 | `APP-DECOUPLE` | Engine modules remain unmodified for this accelerator; the accelerator depends on the engine one-way with no Databricks-specific dependencies in the engine. |
 
-## Retired
-
-| ID | Status |
-|---|---|
-| `ACC-ENGINE-RESOLUTION` | Retired: monorepo merge dissolved the problem. See `overview.md` section 3.1. |
-| `CONTENT-SAMPLE-PRELOAD` | SUPERSEDED by `CONTENT-EXAMPLE-PRELOAD`: renamed, one term for the content in `examples/`. |
-| `CONTENT-SAMPLE-STANDARDS` | SUPERSEDED by `CONTENT-EXAMPLE-STANDARDS`: renamed, one term for the content in `examples/`. |
-| `DATA-SCOPED-VIEW-ADVISOR` | Retired: Proposed future feature. Not committed. |
-| `DATA-SOURCE-REGISTRY` | Retired: Superseded by UC tags. See `DATA-SOURCE-UC-TAG`. |
-| `DEPLOY-SEED-KNOWLEDGE` | Retired: content importer tags sources instead of seeding rows. See `CONTENT-IMPORT-TARGET-TAG`. |
-| `EVALUATOR-CLIENT-EVALUATE` | Retired: the evaluator engine plugin is removed with the App. See `RUN-CLIENT-DURABLE`. |
-| `PHASE-S0` | Retired: old roadmap phase. Foundations + hosting de-risk (scaffold + local JVM engine transport). Transport now standalone CQL Compiler Service. |
-| `PHASE-S1` | Retired: old roadmap phase. Authoring core: editor + on-demand diagnostics, local and as App. |
-| `PHASE-S2` | Retired: old roadmap phase. Data binding + runtime spine: run real measure end to end. |
-| `PHASE-S3` | Retired: old roadmap phase. Marketplace/registry: publish/discover/fork/run with unified include resolution. |
-| `PHASE-S4` | Retired: old roadmap phase. Single pane: plan debug, per-define preview, data quality. |
-| `PHASE-S5` | Retired: old roadmap phase. Hardening, perf, optional GraalVM native-image. |
-| `PHASE-S6` | Retired: old roadmap phase. Databricks App fit + deployment; OpenSharing activation. |
-| `PIPE-DEPLOY-CATALOG-VARS` | Retired: Designer catalog variables removed with Designer. |
-| `PIPE-ELM-ORIGIN` | Retired: Pipeline metadata tracking removed with Lakeflow pipelines. |
-| `PIPE-ENZYME` | Retired: Lakeflow Enzyme pipeline infrastructure removed. See `PIPE-BARRIER-HASH`. |
-| `PIPE-INCREMENTAL-NO-ENZYME` | Retired: Investigation into non-Enzyme incremental refresh concluded. |
-| `PIPE-JOB-ACCUMULATE` | Retired: Pipeline job accumulation logic removed with Lakeflow. |
-| `PIPE-JOB-IDENTITY` | Retired: the deploy creates no scheduling Job. See `DEC-RETIRE-SCHEDULE-JOB`. |
-| `PIPE-JOB-ORCHESTRATION` | Retired: Scheduled job execution superseded. See `RUN-SERVICE-DRIVER`. |
-| `PIPE-LIFECYCLE` | Retired: Draft pipeline lifecycle and cleanup removed with pipelines. |
-| `PIPE-PROGRESS-CHIP` | Retired: Pipeline progress UI removed with Designer and pipelines. |
-| `PIPE-RECOMPILE-GATE` | Retired: Pipeline recompile gating superseded by PIPE-BARRIER-HASH determinants. |
-| `PIPE-RESULTS-CATALOG-ISOLATION` | Retired: Shared results catalog variable removed with Designer. |
-| `PIPE-SERVICE` | Retired: Pipeline orchestration service was future work, not implemented. |
-| `PIPE-STATE-LAYER` | Retired: Lakebase pipeline state layer rebuilt into cache logic. See `PIPE-BARRIER-HASH`. |
-| `RUN-DAG-EXECUTOR` | Retired: App statement executor and warm session pool removed. |
-| `RUN-DEPLOYMENT-CONFIG` | Retired: Deployment orchestration removed; calculations are data-only. |
-| `RUN-DRAFT-RESULTS` | Retired: Designer draft results feature removed with Designer. |
-| `RUN-ELM-HISTORY` | Retired: nothing writes the evaluator App's history store. See `RUN-READ-BARRIER`. |
-| `RUN-FINGERPRINT` | Retired: Evaluator App fingerprint and Lakebase state removed. |
-| `RUN-FINGERPRINT-ORDER` | Retired: Fingerprint ordering assumption removed with App. |
-| `RUN-INTERACTIVE-AS-USER` | Retired: Interactive ad-hoc requests handled via compiler client. |
-| `RUN-POINT-CLIENT` | Retired: the point client is removed. See `EVALUATOR-RETIRE`. |
-| `RUN-POINT-CQF` | Retired: the point service is removed; the CQF engine (`compiler/cqf`) remains the conformance oracle. See `EVALUATOR-RETIRE`. |
-| `RUN-SCAN-BARRIER` | Retired: renamed to `RUN-READ-BARRIER`. See `RUN-READ-BARRIER`. |
-| `RUN-SCHEDULE-CURRENCY` | Retired: there are no schedules to refuse. See `RUN-CALC-SERVICE`. |
-| `RUN-SCHEDULE-JOB` | Retired: Designer scheduled Job feature removed. |
-| `RUN-SERVICE-DRIVER` | Retired: Evaluator App service removed with EVALUATOR-REMOVE. |
-| `RUN-SESSION-JOB` | Retired: Designer runs execute in the evaluator App, not as session Jobs. See `RUN-ONE-WRITER`. |
-| `RUN-SKIP-IN-TASK` | Retired: Per-statement currency check superseded by table state. |
-| `RUN-STATEMENT-EXEC` | Retired: Barrier statement execution removed with evaluator App. |
-| `SDP-ALL-DEFINES` | Retired with SDP. |
-| `SDP-DEPLOYER` | Retired with SDP. |
-| `SDP-DESIGNER-RUN` | Retired with SDP. |
-| `SDP-DIAGNOSTICS` | Retired with SDP. |
-| `SDP-EXECUTION` | Retired with SDP. |
-| `SDP-LIBRARY-BUNDLE` | Retired with SDP. |
-| `SDP-LIBRARY-RUNNER` | Retired with SDP. |
-| `SDP-LIVE-STATUS` | Retired with SDP. |
-| `SDP-MEASUREMENT-PERIOD` | Retired with SDP. |
-| `SDP-MV-NAMING` | Retired with SDP. |
-| `SDP-NO-ENZYME` | Retired with SDP. |
-| `SDP-PERIOD-REFRESH` | Retired with SDP. |
-| `SDP-PERIOD-STATUS` | Retired with SDP. |
-| `SDP-PIPELINE` | Retired with SDP. |
-| `SDP-PLAN-PUBLISH` | Retired with SDP. |
-| `SDP-SPACE` | Retired with SDP. |
-| `SVC-EVALUATOR-CLIENT` | Retired with evaluator App redesign. |
-| `SVC-EXECUTION-JOBS` | Retired with SDP. |
-| `SVC-LAKEBASE-CONFIG` | Retired with Designer Lakebase. |
-| `SVC-LAKEBASE-POOL` | Retired with Designer Lakebase. |
-| `SVC-PARTNER-SDK` | Retired; replaced by SVC-PLATFORM-API. |
-| `SVC-POINT-APP` | Retired: the point App is removed. See `EVALUATOR-RETIRE`. |
-| `SVC-SDP-PACKAGE` | Retired with SDP. |
-| `SVC-SPIKE` | Retired; replaced by standalone Compiler Service App. |
-| `SVC-TOOL-ADDRESS` | Retired with evaluator App redesign. |
-| `SVC-TOOL-FRESHNESS` | Retired; replaced by RUN-CLIENT-REFRESH. |
-| `THEME-COMMODITIZE` | Retired: old roadmap theme. |
-| `THEME-GLASSBOX` | Retired: old roadmap theme. |
-| `THEME-INTEROP` | Retired: old roadmap theme. |
-| `THEME-KNOWLEDGE-ARCH` | Retired: old roadmap theme. |
-| `THEME-LIVING-DOC` | Retired: old roadmap theme. |
-| `THEME-MARKETPLACE` | Retired: old roadmap theme. |
-| `THEME-PLATFORM` | Retired: old roadmap theme. |
-| `THEME-PREDICTIVE` | Retired: old roadmap theme. |

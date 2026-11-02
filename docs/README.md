@@ -32,7 +32,7 @@ Each feature's docs sit next to its code. Start with the feature you need.
 - File names are kebab-case. Only `README.md`, `LICENSE.md`, `NOTICE.md` and similar are upper case.
 - Every ID is a descriptive mnemonic, `<TYPE>-<SLUG>`, never a number (`PROC-DESCRIPTIVE-ID`). Order goes
   in an "after" column, never in the name.
-- A requirement that stops being true becomes a one-line "Retired" row. It's never deleted, so old
-  citations still resolve.
+- A requirement that stops being true is deleted from its registry, in the same change that removes every
+  citation of it (`PROC-CURRENT-DEFINITION`).
 - `DEC-<SLUG>` is a decision. Open ones are in the [roadmap](roadmap.md). Settled ones amend a requirement
   and are listed in [decisions/](decisions/README.md).

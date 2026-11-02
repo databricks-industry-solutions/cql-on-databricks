@@ -2,8 +2,8 @@
 
 Requirements the Designer owns. Requirements that span features, and the rule for where a requirement
 lives, are in [`docs/requirements.md`](../../docs/requirements.md). Each ID is stable, unique across
-every registry, and cited from code (`PROC-CITE-REQ`). A requirement that stops being true moves to
-[Retired](#retired) with a one-line reason, so old citations still resolve.
+every registry, and cited from code (`PROC-CITE-REQ`). A requirement that stops being true is
+deleted, with every citation of it (`PROC-CURRENT-DEFINITION`).
 
 ## Product and Designer experience
 
@@ -35,7 +35,7 @@ What the Designer does for a user.
 | `APP-DECISIVE-COUNT` | A criterion is decisive for a subject when flipping only that criterion changes their outcome; decisive counts lead on flow edges, with any-cause counts shown beside; together they partition the cohort exactly. |
 | `APP-DEFAULT-EXAMPLE` | Every product feature ships a bundled example (the example measure `HypertensionBPControl`) plus a preset lens/mode so new users see that feature working immediately, offline, with no backend or connected data. |
 | `APP-DEP-COUNTS` | In the Narrative view each criterion shows dependency counts in both directions and selecting a criterion highlights both directions of its transitive closure in the display. |
-| `APP-DEP-NAV` | Opening an included library from the artifact selector navigates in place without repeating the parent label — a back affordance replaces the earlier redundant breadcrumb. |
+| `APP-DEP-NAV` | Opening an included library from the artifact selector navigates in place without repeating the parent label — a back affordance takes the place of a redundant breadcrumb. |
 | `APP-DERIVE-MEASURE` | A Derive action on external measures creates a new owned copy with lineage back to the original, recording source library and version, resetting its own version to draft, and carrying over any personal narrative overlay. |
 | `APP-DESIGN-SYSTEM` | One visual language across the SPA: the Databricks brand palette plus three type roles and component patterns, implemented in theme.css and specified in design-system.md. |
 | `APP-DIAGNOSTICS` | Validation via the Compiler Service is surfaced as plain-language clinical messages, preserving fail-loud semantics. |
@@ -60,7 +60,6 @@ What the Designer does for a user.
 | `APP-MEASURE-DOC` | The central object is the measure as living document — one artifact that reads like a published spec and computes live numbers into itself, authoring and results two lenses over a shared narrative spine. |
 | `APP-NARRATIVE-DOC` | The Specification renders logic as plain-language documentation — prose, bullets, tables — generated from authoritative CQL and hiding code behind a secondary view-source affordance. |
 | `APP-NARRATIVE-EDIT` | Users can edit per-define narrative prose directly in the Define lens, an inline authoring surface for non-CQL-literate readers; edits persist in the overlay until Accepted. |
-| `APP-NARRATIVE-OVERLAY` | SUPERSEDED by `DOC-EXPLAIN-REMOVE`: library-wide narration, its per-user cache table and the generate route are removed. The page shows only the author's words; AI drafts one section at a time into the editor (`DOC-SECTION-EXPLAIN`). |
 | `APP-NARRATIVE-PROVENANCE` | Every narrative element carries a visible, subtle provenance mark. The page shows only `authored` prose, from CQL tags, so no other mark appears. Quoted resource fields keep their byline, and prose of any other provenance is refused rather than shown. |
 | `APP-NARRATIVE-TAGS` | Authored measures store narrative metadata as CQL annotation tags (`@description`, `@rationale`, custom `@<identifier>`), the authoritative store for owned content; external measures are read-only. |
 | `APP-NARRATIVE-VALIDATE` | When a user accepts or edits per-define narrative, the system verifies that the prose reflects the CQL it describes, flagging factual mismatches and omitted conditions before Accept completes. |
@@ -111,13 +110,10 @@ The measure document the Designer derives from ELM.
 | `DOC-OPEN-SAVE` | A library opens from a location (`RUN-ADDRESS-LOCATION`): an environment's knowledge, read-only, or a workspace folder browsed as the signed-in user; opening from a folder sets the location to it. Every edit to a folder library is written back to its folder, as the user (`DOC-AUTO-SAVE`), and a write is refused when the file opened changed since it was opened or last written. In a folder laid out as an eCQI package, a write rewrites the `.cql` and every JSON copy (the `Library` with ELM compiled from the CQL, or no ELM when it does not compile, the `Measure`, the bundle) and deletes the XML copies and HTML only after the user agrees. A write never creates a library. Nothing the Designer edits is written to a store; a library reaches a store only when it is published (`DOC-PUBLISH`) or imported (`CONTENT-IMPORT-MEASURES`). New (a measure or a library) and Save As create one, as the user, only in a workspace folder, and write nothing over anything already there. The library is laid out as a package: `cql/<Name>-<version>.cql`, `resources/library-<Name>-<version>.json` and, for a measure, `resources/measure-<Name>-<version>.json`. The folder defaults to the open folder scope itself (`DOC-SCOPE-OPEN`), so the library is laid out in its `cql/` and `resources/` beside the scope's others; with no folder scope it defaults to `<the user's own folder>/<Name>`. It is editable. Every library and measure created gets the canonical URL `<base>/Library/<Name>` or `<base>/Measure/<Name>`, under one base for the deployment: the bundle variable `canonical_base`, by default `http://example.org/fhir`. A New measure starts from QI-Core 6.0.0 and FHIRHelpers 4.0.1 with `Initial Population`, `Denominator` and `Numerator` each `true`, and a draft `Measure` with one proportion group over them; a New library starts with no defines. Save As, from a folder or a store, renames the library header of the CQL as edited and writes it even when it does not compile, with no ELM then, copies the original's `Measure` as a draft without its identifiers or rendered narrative, and links the copy's `Library` and `Measure` to the original's with `derived-from` (`APP-DERIVE-MEASURE`). Folder reads are never browser-cached. |
 | `DOC-PUBLISH` | Publish writes the open folder library into the knowledge store of the environment the Designer runs in (`DOC-ENVIRONMENT-PICKER`), as the signed-in user, through the client's publish (`CLIENT-PUBLISH`). It is offered only on a library in a folder scope, and only once its latest edit is written there, since it reads the library from the folder. Its answer lists each library as published, unchanged, refused or not written, and what was written before a refusal. |
 | `DOC-ENVIRONMENT-PICKER` | The Designer runs in one environment, picked from those `EnvironmentResolver` lists (`CLIENT-ENVIRONMENT-RESOLVER`), the default preselected; there is no data-source picker. A draft run reads the environment's data and terminology, with the open folder's libraries over the environment's knowledge (`CLIENT-RESOLVER-OVERLAY`), and writes to its `draft_results` (`RUN-CLIENT-DRAFT-RESULTS`). Publish writes to its knowledge store (`DOC-PUBLISH`). The assistant drawer passes the environment to the agent's tools (`AGENT-DEFAULT-ENVIRONMENT`); no one is asked for it. |
-| `DOC-SCOPE-DRAFTS` | SUPERSEDED by `DOC-AUTO-SAVE`: each edit is written where the library lives as the author types, so there are no unsaved drafts to keep per library, compile against, or save together. A private change is made in a copy (Save As). |
 | `DOC-SCOPE-OPEN` | The Designer opens a scope: a workspace folder, which is editable, or an environment's knowledge, which is read-only (`RUN-ADDRESS-LOCATION`, `DOC-EDITABLE-IN-SCOPE`). A folder may be a downloaded package, or an author's root holding one measure or many and the libraries they share. The open scope is the location the catalog lists (`?at=`). Its libraries are what the location's rules find, for a folder every library anywhere under it, and the left nav's Scope tab lists them, measures then libraries, with the open one marked; selecting one opens it in the Specification, one library at a time, asking first only while the open one has a write pending or refused (`DOC-AUTO-SAVE`). The tab lists the scope whether or not the open library compiles, and is not offered when no scope is open. An include the scope does not hold resolves from tagged knowledge, as every folder location's does, and opens as a reference (`DOC-EDITABLE-IN-SCOPE`). The Designer keeps no versions and no change control: each edit to a folder library changes, for every user, every measure that resolves it from that folder; tagged knowledge changes only when a library reaches a store (`DOC-OPEN-SAVE`). |
 | `PROC-DATA-PROVENANCE` | A data element reachable from a measure boundary but not used by any measure define (dead code) is not part of the measure. Reachability walks the compiler's describe graph. |
-| `REND-BADGES` | SUPERSEDED: the Validation badge is removed. No data source the Designer runs against has a scorekey and nothing builds a receipt (`REG-CONFORMANCE-DECK`, superseded), so the badge showed `pass` on every run and claimed a match it never checked. The section heading carries only the provenance mark, and the Common section, which held only the badge, is not rendered. The Mapping badge stays retired (coverage unbuilt). |
 | `SPEC-ANCHOR` | Everything is linkable and shows its code. Anchors key off library-qualified define names, never display aliases. Source chips are real links. Every Concept and Rule discloses the CQL at its derive statement. |
 | `SPEC-ATTRITION` | A criterion's inline figure states what it did: `10,318 → 8,204 patients · 79%` with a share bar. A population's base is every evaluated subject, because a population is counted as written (`SPEC-POPULATION-CASCADE`); a criterion's base is the cohort entering the population it sits under (`SPEC-POPULATION-CASCADE`). Delta is neutral ink. |
-| `SPEC-CLAUSE-PROBE` | Rejected: clause-level probing for per-sub-expression counts. Define is the accountability boundary. A clause without a name cannot be narrated. If a clause deserves a figure, promote it to a define. |
 | `SPEC-COMMENT-NARRATION` | Free-text comments above a define reach consumers: the engine preserves preceding comment blocks. Blank line discriminates declaration documentation from file-level notes; blank-separated comments are dropped. |
 | `SPEC-CONCEPTS` | A Concept is a define reached at depth 1 from a population criterion in the ELM graph. Granularity is CQL structure, not heuristic. Titles are narrated; unglorified defines render under their name. |
 | `SPEC-CQL-LINKS` | A quoted name in the CQL is followable to something the document renders. Defines get the lens; a value set jumps to the Appendix row. Unresolved name stays plain syntax. |
@@ -130,9 +126,7 @@ The measure document the Designer derives from ELM.
 | `SPEC-DOCUMENT` | The specification document named "Specification" derives from ELM and is the reader's primary artifact. Sections: Overview, Definitions, Common, Included definitions, Appendix, Terms. |
 | `SPEC-ELEMENT-GLOSS` | A define's heading is its name. A one-line gloss (not paraphrase) states what the name doesn't carry, rendered in reading face. Gloss may be absent for self-describing names. Replaces narrated titles. |
 | `SPEC-EXPLAIN-ACCOUNTING` | Linkable elements in narrated sections are accounted for: every name the renderer makes linkable is stated in the section's prose. The rule applies per section to an AI draft (`DOC-SECTION-EXPLAIN`). |
-| `SPEC-EXPLAIN-AGAIN` | SUPERSEDED by `DOC-EXPLAIN-REMOVE`: the Explain menu and the section badge are removed; the assistant explains ad hoc from its own drawer. |
 | `SPEC-EXPLAIN-INPUTS` | The resolved reference set a narration is generated against is server-side derived from ELM, carried on `/api/translate`, one artifact per (library, version). Derivation is consumed, not re-derived client-side. |
-| `SPEC-EXPLAIN-VIEW` | SUPERSEDED by `DOC-EXPLAIN-REMOVE`: nothing interpreted is shown, so there is nothing to filter. |
 | `SPEC-EXPLAIN-VOICE` | Generated narration follows a runtime prose contract (`clinical-explain/SKILL.md`): a clinician persona, banned vocabularies (jargon, hyperbole), fixed forms (Include/Exclude blocks, value-set refs), symmetry rule, seven-point read-back. |
 | `SPEC-INLINE-ANCHOR` | Every inline reference carries its own `sourceSpan`, so it anchors itself rather than leaning on the field's widened span. Enforced in XSD; tested against ELM. |
 | `SPEC-LICENSE` | The copyright notice and disclaimer of any steward's content a user loads are verbatim, displayed, never summarised. The notice states reproduction terms; dropping it makes the document non-redistributable. |
@@ -158,7 +152,6 @@ The measure document the Designer derives from ELM.
 | `SPEC-SAMPLE-METRIC` | A metric marked `provenance="sample"` is illustrative and says so. Never meets requirements asking for real figures. Three obligations: marked wherever it appears; stripped from non-demo lanes; never satisfies conformance. |
 | `SPEC-SCORING-METHODOLOGY` | How an eCQM scores is stated once, derived, never narration. Rendered in Overview's "How to read", as formula with measure terms, role-by-role account, schematic and exception rule. Declared, not inferred. |
 | `SPEC-SHARED-ORDER` | Section and define order is a specification property set once in a shared model, not per-surface. Sorts by declared order (ELM), topological, used-by, uses, or name (alphabetical). Populations never sort; they stay in eCQM reporting order. |
-| `SPEC-STATIC-OVERLAY` | SUPERSEDED by `APP-NARRATIVE-OVERLAY`: the static instances were removed with the official measure content; narration is generated per user. |
 | `SPEC-TERMINOLOGY-EXTRACT` | Terminology tab reports coded values returned records carry, grouped by path (Diagnosis/Category/Status/Body site). Paths are curated, not discovered. Values derive from result relations, not re-filtered. |
 | `SPEC-TERMINOLOGY-REF` | Narration binds a phrase to a value set or code: `<TerminologyRef library="…" name="Example Condition Diagnoses">…</TerminologyRef>`. Resolves against filtered terminology set. OID never in instance. Lens has Open button; no Pin. |
 | `SPEC-XSD` | The specification element model is defined by XSD (designer/server/src/cql_databricks_designer/schema/specification.xsd), owned and published as the normative contract. Enforced via CI validation. |
@@ -187,14 +180,7 @@ How the Designer picks an environment and shows its knowledge.
 
 | ID | Requirement |
 |---|---|
-| `DATA-REGISTRY` | SUPERSEDED by `DOC-ENVIRONMENT-PICKER`: there is no Settings module or Data Registry (`APP-SETTINGS`); the Designer picks an environment. |
-| `DATA-SOURCE-AUTORESOLVE` | SUPERSEDED by `DOC-ENVIRONMENT-PICKER` and `BIND-PUBLISHED-VIEW`: there is no Settings module or Data Registry (`APP-SETTINGS`); the Designer picks an environment, whose data is bound by view name, so there are no type mappings to prefill. |
-| `DATA-SOURCE-MODE` | SUPERSEDED by `DOC-ENVIRONMENT-PICKER`: the Designer picks an environment, not a data source. |
-| `DATA-SOURCE-PROFILE` | SUPERSEDED by `BIND-PUBLISHED-VIEW`: an environment's data is bound by view name; there are no retrieve UDTFs to map. |
-| `DATA-SOURCE-REQUIRED` | SUPERSEDED by `DOC-ENVIRONMENT-PICKER`: there is no Settings module or Data Registry (`APP-SETTINGS`); the Designer picks an environment. No run stamps a certification receipt (`REND-BADGES`), and the Test Deck is the offline mode (`APP-EXEC-MODE`), not a data source. |
 | `KNOWLEDGE-LAKE-DIRECT` | The BFF reads knowledge library and measure metadata directly from Lakehouse tables in one eager batch load held in memory, with no sync job. |
-| `KNOWLEDGE-ORIGIN` | SUPERSEDED by `DOC-ENVIRONMENT-PICKER` and `DOC-AUTHOR-IN-FOLDERS`: there is no Settings module or Data Registry (`APP-SETTINGS`); the Designer picks an environment. A library is authored in a folder and published into an environment's knowledge, which the Designer reads only. |
-| `TERMINOLOGY-STANDARDIZE` | SUPERSEDED by `DOC-ENVIRONMENT-PICKER`: there is no Settings module or Data Registry (`APP-SETTINGS`); the Designer picks an environment holding data, terminology and knowledge together, not knowledge sources paired with data sources. |
 
 ## Results
 
@@ -202,16 +188,9 @@ How the Designer runs measures and serves their results.
 
 | ID | Requirement |
 |---|---|
-| `PIPE-DRAFT-IDENTITY` | SUPERSEDED by `RUN-CLIENT-RESULT-IDENTITY`: the Designer runs no pipeline: it materializes as the user through the client's one durable path (`RUN-CLIENT-MIGRATION`), and a draft's results are identified by their fingerprint. |
 | `PIPE-INCREMENTAL-REUSE` | During authoring, a define whose fingerprint is unchanged is not recomputed: the caller's own result for it is reused (`RUN-CLIENT-RESULT-IDENTITY`, `RUN-CLIENT-DRAFT-RESULTS`). An edit recomputes only the defines whose SQL, parameters or upstream results it changes. |
 | `PIPE-MEASUREMENT-PERIOD` | Measurement period is an execution parameter: the user picks it in the toolbar's parameter bar (`APP-EXEC-PARAMS`). It is a parameter value of the run, so each period has its own results (`RUN-CLIENT-RESULT-IDENTITY`). |
-| `PIPE-OWNERSHIP` | SUPERSEDED by `RUN-CLIENT-DRAFT-RESULTS` and `SEC-OBO`: the Designer runs no pipeline: it materializes as the user through the client's one durable path (`RUN-CLIENT-MIGRATION`), and each user owns the draft result tables they create. |
-| `PIPE-PER-LIBRARY` | SUPERSEDED by `RUN-CLIENT-MIGRATION`: the Designer runs no pipeline: it materializes as the user through the client's one durable path (`RUN-CLIENT-MIGRATION`). |
-| `PIPE-PIPELINE-IDENTITY` | SUPERSEDED by `RUN-CLIENT-MIGRATION`: the Designer runs no pipeline: it materializes as the user through the client's one durable path (`RUN-CLIENT-MIGRATION`). |
-| `PIPE-PIPELINE-NAME` | SUPERSEDED by `RUN-CLIENT-MIGRATION`: the Designer runs no pipeline: it materializes as the user through the client's one durable path (`RUN-CLIENT-MIGRATION`). |
-| `PIPE-PIPELINE-RECOVERY` | SUPERSEDED by `RUN-CLIENT-MIGRATION`: the Designer runs no pipeline: it materializes as the user through the client's one durable path (`RUN-CLIENT-MIGRATION`); a missing result is recomputed on the next run. |
 | `PIPE-PRE-COMPUTED` | `/api/results` reopens a calculation's results from the caller's own draft results in the environment, as the user (`RUN-CLIENT-REQUEST-REOPEN`, `RUN-CLIENT-DRAFT-RESULTS`). It never computes, and never reads another user's or a Job's results. |
-| `PIPE-VERSION-AS-SCOPE` | SUPERSEDED by `RUN-CLIENT-DRAFT-RESULTS`: the Designer's results are draft results, isolated per user; published results are written only from published artifacts, by Jobs and notebooks. |
 
 ## Performance
 
@@ -224,36 +203,3 @@ How the Designer's backend keeps responses fast.
 | `PERF-DISCOVER-LIGHTWEIGHT` | Library discovery omits CQL source to avoid transferring megabytes; source is lazy-loaded on demand. |
 | `PERF-RESPONSE-GZIP` | The BFF gzips responses over 1024 bytes; SSE streams are excluded from compression to ensure incremental event delivery. |
 
-## Retired
-
-| ID | Status |
-|---|---|
-| `APP-ANALYZE-LENS` | Retired: superseded by `APP-ANALYTICS`. |
-| `APP-ASSISTANT-PANE` | Retired: the right pane holds data only, not conversation. See `APP-ASSISTANT`. |
-| `APP-DATA-GAPS` | Retired: the module and its route are deleted. See `DESIGNER-ONE-MODULE`. |
-| `APP-DATA-READINESS` | Retired: the Data Readiness module and its screen are deleted. See `DESIGNER-ONE-MODULE`. |
-| `APP-DQ-SCORECARD` | Retired: the scorecard was part of Data Readiness and is deleted with it. |
-| `APP-FLOW-SPINE` | Retired: the visual flow navigation was removed; populations are accessed through the nav. See `APP-SPEC-MODEL`. |
-| `APP-IMPACT` | Retired: impact moved to the Data tab; dependency counts are shown inline on nav rows. See `APP-DATA-PROFILE`. |
-| `APP-LENSES` | Retired: Designer is one surface and the lens set is withdrawn. |
-| `APP-LOGIC-LENS` | Retired: the Logic lens and its force-directed DAG are removed; logical structure is read through the Define lens. |
-| `APP-MAP-LENS` | Retired: the Map lens as a lens is retired; its content moves into Validate. |
-| `APP-MEASURE-FLOW` | Retired: the flow tab is gone. Its counts live on in `APP-COHORT-ALGEBRA` and `APP-DECISIVE-COUNT`. |
-| `APP-MODULE-SWITCHER` | Retired with SDP. Designer is the one module. |
-| `APP-MODULES` | Retired: superseded by single-module Designer architecture. See `DESIGNER-ONE-MODULE`. |
-| `APP-NARRATIVE-SIDECAR` | Retired: the JSON sidecar was replaced by XSD-conformant Specification instances. See `APP-NARRATIVE-TAGS`. |
-| `APP-SAMPLE-METRICS` | Retired: the document shows real figures from result tables. See `APP-SPEC-MODEL`. |
-| `APP-SCHEDULING` | Retired: Scheduling is removed from the Designer. |
-| `APP-SETTINGS` | Retired: Settings screen removed; deploy auto-binds data sources. See `APP-NO-UI-MOCK`. |
-| `APP-VALIDATE-LENS` | Retired: the Validate lens as a lens is retired; readiness content lives in the Data Readiness module. |
-| `DATA-BIND-AUTO` | Retired: Designer bind button and auto-reload removed. |
-| `DATA-REGISTRY-RENAME` | Retired: Data Source record naming superseded by UC tag reading. |
-| `DESIGNER-COMMAND-PALETTE` | Retired: finding a define is the Open menu. See `DESIGNER-TOP-BAR`. |
-| `DESIGNER-PUBLISH-GATE` | Retired with the Data Readiness module. See `DESIGNER-ONE-MODULE`. |
-| `DESIGNER-SDP-DIAGNOSTICS` | Retired with SDP. |
-| `DESIGNER-SPACE-CONTEXT` | Retired: data sources are found by UC tag. See `DATA-SOURCE-UC-TAG`. |
-| `KNOWLEDGE-LAKEBASE-ALIGN` | Retired: derivations are computed in memory, and no Lakebase tables are defined for them. See `KNOWLEDGE-LAKE-DIRECT`. |
-| `KNOWLEDGE-SYNC` | Retired: direct Lakehouse read replaced the sync job and cron. See `KNOWLEDGE-LAKE-DIRECT`. |
-| `SPEC-INDEX-TREE` | Retired. See `SPEC-NAV-COMPOSITION`. |
-| `SPEC-LIBRARY-DENSITY` | Retired: every library renders in full and the reader collapses it. See `APP-SPEC-COLLAPSE`. |
-| `SPEC-READ-METRICS` | Retired: retrieves are not materialized, so there are no read counts. See `SPEC-READ-REF`. |

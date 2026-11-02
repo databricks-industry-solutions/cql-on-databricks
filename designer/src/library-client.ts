@@ -134,7 +134,7 @@ export async function fetchFolder(path: string): Promise<FolderListing> {
   return { ...body, libraries: body.libraries.map(toDefinition) };
 }
 
-// ── APP-NARRATIVE-OVERLAY / SPEC-MEASURE-METADATA — the Specification's prose for a measure ─────────
+// ── SPEC-MEASURE-METADATA — the Specification's prose for a measure ─────────
 //
 // Hand-mirrors the server dataclasses in `cql_databricks_designer/specification/model.py`, which in turn mirror
 // `schema/specification.xsd` (SPEC-XSD). When these three disagree, the XSD is right.
@@ -471,7 +471,7 @@ export function peekDefineProfile(
     postKey(defineProfileUrl(name, version, define), JSON.stringify({ defineLibrary, ...scope })));
 }
 
-// ── APP-SAMPLE-METRICS — every figure the Specification renders ────────────────────────────────
+// ── every figure the Specification renders ────────────────────────────────
 
 /** The three figure reads' shared status handling.
  *

@@ -1,6 +1,6 @@
 """BUILD-RESOLVE-COMPILE — the one resolution every compiler caller uses: the closure and the ELM.
 
-Needs `cql_databricks.data_bindings` (shipped by this distribution since BINDINGS-INTO-CLIENT) and its SDK
+Needs `cql_databricks.data_bindings` (shipped by this distribution, `BINDINGS-INTO-CLIENT`) and its SDK
 dependency; skipped where only the stdlib and this package's source are on the path."""
 import unittest
 

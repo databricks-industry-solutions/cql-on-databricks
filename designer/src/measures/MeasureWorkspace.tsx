@@ -2,11 +2,9 @@
 // READING and COMPUTING a living clinical specification. ONE top bar (DESIGNER-TOP-BAR) + the
 // structure nav on the left + the document + the data inspector on the right.
 //
-// ONE SURFACE (APP-ONE-SURFACE, 2026-08-06). There were three lenses — Define, Validate, Analyze —
-// and a shared spine they were arranged around. Both are withdrawn. Validate's content moved to a Data
-// Readiness module, which was itself removed (DESIGNER-ONE-MODULE, 2026-10-03). Analyze is dropped — its funnel is the document's own `ReportedResult` and its trend
-// needed run history nothing accumulates. With one destination the lens bar has nothing to switch, and
-// the spine had nothing left to span.
+// ONE SURFACE (APP-ONE-SURFACE). There is one destination, the document, so there are no lenses and no
+// shared spine. Validate's readiness content is not part of the Designer (DESIGNER-ONE-MODULE), and Analyze's
+// funnel is the document's own `ReportedResult`; its trend needed run history nothing accumulates.
 //
 // The spec reads STATIC by default; selecting a Data Source (APP-LIVING-MEASURE) gates the run
 // (SVC-RUN-EVAL) that streams the funnel and counts into the document. The registry provides the
@@ -81,15 +79,15 @@ function saveCompute(s: StoredCompute) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch { /* quota / private mode */ }
 }
 
-/** Derive the active lens from the second URL segment (e.g. /measures/validate → "validate"). */
+/** Derive the active view from the second URL segment (e.g. /measures/validate → "validate"). */
 function viewFromPath(pathname: string): MeasureView | null {
   const seg = pathname.split("/").filter(Boolean)[1] ?? "";
   if (VALID_VIEWS.has(seg as MeasureView)) return seg as MeasureView;
   return null; // no explicit view in URL — use default
 }
 
-/** Scroll the Specification lens to a criterion selected in the left-pane nav (APP-NAV-FILTER).
- *  Selection is by NAME across the lenses, while spec anchors are library-qualified (APP-SPEC-MODEL),
+/** Scroll the Specification to a criterion selected in the left-pane nav (APP-NAV-FILTER).
+ *  Selection is by NAME across the views, while spec anchors are library-qualified (APP-SPEC-MODEL),
  *  so resolve through the cell's `data-crit-name`. */
 function scrollToCrit(name: string) {
   const el = document.querySelector<HTMLElement>(`[data-crit-name="${CSS.escape(name)}"]`);
@@ -117,7 +115,7 @@ function pickDefault(defs: Definition[]): string {
 export function MeasureWorkspace({ chrome, deepLink }: {
   /** DESIGNER-TOP-BAR — the shared bar's invariants (module · theme · tour · palette), owned by Root. */
   chrome: TopBarChrome;
-  /** APP-TOUR — a Product Tour "Show me" opens the workspace on an example at a given lens/mode. */
+  /** APP-TOUR — a Product Tour "Show me" opens the workspace on an example at a given view/mode. */
   deepLink?: DeepLink;
 }) {
   const location = useLocation();
@@ -125,21 +123,21 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   const [definitions, setDefinitions] = useState<Definition[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  // APP-URL-ROUTING — `?open=` IS the open artifact. There is no second copy: `selectedId` used to
-  // be a useState synced with the URL in BOTH directions — a raw `replaceState` wrote one way, an
-  // effect wrote the other — and the raw write is what react-router never sees. Any navigation built
-  // after it from the router's stale search (as `setView` was) resurrected the previous `?open=`, and
-  // the sync effect then dutifully adopted it: open a measure, watch the URL flicker, land back on
-  // the artifact you just left. State with two writers and a reconciler is three chances to disagree;
-  // a derivation is none.
+  // APP-URL-ROUTING — `?open=` IS the open artifact. There is no second copy: `selectedId` is derived
+  // from the URL and never held in state. A state copy synced with the URL in BOTH directions would
+  // need a raw `replaceState` write one way and an effect the other, and the raw write is what
+  // react-router never sees. Any navigation built from the router's stale search then resurrects the
+  // previous `?open=`, and the sync effect adopts it: open a measure, watch the URL flicker, land back
+  // on the artifact you just left. State with two writers and a reconciler is three chances to
+  // disagree; a derivation is none.
   const urlOpen = new URLSearchParams(location.search).get("open");
   const selectedId = urlOpen ?? "";
   // RUN-ADDRESS-LOCATION, DOC-OPEN-SAVE — `?at=` is the location the catalog lists: one tagged store or one folder.
-  // Absent, it lists all of tagged knowledge, as before locations. Opening a measure from a folder IS setting this
+  // Absent, it lists all of tagged knowledge. Opening a measure from a folder IS setting this
   // to the folder, so it lives in the URL beside `?open=` and a pasted address reopens the same copy.
   const openAt = new URLSearchParams(location.search).get("at");
 
-  // APP-URL-ROUTING — derive lens from URL path; push changes to history.
+  // APP-URL-ROUTING — derive the view from URL path; push changes to history.
   const urlView = viewFromPath(location.pathname);
   const view: MeasureView = deepLink?.lens ?? urlView ?? "define";
 
@@ -164,7 +162,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     if (selectedId) localStorage.setItem(LAST_MEASURE_KEY, selectedId);
   }, [selectedId]);
 
-  // APP-LOGIC-VIEW / APP-URL-ROUTING — the criterion selected across the nav ↔ Define lens.
+  // APP-LOGIC-VIEW / APP-URL-ROUTING — the criterion selected across the nav ↔ Define view.
   //
   // The URL IS the state (`?crit=`), not a copy of it. A reader who has scrolled to `Denominator
   // Exclusions` and pastes the address bar to a colleague has to land them there, and Back has to undo
@@ -178,13 +176,12 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // outside — a pasted address, Back, Forward — and has to move the page, not merely tint a row.
   const selfSelected = useRef<string | null>(selectedToken);
   // APP-URL-ROUTING — the ONE writer for the workspace's ENTIRE URL: the query state (`open`,
-  // `crit`, `nav`) and, when the gesture changes it, the lens path. It takes a PATCH rather than a
+  // `crit`, `nav`) and, when the gesture changes it, the view path. It takes a PATCH rather than a
   // single param because a gesture that changes several has to land as ONE history entry — two
   // `navigate` calls in one tick both build from the search as it stood before either committed, so
   // the second silently drops the first's write (and Back would undo half a move even if it didn't).
-  // That drop is exactly how the Open menu came to bounce back to the previous measure while a raw
-  // `replaceState` was a second writer; there is no second writer now, and nothing here may call
-  // `navigate` on its own.
+  // That drop is how a second writer, such as a raw `replaceState`, makes the Open menu bounce back to
+  // the previous measure. There is no second writer, and nothing here may call `navigate` on its own.
   //
   // Built from `window.location`, not the router's copy: a push updates `window.location`
   // synchronously while `useLocation` waits for the router's commit, so this is the one read that is
@@ -204,9 +201,9 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     setParams({ crit: name });
   }, [setParams]);
   // DESIGNER-TOP-BAR / APP-URL-ROUTING — open an artifact: ONE history write carrying the id, the
-  // cleared criterion (the old selection names a define the new artifact does not have — and clearing
+  // cleared criterion (the selection in place may name a define the new artifact does not have — and clearing
   // it AT THE WRITE is what lets Back keep the criterion of the entry it returns to), and, when the
-  // gesture implies one, the lens. Everything per-artifact — the workspace state, the last-opened
+  // gesture implies one, the view. Everything per-artifact — the workspace state, the last-opened
   // record, the dependency reset — follows from the URL this writes.
   const openArtifact = useCallback((id: string, opts: { replace?: boolean; view?: MeasureView } = {},
                                     at?: string | null) => {
@@ -217,8 +214,8 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // SPEC-NAV-COMPOSITION — which arrangement the left pane is in. It lives in the URL for the same
   // reason `?crit=` does: a pasted address has to reproduce what the sender was looking at.
   //
-  // `?pop=` is GONE with the Flow tab that owned it. Composition draws every population at once, so
-  // there is no root to address; an old link carrying one is simply ignored.
+  // `?pop=` is not read. Composition draws every population at once, so there is no root to
+  // address; a link carrying one is simply ignored.
   const navTab = useMemo(
     () => parseNavTab(new URLSearchParams(location.search).get("nav")), [location.search]);
   // APP-EXEC-MODE — the OFFLINE state: `static` reads the spec. The real targets are the environments
@@ -226,7 +223,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // Restore from localStorage so the last selection survives a page reload.
   const stored = useRef(loadCompute());
   const [mode, setMode] = useState<ExecMode>(deepLink?.mode ?? stored.current.mode ?? "static");
-  // APP-COMPUTE-TARGET — the stored literal of the retired runtime axis; the warehouse is the choice now.
+  // APP-COMPUTE-TARGET — a fixed literal; the warehouse is the choice that varies.
   const compute: ComputeTarget = "serverless";
   // APP-COMPUTE-TARGET — the SQL warehouse a run and every result read use, remembered per user. null
   // is the deployment's WAREHOUSE_ID. A chosen warehouse the user cannot use fails; nothing falls back.
@@ -283,7 +280,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   useEffect(() => {
     fetchEnvironments().then((list) => {
       setEnvironments(list); setEnvironmentError(null);
-      // DOC-ENVIRONMENT-PICKER — the default is preselected; a picked environment the user no longer sees is not kept.
+      // DOC-ENVIRONMENT-PICKER — the default is preselected; a picked environment missing from the list is not kept.
       setEnvironment((picked) => (list.some((e) => e.name === picked) ? picked
         : list.find((e) => e.default)?.name ?? null));
     }).catch((e) => setEnvironmentError(e instanceof Error ? e.message : String(e)));
@@ -299,7 +296,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     [mode, compute, computing, updateMode, periodYear, warehouseId]);
 
   // APP-TOUR — apply a deep-link when it changes (a "Show me" while the workspace is already
-  // mounted). The artifact and the lens land as ONE write — two would race (`setParams`).
+  // mounted). The artifact and the view land as ONE write — two would race (`setParams`).
   useEffect(() => {
     if (!deepLink) return;
     if (deepLink.openId) openArtifact(deepLink.openId, { replace: true, view: deepLink.lens });
@@ -311,10 +308,10 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // Only override the selected id when there is no current selection or it is absent from the new
   // definitions (stale/removed); an explicit user or deep-link selection always wins.
   //
-  // KNOWLEDGE-FAIL-LOUD — a failed fetch is NOT an empty catalogue. The backend used to answer 200
-  // with [] when Lakebase was unreachable and this pane called that "No measures found", sending
-  // the reader to Settings to fix a configuration that was never wrong. The error is now surfaced
-  // on the FIRST failure (retries continue underneath) so a real outage reads as an outage.
+  // KNOWLEDGE-FAIL-LOUD — a failed fetch is NOT an empty catalogue. An empty list from an unreachable
+  // store would read as "No measures found" and send the reader to Settings to fix a configuration
+  // that is not wrong. The error is surfaced on the FIRST failure (retries continue underneath) so a
+  // real outage reads as an outage.
   const [loadError, setLoadError] = useState<string | null>(null);
   // DOC-OPEN-SAVE — bumped when New or Save As creates a library, so the catalog lists it.
   const [catalogGen, setCatalogGen] = useState(0);
@@ -457,7 +454,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
 
   // RUN-CLIENT-REQUEST-REOPEN — opening a measure, or changing its CQL, data source, period or warehouse,
   // opens the user's own results for exactly that calculation, read-only. It never computes. Results
-  // are always private: there is no published-results lookup (RUN-CLIENT-PUBLISHED, amended 2026-10-10).
+  // are always private: there is no published-results lookup (RUN-CLIENT-PUBLISHED).
   // A miss is "Not computed"; in Automatic it then runs Compute missing, in Manual it does not.
   useEffect(() => {
     if (!definition || !runEnvironment || !source) { setLookup(null); lookedUp.current = null; return; }
@@ -509,7 +506,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     setRun(null);
     setCompiling(true);
     let current = true;
-    // APP-SPEC-MODEL — compile the include closure too: the Define lens derives its whole model
+    // APP-SPEC-MODEL — compile the include closure too: the Define view derives its whole model
     // from ELM, so the includes must arrive compiled, not merely resolved.
     const settle = (result: TranslateResult) => {
       if (!current) return;
@@ -560,21 +557,21 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // (MeasureNarrative, DefineNav) use this when available, falling back to CQL scan only offline.
   const elmInfo = useMemo(() => (trans?.ok && trans.elm ? parseElmDefines(trans.elm) : null), [trans]);
 
-  // APP-LOGIC-VIEW — selecting in the NAV scrolls the Define lens to the criterion and keeps it
+  // APP-LOGIC-VIEW — selecting in the NAV scrolls the Define view to the criterion and keeps it
   // selected; selecting IN the spec just toggles selection (no scroll — you're already there).
   // Selecting from the NAV — and, since SPEC-REF-LENS, following a reference inside the document —
   // scrolls to the section that renders the define. Highlighting it in the nav and leaving the reader
   // where they were is not "following a link".
   //
-  // APP-MEASURE-FLOW — EVERY nav selection scrolls through the landing effect below, not from
+  // EVERY nav selection scrolls through the landing effect below, not from
   // here. Selection lives in the URL (`setSelected` → `navigate`), and a router update does not
   // commit in the click's own flush — so a scroll launched from this handler, on any frame timer,
   // RACES the commit that renders the selection and the reveals that expand what holds it
-  // (`MeasureNarrative`): it measured the pre-expansion page, and the expansion then moved its
+  // (`MeasureNarrative`): it measures the page before the expansion, and the expansion then moves its
   // destination out from under the smooth scroll. Clearing the stamp `setSelected` just wrote makes
   // the landing effect treat the token's arrival as something that must MOVE the page — and that
   // effect runs after the commit it is keyed on, so it always measures the expanded page. This is
-  // also what makes the pane lens-invariant for free: a row clicked under the CQL lens lands the
+  // also what makes the pane view-invariant for free: a row clicked under the CQL view lands the
   // same way, once the Specification has mounted — one scroll path, not two.
   //
   // RE-SELECTING the selected criterion is the one case with no commit to wait for: the URL is the
@@ -588,18 +585,16 @@ export function MeasureWorkspace({ chrome, deepLink }: {
       return;
     }
     selfSelected.current = null;
-    // The criterion and, from another lens, the lens itself: ONE write (`setParams`) — as two they
+    // The criterion and, from another view, the view itself: ONE write (`setParams`) — as two they
     // would race and Back would undo half the move.
     setParams({ crit: token }, { view: view !== "define" ? "define" : undefined });
   }, [dep, selectedToken, view, setParams]);
 
-  // APP-URL-ROUTING — land the reader on a document HEADING from the nav, from any lens.
+  // APP-URL-ROUTING — land the reader on a document HEADING from the nav, from any view.
   //
-  // Replaces five ad-hoc `getElementById(...).scrollIntoView(...)` call sites in `DefineNav` (Overview
-  // anchors, Terminology's two rows, the notices rows and a read group's resource) plus the
-  // `onScrollToSection` prop that was plumbed three levels and never called. All five broke the same
-  // way once the pane outlived the Define lens: the heading only exists while the Specification is
-  // mounted, so the scroll has to wait for it.
+  // The nav's anchor targets come through here: Overview anchors, Terminology's two rows, the notices
+  // rows and a read group's resource. The heading only exists while the Specification is mounted, so
+  // the scroll has to wait for it when the pane is on another view.
   const pendingAnchor = useRef<string | null>(null);
   const landOnAnchor = useCallback((domId: string) => {
     if (dep) setDep(null);
@@ -671,7 +666,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     [trans],
   );
 
-  // The ONE model of what this specification contains. Built once here and handed to BOTH Define-lens
+  // The ONE model of what this specification contains. Built once here and handed to BOTH Define-view
   // surfaces, so the left nav and the Specification page can never disagree about which entries exist,
   // how overloads collapse, what is eliminated, or WHAT ORDER THEY COME IN. "Show eliminated defines"
   // and the catalogue's order are properties of the document (not of one pane), so their state lives
@@ -764,7 +759,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // ELIMINATION EXTENDS TO READS by construction: a define nothing reaches contributes no data
   // requirement, which is what keeps a helper library's hundreds of published rows out of a short table.
   //
-  // THE READS ARE THE SERVER'S ANSWER now (`SPEC-EXPLAIN-INPUTS`): `referenceSets` rides back on the
+  // THE READS ARE THE SERVER'S ANSWER (`SPEC-EXPLAIN-INPUTS`): `referenceSets` rides back on the
   // same `/api/translate` response as the ELM, so the model this renders and the reads resolved into it
   // describe one compilation. What happens here is the INVERSION into per-read-with-call-sites plus the
   // `mustSupport` join, neither of which is a fact about the CQL.
@@ -831,7 +826,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     // SHOW ELIMINATED reveals everything the document holds back — and terminology is held back for
     // TWO different reasons, only one of which is elimination. A value set referenced only by an
     // unreachable define is hidden by reachability. One a helper library DECLARES and nothing references
-    // — its define reads a Patient element, not the value set — was never hidden by a reachability rule.
+    // — its define reads a Patient element, not the value set — is never hidden by a reachability rule.
     //
     // Filtering on reference alone made the toggle reveal the first kind and not the second, which
     // reads as the toggle being broken: the reader asked to see what was hidden and something stayed
@@ -898,7 +893,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     };
   }, [specDoc, retrieves, namedTerminology, overlay]);
 
-  // APP-URL-ROUTING / APP-MEASURE-FLOW — land the reader on a criterion: one arriving in the
+  // APP-URL-ROUTING — land the reader on a criterion: one arriving in the
   // URL from outside (a pasted address, Back), or one the nav selected (`selectFromNav` clears the
   // stamp so this fires). Placed after `specDoc` because it is the document's existence that decides
   // whether the section is in the DOM yet: a pasted address resolves only once the compile and the
@@ -915,7 +910,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
     return () => cancelAnimationFrame(frame);
   }, [selectedToken, view, specDoc]);
 
-  // The same gate for a HEADING queued by `landOnAnchor` from another lens — one frame after the
+  // The same gate for a HEADING queued by `landOnAnchor` from another view — one frame after the
   // Specification mounts, or the query runs against an article that is not there yet.
   useEffect(() => {
     if (view !== "define" || !specDoc || !pendingAnchor.current) return;
@@ -941,7 +936,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   const writeState = autoSave.state;
   const unwritten = autoSave.unwritten;
   const [dismissedWrite, setDismissedWrite] = useState<typeof writeState | null>(null);
-  // Read the library again after its copy changed elsewhere: what is there now, with the edit that was refused gone.
+  // Read the library again after its copy changed elsewhere. The edit held here is discarded and the copy is loaded again.
   const reread = useCallback(() => {
     if (!definition) return;
     const { name, version, location } = definition;
@@ -949,7 +944,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
       .then((s) => { setEdited(null); setLoadedSource(s); setReads((n) => n + 1); setSourceError(null); })
       .catch((e) => setSourceError(`Failed to load source: ${e instanceof Error ? e.message : e}`));
   }, [definition]);
-  // Cmd/Ctrl+S writes now, rather than when typing stops.
+  // Cmd/Ctrl+S writes at once, rather than when typing stops.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); autoSave.flush(); }
@@ -1023,7 +1018,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   // The define last closed, so it can reopen on its own text while the draft is still exactly what it left —
   // the one way back into a define closed while it did not compile, when no span on the page is current.
   const [lastInPlace, setLastInPlace] = useState<InPlace | null>(null);
-  // Another library, view or dependency closes it, and so does reading the library again: its text is no longer the
+  // Another library, view or dependency closes it, and so does reading the library again: its text is not the
   // one the define was opened on. A write does not: it writes exactly the text this edit made.
   useEffect(() => { setInPlace(null); }, [libKey, view, dep, reads]);
   useEffect(() => { setLastInPlace(null); }, [libKey, reads]);
@@ -1106,15 +1101,15 @@ export function MeasureWorkspace({ chrome, deepLink }: {
             is also the File surface, Navigator); the CENTRE carries the execution context passed below;
             the right end holds the app's own toggles, which this screen does not supply.
 
-            APP-ONE-SURFACE — the lens bar that used to fill the centre is GONE rather than emptied.
+            APP-ONE-SURFACE — the centre holds no view bar at all.
             With Validate in its own module and Analyze withdrawn there is one destination, and a switcher
             between one place and itself is chrome a reader pays a glance for and gets nothing back from.
             Execution sits in the middle of the bar; the compute pill is on the right beside controls
             touched once a session. */}
         {/* APP-ASSISTANT — `moduleTools` is the drawer's door. A toggle, so it shows its state
-            (`aria-pressed`), which is the same argument that took tour/Settings/appearance out of the
-            account menu. `Sparkle` because that is the assistant mark the retired inspector tab already
-            used, and a reader should meet one mark for one thing. Rendered only with a measure open:
+            (`aria-pressed`): the same argument that keeps tour/Settings/appearance out of the
+            account menu. `Sparkle` because that is the assistant mark, and a reader should meet one mark
+            for one thing. Rendered only with a measure open:
             the assistant's scope is the measure, and a door onto an empty room is not a door. */}
         <TopBar {...chrome}
           moduleTools={definition && (<>
@@ -1156,7 +1151,7 @@ export function MeasureWorkspace({ chrome, deepLink }: {
             </span>
           </>)}
           context={definition && <>
-            {/* DESIGNER-SPACE-CONTEXT — show the active Data Source name when the measure belongs to one. */}
+            {/* Show the active Data Source name when the measure belongs to one. */}
             {/* APP-EXEC-PARAMS — the execution parameters, dialled in the bar. They scope every count,
                 rate and funnel on the page, and a value a reader changes while reading is right here. */}
             <ExecParamBar params={execParams} />

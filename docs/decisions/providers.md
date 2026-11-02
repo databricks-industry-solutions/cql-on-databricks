@@ -25,7 +25,7 @@ Problems with this:
   `publish_data_source()` are two ways to turn tables into UDTFs.
 - **The UDTF contract is brittle.** Its seven parameters are positional, so removing `library` broke every
   function. Stale traces remain: "eight" in comments (`SqlEvalEnv.scala`, `client.py`) and `_ids` parsing in
-  `BatchInputs.scala`, though `BIND-RETRIEVE-SUBJECT` is retired.
+  `BatchInputs.scala`, which nothing calls.
 - **Terminology is a snapshot.** `runtime.valuesets` unions the schemas tagged when its owner built it, in the
   deployer's scopes, not the reader's. `runtime.measures` and `runtime.libraries` have no readers.
 - **The compiler request mixes namespaces.** `sources` holds FHIR types beside two reserved keys, `valuesets` and
@@ -67,14 +67,14 @@ their own. The client resolves everything through providers, and nothing else.
 ### Interfaces
 
 ```python
-class DataProvider(ABC):                        # CLIENT-DATA-PROVIDER
+class DataProvider(ABC):                        # CLIENT-DATA-RESOLVER
     reusable: bool = True                       # False for dev providers: their results are never reused
-    def identity(self) -> str: ...              # goes into the result fingerprint (CLIENT-PROVIDER-IDENTITY)
+    def identity(self) -> str: ...              # goes into the result fingerprint (CLIENT-RESOLVER-IDENTITY)
     def types(self) -> frozenset[str]: ...      # a missing type fails before the run
     def retrieve(self, request: RetrieveRequest) -> Relation: ...
     def change_log(self) -> Relation | None: return None   # DATA-CHANGE-LOG-PERIODS
 
-class TerminologySource(ABC):                   # CLIENT-TERMINOLOGY-PROVIDER
+class TerminologySource(ABC):                   # CLIENT-TERMINOLOGY-RESOLVER
     def identity(self) -> str: ...
     def expansions(self, refs: Sequence[ValueSetRef]) -> Relation: ...   # (valueset_id, version, system, code)
     def find_code(self, code: str, system: str | None) -> Sequence[ValueSetRef]: ...  # AGENT-VALUE-SET-LOOKUP
@@ -82,7 +82,7 @@ class TerminologySource(ABC):                   # CLIENT-TERMINOLOGY-PROVIDER
 class TerminologyStore(TerminologySource):
     def publish(self, value_sets: Sequence[ValueSet]) -> PublishReport: ...
 
-class KnowledgeSource(ABC):                     # CLIENT-KNOWLEDGE-PROVIDER
+class KnowledgeSource(ABC):                     # CLIENT-KNOWLEDGE-RESOLVER
     def identity(self) -> str: ...
     def library(self, name: str, version: str | None) -> LibrarySource | None: ...
     def measure(self, url: str, version: str | None) -> MeasureResource | None: ...
@@ -91,7 +91,7 @@ class KnowledgeSource(ABC):                     # CLIENT-KNOWLEDGE-PROVIDER
 class KnowledgeStore(KnowledgeSource):
     def publish(self, closure: LibraryClosure) -> PublishReport: ...
 
-class ResultStore(ABC):                         # CLIENT-RESULT-STORE; Delta only
+class ResultStore(ABC):                         # CLIENT-RESULT-RESOLVER; Delta only
     def find(self, fingerprint: str) -> TableRef | None: ...
     def write(self, recipe: Recipe, relation: Relation) -> TableRef: ...
 ```
@@ -116,16 +116,16 @@ fields are dropped. So a model change is absorbed once.
   retrieve in the CQL, so it may pick a different relation for each. It may ignore every field but `fhir_type`:
   the engine re-applies the filters (`BIND-CAPABILITY`). Whatever it returns must hold every resource that
   matches the request; a relation missing some returns wrong results without an error.
-- **Functions take the arguments they declare, by name** (`BIND-NAMED-ARGS`). The client reads a function's
+- **Functions take the arguments they declare, by name**. The client reads a function's
   parameters from `information_schema.parameters` and the compiler calls it with only those, as named arguments
   (`fn(value_set => …, date_low => …)`). A function declares only what it uses, so adding a request field never
   breaks one, and no function has a fixed positional signature.
-- **Read and write are separate interfaces** (`CLIENT-PROVIDER-READ-WRITE`). One class may implement both. Code
+- **Read and write are separate interfaces** (`CLIENT-RESOLVER-READ-WRITE`). One class may implement both. Code
   that reads takes a `Source`; `publish` takes a `Store`, so publishing into a read-only folder is a type error.
   Data has no `publish`: customers own their tables. A result store's job is writing, so `write` is on it.
 - **Knowledge is looked up at compile time** and returns CQL and ELM, not rows. The include-closure algorithm
   stays in one place in the client core. Providers only answer lookups.
-- **Overrides are composition** (`CLIENT-PROVIDER-OVERLAY`). `Overlay(dev, base)` exists for each role: per type
+- **Overrides are composition** (`CLIENT-RESOLVER-OVERLAY`). `Overlay(dev, base)` exists for each role: per type
   for data, per value set for terminology, per library for knowledge. Today's knowledge lookup order (cells,
   folders, stores) becomes an explicit chain. An overlay's `reusable` is false when any layer's is.
 
@@ -140,8 +140,7 @@ fields are dropped. So a model change is absorbed once.
 
 ### Default resolver
 
-`TaggedResolver` (`CLIENT-DEFAULT-RESOLVER`) finds providers by schema tag, in the caller's catalog scopes
-(`CLIENT-DISCOVERY-SCOPE`), as the caller:
+`TaggedResolver` finds providers by schema tag, in the caller's catalog scopes, as the caller:
 
 | Tag on a schema | Provider it yields |
 |---|---|
@@ -156,7 +155,7 @@ for function tags, and a kept result's address is a `catalog.schema`.
 
 ### Compiler request
 
-The request carries one field per role (`BIND-PROVIDER-REQUEST`), in place of `dataSource`, `sources` (with its
+The request carries one field per role (`BIND-CALL-SITE`), in place of `dataSource`, `sources` (with its
 `valuesets` and `udfs` keys) and `deps`/`libraries`:
 
 ```json
@@ -172,24 +171,24 @@ The client never patches the SQL the compiler returns.
 ### Results and identity
 
 A kept result's fingerprint covers each provider's `identity()` in place of the data source's address
-(`CLIENT-PROVIDER-IDENTITY`, amending `RUN-CLIENT-RESULT-IDENTITY`), and the terminology's too. A run with any
+(`CLIENT-RESOLVER-IDENTITY`, amending `RUN-CLIENT-RESULT-IDENTITY`), and the terminology's too. A run with any
 provider whose `reusable` is false is never reused and never kept.
 
 ## What is removed
 
 | Removed | Replaced by |
 |---|---|
-| `mount()`, `reset()`'s mount handling (`CLIENT-SESSION-MOUNT`) | Data and terminology providers; `Overlay` for dev |
+| `mount()`, `reset()`'s mount handling (`CLIENT-SESSION-RESOLVERS`) | Data and terminology providers; `Overlay` for dev |
 | `connect(data_catalog=)` and the ignored `data.fhir_catalog` setting | A data provider named by address |
 | `source_binding` | A data provider, or an `Overlay` per type |
-| "Only one tagged source in scope" (`CLIENT-EXEC-DISCOVERY`) | `TaggedResolver` naming the source; see `DEC-NOTEBOOK-DEFAULT-RESOLVER` |
+| "Only one tagged source in scope" | `TaggedResolver` naming the source; see `DEC-NOTEBOOK-DEFAULT-RESOLVER` |
 | `connect(valueset_table=)` | A terminology provider |
-| `runtime.measures`, `runtime.libraries`, `runtime.valuesets`, `bind_knowledge_views` (`DATA-BINDINGS`) | Providers from `TaggedResolver` |
-| `POST /api/knowledge-sources/reload` in the Designer (`DATA-BIND-AUTO`, already retired) | Nothing: no caller |
-| `_ids` parsing in `BatchInputs.scala` (`BIND-RETRIEVE-SUBJECT`, already retired) | Nothing |
-| The seven positional retrieve parameters (`BIND-EXPLICIT-PARAMS`) | `BIND-RETRIEVE-REQUEST`, `BIND-NAMED-ARGS` |
+| `runtime.measures`, `runtime.libraries`, `runtime.valuesets`, `bind_knowledge_views` | Providers from `TaggedResolver` |
+| `POST /api/knowledge-sources/reload` in the Designer | Nothing: no caller |
+| `_ids` parsing in `BatchInputs.scala` | Nothing |
+| The seven positional retrieve parameters | `BIND-RETRIEVE-REQUEST` |
 
-Each removed requirement is marked SUPERSEDED in place, naming its replacement.
+Removed requirements are deleted from their registry; git keeps their history.
 
 ## Measurements
 
@@ -238,7 +237,7 @@ Counting one define per query, the warehouse was faster on all 14 defines, by 1.
 |---|---|---|
 | `CLIENT-PROVIDERS` | Requirements for every ID above in `compiler/docs/requirements.md`; SUPERSEDED marks; `DEC-PROVIDER-RELATION` in `docs/decisions/README.md` | — |
 | `CLIENT-DATA-PROVIDER` | The interfaces, `RetrieveRequest`, `Relation`, `Overlay`, in the platform-free client core (`checkNeutrality`) | `CLIENT-PROVIDERS` |
-| `BIND-PROVIDER-REQUEST` | The one-field-per-role request; `describe` returns each retrieve with an id and its request; relations bound per retrieve and embedded; `BIND-NAMED-ARGS`; conformance tests | `CLIENT-PROVIDERS` |
+| `BIND-PROVIDER-REQUEST` | The one-field-per-role request; `describe` returns each retrieve with an id and its request; relations bound per retrieve and embedded; conformance tests | `CLIENT-PROVIDERS` |
 | `CLIENT-PROVIDER-IDENTITY` | The fingerprint covers provider identities; `reusable` | `CLIENT-DATA-PROVIDER` |
 | `CLIENT-DEFAULT-RESOLVER` | `TaggedResolver` and the shipped data providers, using the shared reshape | `BIND-PROVIDER-REQUEST` |
 | `CLIENT-TERMINOLOGY-PROVIDER` | Delta and JSON terminology providers, `find_code`, `publish` | `BIND-PROVIDER-REQUEST` |

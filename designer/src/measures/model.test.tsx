@@ -151,7 +151,7 @@ describe("isTruthy mirrors the backend population membership test", () => {
   });
 });
 
-// ── APP-MEASURE-FLOW / APP-PANE-STATE ───────────────────────────────────────────────────────
+// ── APP-PANE-STATE ───────────────────────────────────────────────────────
 // The left pane's arrangement is a URL param and its width is a stored preference, so both are parsed
 // rather than trusted. THE FAILURE THESE EXIST FOR: a `?nav=` from a future version, a hand-edited
 // link, or a localStorage value written by an older build must not put the pane in a state it has no
@@ -169,7 +169,7 @@ describe("the nav tab is parsed, never trusted (SPEC-NAV-COMPOSITION)", () => {
 
   it("falls back to the Outline for anything else", () => {
     // Absent is the common case — `?nav=` is omitted for the default, so the URL stays short.
-    // `flow` is in this list on purpose: the Flow tab is retired, and a link somebody sent last week
+    // `flow` is in this list on purpose: it names a tab that is no longer offered, and a link to it
     // still has to land its reader somewhere real rather than on a blank pane.
     for (const v of [null, undefined, "", "flow", "COMPOSITION", "../etc"]) {
       expect(parseNavTab(v)).toBe("outline");

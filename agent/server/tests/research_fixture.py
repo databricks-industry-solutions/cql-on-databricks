@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from cql_databricks.agent.server.mcp import Research
 
-#: The tools the research collaborators serve (`SVC-MCP-TOOLS`, amended 2026-10-29).
+#: The tools the research collaborators serve (`SVC-MCP-TOOLS`).
 RESEARCH_TOOLS = {"list_definitions", "get_definition", "list_value_sets", "value_sets_with_code",
                   "find_results", "get_population_summary", "check_cql", "run_cql", "compare_cql"}
 

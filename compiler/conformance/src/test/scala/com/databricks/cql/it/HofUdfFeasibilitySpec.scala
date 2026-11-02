@@ -8,7 +8,7 @@ import org.scalatestplus.junit.JUnitRunner
 import java.io.{BufferedOutputStream, File, FileOutputStream}
 import java.util.zip.{ZipEntry, ZipOutputStream}
 
-/** PHASE-0 gate for EVAL-HOF-CONTROL (compiler/docs/execution-model.md): the two-layer model lowers
+/** Feasibility gate for EVAL-HOF-CONTROL (compiler/docs/execution-model.md): the two-layer model lowers
   * calc-forcing control flow (conditionals, folds, per-element iteration) to Spark higher-order-function
   * expressions (`transform`/`filter`/`aggregate`) whose LEAVES are fixed-output catalog UDFs. Scalar and
   * struct-input catalog UDFs over Connect are already proven (`UdfFeasibilitySpec`); the ONE untested

@@ -1,4 +1,4 @@
-// PHASE-10 (BUILD-COMPILE-SERVICE) — service: the compile-service
+// BUILD-COMPILE-SERVICE — service: the compile-service
 // boundary + a local host for development and tests. compile(request) -> {unresolved Spark Connect plan proto, metadata};
 // the plan proto is extracted SERVER-FREE by reflection off the Connect Dataset (its plan() is the
 // proto.Plan the client would send), so the service depends on the COMPILER ONLY — no runtime, no

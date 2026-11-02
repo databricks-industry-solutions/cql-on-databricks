@@ -2,7 +2,7 @@
 
 Drives the one adaptation that still belongs to the accelerator — the `CACHE TABLE` -> temp view barrier
 rewrite (SVC-RUN-SERVERLESS-BARRIER) — plus UC-backed discovery of the udf schema. The `sources.udfs.schema`
-injection this module used to perform is gone: the OSS client owns that knob now (`.udf_schema()`,
+injection is not done here: the OSS client owns that knob (`.udf_schema()`,
 EMIT-UDF-QUALIFY), and `test_the_request_body_is_the_oss_providers_own` is what keeps a second copy of it
 from growing back here. No workspace and no Spark: the Spark session is a stub and `requests.post` is
 captured.

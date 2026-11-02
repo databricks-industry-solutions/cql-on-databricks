@@ -52,8 +52,8 @@ describe("buildSpecModel (APP-SPEC-MODEL)", () => {
   it("recovers each declaration's own CQL body from its ELM locator", () => {
     const lib = build().libraries.find((l) => l.name === "Helpers")!;
     const toString = lib.entries.find((e) => e.name === "ToString")!;
-    // Both overloads read the same here, but each is sliced from its OWN span — the old name-keyed
-    // body map gave every overload the LAST one's body.
+    // Both overloads read the same here, but each is sliced from its OWN span. A map keyed by name
+    // would give every overload the LAST one's body.
     expect(toString.variants.map((v) => v.body)).toEqual(["value.value", "value.value"]);
 
     const root = build().libraries.find((l) => l.isRoot)!;
@@ -140,11 +140,11 @@ describe("buildSpecModel (APP-SPEC-MODEL)", () => {
   });
 
   it("orders populations in eCQM order, not declaration order", () => {
-    // APP-FLOW-SPINE leans on this and cannot check it for itself: the spine renders
+    // The spine leans on this and cannot check it for itself: the spine renders
     // `SpecModel.populations` as-is, and its whole licence to draw them as a vertical sequence is that
     // the order is the MEASURE's — its scoring semantics, via `POPULATIONS` — rather than anything we
     // derived from the graph. In declaration order the spine would quietly assert a sequence the
-    // measure does not have, which is the failure that retired the Logic lens.
+    // measure does not have, which is the failure that rules out the Logic lens.
     const names = build().populations.map((p) => p.name);
     expect(names).toEqual(["Initial Population", "Denominator", "Numerator"]);
     expect(names).toEqual(POPULATIONS.filter((n) => names.includes(n)));
@@ -198,8 +198,8 @@ describe("filterSpecModel (APP-SPEC-MODEL)", () => {
 });
 
 // SPEC-SHARED-ORDER — order is a property of the specification, so it is decided HERE and both surfaces
-// render the result. The bug this closes: the nav sorted its own copy (opening on `topo`) while the page
-// rendered declaration order, and `declared` was not even one of the nav's options — so the two could
+// render the result. The failure this prevents: the nav sorts its own copy (opening on `topo`) while the page
+// renders declaration order, and `declared` is not even one of the nav's options — so the two could
 // not be made to agree by any setting.
 describe("sortSpecModel (SPEC-SHARED-ORDER)", () => {
   const rootNames = (m: SpecModel) => m.libraries.find((l) => l.isRoot)!.entries.map((e) => e.name);
@@ -230,8 +230,8 @@ describe("sortSpecModel (SPEC-SHARED-ORDER)", () => {
   });
 
   it("never sorts populations — they stay in eCQM reporting order", () => {
-    // The carve-out that used to live in the nav. Topological sort puts Initial Population LAST, which
-    // is how the nav and the page came to disagree about where the measure starts.
+    // Topological sort puts Initial Population LAST, which would make the nav and the page disagree about
+    // where the measure starts. Populations keep their reporting order.
     const model = build();
     for (const sort of ["topo", "az", "usedby", "uses"] as const) {
       expect(sortSpecModel(model, sort).populations.map((p) => p.name))
