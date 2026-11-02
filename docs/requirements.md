@@ -12,8 +12,7 @@ Requirements that span features. Each feature's own requirements are in its regi
 A requirement lives in the registry of the one feature that implements it. One that two or more features
 implement, or that no feature owns (the product, process, hosting and deploy, identity), lives here. An ID
 is defined in exactly one registry. Each ID is stable and cited from code (`PROC-CITE-REQ`). A requirement
-that stops being true moves to its registry's Retired section with a one-line reason, so old citations
-still resolve.
+that stops being true is deleted, with every citation of it (`PROC-CURRENT-DEFINITION`).
 
 ## Product
 
@@ -55,7 +54,7 @@ How work in this repository is done and how it is laid out. Sources are relative
 | `BUILD-SYSTEMS` | Per-feature: owns, does not own, interface. One-way order held; HTTP counts. Common library `cql_databricks_common` is own distribution at `common/`. | `systems.md` |
 | `BUILD-TAXONOMY` | Feature → component → module. Feature is deployable, functional unit with own docs; component is build unit; no product level. Dependencies one way, HTTP counts. Four features: loader, compiler, agent, designer. | `structure.md` |
 | `PROC-CITE-REQ` | Every change cites the requirement id(s) it realizes in code, commits, PRs, and tests. | `../compiler/docs/overview.md` |
-| `PROC-CURRENT-DEFINITION` | A requirement's text is its whole current definition. A change rewrites it in place. It records no dates, no "added" or "amended" notes, and nothing it used to say. A retired one keeps its ID, its status, its reason and what replaces it, with no date. History lives in git. | `../AGENTS.md` |
+| `PROC-CURRENT-DEFINITION` | A requirement's text is its whole current definition. A change rewrites it in place. It records no dates, no "added" or "amended" notes, and nothing it used to say. A requirement that stops being true is deleted from its registry, in the same change that removes every citation of it from code, tests and docs. History lives in git. | `../AGENTS.md` |
 | `PROC-DESCRIPTIVE-ID` | Every referenceable label is a descriptive mnemonic, never a bare sequence. Sequence goes in explicit `after` column. | `README.md` |
 | `PROC-DRY` | Every piece of knowledge has one authoritative representation; callers reference it, never restate. | `../compiler/docs/engineering-principles.md` |
 | `PROC-SOLID` | Single-responsibility modules, extension via seams not edits, substitutable providers, minimal interfaces. | `../compiler/docs/engineering-principles.md` |
