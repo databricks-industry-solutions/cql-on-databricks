@@ -113,7 +113,9 @@ def reset(spark) -> None:
     alone; each run re-creates them."""
     from .relations import VIEW_PREFIX
 
-    for row in spark.sql("SHOW VIEWS").collect():
+    # Temporary views are listed with any schema's views; ``global_temp`` is in every Spark session, so this works
+    # when the session's current schema does not exist, as on a workspace with no ``<catalog>.default``.
+    for row in spark.sql("SHOW VIEWS IN global_temp").collect():
         if row["isTemporary"] and row["viewName"].startswith(VIEW_PREFIX):
             spark.catalog.dropTempView(row["viewName"])
     SessionRecord(spark).drop()

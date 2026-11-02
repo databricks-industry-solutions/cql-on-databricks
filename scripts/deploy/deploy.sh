@@ -97,7 +97,7 @@ echo "==> workspace users group=$workspace_users_group"
 readers_group="$(jqpy "v=d.get('variables') or {};print((v.get('run_log_readers_group') or {}).get('value') or '')")"
 [ -n "$readers_group" ] || {
   echo "!!! run_log_readers_group is empty. Set it in databricks.local.yml to the account group that may read"
-  echo "!!! the Designer run log (it gets SELECT on <designer_catalog>.designer.runs and run_steps; APP-RUN-LOG)."; exit 1; }
+  echo "!!! the Designer run log (it gets SELECT on the <designer_catalog>.designer schema; APP-RUN-LOG)."; exit 1; }
 echo "==> run log readers group=$readers_group"
 # DEPLOY-AGENT-SKILLS — the schema the agent's skills are published in as UC skills. No default, so an empty one
 # stops the deploy here.

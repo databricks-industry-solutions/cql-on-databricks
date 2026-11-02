@@ -77,8 +77,8 @@ def test_content_is_held_per_environment_and_none_is_the_default():
     assert default.catalog == "example_cat"
     assert contents.get("example") is default
     assert contents.get("other").catalog == "other_cat"
-    assert len(queries) == 1
+    assert sum("catalog_tags" in q for q in queries) == 1
     before = contents.generation
     contents.reload()
     assert contents.generation != before
-    assert contents.get(None) is not default and len(queries) == 2
+    assert contents.get(None) is not default and sum("catalog_tags" in q for q in queries) == 2

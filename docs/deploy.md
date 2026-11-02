@@ -98,7 +98,7 @@ The script, in order:
 6. Registers the `cql_*` runtime functions in Unity Catalog (`scripts/deploy/register-uc-udfs.sh`).
 7. Grants each App's service principal `USE CATALOG` on `uc_catalog`, and revokes the catalog-wide `USE SCHEMA` and
    `SELECT` an earlier deploy granted (`scripts/deploy/grant-app-access.sh`).
-8. Creates and grants the Designer run log tables (`scripts/deploy/provision-run-log.py`).
+8. Creates the Designer run log tables, whose schema grants the bundle makes (`scripts/deploy/provision-run-log.py`).
 9. Publishes the example notebooks to a shared workspace folder (`scripts/deploy/publish-examples.sh`).
 10. Starts every App.
 11. Publishes every skill from one definition (`scripts/deploy/publish-skills.sh`, `DEPLOY-AGENT-SKILLS`): as Unity

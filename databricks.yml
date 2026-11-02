@@ -130,7 +130,8 @@ variables:
     default: "${var.uc_catalog}"
   run_log_readers_group:
     description: >-
-      APP-RUN-LOG — the account group granted SELECT on the Designer run log (operators). Set it in
+      APP-RUN-LOG — the account group granted SELECT on the Designer's shared schema, which holds the run log
+      (operators). Set it in
       databricks.local.yml; scripts/deploy/deploy.sh refuses to deploy while it is empty.
     default: ""
   app_users_group:
@@ -426,14 +427,19 @@ resources:
       name: ${var.uc_schema}
       comment: "CQL on Databricks runtime layer (SVC-CATALOG-LAYOUT): cql_* UC Scala UDF catalog + the artifact volume."
     # APP-RUN-LOG, DEC-RUN-LOG-LOCATION — the Designer's shared schema: the run log, and later other Designer-owned
-    # shared tables. Bundle-created so it is deploy-owned; its tables and grants are applied as the deployer by
-    # scripts/deploy/provision-run-log.py (deploy.sh), never by the App. No `grants:` here: a bundle's grants are
-    # authoritative and would revoke the App's MODIFY, which the deploy can only grant once the App exists.
+    # shared tables. Bundle-created so it is deploy-owned; its tables are created as the deployer by
+    # scripts/deploy/provision-run-log.py (deploy.sh), never by the App. Its grants are the schema's whole grant list:
+    # the Designer App inserts the run log, and the readers group reads every table in the schema.
     # Keyed `_shared`: `cql_databricks_designer` is the Designer App's key, and bundle keys are unique across types.
     cql_databricks_designer_shared:
       catalog_name: ${var.designer_catalog}
       name: designer
       comment: "CQL on Databricks Designer shared schema (APP-RUN-LOG): the run log, runs and run_steps."
+      grants:
+        - principal: ${resources.apps.cql_databricks_designer.service_principal_client_id}
+          privileges: [USE_SCHEMA, MODIFY]
+        - principal: ${var.run_log_readers_group}
+          privileges: [USE_SCHEMA, SELECT]
 
     # DEPLOY-DEFAULT-ENVIRONMENT, DATA-ENVIRONMENT-LAYOUT — the default environment's schemas in uc_catalog, and every
     # schema grant the deploy makes on them. Bundle grants are the schema's whole grant list: a grant made on these

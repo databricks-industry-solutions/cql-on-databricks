@@ -23,6 +23,8 @@ Part of the client core: SQL goes through the caller's SQL runner; nothing here 
 from __future__ import annotations
 
 import re
+import threading
+import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -53,6 +55,44 @@ SELECT t.catalog_name AS catalog, t.tag_name AS tag, t.tag_value AS value, c.com
 """
 
 _PLAIN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+#: DEPLOY-ENVIRONMENT-TAG-POLICIES: the environment tags that are governed, of the three, in the caller's account.
+_GOVERNED = f"""
+SELECT tag_key
+  FROM system.tags.governed_tags
+ WHERE deleted_at IS NULL AND tag_key IN ('{NAME_TAG}', '{VERSION_TAG}', '{DEFAULT_TAG}')
+"""
+_governance_checked = False
+_governance_lock = threading.Lock()
+
+
+class UngovernedEnvironmentWarning(UserWarning):
+    """CLIENT-ENVIRONMENT: an environment tag is not governed, so anyone who can tag a catalog can make it an
+    environment or the default; or whether they are could not be read."""
+
+
+def check_governance(run) -> None:
+    """CLIENT-ENVIRONMENT, DEPLOY-ENVIRONMENT-TAG-POLICIES: warn, once per process, when an environment tag is not a
+    governed tag in the caller's account, naming it, or when ``system.tags.governed_tags`` cannot be read as the
+    caller. It never refuses an environment: a workspace whose account cannot govern them still runs."""
+    global _governance_checked
+    with _governance_lock:
+        if _governance_checked:
+            return
+        _governance_checked = True
+    try:
+        governed = {row["tag_key"] for row in run(_GOVERNED)}
+    except Exception as error:  # noqa: BLE001 — a read refused here is reported, never a failed run
+        warnings.warn(f"could not check that the environment tags are governed ({type(error).__name__}: "
+                      f"{str(error).splitlines()[0] if str(error) else ''}); if they are not, anyone who can tag a "
+                      f"catalog can make it an environment (DEPLOY-ENVIRONMENT-TAG-POLICIES)",
+                      UngovernedEnvironmentWarning, stacklevel=3)
+        return
+    missing = [tag for tag in (NAME_TAG, VERSION_TAG, DEFAULT_TAG) if tag not in governed]
+    if missing:
+        warnings.warn(f"the environment tags {', '.join(missing)} are not governed tags: anyone who can tag a "
+                      f"catalog can make it an environment or the default one; make them governed "
+                      f"(DEPLOY-ENVIRONMENT-TAG-POLICIES)", UngovernedEnvironmentWarning, stacklevel=3)
 
 
 class EnvironmentLookupError(LookupError):
@@ -111,6 +151,7 @@ class EnvironmentResolver:
                     f"environment {name!r} is tagged on catalogs {', '.join(e.catalog for e in envs)}"
                     for name, envs in sorted(doubled.items())) + " (CLIENT-ENVIRONMENT)")
             self._found = sorted(found, key=lambda e: e.name)
+            check_governance(self._run)
         return self._found
 
     def default(self) -> Environment:

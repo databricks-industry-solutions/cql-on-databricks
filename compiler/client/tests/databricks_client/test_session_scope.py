@@ -52,7 +52,7 @@ class _SessionSpark:
         return _Frame(self, rows)
 
     def sql(self, statement):
-        assert statement == "SHOW VIEWS"
+        assert statement == "SHOW VIEWS IN global_temp"
         return mock.Mock(collect=lambda: [{"viewName": name, "isTemporary": True} for name in self.views])
 
 

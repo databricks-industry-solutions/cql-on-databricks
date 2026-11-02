@@ -1,15 +1,14 @@
-"""APP-RUN-LOG, DEC-RUN-LOG-LOCATION — create the Designer run log tables and grant them, as the deployer.
+"""APP-RUN-LOG, DEC-RUN-LOG-LOCATION — create the Designer run log tables, as the deployer.
 
-Run by ``scripts/deploy/deploy.sh`` after the bundle deploy (which creates the ``designer`` schema) and after the Apps
-exist (the grant names the Designer App's service principal). Idempotent. The tables' one definition is
+Run by ``scripts/deploy/deploy.sh`` after the bundle deploy, which creates the ``designer`` schema and its grants: the
+Designer App's ``USE SCHEMA`` and ``MODIFY``, the readers group's ``USE SCHEMA`` and ``SELECT``. Idempotent. The tables' one definition is
 ``cql_databricks_designer.run_log``; the App only inserts and never runs this DDL.
 
 1. ``CREATE TABLE IF NOT EXISTS`` both tables, then migrate a table an earlier deploy made (:data:`RENAMED`), then
    compare their columns with that definition. A table that differs fails the deploy: ``IF NOT EXISTS`` does not
    change an existing table, so a column added to the definition needs a migration here, not a silent mismatch.
-2. The Designer App's service principal: ``USE CATALOG``, ``USE SCHEMA`` and ``MODIFY`` on both tables.
-3. The readers group: ``USE CATALOG``, ``USE SCHEMA`` and ``SELECT`` on both tables (not the whole schema, which
-   may later hold other tables).
+2. ``USE CATALOG`` on ``designer_catalog`` for the Designer App's service principal and the readers group: the bundle
+   does not hold the catalog, so it cannot grant on it.
 
     python scripts/deploy/provision-run-log.py --catalog <designer_catalog> --warehouse <id> \\
         --designer-app <Designer App name> --readers-group <group>
@@ -70,7 +69,8 @@ def column_problems(run, catalog: str) -> list[str]:
 
 
 def provision(run, catalog: str, app_principal: str, readers_group: str) -> None:
-    """APP-RUN-LOG — the DDL and its grants, together. Raises on any failure, which fails the deploy."""
+    """APP-RUN-LOG — the DDL, and the catalog grant the bundle cannot make. Raises on any failure, which fails the
+    deploy."""
     from cql_databricks_designer import run_log
     if not app_principal or not readers_group:
         raise ValueError("the Designer App's service principal and the readers group are both required")
@@ -81,13 +81,8 @@ def provision(run, catalog: str, app_principal: str, readers_group: str) -> None
     if problems:
         raise RuntimeError("the run log tables do not match their definition; add a migration to this "
                            "script:\n  " + "\n  ".join(problems))
-    schema = f"`{catalog}`.`{run_log.SCHEMA}`"
-    tables = [run_log.table_sql(catalog, run_log.RUNS), run_log.table_sql(catalog, run_log.STEPS)]
-    for principal, privilege in ((app_principal, "MODIFY"), (readers_group, "SELECT")):
+    for principal in (app_principal, readers_group):
         run(f"GRANT USE CATALOG ON CATALOG `{catalog}` TO `{principal}`")
-        run(f"GRANT USE SCHEMA ON SCHEMA {schema} TO `{principal}`")
-        for table in tables:
-            run(f"GRANT {privilege} ON TABLE {table} TO `{principal}`")
 
 
 def main(argv: list[str] | None = None) -> int:

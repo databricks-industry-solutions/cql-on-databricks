@@ -222,7 +222,8 @@ def _provision_run_log():
 
 
 def test_run_log_ddl_and_grants_ship_together():
-    """APP-RUN-LOG, DEC-RUN-LOG-LOCATION — one deploy step creates the tables and grants them, as the deployer."""
+    """APP-RUN-LOG, DEC-RUN-LOG-LOCATION — one deploy step creates the tables, as the deployer; the bundle grants
+    their schema, and the step grants the catalog the bundle does not hold."""
     from cql_databricks_designer import run_log
     calls = []
 
@@ -235,17 +236,19 @@ def test_run_log_ddl_and_grants_ship_together():
         return []
     _provision_run_log().provision(run, "synthetic_cat", "synthetic-sp", "synthetic-readers")
     assert calls[:2] == list(run_log.create_statements("synthetic_cat"))
-    for table in ("runs", "run_steps"):
-        assert f"GRANT MODIFY ON TABLE `synthetic_cat`.`designer`.`{table}` TO `synthetic-sp`" in calls
-        assert f"GRANT SELECT ON TABLE `synthetic_cat`.`designer`.`{table}` TO `synthetic-readers`" in calls
-    assert "GRANT USE SCHEMA ON SCHEMA `synthetic_cat`.`designer` TO `synthetic-readers`" in calls
-    assert not any("ON SCHEMA" in sql and ("SELECT" in sql or "MODIFY" in sql) for sql in calls)
+    grants = [sql for sql in calls if sql.startswith("GRANT")]
+    assert grants == ["GRANT USE CATALOG ON CATALOG `synthetic_cat` TO `synthetic-sp`",
+                      "GRANT USE CATALOG ON CATALOG `synthetic_cat` TO `synthetic-readers`"]
 
     bundle = (_ROOT / "databricks.yml").read_text()
     deploy = (_ROOT / "scripts" / "deploy" / "deploy.sh").read_text()
     assert "catalog_name: ${var.designer_catalog}\n      name: designer" in bundle
     # Bundle keys are unique across resource types; `cql_databricks_designer` is the App (found by validate).
     assert "    cql_databricks_designer_shared:\n      catalog_name: ${var.designer_catalog}" in bundle
+    shared = bundle.split("    cql_databricks_designer_shared:", 1)[1].split("\n\n", 1)[0]
+    assert ("- principal: ${resources.apps.cql_databricks_designer.service_principal_client_id}\n"
+            "          privileges: [USE_SCHEMA, MODIFY]") in shared
+    assert "- principal: ${var.run_log_readers_group}\n          privileges: [USE_SCHEMA, SELECT]" in shared
     assert "run_log_readers_group:" in bundle and 'default: "${var.uc_catalog}"' in bundle
     assert "provision-run-log.py" in deploy and "run_log_readers_group is empty" in deploy
     assert deploy.index("bundle deploy -t") < deploy.index('"$here/scripts/deploy/provision-run-log.py"')

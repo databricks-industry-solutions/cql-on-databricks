@@ -173,8 +173,10 @@ def _reusing(inline: InlineRun, request: CompileRequest, prefix: str, *, compile
              run) -> list[tuple[str, str]]:
     """CLIENT-RESULT-RESOLVER — the durable plan, every define's kept result found in one lookup, and one view per
     define not found, in plan order, reading found tables and earlier views in place of the defines they read."""
-    request, bound = bind_resolvers(replace(request, durable=True), compiler=compiler, resolvers=resolvers, run=run,
-                                    durable=True)
+    # RUN-CLIENT-RESULT-IDENTITY: no object prefix, which would change the emitted SQL and so every fingerprint; this
+    # run's views take the prefix as their names instead.
+    request, bound = bind_resolvers(replace(request, durable=True, object_prefix=None), compiler=compiler,
+                                    resolvers=resolvers, run=run, durable=True)
     plan = PreparedPlan(complete_fingerprints(compiler.compile_pipeline(request), bound.terminology_tables, run))
     keys = {d.key: result_key(d) for d in plan.definitions}
     found = resolvers.results.find([keys[d.key] for d in plan.definitions if d.reusable])

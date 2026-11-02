@@ -107,6 +107,8 @@ if [ "$mode" = "integration" ] || [ "$mode" = "all" ]; then
     # BIND-PUBLISH: the live publish writes a scratch schema here, and drops it.
     catalog="$(jqpy "print(((d.get('variables') or {}).get('uc_catalog') or {}).get('value') or '')")"
     [ -n "$catalog" ] || { echo "  could not resolve uc_catalog from the bundle"; return 1; }
+    # CLIENT-SESSION-RESOLVERS: notebook 07 writes its test files under the runtime Volume, which the deployer can
+    # write, in a folder of its own.
     # CLIENT-DEFAULT-RESOLVER: the provider live tests run the Designer's and the agent's paths on this warehouse.
     warehouse="$(jqpy "print(((d.get('variables') or {}).get('warehouse_id') or {}).get('value') or '')")"
     [ -n "$warehouse" ] || { echo "  could not resolve warehouse_id from the bundle"; return 1; }
@@ -118,7 +120,7 @@ if [ "$mode" = "integration" ] || [ "$mode" = "all" ]; then
     junit="$(mktemp)"
     ( cd "$here" && DATABRICKS_CONFIG_PROFILE="$profile" CQL_DATABRICKS_LIVE=1 DATABRICKS_SERVERLESS=1 \
         CQL_DATABRICKS_ARTIFACT_VOLUME="$volume" CQL_DATABRICKS_PUBLISH_CATALOG="$catalog" \
-        CQL_DATABRICKS_WAREHOUSE_ID="$warehouse" \
+        CQL_DATABRICKS_WAREHOUSE_ID="$warehouse" CQL_DATABRICKS_TEST_VOLUME="$volume/test-files/notebook-07" \
         CQL_DATABRICKS_ENDPOINT="$url" CQL_DATABRICKS_TOKEN="$token" \
         "$venv_py" -m pytest -q -rs --junitxml="$junit" examples/tests ) || { rm -f "$junit"; return 1; }
     # A skipped live test proved nothing, so it fails the run.
