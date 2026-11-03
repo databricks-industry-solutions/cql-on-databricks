@@ -117,18 +117,26 @@ Then, in its own cell:
 define "BirthYears": { 1990, 2010, 1975 }
 ```
 
-The magic shows the result and each define is a temp view that
-`%sql` can query (`SELECT * FROM BirthYears`).
-
-A cell or `cql()` string joins the session library, like a view in a SQL
-notebook. A later cell sees its defines by name, and redefining a name replaces it:
+A `%%cql` cell declares, like a Python `def`: running it checks the CQL and
+runs nothing. A cell with no `library` line joins the session library, like a
+view in a SQL notebook. A later cell sees its defines by name, and redefining a
+name replaces it:
 
 ```
 %%cql
 define "Oldest": Min("BirthYears")
 ```
 
-`cql('define "Youngest": Max("BirthYears")').exec("Youngest")` works the same way.
+A Python cell runs what the cells declared. `cql()` is the session library;
+`cql(library="<Name>")` is a cell with a `library` line:
+
+```python
+cql().exec("Oldest").display()
+```
+
+After a run of the session library, each of its defines is a temp view that
+`%sql` can query (`SELECT * FROM Oldest`). `cql('define "Youngest": Max("BirthYears")').exec("Youngest")`
+joins and runs in one step.
 
 To run a measure from a folder of `.cql` files:
 

@@ -6,13 +6,14 @@
 # MAGIC language tour, the clinical measure, the compile artifacts — uses one of these two doors.
 # MAGIC
 # MAGIC 1. **`%%cql` — the cell magic.** A cell whose first line is `%%cql` *is* CQL. No quoting,
-# MAGIC    no Python wrapper, editor-width room to write real CQL. A cell with no `library` header joins
-# MAGIC    the notebook's **session library**, so a later cell sees its defines, as a SQL cell sees a view.
-# MAGIC 2. **`cql(...)` — the Python API.** A lazy query handle you can inspect, parameterize and reuse.
+# MAGIC    no Python wrapper, editor-width room to write real CQL. A cell **declares**, like a Python `def`:
+# MAGIC    running it checks the CQL and runs nothing. A cell with no `library` header joins the notebook's
+# MAGIC    **session library**, so a later cell sees its defines, as a SQL cell sees a view.
+# MAGIC 2. **`cql(...)` — the Python API.** A lazy query handle you can inspect, parameterize, reuse and run.
+# MAGIC    `cql()` with no argument is the session library, so a Python cell runs what the cells declared.
 # MAGIC
-# MAGIC They are the same execution path: the magic is a front door, not a second
-# MAGIC engine. Use the magic when you are writing CQL; use the API when the CQL is a value your Python code
-# MAGIC is manipulating.
+# MAGIC Write CQL in the magic; run it, and hand results on, from Python. Use `cql("...")` when the CQL is a
+# MAGIC value your Python code is manipulating.
 # MAGIC
 # MAGIC **Runs on serverless — nothing to attach, nothing to configure.** Just **Run All**. The one
 # MAGIC prerequisite is a workspace where CQL on Databricks is deployed.
@@ -45,10 +46,14 @@ dbutils.library.restartPython()
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## 3. Your first CQL cell
-# MAGIC The cell body is sent verbatim to the Compiler Service, and what it compiles runs on this Spark
-# MAGIC session.
+# MAGIC The `%%cql` cell declares `Answer`. The Compiler Service checks it, and nothing runs yet: like a
+# MAGIC Python `def`, the define is now available, and closing the notebook here would cost nothing more.
 # MAGIC
-# MAGIC **Expected output:** one table, one row.
+# MAGIC The Python cell after it runs it. `cql()` is the session library the cell joined, and `exec()`
+# MAGIC compiles it to Spark SQL and runs it on this Spark session.
+# MAGIC
+# MAGIC **Expected output:** the `%%cql` cell prints `added to the session library`. The Python cell shows
+# MAGIC one table, one row.
 # MAGIC
 # MAGIC | `__subject_id` | `__val` |
 # MAGIC |---|---|
@@ -57,6 +62,11 @@ dbutils.library.restartPython()
 # COMMAND ----------
 # MAGIC %%cql
 # MAGIC define "Answer": 6 * 7
+
+# COMMAND ----------
+from cql_databricks.compiler import VALUE_COLUMN, cql
+
+display(cql().exec("Answer"))
 
 # COMMAND ----------
 # MAGIC %md
@@ -73,13 +83,12 @@ dbutils.library.restartPython()
 # MAGIC a FHIR retrieve, lowers instead to one row per element plus an `__ordinal` column, because CQL lists
 # MAGIC are ordered and the order has to be carried as data. You will see that shape in notebook 2.)
 # MAGIC
-# MAGIC ## 5. `--df` — hand the result to Python
-# MAGIC `--df NAME` binds the result into the notebook namespace. After the next cell, `ages` is an ordinary
-# MAGIC DataFrame: `.filter()`, `.join()`, `.write` — whatever you would do with any other frame. That
-# MAGIC hand-off is the whole integration story, and it is what keeps CQL from being a walled garden.
+# MAGIC ## 5. Hand the result to Python
+# MAGIC `exec("BirthYears")` returns an ordinary DataFrame: `.filter()`, `.join()`, `.write` — whatever you
+# MAGIC would do with any other frame. That hand-off is the whole integration story, and it is what keeps
+# MAGIC CQL from being a walled garden.
 # MAGIC
-# MAGIC **Expected output:** the magic displays one row (`__subject_id = *`, `__val = [1990, 2010, 1975]`),
-# MAGIC then the Python cell prints:
+# MAGIC **Expected output:**
 # MAGIC ```
 # MAGIC DataFrame -> ['__subject_id', '__val']
 # MAGIC BirthYears = [1990, 2010, 1975]
@@ -87,11 +96,11 @@ dbutils.library.restartPython()
 # MAGIC Note the order is the order written, not sorted — CQL lists are ordered.
 
 # COMMAND ----------
-# MAGIC %%cql --df ages
+# MAGIC %%cql
 # MAGIC define "BirthYears": { 1990, 2010, 1975 }
 
 # COMMAND ----------
-from cql_databricks.compiler import VALUE_COLUMN
+ages = cql().exec("BirthYears")
 
 print(type(ages).__name__, "->", ages.columns)
 print("BirthYears =", ages.collect()[0][VALUE_COLUMN])
@@ -99,9 +108,9 @@ print("BirthYears =", ages.collect()[0][VALUE_COLUMN])
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## 6. …and `%sql` can read it too
-# MAGIC Every define also lands as a **session temp view named after the define**, so a plain SQL cell needs
-# MAGIC nothing from CQL — it just queries the result. `Answer` from section 3 is still there; the value
-# MAGIC inside it is, as always, the column `__val`.
+# MAGIC A run of the session library also lands every define as a **session temp view named after the
+# MAGIC define**, so a plain SQL cell needs nothing from CQL — it just queries the result. `Answer` from section 3 is still there; the
+# MAGIC value inside it is, as always, the column `__val`.
 # MAGIC
 # MAGIC **Expected output:** one row — `subject = *`, `answer = 42`.
 
@@ -111,25 +120,26 @@ print("BirthYears =", ages.collect()[0][VALUE_COLUMN])
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## 7. `--target` — choose which defines to evaluate
-# MAGIC With no `--target`, the magic runs the cell's auto-detected eCQM populations
-# MAGIC if it has any, else **every** define the cell declares. `--target` names one explicitly and
-# MAGIC repeats for several — useful for inspecting a supporting define rather than the headline one.
+# MAGIC ## 7. Choose which defines to evaluate
+# MAGIC `exec()` takes the defines to run. One name returns one DataFrame; several return a
+# MAGIC `{define: DataFrame}` **dict**. With none, it runs the library's eCQM populations if it has any, else
+# MAGIC **every** define.
 # MAGIC
-# MAGIC With several targets, `--df` binds a `{define: DataFrame}` **dict** instead of a single frame.
-# MAGIC
-# MAGIC **Expected output:** two tables, headed `--- Screened ---` (`__val = 840`) and `--- Unscreened ---`
-# MAGIC (`__val = 360`). `Eligible` is defined and used, but not requested, so it is not displayed. Then the
-# MAGIC Python cell prints `dict_keys(['Screened', 'Unscreened'])`.
+# MAGIC **Expected output:** `dict_keys(['Screened', 'Unscreened'])`, then `Screened = 840` and
+# MAGIC `Unscreened = 360`. `Eligible` is defined and used, but not requested, so it is not returned.
 
 # COMMAND ----------
-# MAGIC %%cql --df cohort --target Screened --target Unscreened
+# MAGIC %%cql
 # MAGIC define "Eligible":   1200
 # MAGIC define "Screened":   840
 # MAGIC define "Unscreened": "Eligible" - "Screened"
 
 # COMMAND ----------
+cohort = cql().exec("Screened", "Unscreened")
+
 print(cohort.keys())
+for name, frame in cohort.items():
+    print(name, "=", frame.collect()[0][VALUE_COLUMN])
 
 # COMMAND ----------
 # MAGIC %md
@@ -139,20 +149,26 @@ print(cohort.keys())
 # MAGIC import. Redefining a name **replaces** it, the way re-running a SQL cell's `CREATE OR REPLACE VIEW`
 # MAGIC does, and every define that uses it follows.
 # MAGIC
-# MAGIC A cell shows only its own defines. Give a cell a `library` header when you want a separate,
-# MAGIC includable library instead (notebook 5).
+# MAGIC Give a cell a `library` header when you want a separate, includable library instead (notebook 5).
 # MAGIC
-# MAGIC **Expected output:** `Total` is `1200` (`Screened` + `Unscreened` from section 7). After `Eligible` is
-# MAGIC redefined as `1500`, the cell shows `1500`, and the `%sql` cell reads `total = 1500`: `Unscreened`
-# MAGIC is now `660`, so `Total` moved with it.
+# MAGIC **Expected output:** `Total = 1200` (`Screened` + `Unscreened` from section 7). After `Eligible` is
+# MAGIC redefined as `1500`, the next run prints `Total = 1500`, and the `%sql` cell reads `total = 1500`:
+# MAGIC `Unscreened` is now `660`, so `Total` moved with it.
 
 # COMMAND ----------
 # MAGIC %%cql
 # MAGIC define "Total": "Screened" + "Unscreened"
 
 # COMMAND ----------
+print("Total =", cql().exec("Total").collect()[0][VALUE_COLUMN])
+
+# COMMAND ----------
 # MAGIC %%cql
 # MAGIC define "Eligible": 1500
+
+# COMMAND ----------
+# The views are re-created by a run, so run again before SQL reads them.
+print("Total =", cql().exec("Total").collect()[0][VALUE_COLUMN])
 
 # COMMAND ----------
 # MAGIC %sql
@@ -160,7 +176,7 @@ print(cohort.keys())
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## 9. The other front door — the Python API
+# MAGIC ## 9. CQL as a Python value
 # MAGIC `cql(source)` returns a **lazy query handle**. Nothing runs until you ask it for something, and the
 # MAGIC compile is memoized — inspecting a library and then running it costs one round trip, not two.
 # MAGIC
@@ -182,8 +198,6 @@ print(cohort.keys())
 # MAGIC `Initial Population`. Notebook 3 shows one that does.
 
 # COMMAND ----------
-from cql_databricks.compiler import cql
-
 q = cql('''
 define "Answer2": 6 * 7
 define "Doubled": "Answer2" * 2

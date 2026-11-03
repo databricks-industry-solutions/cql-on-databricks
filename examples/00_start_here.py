@@ -27,8 +27,8 @@
 # MAGIC - `%%cql` — a cell whose first line is `%%cql` *is* CQL: no quoting, no Python wrapper
 # MAGIC - Cells with no `library` header share one session library: a later cell sees earlier defines, and
 # MAGIC   redefining a name replaces it
-# MAGIC - `--df NAME` binds the result into the notebook as an ordinary DataFrame — or a dict of them, one
-# MAGIC   per define — and `--target` picks which defines to evaluate
+# MAGIC - A cell declares, like a Python `def`, and runs nothing. A Python cell runs it: `cql().exec("X")`
+# MAGIC   returns an ordinary DataFrame, or a dict of them, one per define
 # MAGIC - Every define also lands as a session temp view, so a plain `%sql` cell can query it
 # MAGIC - `cql(...)` — the Python API, for when the CQL is a value your code holds: a lazy handle you can
 # MAGIC   inspect, parameterize and reuse
@@ -105,7 +105,7 @@
 # MAGIC eligibility logic, a second cell that `include`s it, and a folder to publish to once the numbers hold.
 # MAGIC
 # MAGIC - A `%%cql` cell that declares a `library` header **is** a library — a later cell can `include` it
-# MAGIC - `--library` declares without running, for a cell of definitions there is nothing to evaluate in
+# MAGIC - The cell declares and reads no data; `cql(library="...")` runs it from Python
 # MAGIC - Drafts resolve ahead of any mounted folder, so a cell is how you override published content
 # MAGIC - The draft is addressable by name, so the Python API can re-run it over a different year
 # MAGIC - Publishing is writing the same text to a file — the cell was always the file

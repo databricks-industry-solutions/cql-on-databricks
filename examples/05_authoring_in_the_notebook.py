@@ -108,19 +108,18 @@ print("libraries declared so far:", [str(r) for r in client.library_provider.dec
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## 4. The shared library — `--library` declares without running
+# MAGIC ## 4. The shared library — a cell declares, it does not run
 # MAGIC A helper library first: what does it mean for a patient to have visits during the measurement period?
 # MAGIC It goes in its own library because "had an encounter" is not specific to one measure — the next measure
 # MAGIC you write wants the same definition to mean the same thing.
 # MAGIC
-# MAGIC `--library` registers the cell and stops. There is nothing to run here: evaluating the define on its
-# MAGIC own would compile a query, hit the data and produce a column nobody asked for. The cell is a
-# MAGIC definition, not a question.
+# MAGIC A `%%cql` cell is a definition, not a question, like a Python `def`. Running it checks the CQL and
+# MAGIC declares the library; it reads no data. A Python cell runs a define when you want its result.
 # MAGIC
-# MAGIC **Expected output:** `declared NotebookVisits|1.0.0 — includable by later cells`
+# MAGIC **Expected output:** `declared NotebookVisits|1.0.0 — include it, or run it from Python with cql(library="NotebookVisits")`
 
 # COMMAND ----------
-# MAGIC %%cql --library
+# MAGIC %%cql
 # MAGIC library NotebookVisits version '1.0.0'
 # MAGIC
 # MAGIC using FHIR version '4.0.1'
@@ -143,10 +142,10 @@ print("libraries declared so far:", [str(r) for r in client.library_provider.dec
 # MAGIC finds, and its text ships with the compile as a dependency, exactly as a file out of a Git Folder
 # MAGIC would. Nothing was written to disk in between.
 # MAGIC
-# MAGIC This cell has no `--library`, so it runs. It defines `Initial Population` and other checks, which
-# MAGIC will be executed when you call `exec()`.
+# MAGIC Like the first cell, it declares and runs nothing. It defines `Initial Population` and other checks,
+# MAGIC which run when section 6 calls `exec()`.
 # MAGIC
-# MAGIC **Expected output:** one frame of 4,000 rows, one per patient. `Initial Population` is true for 1,223 of 4,000.
+# MAGIC **Expected output:** `declared NotebookMeasure|1.0.0 — include it, or run it from Python with cql(library="NotebookMeasure")`
 
 # COMMAND ----------
 # MAGIC %%cql
@@ -175,8 +174,8 @@ print("libraries declared so far:", [str(r) for r in client.library_provider.dec
 # MAGIC %md
 # MAGIC ## 6. The draft is addressable by name
 # MAGIC Both cells are libraries the session can list and bind, so the Python API reaches them the same way
-# MAGIC it reaches published content — including the parts the magic has no syntax for, like binding the
-# MAGIC measurement period to a different year.
+# MAGIC it reaches published content. Python is where a cell's defines run, and where the measurement
+# MAGIC period is bound to a different year.
 # MAGIC
 # MAGIC Watch the population turn over: in 2025 no patient has both a visit and a condition. The patients seen
 # MAGIC in 2025 have no condition on record. The measure that reports 1,223 of 4,000 for 2026 reports 0 of 4,000

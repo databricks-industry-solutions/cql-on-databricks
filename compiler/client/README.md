@@ -60,6 +60,10 @@ cql('define "Two": 3').exec("Two")             # replaces Two; Four is now 6
 ```
 
 - `exec()` with no targets runs only the new fragment's defines.
+- `cql()` with no source is the session library as it stands. This is how a Python cell runs what `%%cql`
+  cells declared: `cql().exec("Four")`. Its `exec()` with no targets runs the populations, else every define.
+- A `%%cql` cell declares and never runs (`SVC-NOTEBOOK-CQL-MAGIC`). It compiles, so an error shows in that
+  cell. The magic takes no options.
 - Each run re-creates the views of every define in the session library.
 - `using` works as it does for a file: the same line twice is fine, a second FHIR version fails.
 - A fragment joins only if the whole library still compiles. If it breaks an earlier define, it fails,

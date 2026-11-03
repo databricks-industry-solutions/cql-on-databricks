@@ -11,6 +11,7 @@ defines unqualified; redeclaring a name replaces it, as a REPL rebinds a name::
     define "shout": Upper("foo")
 
     cql('define "foo": \\'baz\\'').exec("foo")      # replaces foo; shout now reads 'BAZ'
+    cql().exec("shout")                             # the session library as it stands
 
 A fragment with a header stays its own library (`SVC-NOTEBOOK-CELL-LIBRARY`), reached by ``include``.
 
@@ -52,6 +53,16 @@ class SessionScope:
         describe(library)
         self._record.set_scope(merged.cql)
         return library
+
+    def library(self, load: Callable[[str], Library]) -> Library:
+        """The session library as it stands, bound by ``load``: what ``cql()`` with no source returns. Its
+        ``exec()`` with no targets runs the populations, else every define. Raises when nothing has joined."""
+        text = self._record.scope()
+        if not text:
+            raise ValueError("the session library is empty: no %%cql cell or cql(\"...\") string without a "
+                             "`library` line has run in this Spark session (SVC-NOTEBOOK-SESSION-SCOPE)")
+        library = load(text)
+        return replace(library, fragment_defines=tuple(describe(library).defines))
 
     def cql(self) -> str:
         """The session library's CQL so far, ``""`` before any fragment has joined."""

@@ -93,7 +93,8 @@ class CqlClient:
         """Bind ``source`` against this session and return a lazy :class:`~.cql.CqlQuery` handle
         (`PIPE-RUNTIME-COMPILE`). ``source`` is a raw CQL / ELM STRING, a packaged ``resource`` path
         (``…​.cql`` / ``…​.elm.json``), or an already-bound :class:`~.library.Library` (equivalently pass
-        ``resource=`` / ``cql=`` / ``elm=``). Inspect the handle (``.elm()`` / ``.dag()``) or ``.exec(*targets)``
+        ``resource=`` / ``cql=`` / ``elm=``). With no source at all, it is the session library that header-less CQL
+        joined (`SVC-NOTEBOOK-SESSION-SCOPE`). Inspect the handle (``.elm()`` / ``.dag()``) or ``.exec(*targets)``
         it — selection of WHICH defines to evaluate is terminal, never a string here (so ``cql("Numerator")``
         can never be mistaken for a target).
 
@@ -149,6 +150,10 @@ class CqlClient:
             return source  # an already-bound Library value object (or a duck-typed one) — used as-is
         if resource is None and cql is None and elm is None and library is None:
             if source is None:
+                if self._session_scope is not None:
+                    # SVC-NOTEBOOK-SESSION-SCOPE: no source is the session library header-less CQL joined.
+                    return self._session_scope.library(lambda text: self.with_library(
+                        cql=text, context=context, data_model=data_model, engine=engine, recompute=recompute))
                 raise ValueError("cql() needs a source: a CQL/ELM string, a resource path, or one of "
                                  "resource=/library=/cql=/elm=")
             if source.endswith((".cql", ".elm.json", ".json")):
