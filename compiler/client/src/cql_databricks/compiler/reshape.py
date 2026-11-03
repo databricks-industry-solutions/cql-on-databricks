@@ -1,22 +1,23 @@
-"""BIND-RESHAPE — one reshape from FHIR data to the mount contract ``(__subject_id, __resource)``.
+"""BIND-RESHAPE — one reshape from FHIR data to the data contract, ``(patient_id, resource)``.
 
-Every path that turns FHIR data into the retrieve contract (`BIND-CONTRACT`) uses this module: the session
-mount, the data-source publish step and the loader. It generates SQL over a named relation, so the same text
-is the body of a published per-type view (`BIND-PUBLISH`) and the query behind a session DataFrame.
+Every path that turns FHIR data into the contract (`BIND-CONTRACT`) uses this module: the view behind a volume or
+DataFrame relation, the data-source publish step, and the loader and deploy, which write the store in the same form.
+It generates SQL over a named relation, so the same text is the body of a published per-type view (`BIND-PUBLISH`),
+the query behind a session view and the store's rows.
 
 Two physical encodings:
 
 - **JSON**: one resource per row as JSON text. Parsed with ``from_json`` against the model's struct, so
   missing fields read as null and extra fields are dropped. Parsing runs on every read.
-- **Structured**: the resource's fields as columns, or a relation already on the contract (a
-  ``__resource`` column). The model's struct is rebuilt field by field: a missing field is a typed null, an
-  extra field is dropped, and a safe widening (``int`` to ``long``) is cast. Anything else is an error,
-  found before any SQL runs (`BIND-SCHEMA-CHECK`).
+- **Structured**: the resource's fields as columns, or a relation already on the contract (a ``resource``
+  column). The model's struct is rebuilt field by field: a missing field is a typed null, an extra field is
+  dropped, and a safe widening (``int`` to ``long``) is cast. Anything else is an error, found before any SQL
+  runs (`BIND-SCHEMA-CHECK`).
 
-``__resource_type`` is the type and ``__resource_id`` is ``id`` (`DATA-SYSTEM-COLUMNS`). ``__subject_id``
-(`DATA-SUBJECT-KEY`) is ``id`` for Patient, the trailing id of ``subject``, ``patient`` or ``beneficiary``
-``.reference`` for a Patient-compartment type (``Patient/<id>``, ``urn:uuid:<id>`` and full URLs), and null
-otherwise. Every identifier is quoted, and no SQL text is taken from a caller.
+``resource`` holds FHIR's fields only, with no engine lineage (`DATA-EXPORT`). ``patient_id`` (`DATA-SUBJECT-KEY`)
+is the source's own ``patient_id`` when it has one; else ``id`` for Patient, the trailing id of ``subject``,
+``patient`` or ``beneficiary`` ``.reference`` for a Patient-compartment type (``Patient/<id>``, ``urn:uuid:<id>``
+and full URLs), and null otherwise. Every identifier is quoted, and no SQL text is taken from a caller.
 """
 from __future__ import annotations
 
@@ -27,8 +28,11 @@ from typing import List, Optional, Sequence, Tuple
 #: DATA-SUBJECT-KEY — the reference fields a Patient-compartment resource names its patient in, in order.
 SUBJECT_REF_FIELDS = ("subject", "patient", "beneficiary")
 
-RESOURCE_TYPE_FIELD = "__resource_type"
-RESOURCE_ID_FIELD = "__resource_id"
+#: BIND-CONTRACT — the root column a data view returns the resource in, a struct of FHIR's fields.
+RESOURCE = "resource"
+
+#: DATA-SUBJECT-KEY — the root column a data view returns its subject key in, beside ``resource``.
+PATIENT_ID = "patient_id"
 
 ERROR, WARN, INFO = "ERROR", "WARN", "INFO"
 
@@ -73,15 +77,13 @@ def quote_name(name: str) -> str:
 
 def json_sql(relation: str, schema, *, column: str, type_filter: Optional[str] = None) -> str:
     """The reshape of JSON text in ``column`` of ``relation`` (quoted SQL) to the contract for ``schema``, a
-    :class:`~.providers.ResourceSchema`. ``type_filter`` keeps only rows whose resource is that type, read
-    from ``type_filter``'s column, or from ``$.resourceType`` when it names none (see :func:`type_predicate`).
-    Blank rows are skipped."""
+    :class:`~.providers.ResourceSchema` (:func:`_select`). ``type_filter``
+    keeps only rows whose resource is that type, read from ``type_filter``'s column, or from ``$.resourceType`` when
+    it names none (see :func:`type_predicate`). Blank rows are skipped."""
     col = _ident(column)
-    fields = ", ".join(_lineage_or(f.name, schema.fhir_type, f"`__r`.{_ident(f.name)}")
-                       for f in schema.struct.fields)
+    fields = [(f.name, f"`__r`.{_ident(f.name)}") for f in schema.struct.fields]
     where = f"{col} IS NOT NULL AND length(trim({col})) > 0" + (f" AND {type_filter}" if type_filter else "")
-    return (f"SELECT {_subject_from_json(schema, col)} AS `__subject_id`, "
-            f"CASE WHEN `__r` IS NULL THEN NULL ELSE named_struct({fields}) END AS `__resource` "
+    return (f"SELECT {_select(_subject_from_json(schema, col), fields, nullable='`__r`')} "
             f"FROM (SELECT {col}, from_json({col}, {_literal(schema.ddl)}) AS `__r` FROM {relation} "
             f"WHERE {where})")
 
@@ -109,28 +111,43 @@ def type_predicate(fhir_type: str, *, json_column: str, type_column: Optional[st
 
 
 def structured_sql(relation: str, source_schema, schema) -> Tuple[str, List[SchemaIssue]]:
-    """The reshape of a structured ``relation`` (quoted SQL) whose Spark schema is ``source_schema`` to the
-    contract for ``schema``, and the issues found on the way. With any ``ERROR`` the SQL is not usable."""
+    """The reshape of a structured ``relation`` (quoted SQL) whose Spark schema is ``source_schema`` to the contract
+    for ``schema`` (:func:`_select`), and the issues found on the way. With any ``ERROR`` the SQL is not usable."""
     names = set(source_schema.fieldNames())
     issues: List[SchemaIssue] = []
-    on_contract = "__resource" in names
+    on_contract = RESOURCE in names
     if on_contract:
-        resource, select = source_schema["__resource"].dataType, "`__resource` AS `__r`"
+        resource, select = source_schema[RESOURCE].dataType, f"{_ident(RESOURCE)} AS `__r`"
     else:
         resource, select = source_schema, "struct(*) AS `__r`"
-    # A relation that carries its own __subject_id keeps it: the key is the publisher's to define.
-    subject_given = "__subject_id" in names
+    # A relation that carries its own patient_id keeps it: the key is the publisher's to define.
+    subject_given = PATIENT_ID in names
     if subject_given:
-        select += ", `__subject_id`"
+        select += f", {_ident(PATIENT_ID)}"
     if _struct(resource) is None:
-        return "", [SchemaIssue(severity=ERROR, fhir_type=schema.fhir_type, path="__resource",
+        return "", [SchemaIssue(severity=ERROR, fhir_type=schema.fhir_type, path=RESOURCE,
                                 message=f"is {resource.simpleString()}, not a struct")]
-    body = _conform_struct("`__r`", resource, schema.struct, schema.fhir_type, "", issues, depth=0, top=True)
-    if on_contract:
-        body = f"CASE WHEN `__r` IS NULL THEN NULL ELSE {body} END"
-    subject = "`__subject_id`" if subject_given else _subject_from_struct(schema, resource, issues)
-    return (f"SELECT {subject} AS `__subject_id`, {body} AS `__resource` FROM (SELECT {select} FROM {relation})",
-            issues)
+    fields = _conform_fields("`__r`", resource, schema.struct, schema.fhir_type, "", issues, depth=0, top=True)
+    subject = _ident(PATIENT_ID) if subject_given else _subject_from_struct(schema, resource, issues)
+    projection = _select(subject, fields, nullable="`__r`" if on_contract else None)
+    return f"SELECT {projection} FROM (SELECT {select} FROM {relation})", issues
+
+
+def _select(subject: str, fields: Sequence[Tuple[str, str]], nullable: Optional[str]) -> str:
+    """The projection of one reshape: the data contract (`BIND-CONTRACT`), the subject key as ``patient_id``
+    (`DATA-SUBJECT-KEY`) and the ``resource`` struct of FHIR's fields. ``patient_id`` comes first, so a table written
+    from it has file statistics on the key: Delta collects them for the first 32 columns, counting each struct field.
+    ``nullable`` is the parsed struct whose null makes the resource null."""
+    entries = ", ".join(f"{_literal(name)}, {value}" for name, value in fields)
+    resource = f"named_struct({entries})"
+    if nullable is not None:
+        resource = f"CASE WHEN {nullable} IS NULL THEN NULL ELSE {resource} END"
+    return f"{subject} AS {_ident(PATIENT_ID)}, {resource} AS {_ident(RESOURCE)}"
+
+
+def view_shape(schema) -> str:
+    """DATA-MODEL-SUBSET: the shape of a view over the reshape of ``schema``'s type, its row as Spark type text."""
+    return f"struct<{_ident(PATIENT_ID)}:string,{_ident(RESOURCE)}:{schema.struct.simpleString()}>"
 
 
 def require_ok(issues: Sequence[SchemaIssue]) -> None:
@@ -160,7 +177,7 @@ class FhirJson:
         return isinstance(self.relation, str)
 
     def to_df(self, spark, fhir_type: str, *, client=None):
-        """The ``fhir_type`` rows on the mount contract, as a DataFrame. ``client`` supplies the model's
+        """The ``fhir_type`` rows on the data contract, as a DataFrame. ``client`` supplies the model's
         schema (`CLIENT-RESOURCE-SCHEMA`); it defaults to the zero-config client."""
         schema = model_client(spark, client).resource_schema(fhir_type)
         return self.query(spark, schema)
@@ -250,23 +267,28 @@ def _conform(expr: str, source, target, fhir_type: str, path: str, issues: List[
 
 
 def _conform_struct(expr: str, source, target, fhir_type: str, path: str, issues: List[SchemaIssue],
-                    depth: int, top: bool = False) -> str:
+                    depth: int) -> str:
+    fields = _conform_fields(expr, source, target, fhir_type, path, issues, depth)
+    return (f"CASE WHEN {expr} IS NULL THEN NULL ELSE "
+            f"named_struct({', '.join(f'{_literal(n)}, {v}' for n, v in fields)}) END")
+
+
+def _conform_fields(expr: str, source, target, fhir_type: str, path: str, issues: List[SchemaIssue],
+                    depth: int, top: bool = False) -> List[Tuple[str, str]]:
+    """Each field of ``target`` as ``(name, value)``, read from ``expr`` of type ``source``."""
     present = {f.name: f for f in source.fields}
     wanted = {f.name for f in target.fields}
     parts = []
     for field in target.fields:
         sub = f"{path}.{field.name}" if path else field.name
-        if top and field.name in (RESOURCE_TYPE_FIELD, RESOURCE_ID_FIELD):
-            parts.append(_lineage_or(field.name, fhir_type, ""))
-        elif field.name in present:
-            parts.append(f"{_literal(field.name)}, "
-                         + _conform(f"{expr}.{_ident(field.name)}", present[field.name].dataType,
-                                    field.dataType, fhir_type, sub, issues, depth))
+        if field.name in present:
+            parts.append((field.name, _conform(f"{expr}.{_ident(field.name)}", present[field.name].dataType,
+                                               field.dataType, fhir_type, sub, issues, depth)))
         else:
             if not top or field.name != "id":
                 issues.append(SchemaIssue(severity=WARN, fhir_type=fhir_type, path=sub,
                                           message="is missing and reads as null"))
-            parts.append(f"{_literal(field.name)}, CAST(NULL AS {sql_type(field.dataType)})")
+            parts.append((field.name, f"CAST(NULL AS {sql_type(field.dataType)})"))
     for name in sorted(present.keys() - wanted):
         sub = f"{path}.{name}" if path else name
         slots = sorted(w for w in wanted if w.startswith(name) and w[len(name):][:1].isupper())
@@ -274,24 +296,13 @@ def _conform_struct(expr: str, source, target, fhir_type: str, path: str, issues
             issues.append(SchemaIssue(severity=ERROR, fhir_type=fhir_type, path=sub,
                                       message=f"is one merged choice field; the model splits it into "
                                               f"{', '.join(slots[:4])}{', …' if len(slots) > 4 else ''}"))
-        elif not (top and name in ("__subject_id",)):
+        elif not (top and name == PATIENT_ID):
             issues.append(SchemaIssue(severity=INFO, fhir_type=fhir_type, path=sub,
                                       message="is not in the model and is dropped"))
     if top and "id" not in present:
         issues.append(SchemaIssue(severity=ERROR, fhir_type=fhir_type, path="id",
                                   message="is missing; every resource needs its id"))
-    built = f"named_struct({', '.join(parts)})"
-    return built if top else f"CASE WHEN {expr} IS NULL THEN NULL ELSE {built} END"
-
-
-def _lineage_or(name: str, fhir_type: str, value: str) -> str:
-    """One ``named_struct`` entry: the lineage fields the reshape sets (`DATA-SYSTEM-COLUMNS`), else
-    ``value``. Lineage stays nullable, as the parsed struct around it is."""
-    if name == RESOURCE_TYPE_FIELD:
-        return f"{_literal(name)}, CAST(CASE WHEN true THEN {_literal(fhir_type)} END AS STRING)"
-    if name == RESOURCE_ID_FIELD:
-        return f"{_literal(name)}, CAST(`__r`.`id` AS STRING)"
-    return f"{_literal(name)}, {value}"
+    return parts
 
 
 # -- the subject key (DATA-SUBJECT-KEY) ----------------------------------------------------------------
@@ -317,7 +328,7 @@ def _subject_from_struct(schema, resource, issues: List[SchemaIssue]) -> str:
     if not refs:
         issues.append(SchemaIssue(severity=ERROR, fhir_type=schema.fhir_type, path="",
                                   message=f"has no {', '.join(f + '.reference' for f in SUBJECT_REF_FIELDS)} "
-                                          f"to derive __subject_id from"))
+                                          f"to derive patient_id from"))
         return "CAST(NULL AS STRING)"
     return _trailing_id(refs[0] if len(refs) == 1 else f"coalesce({', '.join(refs)})")
 

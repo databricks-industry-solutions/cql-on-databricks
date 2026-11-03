@@ -7,7 +7,7 @@ import com.databricks.cql.sema.FhirModel
   * described slice will issue, and every terminology expansion it needs mounted.
   *
   * This is the terminology/scan TWIN of [[RetrieveDemand]]. That pass answers "which FIELDS must a
-  * binding supply per resource type" (`BIND-CAPABILITY-OVERLAP`); this one answers the questions a
+  * binding supply per resource type" (`EMIT-SQL-RETRIEVE-DEMAND-BOUND`); this one answers the questions a
   * binding cannot otherwise ask without re-parsing the CQL:
   *
   *   - does my `valuesets` table hold an expansion for every canonical URL this measure binds?

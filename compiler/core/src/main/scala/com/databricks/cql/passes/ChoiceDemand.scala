@@ -14,7 +14,7 @@ import scala.collection.mutable
   * The handle then carries only `{__choice, identity, <demand set>}` instead of every arm's whole
   * body (`FrameLowering.tagChoiceArms`); a whole body is rehydrated by a late per-type identity
   * join ONLY where `needsBody` (`DATA-EXPORT`). Because the result-frame export renders a resource
-  * list by `__resource_type`/`__resource_id` IDENTITY (never by struct shape, `ResourceStruct`), a
+  * list by IDENTITY, its type and `id` (never by struct shape, `ResourceStruct`), a
   * define merely exported "whole" needs identity only — NOT a body — so `needsBody` is rare.
   *
   * Model-typed and pure (no Spark), so it preserves `ARCH-NO-RUNTIME-SCHEMA`/`TYPE-OFFLINE-COMPILE`:

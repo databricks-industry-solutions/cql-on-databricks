@@ -91,8 +91,7 @@ class ConfigSpec extends AnyFunSuite {
       "materialize.boundaries", "terminology.adapter", "emit.object_prefix", "verifiers.enabled",
       "debug.dump_dir", "lower.grain_first",
       "optimize.conditional_union", "optimize.conditional_union_max_depth",
-      "lower.cte_defs",
-      "bind.gap_lenient"))
+      "lower.cte_defs"))
   }
 
   test("Env freezes the config and threads context functionally") {

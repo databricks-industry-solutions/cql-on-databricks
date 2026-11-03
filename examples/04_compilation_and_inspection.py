@@ -124,10 +124,10 @@ print(json.dumps(encounters["expression"], indent=2)[:600], "...")
 # MAGIC ## 3. The Spark physical plan (`explain`) — of this measure
 # MAGIC Under all of it, the compiled SQL is ordinary Spark, and the measure's OWN plan is readable without
 # MAGIC data: a plan needs the data **contract**, not the rows. So each retrieve reads a **typed stub**: a
-# MAGIC DataFrame on the contract every data view returns, `(__subject_id, __resource)`, its `__resource` the struct
-# MAGIC the compiler's FHIR model defines (`client.resource_schema(type)`), with a single all-null row instead of a
-# MAGIC clinical record. A `DataFrameDataResolver` hands them to a second client; value sets still come from the
-# MAGIC environment's `knowledge.valueset` view.
+# MAGIC DataFrame on the data contract every data view returns, a `resource` struct of the type the compiler's FHIR
+# MAGIC model defines (`client.resource_schema(type)`), with a single all-null row instead of a clinical record. A
+# MAGIC `DataFrameDataResolver` hands them to a second client; value sets still come from the environment's
+# MAGIC `knowledge.valueset` view.
 # MAGIC
 # MAGIC One row rather than none, because an empty relation is something the optimizer is entitled to fold
 # MAGIC away — the plan would collapse to nothing and prove nothing. The row is a **plan placeholder** and is
@@ -141,18 +141,17 @@ print(json.dumps(encounters["expression"], indent=2)[:600], "...")
 # MAGIC ```
 
 # COMMAND ----------
-from pyspark.sql.types import StringType, StructField, StructType
+from pyspark.sql.types import StructField, StructType
 
 from cql_databricks.resolvers import DataFrameDataResolver
 
 
 def stub(fhir_type):
-    """The (__subject_id, __resource) contract with a plan placeholder behind it: one all-null row
+    """The data contract, a `resource` struct, with a plan placeholder behind it: one all-null row
     carrying the compiler's struct for the type. Read from the model, never inferred: there are no rows to
     infer a schema from, which is the sharpest version of why the contract is written down."""
-    contract = StructType([StructField("__subject_id", StringType()),
-                           StructField("__resource", client.resource_schema(fhir_type).struct)])
-    return spark.createDataFrame([(None, None)], contract)
+    contract = StructType([StructField("resource", client.resource_schema(fhir_type).struct)])
+    return spark.createDataFrame([(None,)], contract)
 
 
 STUBS = {t: stub(t) for t in ("Condition", "Coverage", "Encounter", "Observation", "Patient", "Procedure")}

@@ -3,7 +3,7 @@ package com.databricks.cql.transpiler.lower
 import com.databricks.cql.error.UnsupportedNode
 import com.databricks.cql.ir.CqlType._
 import com.databricks.cql.ir.{Case => CqlCase, _}
-import com.databricks.cql.sema.{FhirModel, FhirSchema, Ucum}
+import com.databricks.cql.sema.{FhirModel, Ucum, ViewSlots}
 import com.databricks.cql.spark.SystemColumns
 import com.databricks.cql.transpiler.emit.SqlExpr
 import com.databricks.cql.transpiler.emit.SqlExpr._
@@ -582,9 +582,24 @@ object SqlColumnLowering {
       }
     }
     def isFhirType(t: String): Boolean = t.contains("hl7.org/fhir") || t.startsWith("FHIR.")
-    def fhirChoiceSlot(src: Option[Expr], scope: Option[String], path: String, fhirType: String): SqlExpr = {
+    def fhirSlotName(path: String, fhirType: String): String = {
       val tyName = { val a = fhirType.substring(fhirType.lastIndexOf('}') + 1); a.substring(a.lastIndexOf('.') + 1) }
-      val slot = path + tyName.capitalize
+      path + tyName.capitalize
+    }
+    // DATA-MODEL-SUBSET: whether the bound data holds the `fhirType` slot of choice `path` on the value's owner
+    // ([[ViewSlots]]). An owner whose FHIR type is not known here is taken to hold it.
+    def slotHeld(src: Option[Expr], scope: Option[String], path: String, fhirType: String): Boolean = {
+      val owner = src.map(typeOf).orElse(scope.map(a => typeOf(AliasRef(a))))
+      owner match {
+        case Some(NamedType(rt)) if FhirModel.isModeled(rt) =>
+          val declared = FhirModel.choiceSlots(rt, path)
+          val slot = fhirSlotName(path, fhirType)
+          !declared.contains(slot) || ViewSlots.choiceSlots(rt, path).contains(slot)
+        case _ => true
+      }
+    }
+    def fhirChoiceSlot(src: Option[Expr], scope: Option[String], path: String, fhirType: String): SqlExpr = {
+      val slot = fhirSlotName(path, fhirType)
       (src, scope) match {
         case (Some(s), _)    => go(s).getField(slot)
         case (None, Some(_)) => Col(slot)
@@ -994,6 +1009,13 @@ object SqlColumnLowering {
         val m = choiceIvArm(base, asType).get
         val c = hoist(go(base))
         ifc(c.getField("__choice") === str(choiceTag(m)), c.getField(choiceSlot(m)).getField(bound), Null)
+      // DATA-MODEL-SUBSET: a slot the bound data does not hold has no value on any row.
+      case As(Property(src, scope, path), asType, _, Nil)
+          if isFhirType(asType) && FhirModel.isChoiceElement(path) && !slotHeld(src, scope, path, asType) =>
+        castScalar(Null, asType)
+      case Is(Property(src, scope, path), isType)
+          if isFhirType(isType) && FhirModel.isChoiceElement(path) && !slotHeld(src, scope, path, isType) =>
+        bool(false)
       case As(Property(src, scope, path), asType, _, Nil) if isFhirType(asType) && FhirModel.isChoiceElement(path) =>
         fhirChoiceSlot(src, scope, path, asType)
       case Is(Property(src, scope, path), isType) if isFhirType(isType) && FhirModel.isChoiceElement(path) =>
@@ -1246,7 +1268,7 @@ object SqlColumnLowering {
     * field this resource lacks to nothing. Shared by [[handleBody]] and the flat construction so the
     * demand-pruned slot set is computed ONE way (and matches the navigation's `vxSlot`/plain-path slots). */
   private[lower] def physSlots(rt: String, d: String): Seq[String] = {
-    val slots = FhirModel.choiceSlots(rt, d)
+    val slots = ViewSlots.choiceSlots(rt, d)
     if (slots.nonEmpty)                          slots
     else if (FhirModel.navType(rt, d).isDefined) Seq(d)
     else                                         Seq.empty
@@ -1268,23 +1290,25 @@ object SqlColumnLowering {
     val thisSlots   = rtOf(member).toSeq.flatMap(rt => ds.flatMap(d => physSlots(rt, d))).toSet
     val identity = Seq(
       "__choice"                 -> str(choiceTag(member)),
-      SystemColumns.ResourceType -> Field(armVal, SystemColumns.ResourceType),
-      SystemColumns.ResourceId   -> Field(armVal, SystemColumns.ResourceId))
+      // DATA-EXPORT: the engine's own handle carries the identity; the type is the arm's, the id the resource's own.
+      SystemColumns.ResourceType -> str(rtOf(member).getOrElse(choiceTag(member))),
+      SystemColumns.ResourceId   -> Cast(Field(armVal, "id"), "STRING"))
     val slots = globalSlots.map(s => s -> (if (thisSlots(s)) Field(armVal, s) else Null))
     Struct(identity ++ slots)
   }
 
   /** The demand-pruned resource HANDLE (ARCH-RESOURCE-HANDLE): `{__resource_type, __resource_id, <demand
-    * slots>}` off the arm's resource `__val` body. Identity is promoted so a whole export renders by
-    * identity (`JsonNormalize.isResourceStruct`); each demanded top-level field expands to its physical
+    * slots>}` off the arm's resource `__val` body. Identity is promoted, the type from the member and the id from
+    * the resource's own `id`, so a whole export renders by identity (`JsonNormalize.isResourceHandle`); each demanded top-level field expands to its physical
     * slot(s) (a value[x] base to its typed slots, a plain element to itself); a field this member lacks
     * contributes nothing. The SQL twin of `ColumnLowering.choiceHandleOf` (no model Spark DataType — SQL
     * UNION ALL coerces the sibling arms' null slots). */
   private[lower] def handleBody(body: SqlExpr, member: CqlType, demand: Set[String]): SqlExpr = {
     val rt = member match { case NamedType(n) => FhirModel.localName(n); case _ => "" }
     val identity = Seq(
-      SystemColumns.ResourceType -> Field(body, SystemColumns.ResourceType),
-      SystemColumns.ResourceId   -> Field(body, SystemColumns.ResourceId))
+      // DATA-EXPORT: the type is the member's, the id the resource's own; the resource carries no lineage.
+      SystemColumns.ResourceType -> str(rt),
+      SystemColumns.ResourceId   -> Cast(Field(body, "id"), "STRING"))
     val fields = demand.toSeq.sorted.flatMap(d => physSlots(rt, d).map(s => s -> Field(body, s)))
     Struct(identity ++ fields)
   }

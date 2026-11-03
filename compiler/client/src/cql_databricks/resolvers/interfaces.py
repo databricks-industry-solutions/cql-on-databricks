@@ -110,7 +110,7 @@ class IncludeSite:
 
 @dataclass(frozen=True, kw_only=True)
 class TableRelation:
-    """BIND-RELATION: a Delta table or UC view holding ``(__subject_id, __resource)``, or, for terminology,
+    """BIND-RELATION: a Delta table or UC view returning the data contract (`BIND-CONTRACT`), or, for terminology,
     ``(valueset_id, version, system, code)``. Warehouse and Spark."""
     name: str
 

@@ -86,6 +86,8 @@ class Warehouse:
         self.db = sqlite3.connect(":memory:")
 
     def __call__(self, statement, params=None):
+        if "information_schema.columns" in statement:
+            return [{"table_name": "patient", "column_name": "id", "full_data_type": "string"}]  # DATA-MODEL-SUBSET: the data views' shapes, read at bind
         self.db.execute(statement)
         return []
 

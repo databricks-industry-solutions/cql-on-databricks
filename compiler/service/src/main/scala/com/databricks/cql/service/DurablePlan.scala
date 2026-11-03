@@ -30,11 +30,18 @@ object DurablePlan {
   val Format = "cql-result-identity-v1"
 
   /** CLIENT-RESOLVER-IDENTITY: the sorted, distinct identities of the data and terminology resolvers whose
-    * relations the compile binds, hashed into every recipe's fingerprint. */
-  final case class Providers(data: Seq[String], terminology: Seq[String]) {
+    * relations the compile binds, and the shape of each type it retrieves (`DATA-MODEL-SUBSET`), as
+    * `<type>:<digest>`, hashed into every recipe's fingerprint. A view that changes its shape gives a new
+    * fingerprint; one that keeps its shape and changes its rows keeps it (`RUN-CLIENT-RESULT-IDENTITY`). */
+  final case class Providers(data: Seq[String], terminology: Seq[String], shapes: Seq[String] = Nil) {
     def input: (String, ujson.Value) =
-      "providers" -> ujson.Obj("data" -> ujson.Arr.from(data), "terminology" -> ujson.Arr.from(terminology))
+      "providers" -> ujson.Obj("data" -> ujson.Arr.from(data), "terminology" -> ujson.Arr.from(terminology),
+        "shapes" -> ujson.Arr.from(shapes))
   }
+
+  /** `DATA-MODEL-SUBSET`: `<type>:<digest>` for each shape, sorted. */
+  def shapeIdentities(shapes: Map[String, com.databricks.cql.sema.ResourceShape.Checked]): Seq[String] =
+    shapes.toSeq.map { case (t, c) => s"$t:${digest(ujson.Str(c.canonical))}" }.sorted
 
   private def digest(value: ujson.Value): String =
     MessageDigest.getInstance("SHA-256").digest(ujson.write(value).getBytes(StandardCharsets.UTF_8))

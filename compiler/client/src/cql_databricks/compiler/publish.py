@@ -1,9 +1,9 @@
 """BIND-PUBLISH — publish an environment's data over tables, for review or to run.
 
 An environment's data is its ``data`` schema: one published view per FHIR type, named for the type in lower case,
-returning the contract ``(__subject_id, __resource)`` (`DATA-ENVIRONMENT-LAYOUT`, `BIND-CONTRACT`). Publishing
-writes that mapping and never data: ``CREATE OR REPLACE VIEW <catalog>.data.<type>`` with the reshape of its table as
-the body (`BIND-RESHAPE`), replacing the view that selected the store. Runs bind the views by name
+returning the data contract, the resource as the ``resource`` struct and the subject key as ``patient_id``
+(`DATA-ENVIRONMENT-LAYOUT`, `BIND-CONTRACT`, `DATA-SUBJECT-KEY`). Publishing writes that mapping and never data: ``CREATE OR REPLACE VIEW <catalog>.data.<type>`` with
+the reshape of its table as the body (`BIND-RESHAPE`), replacing the view that selected the store. Runs bind the views by name
 (`BIND-PUBLISHED-VIEW`).
 
 Sources are tables only. A published view can't name a session DataFrame or files read on the driver, and a view

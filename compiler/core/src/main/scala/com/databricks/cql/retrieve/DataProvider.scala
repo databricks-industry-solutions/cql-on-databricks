@@ -15,7 +15,7 @@ import org.apache.spark.sql.DataFrame
 trait DataProvider {
 
   /** All instances of `fhirType` (local name, e.g. "Condition") as a frame whose schema is exactly
-    * `(__subject_id, STRUCT<resource + __resource_type + __resource_id> AS __resource)` — built via
+    * `(__subject_id, STRUCT<resource fields> AS __resource)` — built via
     * [[ResourceStruct.of]]. Returns an empty-but-typed frame when there are none.
     *
     * `hints` are ADVISORY, STATICALLY-DETERMINED pushdown hints (the compile-time predicates the

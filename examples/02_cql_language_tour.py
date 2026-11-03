@@ -334,9 +334,10 @@ reset(spark)
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## 9. Bring a handful of FHIR resources
-# MAGIC The last two sections need data. The engine reads every `[Resource]` retrieve from a relation with two
-# MAGIC columns: `__subject_id` (the context key) and `__resource` (the resource body as one struct). In a real
-# MAGIC deployment that relation is a view in your environment's `data` schema, over your own governed tables.
+# MAGIC The last two sections need data. The engine reads every `[Resource]` retrieve from a relation that returns
+# MAGIC the resource as a `resource` struct, and optionally `patient_id`, the key of the patient the row belongs to.
+# MAGIC In a real deployment that relation is a view in your environment's `data` schema, over your own governed
+# MAGIC tables.
 # MAGIC Here it is eleven rows in DataFrames, handed to this notebook's cells with `use_resolvers`: every later
 # MAGIC `%%cql` cell reads its data and value sets through the resolvers it names, and nothing else changes.
 # MAGIC

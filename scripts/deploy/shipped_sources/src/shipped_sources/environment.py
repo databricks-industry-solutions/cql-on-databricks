@@ -27,7 +27,7 @@ log = logging.getLogger("shipped_sources.environment")
 
 #: DATA-ENVIRONMENT-LAYOUT — every schema of an environment, and what each holds.
 SCHEMAS: dict[str, str] = {
-    DATA: "Published data: one view per FHIR type on the contract (__subject_id, __resource), and change_log",
+    DATA: "Published data: one view per FHIR type returning resource and patient_id (BIND-CONTRACT), and change_log",
     DATA_STORE: "The data store the data views select",
     KNOWLEDGE: "Published knowledge: the library, measure and valueset views",
     KNOWLEDGE_STORE: "The knowledge store the library, measure and valueset views select",
@@ -57,10 +57,11 @@ def schema_statements(catalog: str) -> list[str]:
 
 
 def data_view(catalog: str, fhir_type: str) -> str:
-    """BIND-PUBLISHED-VIEW — the published view of ``fhir_type``, selecting its store table."""
+    """BIND-PUBLISHED-VIEW, BIND-CONTRACT, DATA-SUBJECT-KEY — the published view of ``fhir_type`` over its store
+    table, which holds the contract itself: the subject key ``patient_id`` and the ``resource`` struct."""
     name = fhir_type.lower()
     return (f"CREATE OR REPLACE VIEW {quote(catalog, DATA, name)} AS "
-            f"SELECT `__subject_id`, `__resource` FROM {quote(catalog, DATA_STORE, name)}")
+            f"SELECT `patient_id`, `resource` FROM {quote(catalog, DATA_STORE, name)}")
 
 
 def change_log_statements(catalog: str) -> list[str]:

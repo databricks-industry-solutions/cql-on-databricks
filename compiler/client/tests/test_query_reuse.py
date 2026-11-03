@@ -74,13 +74,19 @@ class _Results(ResultResolver):
         return True
 
 
+def _shapes(statement, params=None):
+    """DATA-MODEL-SUBSET: the only statement a bind sends, the data views' shapes."""
+    assert "information_schema.columns" in statement, statement
+    return [{"table_name": "patient", "column_name": "id", "full_data_type": "string"}]
+
+
 class _Development(SchemaDataResolver):
     reusable = False
 
 
 def _query(results, *, data=None, cql=CQL, recompute=None):
     provider, spark = _Provider(), _Spark()
-    binder = ResolverBinder(data=data or SchemaDataResolver("acme.data"), run=lambda: None, schemas=lambda types: {},
+    binder = ResolverBinder(data=data or SchemaDataResolver("acme.data"), run=lambda: _shapes, schemas=lambda types: {},
                             results=results)
     client = CqlClient.builder().provider(provider).spark(spark).data_binder(binder).build()
     return client.cql(cql, recompute=recompute), provider, spark

@@ -84,8 +84,12 @@ object Corpus {
 
   /** A FHIR Patient fixture: inject the sample-data `DataProvider` (+ optional terminology), and
     * the reference reads the SAME NDJSON resources + value-set expansions. */
+  /** `shapes`: the types bound as views returning a subset of FHIR R4 (`DATA-MODEL-SUBSET`, [[NarrowedFhirData]]),
+    * each the Spark type text of its `resource` struct. `access`: the root columns each type's view returns beside
+    * `resource`, each as SQL over it (`DATA-SUBJECT-KEY`, `BIND-PREFILTER`). */
   private def fhir(library: String, withTerminology: Boolean, label: String,
-                   deviations: Seq[Differential.Deviation] = Nil): Entry =
+                   deviations: Seq[Differential.Deviation] = Nil, shapes: Map[String, String] = Map.empty,
+                   access: Map[String, Seq[(String, String)]] = Map.empty): Entry =
     Entry(label, () => {
       val spark = SparkConnect.session()
       val dataDir = Paths.dataDir.getAbsolutePath
@@ -105,7 +109,7 @@ object Corpus {
       Differential.Case(
         library,
         Context.Patient,
-        data = Some(new SparkFhirData(spark, dataDir)),
+        data = Some(new NarrowedFhirData(new SparkFhirData(spark, dataDir), shapes, access)),
         terminology = if (withTerminology) Some(new SparkTerminology(spark, dataDir)) else None,
         refEnv = GroundTruthRunner.RefEnv(resourcesByType = resources, expansions = expansions,
           extraLibrarySources = librarySources(library)),
@@ -223,6 +227,19 @@ object Corpus {
 
     // --- FHIR Patient (DATA-RETRIEVER, LANG-TERMINOLOGY, LANG-QUERY, DATA-LIST-ENCODING) ---
     fhir("FhirRetrieve", withTerminology = false, "FhirRetrieve: exists [Condition] per patient diffs clean"),
+    fhir("FhirSubsetShape", withTerminology = false,
+      "FhirSubsetShape: views returning a subset of FHIR R4 diff clean; choice dispatch reads only the slots they hold (DATA-MODEL-SUBSET)",
+      shapes = Map(
+        "Patient" -> "struct<id:string,gender:string,birthDate:string>",
+        "Observation" -> ("struct<id:string,status:string,subject:struct<reference:string>," +
+          "valueQuantity:struct<value:double,unit:string,system:string,code:string>,valueString:string>")),
+      // DATA-SUBJECT-KEY, BIND-PREFILTER: each view returns its patient_id, so no key is derived from a reference
+      // or from `id`; the Patient dates cover the birth date, so the coarse filter keeps every patient the refine
+      // step can keep.
+      access = Map(
+        "Observation" -> Seq("patient_id" -> "substring_index(resource.subject.reference, '/', -1)"),
+        "Patient" -> Seq("patient_id" -> "resource.id", "min_date" -> "to_date(resource.birthDate)",
+          "max_date" -> "to_date(resource.birthDate)"))),
     fhir("FhirHelpersFromContent", withTerminology = false, "FhirHelpersFromContent: an included FHIRHelpers resolves from the corpus beside the fixture, and its conversion diffs clean (LANG-FHIRHELPERS-FROM-CONTENT)"),
     fhir("FhirValueSet", withTerminology = true, "FhirValueSet: value-set-filtered retrieve diffs clean (LANG-TERMINOLOGY)"),
     fhir("FhirValueSetQuery", withTerminology = true, "FhirValueSetQuery: value-set-filtered retrieve as a general query source diffs clean (LANG-TERMINOLOGY/LANG-QUERY)"),
@@ -233,7 +250,7 @@ object Corpus {
     fhir("FhirVsFunction", withTerminology = true, "FhirVsFunction: value set passed into a function carries through inlining (LANG-FUNCTION-TERMINOLOGY)"),
     fhir("FhirReturnList", withTerminology = false, "FhirReturnList: per-subject ordered return list diffs clean (DATA-LIST-ENCODING)"),
     fhir("FhirListWholeListOp", withTerminology = false, "FhirListWholeListOp: list define consumed by whole-list ops (in/Count) boxes back identically (DATA-LIST-ENCODING/DATA-DEFINE-DF)"),
-    fhir("FhirResourceExport", withTerminology = false, "FhirResourceExport: raw-resource result exports by __resource_type/__resource_id identity and diffs clean (DATA-EXPORT)"),
+    fhir("FhirResourceExport", withTerminology = false, "FhirResourceExport: raw-resource result exports by its type and id and diffs clean (DATA-EXPORT)"),
     fhir("FhirBareRetrieveList", withTerminology = false, "FhirBareRetrieveList: a bare unfiltered-retrieve define realizes as a Relation view and diffs clean (DATA-DEFINE-DF/DATA-SKIP-UNFILTERED)"),
     fhir("FhirListDefineConsumed", withTerminology = false, "FhirListDefineConsumed: a bare-retrieve list define consumed as a Relation source folds the where per-consumer and diffs clean (DATA-SKIP-UNFILTERED/DATA-DEFINE-DF)"),
     fhir("FhirListDefineVsFilter", withTerminology = true, "FhirListDefineVsFilter: value-set membership folds per-consumer over a Relation define source (ARCH-PUSHDOWN/LANG-TERMINOLOGY/DATA-SKIP-UNFILTERED)"),

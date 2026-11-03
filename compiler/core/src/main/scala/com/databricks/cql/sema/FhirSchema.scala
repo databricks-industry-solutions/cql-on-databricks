@@ -15,12 +15,12 @@ import java.util.concurrent.ConcurrentHashMap
   * some fields left out, never moved or renamed, and no depth cap. */
 object FhirSchema {
 
-  /** The FHIR JSON-native Spark type of a primitive base. */
-  private def primitiveSpark(base: String): DataType = base match {
-    case "boolean"                                  => BooleanType
-    case "integer" | "positiveInt" | "unsignedInt" => LongType
-    case "decimal"                                  => DoubleType
-    case _                                          => StringType // date/dateTime/instant/time/code/string/uri/id/…
+  /** The FHIR JSON-native Spark type of a primitive base ([[FhirShape.jsonScalar]]). */
+  private def primitiveSpark(base: String): DataType = FhirShape.jsonScalar(base) match {
+    case "boolean" => BooleanType
+    case "bigint"  => LongType
+    case "double"  => DoubleType
+    case _         => StringType // date/dateTime/instant/time/code/string/uri/id/…
   }
 
   private def spark(shape: Shape): DataType = shape match {

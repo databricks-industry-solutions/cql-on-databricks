@@ -79,7 +79,7 @@ final class CallSiteRequestSpec extends AnyFunSuite {
   }
 
   test("BIND-CALL-SITE: a rule binds every retrieve to <schema>.<type in lower case>, read as the contract") {
-    val sql = compileSql(bound(DataBinding(rule, Map.empty)))
+    val sql = compileSql(bound(DataBinding(rule, Map.empty, TestBindings.StockShapes)))
     Seq("observation", "encounter", "patient").foreach(t => assert(sql.contains(s"FROM acme.data.$t"), sql))
     assert(!sql.contains("SELECT * FROM acme.data"), sql)
     assert(!sql.contains("retrieve_"), sql)
@@ -88,33 +88,33 @@ final class CallSiteRequestSpec extends AnyFunSuite {
 
   test("BIND-CALL-SITE: a site's map entry wins over the rule") {
     val tests = retrieveSite("Observation").id
-    val sql = compileSql(bound(DataBinding(rule, Map(tests -> RetrieveRelation("hist.data.observation_archive")))))
+    val sql = compileSql(bound(DataBinding(rule, Map(tests -> RetrieveRelation("hist.data.observation_archive")), TestBindings.StockShapes)))
     assert(sql.contains("FROM hist.data.observation_archive") && !sql.contains("FROM acme.data.observation"), sql)
     assert(sql.contains("FROM acme.data.encounter"), sql)
   }
 
   test("BIND-CALL-SITE: a site with no rule and no entry fails the compile, naming it") {
     val err = intercept[UnsupportedNode](compileSql(bound(DataBinding(None,
-      Map(retrieveSite("Patient").id -> RetrieveRelation("acme.data.patient"))))))
+      Map(retrieveSite("Patient").id -> RetrieveRelation("acme.data.patient")), TestBindings.StockShapes))))
     assert(err.getMessage.contains("has no relation"), err.getMessage)
   }
 
   test("BIND-CALL-SITE: value sets read from the first layer that holds them, and a site entry wins") {
     val layered = TerminologyBinding(Some(Seq(RetrieveRelation("dev.vs.valueset"),
       RetrieveRelation("acme.terminology.valueset"))), Map.empty)
-    val sql = compileSql(bound(DataBinding(rule, Map.empty), layered))
+    val sql = compileSql(bound(DataBinding(rule, Map.empty, TestBindings.StockShapes), layered))
     assert(sql.contains("FROM dev.vs.valueset") && sql.contains("FROM acme.terminology.valueset"), sql)
     assert(sql.contains("min(__layer) OVER ()") && sql.contains("__layer = __first"), sql)
     val site = TerminologyBinding(terminology.rule, Map(valueSetSite().id -> Seq(RetrieveRelation("vol.vs.a1c"))))
-    val one = compileSql(bound(DataBinding(rule, Map.empty), site))
+    val one = compileSql(bound(DataBinding(rule, Map.empty, TestBindings.StockShapes), site))
     assert(one.contains("FROM vol.vs.a1c") && !one.contains("FROM acme.terminology.valueset"), one)
-    val err = intercept[UnsupportedNode](compileSql(bound(DataBinding(rule, Map.empty), TerminologyBinding(None, Map.empty))))
+    val err = intercept[UnsupportedNode](compileSql(bound(DataBinding(rule, Map.empty, TestBindings.StockShapes), TerminologyBinding(None, Map.empty))))
     assert(err.getMessage.contains("needs terminology"), err.getMessage)
   }
 
   test("CLIENT-RESOLVER-IDENTITY: a durable compile hashes identities, refuses a relation without one, lists value sets") {
     def plan(identity: Option[String]) =
-      compilePipeline(bound(DataBinding(Some(DataBinding.Rule("acme.data", identity)), Map.empty)).copy(durable = true))
+      compilePipeline(bound(DataBinding(Some(DataBinding.Rule("acme.data", identity)), Map.empty, TestBindings.StockShapes)).copy(durable = true))
     val a = plan(Some("acme.data")).datasets
     val b = plan(Some("other.data")).datasets
     assert(a.nonEmpty && a.map(_.durable.get.fingerprint) != b.map(_.durable.get.fingerprint))
@@ -151,5 +151,27 @@ final class CallSiteRequestSpec extends AnyFunSuite {
     val unknown = intercept[IllegalArgumentException](CompileRequest.fromJson(ujson.write(ujson.Obj("elm" -> elm,
       "data" -> ujson.Obj("retrieves" -> ujson.Obj())))))
     assert(unknown.getMessage.contains("retrieves"), unknown.getMessage)
+  }
+
+  test("DATA-MODEL-SUBSET: the wire carries a shape per type, checked when the request is read") {
+    val ok = CompileRequest.fromJson(ujson.write(ujson.Obj("elm" -> elm,
+      "data" -> ujson.Obj("rule" -> ujson.Obj("schema" -> "acme.data"),
+        "shapes" -> ujson.Obj("Observation" -> "struct<resource:struct<id:string,status:string>>")))))
+    assert(ok.data.get.shapes("Observation").struct.fields.map(_.name) == Vector("id", "status"))
+    val bad = intercept[com.databricks.cql.sema.ResourceShape.ShapeError](CompileRequest.fromJson(ujson.write(
+      ujson.Obj("elm" -> elm, "data" -> ujson.Obj("rule" -> ujson.Obj("schema" -> "acme.data"),
+        "shapes" -> ujson.Obj("Observation" -> "struct<resource:struct<id:string,legacy_flag:boolean>>"))))))
+    assert(bad.getMessage.contains("`Observation.legacy_flag` is not a FHIR R4 element"), bad.getMessage)
+    val notText = intercept[IllegalArgumentException](CompileRequest.fromJson(ujson.write(
+      ujson.Obj("elm" -> elm, "data" -> ujson.Obj("shapes" -> ujson.Obj("Observation" -> ujson.Obj()))))))
+    assert(notText.getMessage.contains("Spark type string"), notText.getMessage)
+  }
+
+  test("DATA-MODEL-SUBSET: a path the bound shape leaves out fails the compile, naming it") {
+    val narrow = TestBindings.StockShapes + ("Observation" ->
+      com.databricks.cql.sema.ResourceShape.parse("Observation", "struct<resource:struct<id:string,subject:struct<reference:string>>>"))
+    val err = intercept[UnsupportedNode](compileSql(bound(DataBinding(rule, Map.empty, narrow))))
+    assert(err.getMessage.contains("is not in this environment"), err.getMessage)
+    assert(err.getMessage.contains("`Observation."), err.getMessage)
   }
 }

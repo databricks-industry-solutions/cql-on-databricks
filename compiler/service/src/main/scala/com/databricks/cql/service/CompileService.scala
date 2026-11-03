@@ -8,7 +8,7 @@ import com.databricks.cql.retrieve.TerminologyProvider
 import com.databricks.cql.spark.SystemColumns
 import com.databricks.cql.translate.CqlToElmCli
 import com.databricks.cql.transpiler.emit.{SqlNames, SqlRel, SqlRender, SqlStmt}
-import com.databricks.cql.transpiler.lower.{SqlEvalEnv, SqlFrameLowering}
+import com.databricks.cql.transpiler.lower.{CallSite, SqlEvalEnv, SqlFrameLowering}
 
 import scala.collection.mutable
 
@@ -432,8 +432,11 @@ object CompileService {
         val identities = (relations: Seq[RetrieveRelation]) => relations.map(r => r.identity.getOrElse(
           throw new IllegalArgumentException(s"a durable compile's relation ${r.table} has no identity " +
             "(CLIENT-RESOLVER-IDENTITY)"))).distinct.sorted
+        // DATA-MODEL-SUBSET: the shapes of the types this compile retrieves, not of every type the request sends.
+        val retrieved = env.callSites.values.filter(_.kind == CallSite.Retrieve).map(_.request("fhirType").str).toSet
         val bound = DurablePlan.Providers(identities(req.data.map(_.relations).getOrElse(Nil)),
-          identities(req.terminology.map(_.relations).getOrElse(Nil)))
+          identities(req.terminology.map(_.relations).getOrElse(Nil)),
+          DurablePlan.shapeIdentities(req.data.map(_.shapes).getOrElse(Map.empty).filter(s => retrieved(s._1))))
         DurablePlan.annotate(plan, nonReusable, DurablePlan.parameterClaims(loaded, dsCtx), bound,
           DurablePlan.valueSetClaims(loaded, dsCtx))
       }

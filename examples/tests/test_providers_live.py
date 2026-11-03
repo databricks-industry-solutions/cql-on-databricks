@@ -90,7 +90,8 @@ def scratch(warehouse, environment):
     warehouse(f"CREATE SCHEMA {target} COMMENT 'resolver live test scratch; safe to drop'")
     try:
         for fhir_type in TYPES:
-            warehouse(f"CREATE TABLE {target}.`{fhir_type.lower()}` AS SELECT __subject_id, __resource "
+            # BIND-CONTRACT: a copy of the view is a table on the contract, patient_id and resource.
+            warehouse(f"CREATE TABLE {target}.`{fhir_type.lower()}` AS SELECT * "
                       f"FROM {env.schema(DATA)}.{fhir_type.lower()}")
         warehouse(f"CREATE VOLUME {target}.`files`")
         yield {"schema": f"{CATALOG}.{schema}", "volume": f"/Volumes/{CATALOG}/{schema}/files"}
@@ -201,7 +202,7 @@ def test_a_volume_folder_and_value_set_json_answer_as_the_environment(spark, env
     _, env, _ = environment
     files = WorkspaceClient().files
     for fhir_type in TYPES:
-        rows = spark.sql(f"SELECT to_json(__resource) AS j FROM {scratch['schema']}.{fhir_type.lower()}").collect()
+        rows = spark.sql(f"SELECT to_json(resource) AS j FROM {scratch['schema']}.{fhir_type.lower()}").collect()
         body = "\n".join(json.dumps(_fhir(json.loads(r["j"]), fhir_type)) for r in rows)
         files.upload(f"{scratch['volume']}/fhir/{fhir_type}.ndjson", io.BytesIO(body.encode()), overwrite=True)
     codes = spark.sql(f"SELECT system, code FROM {env.schema(KNOWLEDGE)}.valueset WHERE valueset_id = '{VALUE_SET}'"
@@ -214,7 +215,7 @@ def test_a_volume_folder_and_value_set_json_answer_as_the_environment(spark, env
 
 
 def _fhir(resource, fhir_type):
-    """A contract struct back to FHIR JSON: the lineage fields dropped, the type restored."""
-    out = {k: v for k, v in resource.items() if not k.startswith("__")}
+    """A data view's ``resource`` back to FHIR JSON, the type restored."""
+    out = dict(resource)
     out["resourceType"] = fhir_type
     return out

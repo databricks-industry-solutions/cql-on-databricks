@@ -1,8 +1,8 @@
 # Environment data
 
 An environment's data is its `data` schema (`DATA-ENVIRONMENT-LAYOUT`): one published view per FHIR type, named for
-the type in lower case, returning the contract `(__subject_id, __resource)` (`BIND-CONTRACT`). A run binds the views by
-name and reads no catalog metadata (`BIND-PUBLISHED-VIEW`). A retrieve of a type with no view fails in the warehouse,
+the type in lower case, returning the contract: the resource as a `resource` struct and optionally `patient_id`,
+`min_date` and `max_date` (`BIND-CONTRACT`). A run binds the views by name and reads no catalog metadata (`BIND-PUBLISHED-VIEW`). A retrieve of a type with no view fails in the warehouse,
 naming the view. The [client README](../README.md#environments) says what an environment is.
 
 ## What the schema holds

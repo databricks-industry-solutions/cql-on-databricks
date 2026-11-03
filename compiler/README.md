@@ -51,7 +51,7 @@ Read in this order.
 | [engine-design.md](docs/engine-design.md) | The passes: CQL to ELM to typed IR to SQL |
 | [language-semantics.md](docs/language-semantics.md) | Three-valued logic, intervals, quantities, terminology |
 | [execution-model.md](docs/execution-model.md) | Set-at-a-time evaluation and the `cql_*` function catalog |
-| [data-binding.md](docs/data-binding.md) | How retrieves reach data: the `(__subject_id, __resource)` contract |
+| [data-binding.md](docs/data-binding.md) | How retrieves reach data: the data contract, a `resource` struct per row |
 | [data-model.md](docs/data-model.md) | The static FHIR R4 element model |
 | [data-format.md](docs/data-format.md) | Value types, list encoding, system columns |
 | [list-null-tristate.md](docs/list-null-tristate.md) | Null versus empty lists |

@@ -5,8 +5,8 @@ One path for every population this repository ships: the small synthesized popul
 own). A caller hands over one raw NDJSON text frame per FHIR type that has data (a ``value`` column, one resource per
 row), and this module:
 
-- reshapes each onto the contract ``(__subject_id, __resource)`` (``BIND-CONTRACT``) through the client's reshape
-  (``BIND-RESHAPE``), with the ``__resource`` struct taken from this package's ``resource-schemas.json``, the
+- reshapes each to the data contract ``(resource, patient_id)``, the store's form, through the client's reshape
+  (``BIND-RESHAPE``), with the ``resource`` struct taken from this package's ``resource-schemas.json``, the
   same static model the compiler's ``/resource-schema`` serves (``SVC-RESOURCE-SCHEMA``);
 - lands every bound type as a store table ``<catalog>.data_store.<type>``, EMPTY when the population has no rows of
   that type, so a retrieve of any bound type reads a view that exists and returns no rows rather than failing;
@@ -37,7 +37,7 @@ def load_resource_schemas() -> dict[str, dict]:
 
 
 def resource_ddl(fhir_type: str) -> str:
-    """The engine's ``__resource`` struct type for ``fhir_type``, from ``resource-schemas.json``."""
+    """The stock ``resource`` struct type for ``fhir_type``, from ``resource-schemas.json``."""
     entry = load_resource_schemas().get(fhir_type)
     if not entry or not entry.get("modeled") or not entry.get("ddl"):
         raise ValueError(f"{fhir_type} is not a modeled FHIR type in resource-schemas.json")
@@ -78,7 +78,10 @@ def land(spark, *, catalog: str, raw_by_type: dict, valid_from: str, valid_to: s
         frame = json_frame(spark, raw, schema, column="value")
         table = store_table(catalog, fhir_type)
         # DEPLOY-DEFAULT-ENVIRONMENT (idempotent) — a load replaces the store table whole, its schema too, so a
-        # redeploy whose resource model changed lands rather than failing on the table an earlier deploy wrote.
+        # redeploy whose resource model changed lands rather than failing on the table an earlier deploy wrote. The
+        # table is dropped first: properties the platform sets on it (predictive optimization's workload-based
+        # statistics columns) name the old columns, and an overwrite that drops those columns fails on them.
+        spark.sql(f"DROP TABLE IF EXISTS {table}")
         frame.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(table)
 
         props = contract.cql_tblproperties(fhir_type, valid_from=valid_from, valid_to=valid_to)

@@ -60,6 +60,15 @@ object FhirModel {
       case _ => Vector.empty
     }
 
+  /** Every element of (localized) FHIR type `typeName`, inherited ones first, each `value[x]` slot its own
+    * element (`DATA-MODEL-SUBSET`: the superset a published shape is checked against). Empty when unmodeled. */
+  def elements(typeName: String): Vector[Element] = elementsOf(localName(typeName))
+
+  /** The JSON primitive base of FHIR primitive `typeName` (`dateTime`, `boolean`, `code`, …), or `None` when
+    * it is not a modeled primitive. */
+  def primitiveBase(typeName: String): Option[String] =
+    types.get(localName(typeName)).filter(_.isPrimitive).map(_.primitiveBase.getOrElse("string"))
+
   /** The element named `path` on a (localized) FHIR type, if modeled and monomorphic (not a
     * `value[x]` choice base). */
   private def element(typeName: String, path: String): Option[Element] =

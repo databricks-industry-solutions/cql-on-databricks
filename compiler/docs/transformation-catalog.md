@@ -46,7 +46,8 @@ through every stage, see [pipeline-walkthrough.md](pipeline-walkthrough.md).
 19. `value[x]` projection (`LANG-CHOICE-MODEL`): only for genuine FHIR choice elements.
 20. Typed-slot dispatch (`LANG-CHOICE-RESOURCE`): bare `value[x]` and `extension(url).value` read the
     slot for the declared type. A heterogeneous choice can range over whole resources.
-21. Lineage (`DATA-EXPORT`): carry `__resource_id` and `__resource_type`.
+21. Lineage (`DATA-EXPORT`): a resource's identity is its type and its own `id`; a mixed list's handle carries
+    `__resource_type` and `__resource_id`.
 22. Code cardinality: read from the model whether a code element is single or a
     list, and lower membership to match.
 23. Static type tests (`LANG-CHOICE-MODEL`): resolve `as` and `is` on `value[x]` against the model and

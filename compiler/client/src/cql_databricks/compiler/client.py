@@ -66,8 +66,8 @@ class CqlClient:
         return self._library_provider.search(pattern)
 
     def resource_schema(self, fhir_type: Optional[str] = None):
-        """The compiler's model of FHIR data (`CLIENT-RESOURCE-SCHEMA`): the ``__resource`` struct a
-        retrieve of that type must return, as a :class:`~.providers.ResourceSchema`. With no type, every
+        """The compiler's model of FHIR data (`CLIENT-RESOURCE-SCHEMA`): the ``resource`` struct a
+        data view of that type returns, as a :class:`~.providers.ResourceSchema`. With no type, every
         modeled type's, keyed by type. Read from the compiler once per client, never derived here. An
         unmodeled type raises, naming it."""
         if self._resource_schemas is None:

@@ -116,7 +116,7 @@ __all__ = [
     # CLIENT-RESOLVERS, CLIENT-PACKAGE-SPLIT: the resolvers and the environments are `cql_databricks.resolvers`.
     "CompileProvider", "RemoteProvider", "CompileRequest", "CompileError",
     "SqlCompileResult", "SqlStatement",
-    # CLIENT-RESOURCE-SCHEMA: the model's `__resource` struct per FHIR type (`CqlClient.resource_schema`).
+    # CLIENT-RESOURCE-SCHEMA: the model's `resource` struct per FHIR type (`CqlClient.resource_schema`).
     "ResourceSchema",
     # EMIT-SQL-VALUE-COLUMN: the uniform result shape contract.
     "DefineShape", "VALUE_COLUMN", "SCALAR", "RELATION",

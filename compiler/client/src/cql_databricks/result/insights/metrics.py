@@ -34,7 +34,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from ..relation import SUBJECT_ID, met_expr, value_column
+from ..relation import SUBJECT_ID, met_expr, patient_rows, value_column
 from ..results import Execute, PinnedRelation, count_relations, relation_columns, result_relation
 from .evaluation import ClosureSource, MetricsUnavailable, locate
 from .model import PROVENANCE_RUN, DefineMetric, MeasureMetrics
@@ -252,7 +252,7 @@ def _evaluated_subjects(patient_relation: str | None, *, execute: Execute) -> in
             "are taken against cannot be stated (SPEC-METRIC requires the base be stated)")
 
     sql = (f"SELECT COUNT(DISTINCT {SUBJECT_ID}) AS subjects "
-           f"FROM {patient_relation}")
+           f"FROM {patient_rows(patient_relation, execute)}")
     rows = execute(sql)
     if not rows or not rows[0]:
         raise MetricsUnavailable(

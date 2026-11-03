@@ -126,7 +126,7 @@ The client's mode is fixed when you construct it. It never switches per call (`B
 4. One owner per definition: the membership predicate, the results address and the fingerprint each have
    one implementation.
 5. A feature reads another's data through its interface, never by querying its tables.
-6. Contracts customers implement, the data contract (the per-type views returning `(__subject_id, __resource)`)
+6. Contracts customers implement, the data contract (the per-type views returning a `resource` struct)
    and the change log, are versioned on purpose (`DATA-CONTRACT`).
 
 Known crossings: the agent reads result tables through the client's reader (`agent/wiring.py`). The Designer and agent servers import `cql_databricks_common`. A dependency check

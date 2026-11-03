@@ -1,7 +1,7 @@
 package com.databricks.cql.it
 
 import com.databricks.cql.retrieve.{DataProvider, ResourceStruct, RetrieveHints}
-import com.databricks.cql.sema.{FhirModel, FhirSchema}
+import com.databricks.cql.sema.{FhirModel, FhirSchema, ResourceShape}
 import com.databricks.cql.spark.SystemColumns
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.{Column, DataFrame, SparkSession, functions => F}
@@ -15,10 +15,15 @@ import org.apache.spark.sql.{Column, DataFrame, SparkSession, functions => F}
   * The subject-reference id (DATA-SUBJECT-KEY) is promoted with `substring_index` — the segment
   * after the last `/` of `"Patient/<id>"` — a cheap top-level projection rather than a per-row
   * `regexp_extract` in the hot path. (The production ingest-time/partitioned key is deferred.) */
-final class SparkFhirData(spark: SparkSession, dataDir: String) extends DataProvider {
+final class SparkFhirData(spark: SparkSession, dataDir: String) extends DataProvider with FhirColumns {
 
-  // BIND-CONTRACT: mount the resource frame as the single `(__subject_id, __resource)` schema
-  // contract — the subject key plus the resource packed into one struct ([[ResourceStruct.of]]). The
+  /** BIND-CONTRACT: the resources of `fhirType` as a stock data view returns them, the `resource` struct read with
+    * the model's schema (narrowed to the projection hint, as [[retrieve]] is). */
+  override def fhirColumns(fhirType: String, hints: RetrieveHints = RetrieveHints.none): DataFrame =
+    rawRetrieve(fhirType, hints.project).select(ResourceStruct.of(fhirType, hints.project).as(ResourceShape.ResourceColumn))
+
+  // DATA-RETRIEVER: the `DataProvider` path mounts the resource frame in the engine's own `(__subject_id,
+  // __resource)` form — the subject key plus the resource packed into one struct ([[ResourceStruct.of]]). The
   // sample-data adapter IGNORES the advisory pushdown hints (value-set / date predicates — the engine
   // re-applies every predicate at its natural position), but it DOES honor the
   // ARCH-RETRIEVE-PROJECT `project` demand: narrow the read schema + the struct to the navigated fields.
@@ -37,7 +42,7 @@ final class SparkFhirData(spark: SparkSession, dataDir: String) extends DataProv
     * into the `__resource` struct via [[ResourceStruct.of]].
     *
     * ARCH-RETRIEVE-PROJECT: when `keep = Some(fields)`, read ONLY those top-level fields PLUS the ones
-    * this adapter itself needs — `id` (the `__resource_id` lineage / Patient subject key) and, for a
+    * this adapter itself needs — `id` (the resource identity / Patient subject key) and, for a
     * non-Patient type, its patient-reference field (the subject key). So the pruned scan still computes the
     * subject key and identity. */
   private def rawRetrieve(fhirType: String, keep: Option[Set[String]] = None): DataFrame =

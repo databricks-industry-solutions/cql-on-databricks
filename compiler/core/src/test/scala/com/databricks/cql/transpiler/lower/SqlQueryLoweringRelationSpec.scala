@@ -27,7 +27,7 @@ class SqlQueryLoweringRelationSpec extends AnyFunSuite {
   /** BIND-CALL-SITE: every retrieve bound by rule to `acme.data.<type>`, every value set to one relation. */
   private def env(): SqlEvalEnv =
     SqlEvalEnv(context = Context.Patient, config = Config.defaults,
-      data = Some(DataBinding(Some(DataBinding.Rule("acme.data")), Map.empty)),
+      data = Some(DataBinding(Some(DataBinding.Rule("acme.data")), Map.empty, com.databricks.cql.TestFixtures.stockShapes)),
       terminologyBinding = Some(TerminologyBinding(Some(Seq(RetrieveRelation("acme.terminology.valueset"))), Map.empty)))
 
   private val lib: Library = Library("Test", None, Nil, Nil, Nil, Nil,
@@ -43,7 +43,7 @@ class SqlQueryLoweringRelationSpec extends AnyFunSuite {
   test("a bare retrieve lowers to grain-first rows over the mounted view (retrieveRelationFrame)") {
     val out = render(SqlQueryLowering.retrieveRelationFrame(retrieve(Encounter), env(), lib, _ => AnyType))
     assert(out.contains("FROM acme.data.encounter"))
-    assert(out.contains("__resource.__resource_id AS __ordinal"))
+    assert(out.contains("CAST(__resource.id AS STRING) AS __ordinal")) // DATA-EXPORT: the resource's own id
     assert(out.contains("__resource AS __val"))
     assert(out.contains("__subject_id"))
   }
@@ -97,7 +97,8 @@ class SqlQueryLoweringRelationSpec extends AnyFunSuite {
   test("a retrieve reads only the contract columns of its relation, with no arguments (BIND-CALL-SITE)") {
     val r = retrieve(Encounter, codeProperty = Some("type"), codes = Some(ValueSetRef("RoutineEncounter", None)))
     val out = render(SqlQueryLowering.filteredRetrieve(r, "Encounter", env(), lib, _ => AnyType))
-    assert(out.contains("    __subject_id,\n    __resource\n  FROM acme.data.encounter\n"))
+    // BIND-CONTRACT: the engine builds its own two columns from the view's FHIR columns.
+    assert(out.contains("AS __subject_id,") && out.contains("AS __resource\n  FROM acme.data.encounter\n"), out)
     assert(!out.contains("acme.data.encounter("))
     // BIND-CAPABILITY: the value-set membership is applied ABOVE the relation, which takes no request.
     assert(out.contains("LEFT SEMI JOIN"))
@@ -261,7 +262,7 @@ class SqlQueryLoweringRelationSpec extends AnyFunSuite {
     assert(out.contains("C.onsetRange.low.value"), s"expected the onsetRange low bound; got:\n$out")
     assert(out.contains("C.onsetRange.high.value"), s"expected the onsetRange high bound; got:\n$out")
     // NEVER the Period slot, and never a dateTime string cast to a decimal quantity value
-    assert(!out.contains("onsetPeriod"), s"the age-range arm must not read the Period slot; got:\n$out")
+    assert(!out.contains("C.onsetPeriod"), s"the age-range arm must not read the Period slot; got:\n$out")
     assert(!out.contains("AS DECIMAL(28,8)), 'unit', '1')"),
       s"a dateTime must not be scalar-promoted to a dimensionless Quantity; got:\n$out")
   }

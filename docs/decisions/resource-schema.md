@@ -1,8 +1,11 @@
 # The resource schema
 
 Status: settled (`DEC-RESOURCE-VARIANT`). The requirements it settles are `DATA-MODEL-STATIC-STRUCT`,
-`DATA-MODEL-SCHEMA`, `DATA-MODEL-CUTS` and `DATA-PATH-IN-SCHEMA`, in the [compiler registry](../../compiler/docs/requirements.md).
-How the schema is built is in [data-model.md](../../compiler/docs/data-model.md).
+`DATA-MODEL-SCHEMA` and `DATA-MODEL-CUTS`, in the [compiler registry](../../compiler/docs/requirements.md).
+How the schema is built is in [data-model.md](../../compiler/docs/data-model.md). The schema below is the stock
+shape, the one the reshape and the store write. The compiler no longer bounds CQL by it: a view may return any
+subset of FHIR R4, and the compile checks paths against the shape the view returns (`DATA-MODEL-SUBSET`,
+[verified data mapping](verified-data-mapping.md)).
 
 ## Problem
 
@@ -43,7 +46,7 @@ renamed, so any FHIR JSON reads into it. Every element is present at any depth, 
 - **`modifierExtension`** in the nested Extension shape on a resource, and `url` only on a backbone element.
 - **`contained`** left out. FHIR forbids nesting it, so it is a width question, not a loop.
 
-A navigation to anything left out fails the compile and names the rule. The depth setting is removed.
+The depth setting is removed. Which paths compile is decided by the shape a view returns (`DATA-MODEL-SUBSET`).
 
 The schema still changes when a resource type is added, an extension value type is added, extensions are needed
 on elements (a new rule, not a deeper cap), or the FHIR version changes. A measure reading a deeper path no

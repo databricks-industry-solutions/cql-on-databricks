@@ -104,10 +104,10 @@ class CompilerClient:
         return self._post("/translate", {"cql": cql, "includes": includes or []})
 
     def resource_schema(self, types: list[str]) -> dict[str, dict]:
-        """POST /resource-schema — the canonical `__resource` mount DDL per FHIR type (SVC-RESOURCE-SCHEMA).
+        """POST /resource-schema — the stock `resource` struct DDL per FHIR type (SVC-RESOURCE-SCHEMA).
 
-        The conformance loader uses this to build contract-correct per-type tables on the
-        `(__subject_id, __resource)` mount contract without re-deriving the engine's FHIR model — the DDL
+        The conformance loader uses this to build contract-correct per-type tables, whose `resource` column has
+        this type (BIND-CONTRACT), without re-deriving the engine's FHIR model — the DDL
         comes from the engine's static schema, served over HTTP so the loader never depends on the JVM
         (APP-DECOUPLE). Returns `{Type: {modeled, patientContext?, ddl?}}`; an
         unmodeled type is reported (`modeled: False`), never silently dropped (CORE-NO-SILENT-MISLOWER)."""

@@ -1,8 +1,7 @@
 # Verified data mapping (proposed)
 
-Status: proposed, not built. It plans two roadmap steps, `DATA-MODEL-SUBSET` and `DATA-MAPPING-VERIFY`, and
-the open decisions `DEC-MODEL-SUPERSET-BOUND` and `DEC-MAPPING-HOME`, in the [roadmap](../roadmap.md). No
-requirement is amended yet; each step lists the ones it would amend. The same design, with its figures, is
+Status: `DATA-MODEL-SUBSET` is built, with `DEC-MODEL-SUPERSET-BOUND` settled; `DATA-MAPPING-VERIFY` is proposed,
+with the open decision `DEC-MAPPING-HOME`. Both are in the [roadmap](../roadmap.md). The same design, with its figures, is
 [verified-data-mapping.html](verified-data-mapping.html): open it in a browser.
 
 The compiler knows all of the FHIR it supports. Each customer publishes the part their data fills, through
@@ -35,7 +34,7 @@ things stand in the way today:
 |---|---|
 | The compiler checks CQL against a superset: the FHIR R4 type graph for the supported resources, with no loop cuts | AI drafts SQL views or Lakeflow pipelines and explains them. A person approves, in a pull request |
 | A published view returns any subset of it, never an extra field | Ground-truth checks pair a CQL expression with an independent SQL query over the source |
-| Publish records the environment's shape. A compile gets it in its request, so it stays offline | A check passes when both return the same patients, not only the same count |
+| The client reads each bound view's shape once per session. A compile gets it in its request, so it stays offline | A check passes when both return the same patients, not only the same count |
 | A real FHIR path the shape leaves out fails the compile, naming the path. It never reads as null | Skills and tools for Genie Code and the agent, an App, and prebaked workflows |
 
 They meet in one place: the published shape is the coverage map. "Is this path mapped here?" and "will this
@@ -47,21 +46,44 @@ task.
 - **A superset in the compiler.** The compiler checks paths against the FHIR R4 type graph for the supported
   resources. The graph is finite where FHIR's types loop, so walking it needs no cuts. Physical depth is
   whatever the views return. `FhirShape` becomes the default shape the stock reshape writes.
-- **A subset in each view.** A published view returns any subset of the superset: the same names and types at
-  every level, lists as lists, never an extra field. Publish refuses a view that breaks this, and records the
-  environment's shape with a hash.
+- **A subset in each view.** A view returns any subset of the superset as its `resource` struct: the same names
+  and types at every level, lists as lists, never an extra field. The client reads each bound view's columns once
+  per session, in one `information_schema` query, and sends them in the compile request; the compiler refuses a
+  shape that breaks this, naming every problem.
+- **One contract, a faithful FHIR resource (`BIND-CONTRACT`).** A view returns the resource as a struct,
+  `resource`, holding FHIR's fields only, and optionally the root columns `patient_id` (`DATA-SUBJECT-KEY`),
+  `min_date` and `max_date` (`BIND-PREFILTER`). The engine's internals never reach an implementer: its lineage
+  (`__resource_type`, `__resource_id`) is not in the struct, since a resource's identity is its type and its own
+  `id` (`DATA-EXPORT`), and its `__*` columns are refused, with no fallback (`COMPAT-DATA`). An implementer learns
+  FHIR and three named columns, and the engine can change its internals without breaking a view. One form means
+  one read path and one shape check.
+- **The struct passes through.** The engine renames `resource` to its own `__resource` and never rebuilds it.
+  Rebuilding a struct at the read defeats Catalyst's nested-column pruning and costs planning in every statement
+  that reads it: measured 2026-11-03 on HypertensionBPControl, a mount that rebuilt the struct from root columns
+  ran 18–23% slower end to end, all of it Spark planning, while deriving the identity from `id` ran as fast as
+  reading a stored struct. Where the implementer builds `resource` is their choice; a stored struct is the fast
+  path, and the store this repository writes holds the contract itself.
+- **Three columns at the root.** `patient_id`, `min_date` and `max_date` sit beside `resource`, not inside it,
+  because Delta partitions on a top-level column and collects statistics on the first columns it meets; snake case
+  keeps them clear of FHIR, whose element names hold no underscore.
+- **`patient_id` is a key, not a fact (`DATA-SUBJECT-KEY`).** Like a fully qualified key in an entity-relationship
+  model, it is an optimization, used for joins and the subject filter, and optional on every type, Patient
+  included. Without it the engine uses FHIR's own field: `id` on a Patient, the subject reference elsewhere. With
+  it, a view promises it is the id the other views' references name; a broken promise breaks joins with no error,
+  as wrong `min_date` or `max_date` values drop rows. A type with no patient context has no key, and its
+  `patient_id` is not read: one Medication can be named by many patients' MedicationRequests, so it belongs to no
+  one patient. Nothing checks the promises yet; that is planned with `DATA-MAPPING-VERIFY`.
 - **Fail loud on a missing path.** A compile gets the environment's shape in its request
   (`TYPE-OFFLINE-COMPILE`). The implementer adds a missing path to the view, as nulls where they have no data.
-- **Typed against the shape.** Lowering takes nested types from the shape: the retrieve function's
-  `RETURNS TABLE`, union arms and choice handles (`ResourceStruct.structType`). A `Full` demand means
-  everything the view publishes.
-- **One demand analysis.** Pruning already works this way at the top level: `passes.RetrieveDemand` lists the
-  fields a library navigates, and the SQL back end treats that list as the contract a narrow mount is built
-  to (`EMIT-SQL-RETRIEVE-DEMAND-BOUND`). Demand goes from top-level fields to full paths
-  (`passes.RetrieveDemand`, `passes.ChoiceDemand`), so one analysis gives pruning, the shape check and data
-  requirements (`APP-DATA-REQS`). The roadmap's "Field demand off a nested element" gap is fixed first.
-- **Identity.** The shape's hash is part of a result's identity and of the compiled-SQL cache key, so a
-  changed view never reuses an old score (`CLIENT-RESOLVER-IDENTITY`).
+- **Typed against the shape.** The SQL reads the view's `resource`, so the warehouse types it from the view, and a
+  `Full` demand is everything the view returns. Lowering reads only the `value[x]` slots the shape
+  holds: a slot the view leaves out holds no value, so `value is Ratio` is false there and no SQL names it.
+- **One demand analysis (not built).** `passes.RetrieveDemand` lists the top-level fields a library navigates.
+  Demand would go to full paths (`passes.RetrieveDemand`, `passes.ChoiceDemand`), so one analysis gives
+  pruning, the shape check and data requirements (`APP-DATA-REQS`). The shape check uses the path walk
+  (`passes.SchemaPaths`), so the roadmap's "Field demand off a nested element" gap does not affect it.
+- **Identity.** The shape of each type a compile retrieves is part of a kept result's identity, so a changed
+  view never reuses an old score (`CLIENT-RESOLVER-IDENTITY`).
 
 How a path is checked:
 
@@ -72,7 +94,7 @@ How a path is checked:
 | `Condition.clinicalStatus` | Yes | No | Fails the compile: not in this environment. Add it to the view, as nulls if there is no data |
 | `Patient.extension.extension` | Yes | No | Fails the compile: not in this environment |
 | `Observation.result` | No | n/a | Fails the compile: not a FHIR path |
-| `legacy_flag`, a column a view publishes | No | n/a | Publish refuses the view |
+| `legacy_flag`, a column a view returns | No | n/a | The compile refuses the view's shape |
 
 Amends `DATA-MODEL-SCHEMA`, `DATA-MODEL-CUTS`, `DATA-PATH-IN-SCHEMA`, `DATA-SCHEMA-CONTRACT`,
 `ARCH-RETRIEVE-PROJECT`, `BIND-RESHAPE`, `BIND-SCHEMA-CHECK`, `BIND-PUBLISH` and
@@ -206,9 +228,6 @@ Nothing else in this record is measured.
 
 ## Open before building
 
-- `DEC-MODEL-SUPERSET-BOUND`: which part of FHIR R4 the superset holds: resource types, extension value types,
-  extensions on elements and primitives, and `contained`.
 - `DEC-MAPPING-HOME`: a lens in the Designer or its own App, and where mappings, checks and their run history
   are stored.
-- Nested demand: the field-demand gap on nested elements is fixed first, then demand goes from fields to full
-  paths.
+- Nested demand: the field-demand gap on nested elements is fixed before demand goes from fields to full paths.

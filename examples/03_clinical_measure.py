@@ -77,8 +77,8 @@ print("found   :", sorted(d for d in ("data", "measures")))
 # MAGIC %md
 # MAGIC ## 2. The data: the default environment
 # MAGIC Every run is in one environment: a Unity Catalog catalog whose `data` schema holds one view per FHIR type,
-# MAGIC named for the type (`condition`), each returning two columns: `__subject_id`, the context key, and
-# MAGIC `__resource`, the resource as one struct. The deploy builds the default environment with the patients in
+# MAGIC named for the type (`condition`), each returning the resource as a `resource` struct and `patient_id`, the
+# MAGIC key of the patient the row belongs to. The deploy builds the default environment with the patients in
 # MAGIC `data/` beside this notebook, so there is nothing to load here. The engine lowers every `[Resource]` retrieve
 # MAGIC to a read of its view, and the plan filters above it.
 # MAGIC

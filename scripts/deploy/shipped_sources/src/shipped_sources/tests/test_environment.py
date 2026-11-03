@@ -107,6 +107,7 @@ def test_a_failing_statement_fails_the_build():
 
 
 def test_each_type_has_a_published_view_over_its_store_table():
+    """BIND-PUBLISHED-VIEW, BIND-CONTRACT, DATA-SUBJECT-KEY: the store holds the contract, so the view selects it."""
     assert environment.data_view("c", "MedicationRequest") == (
         "CREATE OR REPLACE VIEW `c`.`data`.`medicationrequest` AS "
-        "SELECT `__subject_id`, `__resource` FROM `c`.`data_store`.`medicationrequest`")
+        "SELECT `patient_id`, `resource` FROM `c`.`data_store`.`medicationrequest`")

@@ -37,7 +37,7 @@ final case class LibraryGraph(
     encoding: String = "struct",
     /** EMIT-DESCRIBE-ENCODING / EMIT-SQL-RETRIEVE-DEMAND-BOUND: per FHIR resource TYPE, the top-level
       * physical fields the measure DEMANDS (a `value[x]` base expanded to its typed slots) — the minimum a
-      * customer binding must supply (`BIND-CAPABILITY-OVERLAP`); `["*"]` for a whole-body / het-Choice use
+      * customer binding must supply (`DATA-MODEL-SUBSET`); `["*"]` for a whole-body / het-Choice use
       * (`Full`). Lets a downstream pipeline validate its typed-subset coverage before running. */
     retrieveDemand: Map[String, Seq[String]] = Map.empty,
     /** EMIT-SQL-VALUE-COLUMN: each define's ROW shape — `"scalar"` (one row per subject,

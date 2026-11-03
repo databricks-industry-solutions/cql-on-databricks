@@ -19,8 +19,9 @@ written for this repository.
 
 `population.py` lands a FHIR bulk-data population as a data source: the small population from `examples/data`,
 and the large one, which `loader/scripts/synthetic-population/load.py` lands by hand
-([synthetic data](../../../loader/docs/synthetic-data.md)). `sources.py` names both. A data source's mount holds
-each resource as `__resource`, a typed `STRUCT` from `resource-schemas.json` (`CONTENT-IMPORTER-FHIR-SCHEMAS`).
+([synthetic data](../../../loader/docs/synthetic-data.md)). `sources.py` names both. Its store tables hold
+the data contract, `patient_id` and `resource`, a typed `STRUCT` from `resource-schemas.json`
+(`CONTENT-IMPORTER-FHIR-SCHEMAS`, `BIND-CONTRACT`).
 `change_data_log.py` is the exemplar change log the shipped sources carry (`DATA-CHANGE-LOG`).
 
 | Table | Load |

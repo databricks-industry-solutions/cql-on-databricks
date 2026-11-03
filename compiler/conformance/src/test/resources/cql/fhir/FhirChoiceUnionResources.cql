@@ -6,7 +6,7 @@ library FhirChoiceUnionResources version '1.0.0'
 // BODIES (distinct schemas), not the scalar element types covered by FhirConditionalUnionHet.
 // The union must keep each arm Relation-encoded and tag its rows with the active Choice member so
 // the two resource schemas align into one Choice-tagged relation (no boxing). At the result boundary
-// each row exports by resource identity (__resource_type/__resource_id, DATA-EXPORT), so the mixed
+// each row exports by resource identity (the handle's __resource_type/__resource_id, DATA-EXPORT), so the mixed
 // list must match the Java reference element-for-element (CONF-GATE-MEASURE).
 //
 // Differential-only: there is no boxed baseline for a whole-resource heterogeneous union, so this is

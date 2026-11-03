@@ -5,10 +5,11 @@ import com.databricks.cql.sema.generated.FhirR4Model.{Element, FhirType}
 
 import java.util.concurrent.ConcurrentHashMap
 
-/** The physical shape of a FHIR resource: FHIR R4 JSON with some fields left out, never moved or renamed
-  * (`DATA-MODEL-SCHEMA`, `DATA-MODEL-CUTS`, `compiler/docs/data-model.md`). Any FHIR JSON reads into it;
-  * a left-out field is dropped. Spark-free, so the compile-time path check ([[com.databricks.cql.passes.SchemaPaths]])
-  * and the Spark schema ([[FhirSchema]]) read the same rules.
+/** The stock shape of a FHIR resource, the one the reshape, the loader and the store write: FHIR R4 JSON with
+  * some fields left out, never moved or renamed (`DATA-MODEL-SCHEMA`, `DATA-MODEL-CUTS`,
+  * `compiler/docs/data-model.md`). Any FHIR JSON reads into it; a left-out field is dropped. It is one subset of
+  * the superset a bound shape is checked against ([[ResourceShape]], `DATA-MODEL-SUBSET`); the compile checks
+  * paths against the bound shape, not this one. Spark-free; [[FhirSchema]] renders it as Spark types.
   *
   * There is no depth cap. Every element of every modeled type is present at any depth, except:
   *  - at a loop cut ([[Cuts]]), the target type loses the field that closes the loop;
@@ -48,6 +49,16 @@ object FhirShape {
 
   private def types: Map[String, FhirType] = FhirR4Model.types
 
+  /** The scalar type FHIR JSON gives a primitive base, by its Spark type name: `boolean`; `bigint` for the
+    * integers; `double` for `decimal`; `string` for the rest (dates, times and codes are strings in FHIR JSON,
+    * converted at use). [[FhirSchema]] renders it, and [[ResourceShape]] checks a bound shape against it. */
+  def jsonScalar(base: String): String = base match {
+    case "boolean"                                  => "boolean"
+    case "integer" | "positiveInt" | "unsignedInt" => "bigint"
+    case "decimal"                                  => "double"
+    case _                                          => "string"
+  }
+
   private val resources = new ConcurrentHashMap[String, Struct]()
   private val datatypes = new ConcurrentHashMap[String, Option[Shape]]()
 
@@ -72,6 +83,19 @@ object FhirShape {
       })
       case None => None
     }
+  }
+
+  /** The stock shape of resource `resourceType` as Spark prints its type (`struct<resourceType:string,…>`),
+    * the text a relation with the stock shape reports (`DATA-MODEL-SUBSET`). [[FhirSchema]] renders the same
+    * tree as Spark types. */
+  def typeText(resourceType: String): String = {
+    def text(shape: Shape): String = shape match {
+      case Leaf(base)     => jsonScalar(base)
+      case Struct(fields) =>
+        fields.map(f => s"${f.name}:${if (f.isList) s"array<${text(f.shape)}>" else text(f.shape)}")
+          .mkString("struct<", ",", ">")
+    }
+    text(resource(resourceType))
   }
 
   private def elementsOf(typeName: String): Vector[Element] = computeElements(typeName, Set.empty)

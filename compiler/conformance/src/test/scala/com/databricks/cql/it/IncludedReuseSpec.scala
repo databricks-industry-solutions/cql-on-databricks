@@ -36,7 +36,7 @@ final class IncludedReuseSpec extends AnyFunSuite {
     def compile(root: String, closure: Seq[String]): PipelinePlan =
       CompileService.compilePipeline(CompileRequest(cql = Some(root), depCql = closure, durable = true,
         measurementPeriod = Some("2026-01-01" -> "2026-12-31"),
-        data = Some(DataBinding(Some(DataBinding.Rule("synthetic.data", Some("synthetic.data"))), Map.empty)),
+        data = Some(DataBinding(Some(DataBinding.Rule("synthetic.data", Some("synthetic.data"))), Map.empty, StockShapes.all)),
         terminology = Some(TerminologyBinding(Some(Seq(RetrieveRelation("synthetic.terminology.valueset",
           Some("synthetic.terminology")))), Map.empty)), udfSchema = Some("synthetic.runtime")))
 
@@ -73,7 +73,8 @@ final class IncludedReuseSpec extends AnyFunSuite {
 
     test(s"EMIT-ROOT-INDEPENDENT: no ${md.library} recipe names the library being compiled in its SQL") {
       (alone.datasets ++ included.datasets).foreach { recipe =>
-        assert(!recipe.query.contains("named_struct('id'"), s"${recipe.name} passes a library argument")
+        // A library argument is a literal id; the retrieve mount's resource struct reads the `id` column (BIND-CONTRACT).
+        assert(!recipe.query.contains("named_struct('id', '"), s"${recipe.name} passes a library argument")
       }
       included.datasets.filter(_.library != Wrapper).foreach { recipe =>
         assert(!recipe.query.toLowerCase.contains(Wrapper.toLowerCase), s"${recipe.name} names the including library")
