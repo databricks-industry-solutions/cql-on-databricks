@@ -35,6 +35,7 @@ decisions are in the [roadmap](../roadmap.md).
 | `DEC-FEATURE-ORDER` | Feature order, lowest first: loader, compiler (with the client), agent, designer. |
 | `DEC-KNOWLEDGE-LAYOUT-HOME` | Data Bindings owns and checks the knowledge and terminology layouts. The loader writes them. |
 | `DEC-LIBRARY-OWNS-RESULTS` | A library version owns its results. A shared library's defines are computed once, in its own schema, for every measure that includes it. |
+| `DEC-MODEL-SUPERSET-BOUND` | The compiler's superset (`DATA-MODEL-SUBSET`) is FHIR R4 for the modeled resources: every element, every `value[x]` slot, and `extension` and `modifierExtension` on every complex element with all of FHIR's extension value types, at any depth. `contained` and extensions on primitive values (`_birthDate`) are outside it and fail as not supported by the compiler. |
 | `DEC-NO-CONVENTION-NAMES` | Superseded by `DEC-ENVIRONMENT`: an environment is found by catalog tag only, and inside it schemas and views have standard names (`DATA-ENVIRONMENT-LAYOUT`). The UC role tag (`cqldatabricks.role`) and the old default names (`fhir`, `fhir.valueset_expansion`) stay removed. |
 | `DEC-NOTEBOOK-DEFAULT-RESOLVER` | A notebook's `connect()` with no resolvers named runs in the default environment (`CLIENT-ENVIRONMENT`, `CLIENT-ENVIRONMENT-RESOLVER`); it never picks among data sources. Rationale: [environments.md](environments.md). |
 | `DEC-ONE-VERB-ENGINE-OPTION` | Retired: there is no evaluator engine. `cql()` runs on the caller's compute. See `DEC-STATELESS-SERVICES`. |

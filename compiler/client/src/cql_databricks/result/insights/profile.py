@@ -37,7 +37,7 @@ import logging
 from dataclasses import replace
 from datetime import datetime, timezone
 
-from ..relation import SUBJECT_ID, literal, met_expr, quote, value_column
+from ..relation import SUBJECT_ID, literal, met_expr, patient_rows, quote, value_column
 from ..results import Execute, PinnedRelation, count_relations, relation_columns, result_relation
 from .evaluation import ClosureSource, MetricsUnavailable, locate
 from .model import (
@@ -241,6 +241,7 @@ def _subject_strata(ref: PinnedRelation, columns: dict[str, str], *, patient_rel
 
     if not patient_relation:
         return []
+    patient_relation = patient_rows(patient_relation, execute)
     col = value_column(columns)
     met = met_expr(col, columns.get(col) if col else None)
     subjects_sql = (f"SELECT DISTINCT {met} AS {SUBJECT_ID} FROM {result_relation(ref, eval_id)}")

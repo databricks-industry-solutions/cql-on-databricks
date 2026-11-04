@@ -5,7 +5,8 @@ carries the rules and the compile is one compiler call. When one binds per site,
 compile's own request, for the call sites, and sends that resolver's answers by site id. A durable compile refuses a
 resolver that is not reusable: its results are never kept (`CLIENT-RESOLVER-IDENTITY`). Each resolver may be given as
 itself or as a factory, called on first use, so building a client touches no workspace. ``results`` is where a run finds
-kept results (`CLIENT-QUERY-REUSE`); the binder never reads it itself.
+kept results (`CLIENT-QUERY-REUSE`); the binder never reads it itself. The binder keeps the data views' shapes it reads,
+so a session reads an environment's shapes once (`DATA-MODEL-SUBSET`); :meth:`forget_shapes` reads them again.
 
 Part of the client core: it imports no platform SDK.
 """
@@ -35,7 +36,12 @@ class ResolverBinder:
         self._run_factory, self._run = run, None
         self.spark = spark
         self._schemas = schemas
+        self._shapes: dict[str, dict[str, str]] = {}
         self.last: BoundResolvers | None = None
+
+    def forget_shapes(self) -> None:
+        """DATA-MODEL-SUBSET — read the data views' shapes again at the next compile, after a view changed."""
+        self._shapes.clear()
 
     @property
     def data(self) -> DataResolver | None:
@@ -81,13 +87,13 @@ class ResolverBinder:
         """``request`` bound through its resolvers."""
         bound_request, self.last = bind_request(request, describe, data=self.data, terminology=self.terminology,
                                                 run=self.run, spark=self.spark, schemas=self._schemas,
-                                                durable=durable)
+                                                durable=durable, shape_cache=self._shapes)
         return bound_request
 
 
 def bind_request(request: CompileRequest, describe: Callable[[], LibraryGraph], *, data: DataResolver | None,
-                 terminology: TerminologyResolver | None, run, schemas, spark=None,
-                 durable: bool = False) -> tuple[CompileRequest, BoundResolvers]:
+                 terminology: TerminologyResolver | None, run, schemas, spark=None, durable: bool = False,
+                 shape_cache: dict[str, dict[str, str]] | None = None) -> tuple[CompileRequest, BoundResolvers]:
     """BIND-CALL-SITE: ``request`` with the ``data`` and ``terminology`` its resolvers give. ``describe`` (of this very
     request) is called only when a resolver binds per site, so a run bound by rule makes one compiler call. A durable
     compile refuses a resolver that is not reusable (`CLIENT-RESOLVER-IDENTITY`). Every caller binds a compile here."""
@@ -98,7 +104,8 @@ def bind_request(request: CompileRequest, describe: Callable[[], LibraryGraph], 
             raise CompileError("the compiler service does not report call sites (BIND-CALL-SITE); deploy a compiler "
                                "service from the same release as this client")
         sites = graph.sites
-    bound = bind(sites, data=data, terminology=terminology, run=run, spark=spark, schemas=schemas)
+    bound = bind(sites, data=data, terminology=terminology, run=run, spark=spark, schemas=schemas,
+                 shape_cache=shape_cache)
     if durable and not bound.reusable:
         raise ResolverError(f"{data} is not reusable, so its results are never kept (CLIENT-RESOLVER-IDENTITY): run "
                             f"it with exec(), or bind a reusable resolver")

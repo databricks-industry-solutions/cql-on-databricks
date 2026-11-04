@@ -36,7 +36,7 @@ Applied with plain Scala: sealed ADTs, immutable case classes, small traits and 
 - Open/closed. A new data model or terminology source is a new binding behind a seam, not an edit to the
   passes (`ARCH-SEAMS`). A new operator is a new IR case and its lowering, behind a conformance test
   (`PROC-TDD`).
-- Liskov substitution. Any retrieve binding with the `(__subject_id, __resource)` contract can stand in
+- Liskov substitution. Any relation on the data contract (a `resource` struct, `BIND-CONTRACT`) can stand in
   for another. The conformance data and a production source are interchangeable, which is what makes the
   differential meaningful.
 - Interface segregation. The seam traits are small. `DataProvider` has one method, `retrieve`.

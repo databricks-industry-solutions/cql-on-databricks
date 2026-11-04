@@ -125,3 +125,23 @@ def test_an_empty_list_is_not_membership():
     assert met_expr("__val", "ARRAY") == expected        # information_schema.columns.data_type
     assert met_expr("__val", "array") == expected        # pyspark typeName()
     assert met_expr("__val", "array<struct<id:string>>") == expected
+
+
+def test_a_patient_view_is_keyed_on_its_patient_id_when_it_returns_one():
+    """BIND-CONTRACT, DATA-SUBJECT-KEY: the insights key a Patient view the way the engine does."""
+    from cql_databricks.result.relation import patient_rows
+
+    keyed = patient_rows("c.data.patient", lambda sql: [("resource", "struct<id:string>"), ("patient_id", "string")])
+    assert keyed == "(SELECT CAST(patient_id AS STRING) AS __subject_id, resource AS __resource FROM c.data.patient)"
+    plain = patient_rows("c.data.patient", lambda sql: [("resource", "struct<id:string>")])
+    assert "CAST(resource.id AS STRING) AS __subject_id" in plain
+
+
+def test_a_patient_view_without_resource_fails_naming_it():
+    """BIND-CONTRACT: a view in another form is refused, with no fallback."""
+    import pytest
+
+    from cql_databricks.result.relation import patient_rows
+
+    with pytest.raises(ValueError, match="c.data.patient returns no `resource` column"):
+        patient_rows("c.data.patient", lambda sql: [("__subject_id", "string"), ("__resource", "struct<id:string>")])

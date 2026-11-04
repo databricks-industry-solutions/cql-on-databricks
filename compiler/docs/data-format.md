@@ -46,9 +46,11 @@ A `Relation` list is rows keyed by `__subject_id` and `__ordinal`. An `Array` li
 
 ### 3.1 Subject key — `DATA-SUBJECT-KEY`
 
-`__subject_id` is the grouping and join key for every set-at-a-time operation. The retrieve binding
-supplies it as a top-level column: the FHIR logical `id` for the context resource (Patient), and the
-resolved subject reference for other resources. It is never parsed per row from `subject.reference`.
+`__subject_id` holds a row's patient_id, the grouping and join key for every set-at-a-time operation. The engine
+sets it where it reads a data relation, never mid-plan (`BIND-CONTRACT`). On a Patient or a Patient-compartment
+type it is the relation's root `patient_id` when it returns one, a stored key the warehouse filters and clusters
+on; else the FHIR logical `id` for a Patient, or the id after the last `/` of the subject reference. A type with no
+patient context has a null key, whatever `patient_id` its relation returns.
 
 ### 3.2 Value carrier — `DATA-VALUE-CARRIER`
 
@@ -66,8 +68,8 @@ underscore for primitive extensions (`_birthDate`), so there is no collision. pa
 | `__subject_id` | The context subject's identifier. The grouping and join key |
 | `__ordinal` | Element order in a relation-encoded list |
 | `__val` | The one payload column of every define (section 5.1) |
-| `__resource` | The resource struct a retrieve returns |
-| `__resource_id`, `__resource_type` | The source resource's identity, for traceability (section 7) |
+| `__resource` | The resource struct a retrieve returns: the view's `resource`, passed through |
+| `__resource_id`, `__resource_type` | A resource's identity on the engine's handle for an element of a mixed list (section 7). A resource itself carries none |
 | `__choice` | The Choice discriminator |
 | `__encoding` | A value's list encoding |
 | `__is_null` | The per-subject list-null sidecar ([list-null-tristate.md](list-null-tristate.md)) |
@@ -123,7 +125,8 @@ The compiler produces two outputs:
 
 1. Each `ExpressionDef`'s result as a relation of its CQL type: population membership, resources,
    scalars.
-2. The identity of the source resources behind each result, carried as `__resource_id` and
-   `__resource_type`.
+2. The identity of the source resources behind each result: each resource's type and its own `id`. A resource
+   value carries no lineage field. Its type is the define's declared type; in a list of mixed types, the engine's
+   handle for each element carries it as `__resource_type`, beside the `__choice` tag.
 
 Building a `MeasureReport` or QRDA file from these is outside the compiler.

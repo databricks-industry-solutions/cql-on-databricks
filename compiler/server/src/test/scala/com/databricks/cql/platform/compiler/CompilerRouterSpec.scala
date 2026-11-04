@@ -88,9 +88,10 @@ class CompilerRouterSpec extends AnyFunSuite {
     val identity = ujson.read(get("/capabilities").body)("compilerVersion").str
     val cql = "library Probe version '1.0.0'\nusing FHIR version '4.0.1'\ncontext Patient\n" +
       "define \"Answer\": true\n"
-    // BIND-CALL-SITE: the Patient context retrieve binds by rule.
+    // BIND-CALL-SITE: the Patient context retrieve binds by rule; DATA-MODEL-SUBSET: with the Patient view's shape.
     val body = ujson.write(ujson.Obj("cql" -> cql,
-      "data" -> ujson.Obj("rule" -> ujson.Obj("schema" -> "acme.data", "identity" -> "acme.data"))))
+      "data" -> ujson.Obj("rule" -> ujson.Obj("schema" -> "acme.data", "identity" -> "acme.data"),
+        "shapes" -> ujson.Obj("Patient" -> "struct<resource:struct<id:string,gender:string>>"))))
 
     // A consumer that reads the identity off the compile response and one that reads it off
     // discovery must not be able to disagree about which compiler produced a materialization.
@@ -218,15 +219,13 @@ class CompilerRouterSpec extends AnyFunSuite {
     assert(patient("modeled").bool)
     assert(patient("patientContext").bool) // Patient is keyed by its own id (DATA-SUBJECT-KEY)
     val ddl = patient("ddl").str
-    // The mount contract's identity lineage is always present (BIND-CONTRACT); `id` backs the key.
-    assert(ddl.contains("__resource_type"), s"ddl=$ddl")
-    assert(ddl.contains("__resource_id"), s"ddl=$ddl")
+    // BIND-CONTRACT, DATA-EXPORT: the struct holds FHIR's fields only, no engine lineage; `id` is the identity.
+    assert(!ddl.contains("__resource_type") && !ddl.contains("__resource_id"), s"ddl=$ddl")
     assert(schemas("Condition")("patientContext").bool) // carries a `subject` reference
     // CLIENT-RESOURCE-SCHEMA: the same struct as Spark's JSON schema, field for field.
     val fields = patient("schema")("fields").arr.map(_("name").str)
     assert(patient("schema")("type").str == "struct")
-    assert(fields.contains("__resource_type") && fields.contains("__resource_id") && fields.contains("id"),
-      s"fields=$fields")
+    assert(fields.contains("id") && !fields.exists(_.startsWith("__")), s"fields=$fields")
     assert(fields.forall(f => ddl.contains(s"$f ") || ddl.contains(s"`$f` ")), s"fields=$fields ddl=$ddl")
   }
 

@@ -1,7 +1,8 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # 2 · CQL language tour
-# MAGIC What the language can express, one `%%cql` cell per idea. CQL is not SQL with clinical vocabulary —
+# MAGIC What the language can express, one `%%cql` cell per idea, each followed by a Python cell that runs
+# MAGIC it. CQL is not SQL with clinical vocabulary —
 # MAGIC it has its own answers for nulls, for dates that only know their own year, for units, for codes, and
 # MAGIC for values whose type is not decided until you look at the row. **Getting any of those subtly wrong
 # MAGIC produces plausible-but-wrong rates that fail certification silently**, so each section below states
@@ -28,9 +29,20 @@ dbutils.library.restartPython()
 
 # COMMAND ----------
 # Start clean, so Run All gives the same output however often it runs (CLIENT-SESSION-RESET).
-from cql_databricks.compiler import reset
+from cql_databricks.compiler import cql, reset
 
 reset(spark)
+
+
+def show(*defines, library=None):
+    """Run ``defines`` and display each result, headed by its name. A `%%cql` cell only declares, so each
+    one below is followed by a Python cell that runs it: from the session library, or from the library a
+    cell with a `library` line declared."""
+    query = cql(library=library) if library else cql()
+    frames = query.exec(*defines) if len(defines) > 1 else {defines[0]: query.exec(defines[0])}
+    for name, frame in frames.items():
+        print(f"--- {name} ---")
+        display(frame)
 
 # COMMAND ----------
 # MAGIC %md
@@ -39,7 +51,8 @@ reset(spark)
 # MAGIC division) from `div` (truncated integer division) and carries decimals at a fixed scale rather than
 # MAGIC as floats — a rate is not a floating-point value.
 # MAGIC
-# MAGIC Each define is displayed as its own table, headed by its name.
+# MAGIC The `%%cql` cell declares the defines; the Python cell after it runs them with `show(...)`, defined
+# MAGIC above, which displays each define as its own table, headed by its name.
 # MAGIC
 # MAGIC | define | `__val` |
 # MAGIC |---|---|
@@ -58,6 +71,9 @@ reset(spark)
 # MAGIC define "IntegerQuotient": 22 div 7
 # MAGIC define "Remainder":       22 mod 7
 # MAGIC define "PoweredUp":       2 ^ 10
+
+# COMMAND ----------
+show("Sum", "Product", "Quotient", "IntegerQuotient", "Remainder", "PoweredUp")
 
 # COMMAND ----------
 # MAGIC %md
@@ -96,6 +112,20 @@ reset(spark)
 # MAGIC define "Coalesced":             Coalesce(null, 2, 3)
 # MAGIC define "IsNullOnNull":          IsNull(null)
 # MAGIC define "NullConditionGoesElse": if null then 'then-branch' else 'else-branch'
+
+# COMMAND ----------
+show(
+    "DivideByZero",
+    "NullPropagates",
+    "TrueAndNull",
+    "FalseAndNull",
+    "TrueOrNull",
+    "NotNull",
+    "NullImpliesTrue",
+    "Coalesced",
+    "IsNullOnNull",
+    "NullConditionGoesElse",
+)
 
 # COMMAND ----------
 # MAGIC %md
@@ -139,6 +169,17 @@ reset(spark)
 # MAGIC define "CaseInsensitiveEquiv": 'Diabetes' ~ 'diabetes'
 
 # COMMAND ----------
+show(
+    "IntEqual",
+    "EqualityWithNull",
+    "EquivalenceWithNull",
+    "NullEqualsNull",
+    "NullEquivNull",
+    "CaseSensitiveEqual",
+    "CaseInsensitiveEquiv",
+)
+
+# COMMAND ----------
 # MAGIC %md
 # MAGIC ## 4. Dates carry their own precision
 # MAGIC `@2023` is not "the first instant of 2023". It is **the year 2023, and nothing finer is known**. A
@@ -170,6 +211,9 @@ reset(spark)
 # MAGIC define "YearVsDay":     @2023 = @2023-06-15
 # MAGIC define "DecidedByYear": @2022 < @2023-06-15
 # MAGIC define "NextDay":       successor of @2013-01-31
+
+# COMMAND ----------
+show("YearOnly", "FullDate", "SameDay", "YearVsDay", "DecidedByYear", "NextDay")
 
 # COMMAND ----------
 # MAGIC %md
@@ -205,6 +249,9 @@ reset(spark)
 # MAGIC define "OpenStart":   start of Interval(1, 10]
 # MAGIC define "InMeasurementPeriod":
 # MAGIC   @2026-06-15 during Interval[@2026-01-01, @2026-12-31]
+
+# COMMAND ----------
+show("Overlaps", "PointDuring", "Before", "Includes", "Width", "OpenStart", "InMeasurementPeriod")
 
 # COMMAND ----------
 # MAGIC %md
@@ -245,6 +292,9 @@ reset(spark)
 # MAGIC     during day of Interval[@2026-01-01, @2026-12-31]
 
 # COMMAND ----------
+show("Unqualified", "AtDayPrecision", "OutsideAtDayPrecision")
+
+# COMMAND ----------
 # MAGIC %md
 # MAGIC ## 6. Quantities and UCUM units
 # MAGIC A clinical value is a number **and a unit**, and the unit is not decoration: `500 mg` and `1 g` are
@@ -269,6 +319,9 @@ reset(spark)
 # MAGIC define "LessAcrossUnits":    500 'mg' < 1 'g'
 # MAGIC define "GreaterAcrossUnits": 2 'm' > 150 'cm'
 # MAGIC define "SumAcrossUnits":     1 'kg' + 500 'g'
+
+# COMMAND ----------
+show("Weight", "EqualAcrossUnits", "LessAcrossUnits", "GreaterAcrossUnits", "SumAcrossUnits")
 
 # COMMAND ----------
 # MAGIC %md
@@ -297,6 +350,9 @@ reset(spark)
 # MAGIC define "Membership":    3 in { 1, 2, 3 }
 # MAGIC define "Grade":         case when 1 = 2 then 'A' else 'B' end
 # MAGIC define "OverThreshold": 4 > "Threshold"
+
+# COMMAND ----------
+show("Numbers", "ListCount", "FirstElement", "Membership", "Grade", "OverThreshold")
 
 # COMMAND ----------
 # MAGIC %md
@@ -332,11 +388,15 @@ reset(spark)
 # MAGIC define "IsMismatch": (if true then 1 else 'x') is String
 
 # COMMAND ----------
+show("HetIfInt", "HetIfStr", "AsMatch", "AsMismatch", "IsMatch", "IsMismatch")
+
+# COMMAND ----------
 # MAGIC %md
 # MAGIC ## 9. Bring a handful of FHIR resources
-# MAGIC The last two sections need data. The engine reads every `[Resource]` retrieve from a relation with two
-# MAGIC columns: `__subject_id` (the context key) and `__resource` (the resource body as one struct). In a real
-# MAGIC deployment that relation is a view in your environment's `data` schema, over your own governed tables.
+# MAGIC The last two sections need data. The engine reads every `[Resource]` retrieve from a relation that returns
+# MAGIC the resource as a `resource` struct, and optionally `patient_id`, the key of the patient the row belongs to.
+# MAGIC In a real deployment that relation is a view in your environment's `data` schema, over your own governed
+# MAGIC tables.
 # MAGIC Here it is eleven rows in DataFrames, handed to this notebook's cells with `use_resolvers`: every later
 # MAGIC `%%cql` cell reads its data and value sets through the resolvers it names, and nothing else changes.
 # MAGIC
@@ -441,6 +501,9 @@ print("types:", types)
 # MAGIC define "HasDiabetesViaWhere": exists ([Condition] C where C.code in "Diabetes")
 
 # COMMAND ----------
+show("HasAnyCondition", "HasDiabetes", "HasDiabetesViaWhere", library="TerminologyTour")
+
+# COMMAND ----------
 # MAGIC %md
 # MAGIC ## 11. Polymorphic choice types over FHIR
 # MAGIC Section 8's discriminated struct was a language curiosity. Here is why it exists.
@@ -508,6 +571,9 @@ print("types:", types)
 # MAGIC // A Choice whose members are whole resource bodies with different schemas.
 # MAGIC define "EncountersOrConditions":
 # MAGIC   [Encounter] union [Condition]
+
+# COMMAND ----------
+show("HasQuantityValue", "StringValues", "EncountersOrConditions", library="ChoiceTour")
 
 # COMMAND ----------
 # MAGIC %md

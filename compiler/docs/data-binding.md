@@ -47,31 +47,96 @@ The compiler never reads the catalog, builds a scan or holds a `SparkSession` (`
 
 ## The contract — `BIND-CONTRACT`
 
-Every relation returns two columns:
+A data relation, a view or a table, returns one row per resource, with the resource as a struct column, `resource`:
+any subset of FHIR R4 for its type (`DATA-MODEL-SUBSET`, [data-model.md](data-model.md)), named and typed as FHIR
+JSON, holding FHIR's fields only. It holds the fields its data fills; CQL that reads a field it leaves out fails
+the compile, naming the path. Beside it the relation may return three root columns, each optional, so the engine
+reaches rows faster:
 
-- `__subject_id STRING`: the context key (the Patient id, or the resolved subject reference).
-- `__resource STRUCT`: the whole resource, with the schema the compiler derives from the FHIR model
-  ([data-model.md](data-model.md)), plus `__resource_type` and `__resource_id`.
+| Column | Type | Requirement |
+|---|---|---|
+| `resource` | struct | the resource, a faithful subset of FHIR R4. Required |
+| `patient_id` | string or integer | the subject key (`DATA-SUBJECT-KEY`) |
+| `min_date`, `max_date` | date | the coarse date filter ([filter and refine](#filter-and-refine--bind-prefilter), `BIND-PREFILTER`) |
 
-The compile service App serves that schema per type from `/resource-schema` (`SVC-RESOURCE-SCHEMA`), so a binding
-can declare `RETURNS TABLE` to match. The Python client exposes it as `client.resource_schema(type)`
+Any other root column is refused, naming it, and so is any of the engine's own `__*` columns, at the root or at
+the top of `resource` (`DATA-SYSTEM-COLUMNS`). How the view builds `resource` is the implementer's:
+
+```sql
+CREATE VIEW acme.data.condition AS
+SELECT person_id AS patient_id,
+       named_struct(
+         'id', CAST(condition_id AS STRING),
+         'code', named_struct('coding', array(named_struct('system', code_system, 'code', code))),
+         'subject', named_struct('reference', concat('Patient/', person_id)),
+         'onsetDateTime', CAST(onset_date AS STRING)) AS resource,
+       least(onset_date, end_date) AS min_date,
+       greatest(onset_date, end_date) AS max_date
+FROM acme.ehr.conditions
+```
+
+The engine reads it as its own `(__subject_id, __resource)`: `__resource` is `resource`, passed through and never
+rebuilt, and `__subject_id` is the row's patient_id (`DATA-SUBJECT-KEY`):
+
+- on a Patient or a Patient-compartment type, the root `patient_id` when the view returns it;
+- else FHIR's own field in `resource`: `id` on a Patient, or the id at the end of `subject.reference` (or
+  `patient`, `beneficiary`) on a Patient-compartment type;
+- null on a type with no patient context, such as Medication, whatever `patient_id` its view returns. One
+  Medication can be named by many patients' MedicationRequests, so it belongs to no one patient.
+
+A Patient-compartment view with neither `patient_id` nor a subject reference fails the compile, naming the fix.
+
+`patient_id` works like a fully qualified key in an entity-relationship model: an optimization, used mostly for
+joins and also for the subject filter. It is a promise: a view's `patient_id` is the id the other views'
+references name, so `acme.data.patient` returns `person_id AS patient_id` too, or no `patient_id` and an `id` of
+the same value. A `patient_id` that breaks the promise breaks joins with no error, as dates that break theirs drop
+rows.
+
+Where `resource` is built decides what a query pays for it. A table that stores the struct passes it through as
+it is. A view that builds it from columns, like the one above, is inlined into every query that reads it, so the
+warehouse plans the `named_struct` in each one. Measured on the default environment's warehouse (2026-11-03,
+HypertensionBPControl, 4,000 patients): building the struct at the read cost 18–23% more end to end, all of it
+Spark planning; execution was the same. For speed, write the view's rows to a table and publish over that.
+
+The compile service App serves the stock shape per type from `/resource-schema` (`SVC-RESOURCE-SCHEMA`), the
+`resource` struct the reshape and the store write. The Python client exposes it as `client.resource_schema(type)`
 (`CLIENT-RESOURCE-SCHEMA`).
+
+## Filter and refine — `BIND-PREFILTER`
+
+A relation may return `min_date` and `max_date`, root date columns, so the engine can prune rows on columns the
+warehouse filters and clusters on before the exact predicates run:
+
+| Columns | Type | The promise | What the engine does |
+|---|---|---|---|
+| `min_date`, `max_date` | date | together they cover every date in the record | beside a retrieve's literal date range, keeps rows with `max_date >= low` and `min_date <= high`, each bound widened by a day for time zones |
+
+The date test is the coarse filter. The retrieve's own date test, run after it, is the refine step and decides, so
+a coarse filter that admits extra rows changes no answer. Dates that break their promise drop rows the CQL should
+see. Measured on OSS Spark 4.0.1 (2026-11-03): a subject derived from a reference built with `concat` reached the
+source table as no pushed filter, and the same filter on a stored key column reached the source column.
+
+Delta collects file statistics for a table's first 32 columns by default, counting each struct field, and
+`resource` alone has more. A stored table puts `patient_id`, `min_date` and `max_date` before `resource`, as the
+reshape does, or lists them in `delta.dataSkippingStatsColumns`, and clusters on the key: `CLUSTER BY
+(patient_id)`. Partitioning needs a top-level column, which these are.
 
 ## Reshaping data to the contract — `BIND-RESHAPE`, `BIND-SCHEMA-CHECK`
 
-One implementation turns FHIR data into the contract: `cql_databricks.compiler.reshape`. It generates SQL over
-a named relation, so the same text is the view behind a volume or DataFrame relation, a published view's body,
-and the loader's query.
+One implementation turns FHIR data into the contract, `(patient_id, resource)`: `cql_databricks.compiler.reshape`.
+It generates SQL over a named relation, so the same text is the view behind a volume or DataFrame relation, a
+published view's body, and the query the loader and the deploy write the store with. The store holds the contract
+itself, so a published view over it selects its two columns and rebuilds nothing.
 
 | Source | How it is read |
 |---|---|
 | JSON text, one resource per row | `from_json` against the model's DDL. Missing fields read as null; extra fields are dropped. Parsed on every read |
 | A structured relation, one type | The model's struct rebuilt field by field: a missing field is a typed null, an extra one dropped, a safe widening (`int` to `long`, a date to its ISO string) cast |
-| A relation already on the contract | Its `__resource` rebuilt the same way; its own `__subject_id` kept |
+| A relation on the contract | Its `resource` rebuilt the same way; its own `patient_id` kept |
 
-`__resource_type` is the type and `__resource_id` is `id`. `__subject_id` is `id` for Patient, the trailing
-id of `subject`, `patient` or `beneficiary` `.reference` for a Patient-compartment type (`Patient/<id>`,
-`urn:uuid:<id>`, full URLs), and null otherwise.
+`resource` holds FHIR's fields only. `patient_id` is the source's own `patient_id` when it has one, else `id` for
+Patient, the trailing id of `subject`, `patient` or `beneficiary` `.reference` for a Patient-compartment type
+(`Patient/<id>`, `urn:uuid:<id>`, full URLs), and null otherwise.
 
 The same walk is the check. It names every problem at once:
 
@@ -82,10 +147,10 @@ The same walk is the check. It names every problem at once:
 | A type no cast fixes safely (a timestamp for a FHIR `dateTime` string) | ERROR |
 | A merged choice field, `value` for `valueQuantity`, `valueString`, … | ERROR |
 | A reference or other struct stored as a JSON string (as dbignite writes them) | ERROR |
-| No `id`, or no reference to derive `__subject_id` from | ERROR |
+| No `id`, or no reference to derive `patient_id` from | ERROR |
 
-A source with an ERROR is refused. Checking the fields one query demands (`BIND-CAPABILITY-OVERLAP`) is not
-built.
+A source with an ERROR is refused. Whatever the relation, the compile then checks every path a query reads
+against the shape the relation returns (`DATA-MODEL-SUBSET`, `DATA-PATH-IN-SCHEMA`).
 
 ## Publishing data over tables — `BIND-PUBLISH`
 
@@ -95,7 +160,7 @@ runs, as the caller:
 
 ```sql
 CREATE OR REPLACE VIEW acme.data.observation AS
-<the reshape of acme.silver.observation>;
+<the reshape of acme.silver.observation: patient_id and resource>;
 ```
 
 Each view replaces the one that selected the environment's store (`DATA-ENVIRONMENT-LAYOUT`).
@@ -119,7 +184,8 @@ else the rule. A run in an environment sends only rules, and makes one compiler 
 
 ```json
 {
-  "data": {"rule": {"schema": "acme.data", "identity": "acme.data"}},
+  "data": {"rule": {"schema": "acme.data", "identity": "acme.data"},
+           "shapes": {"observation": "struct<patient_id:string,resource:struct<id:string,status:string,code:struct<…>,…>>"}},
   "terminology": {"rule": [{"table": "acme.knowledge.valueset", "identity": "acme.knowledge"}]},
   "knowledge": ["<dependency ELM>", {"cql": "…", "name": "Helpers", "version": "1.0.0"}],
   "runtime": {"schema": "acme.runtime"}
@@ -137,6 +203,14 @@ The data rule binds a retrieve of `Observation` to `acme.data.observation`. A re
   }
 }
 ```
+
+`shapes` holds the type of each bound type's relations' columns (`DATA-MODEL-SUBSET`). The compiler reads no
+catalog, so the client reads them: every column of an environment's views in one `information_schema` query, once
+per client session
+(about 1.5 s warm on a SQL warehouse, measured 2026-11-03), a table bound per site from its catalog's
+`information_schema` at each bind, and a volume or DataFrame from the stock shape it reshapes it to. `DESCRIBE TABLE`
+is not read: it cuts a struct of many fields short. Two relations of one type with different shapes fail before the
+compile.
 
 The compiler embeds each relation in the SQL it emits, so which relation each site used is in the SQL. A site with
 no relation fails the compile, naming it. `identity` is the identity of the resolver that answered, which a kept

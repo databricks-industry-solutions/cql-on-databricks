@@ -1,9 +1,10 @@
-"""L1 unit tests for the `%%cql` cell magic (SVC-NOTEBOOK-CQL-MAGIC, SVC-NOTEBOOK-CELL-LIBRARY).
+"""L1 unit tests for the `%%cql` cell magic (SVC-NOTEBOOK-CQL-MAGIC, SVC-NOTEBOOK-CELL-LIBRARY,
+SVC-NOTEBOOK-SESSION-SCOPE).
 
 IPython is a notebook-only dependency of this package (imported lazily by `load_ipython_extension`), so
-these skip where it is absent rather than pulling it into the plugin's install. The execution path is
-covered on serverless by the example notebooks; what is unit-testable here is the CELL REGISTRATION —
-which cells become includable libraries, and that `--library` declares without compiling.
+these skip where it is absent rather than pulling it into the plugin's install. What is tested: a cell is
+compiled and declared and never run, a cell that fails to compile declares nothing, and the magic refuses
+options.
 """
 import unittest
 from unittest import mock
@@ -15,6 +16,7 @@ except ImportError:
     HAS_IPYTHON = False
 
 import cql_databricks.compiler.session_libraries as session_mod
+from cql_databricks.compiler.providers import CompileError
 
 COMMON = ("library DiabetesCommon version '1.0.0'\n"
           "using FHIR version '4.0.1'\n"
@@ -57,65 +59,50 @@ class CellMagicTest(unittest.TestCase):
         from cql_databricks.compiler.magic import CqlMagics
         # Built without Magics.__init__: its `shell` is a traitlets-validated Configurable, and the magic
         # uses nothing from the base but `self.shell`. A real InteractiveShell would drag a whole IPython
-        # session into a unit test to exercise four lines of argument handling.
+        # session into a unit test to exercise a few lines of cell handling.
         self.magic = CqlMagics.__new__(CqlMagics)
         self.magic.shell = mock.Mock(user_ns={"spark": self.spark})
 
-    def test_library_declares_without_compiling(self):
-        """A cell of shared definitions is not a thing to execute — no compile, no round trip."""
-        with mock.patch("cql_databricks.compiler.magic._run_cql") as run:
-            self.magic.cql("--library", COMMON)
+    def _declared(self):
+        return [str(r) for r in session_mod.session_provider(spark=self.spark).declared()]
 
-        run.assert_not_called()
-        self.assertEqual([str(r) for r in session_mod.session_provider(spark=self.spark).declared()],
-                         ["DiabetesCommon|1.0.0"])
-
-    def test_library_without_a_header_is_a_usage_error(self):
-        from IPython.core.error import UsageError
-        with self.assertRaises(UsageError):
-            self.magic.cql("--library", 'define "Two": 2 + 2')
-
-    def test_a_run_cell_is_registered_too(self):
-        """Registration is unconditional, so a measure cell is both runnable and includable with no
-        second syntax."""
-        with mock.patch("cql_databricks.compiler.magic._run_cql") as run:
-            run.return_value.default_targets.return_value = ["Denominator"]
+    def test_a_library_cell_compiles_and_declares_and_runs_nothing(self):
+        """SVC-NOTEBOOK-CQL-MAGIC, SVC-NOTEBOOK-CELL-LIBRARY — a cell is a declaration, like a Python def."""
+        with mock.patch("cql_databricks.compiler.magic._bind_cql") as bind:
             self.magic.cql("", COMMON)
 
-        run.assert_called_once()
-        self.assertEqual([r.name for r in session_mod.session_provider(spark=self.spark).declared()],
-                         ["DiabetesCommon"])
+        bind.assert_called_once_with(COMMON, spark=self.spark)
+        bind.return_value.describe.assert_called_once_with()
+        bind.return_value.exec.assert_not_called()
+        self.assertEqual(self._declared(), ["DiabetesCommon|1.0.0"])
 
+    def test_a_library_cell_that_fails_to_compile_declares_nothing(self):
+        """The cell fails where the error is, and leaves the session as it was."""
+        with mock.patch("cql_databricks.compiler.magic._bind_cql") as bind:
+            bind.return_value.describe.side_effect = CompileError("CQL translation produced errors")
+            with self.assertRaises(CompileError):
+                self.magic.cql("", COMMON)
 
-    def test_a_headerless_cell_runs_its_own_defines(self):
-        """SVC-NOTEBOOK-SESSION-SCOPE — the cell joins the session library and shows only what it declared."""
-        with mock.patch("cql_databricks.compiler.magic._run_cql") as run:
-            run.return_value.default_targets.return_value = ["bar"]
-            self.magic.cql("--df out", 'define "bar": "foo" + 1')
+        self.assertEqual(self._declared(), [])
 
-        run.return_value.exec.assert_called_once_with("bar")
-        self.assertIs(self.magic.shell.user_ns["out"], run.return_value.exec.return_value)
+    def test_a_headerless_cell_joins_the_session_library_and_runs_nothing(self):
+        """SVC-NOTEBOOK-SESSION-SCOPE — binding the fragment joins it (and compiles it); nothing runs."""
+        with mock.patch("cql_databricks.compiler.magic._bind_cql") as bind:
+            self.magic.cql("", 'define "bar": "foo" + 1')
 
-    def test_several_targets_run_in_one_exec(self):
-        with mock.patch("cql_databricks.compiler.magic._run_cql") as run:
-            run.return_value.exec.return_value = {"a": mock.Mock(), "b": mock.Mock()}
-            self.magic.cql("--target a --target b", 'define "a": 1\ndefine "b": 2')
+        bind.assert_called_once_with('define "bar": "foo" + 1', spark=self.spark)
+        bind.return_value.exec.assert_not_called()
+        self.assertEqual(self._declared(), [])
 
-        run.return_value.exec.assert_called_once_with("a", "b")
-
-    def test_a_cell_of_declarations_alone_runs_nothing(self):
-        with mock.patch("cql_databricks.compiler.magic._run_cql") as run:
-            run.return_value.default_targets.return_value = []
-            self.magic.cql("", "valueset \"VS\": 'urn:x'")
-
-        run.return_value.exec.assert_not_called()
-
-    def test_df_on_a_cell_with_no_defines_is_a_usage_error(self):
+    def test_options_are_a_usage_error(self):
+        """SVC-NOTEBOOK-CQL-MAGIC — the magic takes no options; Python chooses and binds what runs."""
         from IPython.core.error import UsageError
-        with mock.patch("cql_databricks.compiler.magic._run_cql") as run:
-            run.return_value.default_targets.return_value = []
-            with self.assertRaises(UsageError):
-                self.magic.cql("--df out", "valueset \"VS\": 'urn:x'")
+        for line in ("--library", "--df out", "--target a"):
+            with self.subTest(line=line), mock.patch("cql_databricks.compiler.magic._bind_cql") as bind:
+                with self.assertRaisesRegex(UsageError, "takes no options"):
+                    self.magic.cql(line, COMMON)
+                bind.assert_not_called()
+        self.assertEqual(self._declared(), [])
 
 
 if __name__ == "__main__":

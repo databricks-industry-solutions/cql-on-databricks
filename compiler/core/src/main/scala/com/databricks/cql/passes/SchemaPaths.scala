@@ -2,34 +2,43 @@ package com.databricks.cql.passes
 
 import com.databricks.cql.error.UnsupportedNode
 import com.databricks.cql.ir._
-import com.databricks.cql.sema.{FhirModel, FhirShape}
+import com.databricks.cql.sema.{FhirModel, ResourceShape}
 import com.databricks.cql.sema.FhirShape.{Leaf, Shape, Struct}
 
 import scala.collection.mutable
 
-/** `DATA-PATH-IN-SCHEMA`: a FHIR element the data model leaves out fails the compile, naming the rule,
-  * instead of reading as a missing field when the SQL runs (CORE-NO-SILENT-MISLOWER). The data model is
-  * [[FhirShape]]: FHIR R4 with loop cuts and bounded extensions (`DATA-MODEL-SCHEMA`, `DATA-MODEL-CUTS`).
+/** `DATA-PATH-IN-SCHEMA`, `DATA-MODEL-SUBSET`: a FHIR element the bound data leaves out fails the compile,
+  * naming the path, instead of reading as a missing field when the SQL runs (CORE-NO-SILENT-MISLOWER).
   *
-  * It follows each navigation from what it starts at, a retrieve, a query alias, a `let` or a define, through
-  * the shape, so a cut is seen where it lands: inside `Identifier.assigner` a Reference has no `identifier`,
-  * and a nested extension has no `extension`. Where the start is not traceable it uses the type's shape with
-  * no cut applied. It fails only on an element FHIR R4 defines on that type and the shape leaves out; an
-  * element FHIR does not define (a profile element, a primitive's `.value`) is left to lowering.
+  * The superset is FHIR R4 for the modeled resources ([[FhirModel]]). The bound data's shape of each resource
+  * type comes from the request ([[ResourceShape]]). The check follows each navigation from what it starts at,
+  * a retrieve, a query alias, a `let` or a define, through that shape, so it sees what the data holds where
+  * the navigation lands. It fails on:
+  *  - an element FHIR R4 defines there that the shape leaves out: not in this environment;
+  *  - a `value[x]` choice none of whose typed slots the shape holds: not in this environment;
+  *  - `contained`, or an extension on a primitive value: FHIR defines them, the compiler does not support them.
+  * A retrieve's own filters count as navigations: its code, its date, a period pre-filter and a profile's
+  * `meta.profile`.
+  * An element FHIR does not define (a profile element, a primitive's `.value`) is left to lowering. Where the
+  * start is not traceable to a retrieve, and when the lowering binds no data (`describe`), the navigation is
+  * checked against FHIR R4 alone.
   *
   * Pure and Spark-free; runs over the same linked, normalized library lowering lowers. */
 object SchemaPaths {
 
-  /** An element's FHIR type and its shape at that point. */
-  private final case class At(fhirType: String, shape: Shape)
+  /** An element's FHIR type, the bound data's shape at that point (`None`: checked against FHIR R4 alone), and
+    * its path from the resource, for the message. */
+  private final case class At(fhirType: String, shape: Option[Shape], path: String)
 
-  def check(lib: Library, typeOf: Expr => CqlType): Unit = {
+  /** Check every navigation in `lib`. `shapes` is the bound data's shape per resource type, or `None` when the
+    * lowering binds no data. */
+  def check(lib: Library, typeOf: Expr => CqlType, shapes: Option[Map[String, ResourceShape.Checked]]): Unit = {
     val defines = lib.statements.collect { case e: ExpressionDef => e.name -> e.expression }.toMap
     val defineShapes = mutable.Map.empty[String, Option[At]]
 
     def ofType(name: String): Option[At] = {
       val t = FhirModel.localName(name)
-      if (FhirModel.isModeled(t)) FhirShape.ofType(t).map(At(t, _)) else None
+      if (FhirModel.isModeled(t)) Some(At(t, None, t)) else None
     }
 
     def fromType(e: Expr): Option[At] = typeOf(e) match {
@@ -56,7 +65,7 @@ object SchemaPaths {
     def shape(e: Expr, env: Map[String, Option[At]]): Option[At] = e match {
       case r: Retrieve =>
         val t = FhirModel.localName(r.dataType)
-        if (FhirModel.isModeled(t)) Some(At(t, FhirShape.resource(t))) else None
+        if (FhirModel.isModeled(t)) Some(At(t, shapes.flatMap(_.get(t)).map(_.struct), t)) else None
       case AliasRef(a)    => env.getOrElse(a, None)
       case QueryLetRef(n) => env.getOrElse(n, None)
       case p: Property    => root(p, env).flatMap(navigate(_, p.path))
@@ -95,6 +104,14 @@ object SchemaPaths {
       case p: Property =>
         shape(p, env)
         p.source.foreach(walk(_, env))
+      case r: Retrieve =>
+        // The fields a retrieve's own filters read: its code, its date, a period pre-filter and, for a profile,
+        // `meta.profile` (LANG-RETRIEVE-PROFILE). No CQL navigation names them, and the scan reads them.
+        shape(r, env).foreach { at =>
+          (r.codeProperty.toSeq ++ r.dateProperty ++ r.periodScanFilter.map(_._1) ++
+            r.profileConstraint.map(_ => "meta.profile")).foreach(navigate(at, _))
+        }
+        r.children.foreach(walk(_, env))
       case other => other.children.foreach(walk(_, env))
     }
 
@@ -104,38 +121,41 @@ object SchemaPaths {
   private def navigate(start: At, path: String): Option[At] =
     path.split('.').foldLeft(Option(start))((at, seg) => at.flatMap(step(_, seg)))
 
-  private def step(at: At, seg: String): Option[At] = at.shape match {
-    case s: Struct =>
-      s.field(seg) match {
-        case Some(f) => FhirModel.elementType(at.fhirType, seg).map(t => At(FhirModel.localName(t), f.shape))
-        case None =>
-          val slots = FhirModel.choiceSlots(at.fhirType, seg)
-          if (slots.nonEmpty) {
-            // A value[x] base: lowering dispatches it to a typed slot, so the shape must keep one.
-            if (!slots.exists(sl => s.field(sl).isDefined))
-              outside(at.fhirType, seg, s"none of its typed slots are kept here")
-            None
-          } else {
-            if (FhirModel.navType(at.fhirType, seg).isDefined) outside(at.fhirType, seg, reason(at.fhirType, seg))
-            None
-          }
-      }
-    case Leaf(_) =>
-      if (FhirModel.navType(at.fhirType, seg).isDefined)
-        outside(at.fhirType, seg, "a primitive value keeps no extensions")
+  private def step(at: At, seg: String): Option[At] = {
+    val here = s"${at.path}.$seg"
+    def next(shape: Option[Shape]): Option[At] =
+      FhirModel.elementType(at.fhirType, seg).map(t => At(FhirModel.localName(t), shape, here))
+    val definedHere = FhirModel.elementType(at.fhirType, seg).isDefined
+    if (seg == "contained" && definedHere) unsupported(here, "contained resources are")
+    else if (FhirModel.primitiveBase(at.fhirType).isDefined) {
+      if (definedHere) unsupported(here, "extensions on primitive values are")
       None
+    } else at.shape match {
+      case None => next(None)
+      case Some(s: Struct) =>
+        s.field(seg) match {
+          case Some(f) => next(Some(f.shape))
+          case None =>
+            val slots = FhirModel.choiceSlots(at.fhirType, seg)
+            if (slots.nonEmpty) {
+              // A value[x] base: lowering dispatches it to the typed slots the shape holds, so it must hold one.
+              if (!slots.exists(sl => s.field(sl).isDefined))
+                missing(here, s"the bound data holds none of its typed slots (${slots.mkString(", ")})")
+              None
+            } else {
+              if (definedHere) missing(here, "the bound data leaves it out")
+              None
+            }
+        }
+      case Some(Leaf(_)) => None
+    }
   }
 
-  private def reason(fhirType: String, seg: String): String = (fhirType, seg) match {
-    case ("Extension", "extension") => "an extension nests one level"
-    case (_, "extension")           => "extensions are kept on resources only"
-    case (_, "contained")           => "contained resources are not kept"
-    case ("Reference", "identifier") =>
-      "the Reference → Identifier → Reference loop is cut at Identifier.assigner"
-    case _ => "it is not kept"
-  }
-
-  private def outside(fhirType: String, seg: String, why: String): Nothing =
+  private def missing(path: String, why: String): Nothing =
     throw UnsupportedNode("Property",
-      s"`$fhirType.$seg` is outside the data model: $why (DATA-PATH-IN-SCHEMA, compiler/docs/data-model.md)")
+      s"`$path` is not in this environment: $why. Add it to the data view, as nulls where there is no data " +
+        "(DATA-MODEL-SUBSET, DATA-PATH-IN-SCHEMA)")
+
+  private def unsupported(path: String, what: String): Nothing =
+    throw UnsupportedNode("Property", s"`$path`: $what not supported by the compiler (DATA-MODEL-SUBSET)")
 }

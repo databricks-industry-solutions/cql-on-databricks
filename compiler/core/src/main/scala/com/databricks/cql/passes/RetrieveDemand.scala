@@ -28,8 +28,8 @@ import scala.collection.mutable
 object RetrieveDemand {
 
   /** The projection demand on one resource type. [[Full]] keeps the whole modeled body (conservative /
-    * un-prunable). [[Narrow]] keeps only `fields` (top-level PHYSICAL field names) — identity lineage
-    * (`__resource_type`/`__resource_id`) is always added by the struct builder, so it is not tracked. */
+    * un-prunable). [[Narrow]] keeps only `fields` (top-level PHYSICAL field names) — the identity `id` is always
+    * kept by the struct builder, so it is not tracked. */
   sealed trait Demand
   case object Full extends Demand
   final case class Narrow(fields: Set[String]) extends Demand

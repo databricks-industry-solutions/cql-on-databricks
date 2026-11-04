@@ -113,10 +113,12 @@ print("types:", sorted(data.types()))
 # MAGIC A question asked straight of the test data: who has a colonoscopy on record? `[Procedure: "Colonoscopy"]`
 # MAGIC reads `fhir/Procedure.ndjson` and the codes of `valuesets/colonoscopy.json`.
 # MAGIC
+# MAGIC The `%%cql` cell declares the question and reads nothing. The Python cell after it runs it.
+# MAGIC
 # MAGIC **Expected output:** one row per patient, 4,000 rows. `HadColonoscopy` is `true` for 189 of them.
 
 # COMMAND ----------
-# MAGIC %%cql --df colonoscopy
+# MAGIC %%cql
 # MAGIC using FHIR version '4.0.1'
 # MAGIC
 # MAGIC valueset "Colonoscopy": 'http://example.org/fhir/ValueSet/colonoscopy'
@@ -124,6 +126,12 @@ print("types:", sorted(data.types()))
 # MAGIC context Patient
 # MAGIC
 # MAGIC define "HadColonoscopy": exists ([Procedure: "Colonoscopy"])
+
+# COMMAND ----------
+from cql_databricks.compiler import cql
+
+colonoscopy = cql().exec("HadColonoscopy")
+display(colonoscopy)
 
 # COMMAND ----------
 # MAGIC %md

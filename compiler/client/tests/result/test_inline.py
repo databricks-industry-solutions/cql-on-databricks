@@ -72,6 +72,9 @@ class Warehouse:
         self.fail_on = fail_on
 
     def __call__(self, statement, params=None):
+        if "information_schema.columns" in statement:
+            # DATA-MODEL-SUBSET: the data views' shapes, a read at bind, not kept with the statements a run sends.
+            return [{"table_name": "patient", "column_name": "id", "full_data_type": "string"}]
         self.statements.append(statement)
         if self.fail_on and self.fail_on in statement:
             raise RuntimeError("statement failed")
@@ -104,7 +107,8 @@ def test_an_inline_run_binds_the_environment_and_period_under_its_own_prefix():
     inline(compiler)
     first, second = compiler.requests
     # BIND-PUBLISHED-VIEW: the environment's data and knowledge views, by rule; one compiler call.
-    assert first.data == {"rule": {"schema": "synthetic.data", "identity": "synthetic.data"}}
+    assert first.data == {"rule": {"schema": "synthetic.data", "identity": "synthetic.data"},
+                          "shapes": {"patient": "struct<`id`:string>"}}
     assert first.terminology == {"rule": [{"table": "synthetic.knowledge.valueset",
                                             "identity": "synthetic.knowledge"}]}
     assert first.measurement_period == ("2026-01-01", "2026-12-31")
@@ -179,6 +183,9 @@ class Recording:
         self.statements = []
 
     def __call__(self, statement, params=None):
+        if "information_schema.columns" in statement:
+            # DATA-MODEL-SUBSET: the data views' shapes, a read at bind, not kept with the statements a run sends.
+            return [{"table_name": "patient", "column_name": "id", "full_data_type": "string"}]
         self.statements.append(statement)
         return []
 

@@ -175,6 +175,37 @@ class SessionScopeTest(unittest.TestCase):
                 client.cql('define "foo": 1')
         self.assertEqual(self.provider.merges, [])
 
+    def test_no_source_is_the_session_library_as_it_stands(self):
+        """SVC-NOTEBOOK-SESSION-SCOPE — ``cql()`` reaches what earlier cells declared, and joins nothing."""
+        client = self._connect()
+        client.cql('define "foo": 1')
+        client.cql('define "bar": "foo" + 1')
+        merges = len(self.provider.merges)
+
+        query = client.cql()
+
+        self.assertEqual(len(self.provider.merges), merges)
+        self.assertEqual(query._lib.cql, self._scope())
+
+    def test_a_bare_exec_of_the_session_library_runs_every_define(self):
+        """BUILD-CLIENT-POPULATIONS over the whole session library: no populations, so every define."""
+        client = self._connect()
+        client.cql('define "foo": 1')
+        client.cql('define "bar": 2')
+
+        self.assertEqual(client.cql().default_targets(), ["foo", "bar"])
+
+    def test_a_bare_exec_of_the_session_library_runs_its_populations(self):
+        client = self._connect()
+        client.cql('define "Denominator": 1')
+        client.cql('define "Helper": 2')
+
+        self.assertEqual(client.cql().default_targets(), ["Denominator"])
+
+    def test_no_source_with_an_empty_session_library_fails(self):
+        with self.assertRaisesRegex(ValueError, "session library is empty"):
+            self._connect().cql()
+
 
 
 class SessionExecTest(unittest.TestCase):

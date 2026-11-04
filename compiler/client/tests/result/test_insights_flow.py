@@ -39,8 +39,12 @@ def _warehouse(warehouse_id, sql):
     raise AssertionError("a test must patch _warehouse")
 
 
+#: BIND-CONTRACT: the environment's Patient view on the contract, as `DESCRIBE` reports it.
+PATIENT_VIEW_COLUMNS = [("resource", "struct<id:string,gender:string>", None), ("patient_id", "string", None)]
+
+
 def _execute(warehouse_id="wh-1"):
-    return lambda sql: _warehouse(warehouse_id, sql)
+    return lambda sql: (PATIENT_VIEW_COLUMNS if sql.startswith("DESCRIBE ") else _warehouse(warehouse_id, sql))
 
 
 PERIOD = ("2022-01-01", "2022-12-31")

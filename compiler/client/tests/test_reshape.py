@@ -20,14 +20,10 @@ CODING = _s(("system", StringType()), ("code", StringType()))
 MODEL_OBS = _s(("id", StringType()), ("status", StringType()),
                ("code", _s(("coding", ArrayType(CODING)), ("text", StringType()))),
                ("subject", _s(("reference", StringType()))),
-               ("valueQuantity", _s(("value", LongType()))), ("valueString", StringType()),
-               ("__resource_type", StringType()), ("__resource_id", StringType()))
+               ("valueQuantity", _s(("value", LongType()))), ("valueString", StringType()))
 OBS = ResourceSchema(fhir_type="Observation", struct=MODEL_OBS, ddl="id STRING", patient_context=True)
-PATIENT = ResourceSchema(fhir_type="Patient", struct=_s(("id", StringType()), ("birthDate", StringType()),
-                                                        ("__resource_type", StringType()),
-                                                        ("__resource_id", StringType())),
-                         ddl="id STRING, birthDate STRING, __resource_type STRING, __resource_id STRING",
-                         patient_context=True)
+PATIENT = ResourceSchema(fhir_type="Patient", struct=_s(("id", StringType()), ("birthDate", StringType())),
+                         ddl="id STRING, birthDate STRING", patient_context=True)
 
 
 def _issues(source, schema=OBS):
@@ -40,12 +36,14 @@ def _by(issues, severity):
 
 class StructuredTests(unittest.TestCase):
     def test_a_matching_table_is_read_as_is(self):
-        source = _s(*[(f.name, f.dataType) for f in MODEL_OBS.fields if not f.name.startswith("__")])
+        """BIND-RESHAPE, BIND-CONTRACT: the contract's resource struct and patient_id, with no engine lineage."""
+        source = _s(*[(f.name, f.dataType) for f in MODEL_OBS.fields])
         sql, issues = _issues(source)
         self.assertEqual(_by(issues, ERROR), set())
         self.assertIn("'code', `__r`.`code`", sql)        # identical sub-struct: no rebuild
-        self.assertIn("nullif(regexp_extract(`__r`.`subject`.`reference`, '([^/:]+)$', 1), '')", sql)
-        self.assertIn("CAST(CASE WHEN true THEN 'Observation' END AS STRING)", sql)
+        self.assertIn("nullif(regexp_extract(`__r`.`subject`.`reference`, '([^/:]+)$', 1), '') AS `patient_id`", sql)
+        self.assertIn(") AS `resource`", sql)
+        self.assertNotIn("__resource", sql)
 
     def test_missing_fields_read_as_typed_nulls_and_extra_fields_are_dropped(self):
         source = _s(("id", StringType()), ("code", _s(("text", StringType()), ("extra", StringType()))),
@@ -92,15 +90,23 @@ class StructuredTests(unittest.TestCase):
         self.assertIn("id", _by(issues, ERROR))
 
     def test_a_relation_on_the_contract_keeps_its_subject_key(self):
-        source = _s(("__subject_id", StringType()), ("__resource", _s(("id", StringType()))))
+        """BIND-CONTRACT, DATA-SUBJECT-KEY: a relation already returning resource and patient_id keeps its key."""
+        source = _s(("resource", _s(("id", StringType()))), ("patient_id", StringType()))
         sql, issues = _issues(source)
         self.assertEqual(_by(issues, ERROR), set())
-        self.assertIn("SELECT `__subject_id` AS `__subject_id`", sql)
-        self.assertIn("FROM (SELECT `__resource` AS `__r`, `__subject_id` FROM `c`.`s`.`t`)", sql)
+        self.assertIn("`patient_id` AS `patient_id`", sql)
+        self.assertIn("FROM (SELECT `resource` AS `__r`, `patient_id` FROM `c`.`s`.`t`)", sql)
+
+    def test_a_flat_table_with_a_patient_id_column_keeps_it_as_the_key(self):
+        """DATA-SUBJECT-KEY: the publisher's own patient_id is the key, and is not a dropped extra field."""
+        sql, issues = _issues(_s(("id", StringType()), ("subject", _s(("reference", StringType()))),
+                                 ("patient_id", StringType())))
+        self.assertIn("`patient_id` AS `patient_id`", sql)
+        self.assertNotIn("patient_id", _by(issues, INFO))
 
     def test_patient_is_keyed_by_its_id(self):
         sql, _ = _issues(_s(("id", StringType())), PATIENT)
-        self.assertIn("SELECT CAST(`__r`.`id` AS STRING) AS `__subject_id`", sql)
+        self.assertIn("CAST(`__r`.`id` AS STRING) AS `patient_id`", sql)
 
     def test_require_ok_lists_every_error(self):
         _, issues = _issues(_s(("value", StringType())))
@@ -114,11 +120,10 @@ class JsonTests(unittest.TestCase):
     def test_json_sql_parses_with_the_model_ddl_and_keys_like_the_loader(self):
         sql = json_sql("`c`.`s`.`raw`", PATIENT, column="resource",
                        type_filter=type_predicate("Patient", json_column="resource", type_column=None))
-        self.assertIn("from_json(`resource`, 'id STRING, birthDate STRING, __resource_type STRING, "
-                      "__resource_id STRING')", sql)
-        self.assertIn("SELECT get_json_object(`resource`, '$.id') AS `__subject_id`", sql)
+        self.assertIn("from_json(`resource`, 'id STRING, birthDate STRING')", sql)
+        self.assertIn("get_json_object(`resource`, '$.id') AS `patient_id`", sql)
         self.assertIn("get_json_object(`resource`, '$.resourceType') = 'Patient'", sql)
-        self.assertIn("'__resource_id', CAST(`__r`.`id` AS STRING)", sql)
+        self.assertNotIn("__resource_id", sql)
         self.assertIn("length(trim(`resource`)) > 0", sql)
 
     def test_a_type_column_filters_instead_of_the_json(self):

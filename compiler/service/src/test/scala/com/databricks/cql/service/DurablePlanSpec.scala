@@ -128,7 +128,8 @@ final class DurablePlanSpec extends AnyFunSuite {
   private def bound(schema: String, identity: Option[String] = None): CompileRequest =
     CompileRequest(cql = Some(fhirSource), depCql = Seq(FhirHelpersCql.text), durable = true,
       data = Some(com.databricks.cql.env.DataBinding(
-        Some(com.databricks.cql.env.DataBinding.Rule(schema, identity.orElse(Some(schema)))), Map.empty)))
+        Some(com.databricks.cql.env.DataBinding.Rule(schema, identity.orElse(Some(schema)))), Map.empty,
+        TestBindings.StockShapes)))
 
   test("CLIENT-RESOLVER-IDENTITY: a different data resolver changes every fingerprint") {
     val first = CompileService.compilePipeline(bound("synthetic.source_a"))
@@ -137,6 +138,27 @@ final class DurablePlanSpec extends AnyFunSuite {
     Seq("Female", "Output").foreach { name =>
       assert(recipe(first, name).durable == recipe(again, name).durable)
       assert(recipe(first, name).durable.get.fingerprint != recipe(other, name).durable.get.fingerprint)
+    }
+  }
+
+  test("DATA-MODEL-SUBSET, CLIENT-RESOLVER-IDENTITY: a retrieved type's shape is in the fingerprint; another type's is not") {
+    def withShapes(shapes: Map[String, com.databricks.cql.sema.ResourceShape.Checked]): CompileRequest = {
+      val req = bound("synthetic.source_a")
+      req.copy(data = req.data.map(_.copy(shapes = shapes)))
+    }
+    def parse(t: String, ddl: String) = t -> com.databricks.cql.sema.ResourceShape.parse(t, s"struct<resource:$ddl>")
+    val stock = CompileService.compilePipeline(withShapes(TestBindings.StockShapes))
+    val narrowPatient = CompileService.compilePipeline(withShapes(TestBindings.StockShapes +
+      parse("Patient", "struct<id:string,gender:string>")))
+    val reordered = CompileService.compilePipeline(withShapes(TestBindings.StockShapes +
+      parse("Patient", "struct<gender:string,id:string>")))
+    val narrowCondition = CompileService.compilePipeline(withShapes(TestBindings.StockShapes +
+      parse("Condition", "struct<id:string>")))
+    Seq("Female", "Output").foreach { name =>
+      val fp = (p: PipelinePlan) => recipe(p, name).durable.get.fingerprint
+      assert(fp(stock) != fp(narrowPatient), name)
+      assert(fp(narrowPatient) == fp(reordered), s"$name: field order is not part of a shape")
+      assert(fp(stock) == fp(narrowCondition), s"$name: the CQL retrieves no Condition")
     }
   }
 
@@ -156,7 +178,7 @@ final class DurablePlanSpec extends AnyFunSuite {
     val bare = intercept[com.databricks.cql.error.UnsupportedNode] { CompileService.compilePipeline(unbound) }
     assert(bare.getMessage.contains("needs data"))
     val anonymous = unbound.copy(data = Some(com.databricks.cql.env.DataBinding(
-      Some(com.databricks.cql.env.DataBinding.Rule("synthetic.source_a")), Map.empty)))
+      Some(com.databricks.cql.env.DataBinding.Rule("synthetic.source_a")), Map.empty, TestBindings.StockShapes)))
     val err = intercept[IllegalArgumentException] { CompileService.compilePipeline(anonymous) }
     assert(err.getMessage.contains("has no identity"))
     val ordinary = anonymous.copy(durable = false, overrides = Map("materialize.mode" -> "all"))

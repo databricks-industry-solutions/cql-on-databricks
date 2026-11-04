@@ -5,7 +5,7 @@ This module makes an UNPUBLISHED one authorable: a `%%cql` cell that declares `l
 is registered under that identity, and a later cell's `include X` resolves it. Measures can be drafted
 using session libraries, with shared definitions in one cell and populations in another::
 
-    %%cql --library
+    %%cql
     library MeasureCommon version '1.0.0'
     ...
 
@@ -13,6 +13,8 @@ using session libraries, with shared definitions in one cell and populations in 
     library HypertensionBPControl version '1.0.0'
     include MeasureCommon version '1.0.0' called Common
     ...
+
+    cql(library="HypertensionBPControl").exec("Numerator")    # a Python cell runs it
 
 **Cells are the first root, the mounted folder is the second.** [[SessionLibraryProvider]] takes an
 optional ``fallthrough`` — the engine's ``FileLibraryProvider`` — and consults cells first. This is the

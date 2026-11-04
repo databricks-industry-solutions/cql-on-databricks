@@ -60,6 +60,10 @@ cql('define "Two": 3').exec("Two")             # replaces Two; Four is now 6
 ```
 
 - `exec()` with no targets runs only the new fragment's defines.
+- `cql()` with no source is the session library as it stands. This is how a Python cell runs what `%%cql`
+  cells declared: `cql().exec("Four")`. Its `exec()` with no targets runs the populations, else every define.
+- A `%%cql` cell declares and never runs (`SVC-NOTEBOOK-CQL-MAGIC`). It compiles, so an error shows in that
+  cell. The magic takes no options.
 - Each run re-creates the views of every define in the session library.
 - `using` works as it does for a file: the same line twice is fine, a second FHIR version fails.
 - A fragment joins only if the whole library still compiles. If it breaks an earlier define, it fails,
@@ -78,7 +82,7 @@ Every run is in one environment (`CLIENT-ENVIRONMENT`). An environment is a Unit
 
 | Schema | Holds |
 |---|---|
-| `data` | One view per FHIR type, named for the type in lower case (`condition`), returning `(__subject_id, __resource)`, and optionally `change_log` |
+| `data` | One view per FHIR type, named for the type in lower case (`condition`), returning the resource as a `resource` struct and optionally `patient_id`, `min_date` and `max_date` (`BIND-CONTRACT`), and optionally `change_log` |
 | `knowledge` | The views `library`, `measure` and `valueset(valueset_id, system, code, version)` |
 | `data_store`, `knowledge_store` | The tables the views select by default. Optional |
 | `results` | Published results |

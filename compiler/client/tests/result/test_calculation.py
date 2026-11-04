@@ -63,7 +63,10 @@ class Compiler:
 
 
 def run(statement, params=None):
-    raise AssertionError(f"BIND-PUBLISHED-VIEW: a run in an environment reads no catalog, but sent {statement}")
+    """BIND-PUBLISHED-VIEW, DATA-MODEL-SUBSET: a run in an environment reads only its data views' shapes."""
+    if "information_schema.columns" in statement:
+        return [{"table_name": "patient", "column_name": "id", "full_data_type": "string"}]
+    raise AssertionError(f"BIND-PUBLISHED-VIEW: a run in an environment reads only its data shapes, but sent {statement}")
 
 
 def prepare(compiler, **changes):
@@ -83,7 +86,8 @@ def test_preparation_binds_actual_addresses_typed_period_and_include_closure_onc
     assert request.parameters == {}
     assert request.measurement_period == ("2026-01-01", "2026-12-31")
     # BIND-PUBLISHED-VIEW: the environment's data and knowledge views, by rule, with their identities.
-    assert request.data == {"rule": {"schema": "synthetic.data", "identity": "synthetic.data"}}
+    assert request.data == {"rule": {"schema": "synthetic.data", "identity": "synthetic.data"},
+                            "shapes": {"patient": "struct<`id`:string>"}}
     assert request.terminology == {"rule": [{"table": "synthetic.knowledge.valueset",
                                               "identity": "synthetic.knowledge"}]}
     assert request.udf_schema == "synthetic_runtime.runtime"
@@ -136,6 +140,8 @@ def test_a_value_set_used_completes_the_fingerprint_in_one_query():
 
     def digesting(digest):
         def runner(statement, params=None):
+            if "information_schema.columns" in statement:
+                return run(statement, params)
             assert "sha2(" in statement and "`synthetic`.`knowledge`.`valueset`" in statement
             return [{"layer": 0, "valueset_id": "urn:vs:a", "digest": digest}]
         return runner

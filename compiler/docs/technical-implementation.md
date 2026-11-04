@@ -85,7 +85,7 @@ safe to run concurrently.
 | `optimize.conditional_union` | `false` | Lower list-valued conditionals as `UNION ALL` without boxing |
 | `verifiers.enabled` | `true` | Run the verifier checkpoints between passes |
 
-`Config.scala` lists the rest (`lower.*`, `bind.gap_lenient`, `debug.dump_dir`).
+`Config.scala` lists the rest (`lower.*`, `debug.dump_dir`).
 
 The conformance tests write per-fixture artifacts (`cql`, `elm.json`, `ir.txt`, `lowered.txt`,
 `explain.txt`) to `compiler/conformance/build/dump/<fixture>/` (`DEBUG-PLAN-DUMP`).

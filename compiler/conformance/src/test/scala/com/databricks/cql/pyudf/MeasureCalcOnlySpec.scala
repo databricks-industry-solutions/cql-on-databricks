@@ -76,7 +76,7 @@ final class MeasureCalcOnlySpec extends AnyFunSuite {
     val optimized = Optimize.run(lib, config)
     // BIND-CALL-SITE: every retrieve by rule from `global_temp.<type>`, every value set from one view.
     val env       = SqlEvalEnv(c.context, config,
-      data = Some(DataBinding(Some(DataBinding.Rule("global_temp")), Map.empty)),
+      data = Some(DataBinding(Some(DataBinding.Rule("global_temp")), Map.empty, com.databricks.cql.it.StockShapes.all)),
       terminologyBinding = Some(TerminologyBinding(Some(Seq(RetrieveRelation(ValueSetView))), Map.empty)))
     val lowered   = SqlFrameLowering.lower(optimized, env)
 

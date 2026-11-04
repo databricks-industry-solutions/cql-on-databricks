@@ -8,8 +8,8 @@ package com.databricks.cql.runtime
   *
   * The SQL-path collector (`SqlDifferential.collect`) is its sole user. */
 trait ResultBuilder[V] {
-  /** One collected cell (a scalar define's value, or one element of a list define). */
-  def cell(raw: Any): V
+  /** One collected cell (a scalar define's value, or one element of a list define), with its CQL type. */
+  def cell(raw: Any, t: com.databricks.cql.ir.CqlType): V
   /** A list-valued (grain-first) define's assembled, order-preserved elements. */
   def list(values: Seq[V]): V
   /** A list define that produced no rows and is NOT null-state (empty list). */

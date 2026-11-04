@@ -77,8 +77,8 @@ print("found   :", sorted(d for d in ("data", "measures")))
 # MAGIC %md
 # MAGIC ## 2. The data: the default environment
 # MAGIC Every run is in one environment: a Unity Catalog catalog whose `data` schema holds one view per FHIR type,
-# MAGIC named for the type (`condition`), each returning two columns: `__subject_id`, the context key, and
-# MAGIC `__resource`, the resource as one struct. The deploy builds the default environment with the patients in
+# MAGIC named for the type (`condition`), each returning the resource as a `resource` struct and `patient_id`, the
+# MAGIC key of the patient the row belongs to. The deploy builds the default environment with the patients in
 # MAGIC `data/` beside this notebook, so there is nothing to load here. The engine lowers every `[Resource]` retrieve
 # MAGIC to a read of its view, and the plan filters above it.
 # MAGIC
@@ -102,8 +102,8 @@ for t in ("Condition", "Encounter", "Patient"):
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ### Is the data readable?
-# MAGIC Before running a measure over it, one `%%cql` cell asks the data a direct question. This is what
-# MAGIC cells are for: self-contained CQL, no dependencies, answered immediately.
+# MAGIC Before running a measure over it, one `%%cql` cell asks the data a direct question: self-contained
+# MAGIC CQL, no dependencies. The cell declares the question, and the Python cell after it runs it.
 # MAGIC
 # MAGIC **Expected output:** 4,000 rows, one per patient, each with true or false for whether they have any condition
 # MAGIC on record — a direct check to verify the data is readable.
@@ -116,6 +116,11 @@ for t in ("Condition", "Encounter", "Patient"):
 # MAGIC context Patient
 # MAGIC
 # MAGIC define "Has A Condition": exists ([Condition])
+
+# COMMAND ----------
+from cql_databricks.compiler import cql
+
+display(cql(library="MountCheck").exec("Has A Condition"))
 
 # COMMAND ----------
 # MAGIC %md
@@ -211,6 +216,9 @@ from pyspark.sql import functions as F
 from cql_databricks.compiler import VALUE_COLUMN
 
 defines = measure.exec("Initial Population", "Denominator", "Denominator Exclusions", "Numerator")
+# Name each result for the SQL cell in section 6. A named library's run reads its views under a prefix of its own.
+for name, df in defines.items():
+    df.createOrReplaceTempView(name.replace(" ", "_"))
 report = (defines["Initial Population"].withColumnRenamed(VALUE_COLUMN, "initial_population")
           .join(defines["Denominator"].withColumnRenamed(VALUE_COLUMN, "denominator"), "__subject_id")
           .join(defines["Denominator Exclusions"].withColumnRenamed(VALUE_COLUMN, "excluded"), "__subject_id")
@@ -221,7 +229,7 @@ report.display()
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## 6. Query the result as SQL
-# MAGIC Every define also landed as a session temp view named after it, with spaces as underscores
+# MAGIC The cell above named each define's frame as a session temp view, with spaces as underscores
 # MAGIC (`Initial_Population`, `Denominator`, etc.), so the headline rate is one SQL cell away — no CQL, no Python, nothing to export.
 # MAGIC
 # MAGIC **Expected output:** one row — the rate of controlled blood pressure among the denominator (after exclusions).
@@ -252,8 +260,8 @@ report.display()
 # MAGIC **Where an `include` is found.** A `%%cql` cell's `include` resolves against earlier cells, then the
 # MAGIC folder in `spark.cqldatabricks.libraryPath`, then the environment's knowledge. This
 # MAGIC notebook hands its folder to `connect()` only, so the magic's own client cannot see it; the follow-up
-# MAGIC therefore runs the helper library by name with `library=`. Set the conf to the folder and the
-# MAGIC same question works as a `%%cql` cell.
+# MAGIC therefore runs the helper library by name with `library=`. Set the conf to the folder and a
+# MAGIC `%%cql` cell can `include` it too.
 # MAGIC
 # MAGIC **Expected output:** 4,000 rows, one per patient. 42 are true: they had hospice care during 2026, or were
 # MAGIC discharged to hospice in it.
@@ -275,11 +283,9 @@ followup.exec("In Hospice Care").orderBy("__subject_id").display()
 # MAGIC That is worth sitting with: **a rate is meaningless without its period**, and the same content
 # MAGIC honestly produces both numbers.
 # MAGIC
-# MAGIC A define is materialized as a session temp view named after it, so this run **rebinds**
-# MAGIC `Initial_Population` to 2025 — the frames from section 5 are lazy over those same views.
-# MAGIC That is why the numbers below are collected here and now, and why re-running section 5 after this
-# MAGIC cell shows 2025 rows. (One session, one library, two parameterizations; `object_prefix` is the knob
-# MAGIC for keeping several libraries' objects apart in one session.)
+# MAGIC Each run of a named library reads its views under a prefix of its own, so this run leaves the
+# MAGIC frames from section 5, and the views section 6 read, on 2026. One session, one library, two
+# MAGIC parameterizations, and neither run disturbs the other.
 # MAGIC
 # MAGIC **Expected output:**
 # MAGIC ```

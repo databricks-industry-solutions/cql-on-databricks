@@ -71,8 +71,8 @@ def test_a_publish_plan_reshapes_each_table_to_the_contract(spark, scratch):
         assert head.startswith("CREATE OR REPLACE VIEW ")
         bodies[head.rsplit(".", 1)[1].strip("`")] = body
 
-    patients = spark.sql(f"SELECT `__subject_id`, `__resource`.`gender` AS gender "
-                         f"FROM ({bodies['patient']})").collect()
-    assert sorted((r["__subject_id"], r["gender"]) for r in patients) == [("pub-p1", "female"), ("pub-p2", "male")]
-    conditions = spark.sql(f"SELECT `__subject_id`, `__resource`.`id` AS id FROM ({bodies['condition']})").collect()
-    assert [(r["__subject_id"], r["id"]) for r in conditions] == [("pub-p1", "pub-c1")]
+    # BIND-CONTRACT, DATA-SUBJECT-KEY: each body returns the subject key as patient_id and the resource as a struct.
+    patients = spark.sql(f"SELECT patient_id, resource.gender AS gender FROM ({bodies['patient']})").collect()
+    assert sorted((r["patient_id"], r["gender"]) for r in patients) == [("pub-p1", "female"), ("pub-p2", "male")]
+    conditions = spark.sql(f"SELECT patient_id, resource.id AS id FROM ({bodies['condition']})").collect()
+    assert [(r["patient_id"], r["id"]) for r in conditions] == [("pub-p1", "pub-c1")]

@@ -345,9 +345,9 @@ final class CompilerRouter(service: CompileService, token: Option[String],
       HttpResult.json(200, CompilerRouter.graphJson(service.describe(CompileRequest.fromJson(body)), compilerVersion))
     } catch { case t: Throwable => HttpResult.error(400, t) }
 
-  /** The canonical `__resource` mount DDL per FHIR type (`SVC-RESOURCE-SCHEMA`) — the schema a data
-    * seeder needs to stand up a contract-correct relation for a type on the `(__subject_id, __resource)`
-    * mount contract (`DATA-CONTRACT` / `BIND-CONTRACT`) WITHOUT re-deriving the engine's FHIR model.
+  /** The stock `resource` struct DDL per FHIR type (`SVC-RESOURCE-SCHEMA`) — the schema a data seeder needs to
+    * stand up a contract-correct relation for a type, its `resource` column (`DATA-CONTRACT` / `BIND-CONTRACT`),
+    * WITHOUT re-deriving the engine's FHIR model.
     * Pure model derivation from the STATIC schema (`ResourceStruct.structType`), so it stays Spark-free
     * (`EXEC-SQL-BACKEND`) — no `SparkSession`, only the catalyst `StructType` on the runtime classpath.
     * The engine is a CALLED public API here, never edited (`APP-DECOUPLE`).

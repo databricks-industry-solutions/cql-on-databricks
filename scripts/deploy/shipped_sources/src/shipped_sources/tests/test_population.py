@@ -76,4 +76,8 @@ def test_a_load_replaces_each_store_table_schema_and_all(monkeypatch):
     counts = land(spark, catalog="c", raw_by_type={"Patient": None}, valid_from="2026-01-01", valid_to="2026-12-31")
     assert [table for table, _ in spark.writes] == [store_table("c", t) for t in RESOURCE_TYPES]
     assert all(options == {"mode": "overwrite", "overwriteSchema": "true"} for _, options in spark.writes)
+    # DEPLOY-DEFAULT-ENVIRONMENT: each table is dropped before it is written, so no property naming an old column
+    # survives the new schema.
+    assert [s for s in spark.statements if s.startswith("DROP TABLE")] == [
+        f"DROP TABLE IF EXISTS {store_table('c', t)}" for t in RESOURCE_TYPES]
     assert counts == {t: 0 for t in RESOURCE_TYPES}

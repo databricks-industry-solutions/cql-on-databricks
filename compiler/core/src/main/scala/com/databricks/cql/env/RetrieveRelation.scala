@@ -1,5 +1,7 @@
 package com.databricks.cql.env
 
+import com.databricks.cql.sema.ResourceShape
+
 /** BIND-RELATION, BIND-CALL-SITE: what a compile request binds one call site, or one terminology layer, to: a
   * Delta table or UC view, by name. A relation NAMES where the rows are; it never carries a field mapping, and
   * there is no function relation. The client turns a volume or DataFrame relation into a temporary view before
@@ -27,8 +29,13 @@ object RetrieveRelation {
 
 /** BIND-CALL-SITE: how a compile request binds the data retrieves: a `rule`, the schema whose views serve every
   * type, a `sites` map from call-site id to relation, or both. For each site the map's entry wins over the rule.
-  * The rule binds a retrieve of type `T` to the view `<schema>.<T in lower case>` (`DATA-ENVIRONMENT-LAYOUT`). */
-final case class DataBinding(rule: Option[DataBinding.Rule], sites: Map[String, RetrieveRelation]) {
+  * The rule binds a retrieve of type `T` to the view `<schema>.<T in lower case>` (`DATA-ENVIRONMENT-LAYOUT`).
+  *
+  * `DATA-MODEL-SUBSET`: `shapes` holds, per resource type, the `__resource` type its relations return, read by
+  * the caller from the bound relations (the compiler reads no catalog). Each is checked against FHIR R4 when the
+  * request is read ([[ResourceShape]]). A retrieved type with no shape fails the compile. */
+final case class DataBinding(rule: Option[DataBinding.Rule], sites: Map[String, RetrieveRelation],
+                             shapes: Map[String, ResourceShape.Checked] = Map.empty) {
 
   /** The relation call site `siteId`, a retrieve of `fhirType`, reads: its map entry, else the rule's view. */
   def relationFor(siteId: String, fhirType: String): Option[RetrieveRelation] =
@@ -45,7 +52,7 @@ object DataBinding {
   def fromJson(v: ujson.Value): DataBinding = {
     val o = v.objOpt.getOrElse(throw new IllegalArgumentException(
       s"data is {\"rule\": …, \"sites\": …}, not ${ujson.write(v)} (BIND-CALL-SITE)"))
-    unknownKeys(o.keys, "data")
+    unknownKeys(o.keys, "data", Set("shapes"))
     DataBinding(
       rule = o.get("rule").filterNot(_.isNull).map { r =>
         val ro = r.obj
@@ -54,12 +61,23 @@ object DataBinding {
           ro.get("identity").filterNot(_.isNull).map(_.str))
       },
       sites = o.get("sites").filterNot(_.isNull).map(_.obj.map { case (id, rel) => id -> RetrieveRelation.fromJson(rel) }
-        .toMap).getOrElse(Map.empty))
+        .toMap).getOrElse(Map.empty),
+      shapes = o.get("shapes").filterNot(_.isNull).map { v =>
+        v.objOpt.getOrElse(throw new IllegalArgumentException(
+          s"data shapes are {\"<FHIR type>\": \"<Spark type>\"}, not ${ujson.write(v)} (DATA-MODEL-SUBSET)"))
+          .map { case (t, ddl) =>
+            val checked = ResourceShape.parse(t, ddl.strOpt.getOrElse(throw new IllegalArgumentException(
+              s"the data shape for $t is a Spark type string, not ${ujson.write(ddl)} (DATA-MODEL-SUBSET)")))
+            checked.resourceType -> checked
+          }.toMap
+      }.getOrElse(Map.empty))
   }
 
-  private[env] def unknownKeys(keys: Iterable[String], role: String): Unit = {
-    val unknown = keys.filterNot(Set("rule", "sites")).toSeq.sorted
-    require(unknown.isEmpty, s"$role carries only rule and sites, not ${unknown.mkString(", ")} (BIND-CALL-SITE)")
+  private[env] def unknownKeys(keys: Iterable[String], role: String, extra: Set[String] = Set.empty): Unit = {
+    val known = Set("rule", "sites") ++ extra
+    val unknown = keys.filterNot(known).toSeq.sorted
+    require(unknown.isEmpty,
+      s"$role carries only ${known.toSeq.sorted.mkString(", ")}, not ${unknown.mkString(", ")} (BIND-CALL-SITE)")
   }
 }
 

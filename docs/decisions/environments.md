@@ -47,7 +47,7 @@ see are found. Two visible defaults fail, naming both; no visible default fails,
 
 | Schema | Holds | Who writes |
 |---|---|---|
-| `data` | Published views: one per FHIR type, named for the type in lower case (`condition`), with the contract columns `(__subject_id, __resource)` (`BIND-CONTRACT`), and `change_log` | The customer; the deploy for the default environment |
+| `data` | Published views: one per FHIR type, named for the type in lower case (`condition`), returning the resource as a `resource` struct and optionally `patient_id`, `min_date` and `max_date` (`BIND-CONTRACT`, `DATA-SUBJECT-KEY`, `BIND-PREFILTER`), and `change_log` | The customer; the deploy for the default environment |
 | `data_store` | Store tables a view selects by default | Publishing, the synthetic loader |
 | `knowledge` | The published views `library`, `measure` and `valueset(valueset_id, system, code, version)` | As `data` |
 | `knowledge_store` | Their store tables | Publishing; the Designer's Publish writes `library` and `measure` |

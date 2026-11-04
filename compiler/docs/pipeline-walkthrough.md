@@ -173,8 +173,9 @@ Resolve, Normalize and Schedule change nothing: no references, functions or para
 ### Lower
 
 The Patient context becomes a base frame over the relation bound to the `[Patient]` call site. Each retrieve
-reads `__subject_id` and `__resource` from its bound relation ([data-binding.md](data-binding.md)). The
-`<… relation>` placeholders below stand for the table each call site is bound to. `exists` is a left join to
+reads its bound relation's `resource` struct, untouched, as the engine's `__resource`, and its patient_id as `__subject_id`
+([data-binding.md](data-binding.md)). Each `<… mount>` below stands for that read of the table its call site is
+bound to. `exists` is a left join to
 the subjects that have a Condition row, with absent subjects coalesced to `false`.
 
 ```sql
@@ -182,7 +183,7 @@ CREATE OR REPLACE TEMP VIEW __frame_base AS
 SELECT
   __subject_id,
   __resource AS Patient
-FROM (SELECT __subject_id, __resource FROM <Patient relation>)
+FROM (<Patient mount>)
 
 CREATE OR REPLACE TEMP VIEW HasAnyCondition AS
 SELECT
@@ -196,7 +197,7 @@ FROM (
     FROM (
       SELECT DISTINCT
         __subject_id
-      FROM (SELECT __subject_id, __resource FROM <Condition relation>) AS __sp
+      FROM (<Condition mount>) AS __sp
     ) AS __pr
   ) AS __j0 USING (__subject_id)
 ) AS __h

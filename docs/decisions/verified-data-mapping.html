@@ -213,7 +213,7 @@ footer { max-width: 76ch; font-size: var(--step--1); color: var(--muted); border
       <ul>
         <li>The compiler checks CQL against a superset: the FHIR R4 type graph for the supported resources, with no loop cuts.</li>
         <li>A published view returns any subset of it, never an extra field.</li>
-        <li>Publish records the environment's shape. A compile gets it in its request, so it stays offline.</li>
+        <li>The client reads each bound view's shape once per session. A compile gets it in its request, so it stays offline.</li>
         <li>A real FHIR path the shape leaves out fails the compile, naming the path. It never reads as null.</li>
       </ul>
     </article>
@@ -287,12 +287,13 @@ footer { max-width: 76ch; font-size: var(--step--1); color: var(--muted); border
 
         <rect class="dot-warn" x="414" y="376" width="12" height="12"/>
         <text class="t-m" x="436" y="382">legacy_flag, a view column</text>
-        <text class="t-warn" x="436" y="399">publish refuses the view</text>
+        <text class="t-warn" x="436" y="399">the compile refuses the view</text>
       </svg>
     </div>
     <figcaption>Circles are paths some CQL reads; the square is a column a view tries to publish. The compiler walks the type graph, which is finite even where FHIR's types loop, so it needs no cuts. Physical depth is whatever the views return. Today's cut shape (<code>FhirShape</code>) becomes the default shape the stock reshape writes.</figcaption>
   </figure>
   <div class="prose">
+    <p>One contract, a faithful FHIR resource (<code>BIND-CONTRACT</code>). A view returns the resource as a struct, <code>resource</code>, holding FHIR's fields only, and optionally the root columns <code>patient_id</code> (<code>DATA-SUBJECT-KEY</code>), <code>min_date</code> and <code>max_date</code> (<code>BIND-PREFILTER</code>). The engine's internals never reach an implementer: its lineage is not in the struct, since a resource's identity is its type and its own <code>id</code> (<code>DATA-EXPORT</code>), and its <code>__*</code> columns are refused, with no fallback (<code>COMPAT-DATA</code>). The engine passes <code>resource</code> through and never rebuilds it: measured 2026-11-03, a read that rebuilt the struct from root columns ran 18–23% slower, all of it Spark planning. The three root columns sit beside <code>resource</code> because Delta partitions on a top-level column and collects statistics on the first columns it meets. <code>patient_id</code> is a key, like a fully qualified key in an entity-relationship model: optional on every type, Patient included, and a promise that it is the id the other views' references name. A broken promise breaks joins with no error, as wrong dates drop rows.</p>
     <p>Pruning already works this way at the top level. <code>passes.RetrieveDemand</code> lists the fields a library navigates, and the SQL back end treats that list as the contract a narrow mount is built to (<code>EMIT-SQL-RETRIEVE-DEMAND-BOUND</code>). The change takes demand down to full paths, so one analysis gives pruning, the shape check and data requirements. The shape's hash joins a result's identity, so a changed view never reuses an old score.</p>
   </div>
 </section>
@@ -476,7 +477,6 @@ WHERE  co.condition_start_date &lt; DATE'2027-01-01'
 <section aria-labelledby="h-open">
   <h2 id="h-open">Open before building</h2>
   <div class="open">
-    <div><h3><code>DEC-MODEL-SUPERSET-BOUND</code></h3><p>Which part of FHIR R4 the superset holds: resource types, extension value types, extensions on elements and primitives, and <code>contained</code>.</p></div>
     <div><h3><code>DEC-MAPPING-HOME</code></h3><p>A lens in the Designer or its own App, and where mappings, checks and their run history are stored.</p></div>
     <div><h3>Nested demand</h3><p>The field-demand gap on nested elements is fixed first; then demand goes from fields to full paths.</p></div>
   </div>

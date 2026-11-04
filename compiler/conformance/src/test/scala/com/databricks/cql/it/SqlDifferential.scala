@@ -7,6 +7,7 @@ import com.databricks.cql.ir.{Library, Retrieve}
 import com.databricks.cql.lower.ThreadCpu
 import com.databricks.cql.passes.{Optimize, ParameterScope, RetrieveDemand, TypeEncoding}
 import com.databricks.cql.retrieve.RetrieveHints
+import com.databricks.cql.sema.ResourceShape
 import com.databricks.cql.runtime.ExplainCapture
 import com.databricks.cql.service.{CompileService, PipelinePlan}
 import com.databricks.cql.spark.SystemColumns
@@ -166,7 +167,14 @@ object SqlDifferential {
       }
     val data: DataBinding = c.data.map { dp =>
       val types = sites.map(_.request("fhirType").str).distinct
-      val frames = types.map(rt => rt -> dp.retrieve(rt, hintsFor(rt))).toMap
+      // BIND-CONTRACT: a relation returns the `resource` struct, and optionally `patient_id`, `min_date` and
+      // `max_date` (DATA-SUBJECT-KEY, BIND-PREFILTER); the engine reads `(__subject_id, __resource)` from them
+      // when it reads the view.
+      val source = dp match {
+        case f: FhirColumns => f
+        case other => fail(s"${other.getClass.getSimpleName} returns no data view's columns (BIND-CONTRACT)")
+      }
+      val frames = types.map(rt => rt -> source.fhirColumns(rt, hintsFor(rt))).toMap
       frames.foreach { case (rt, df) =>
         (if (rt == c.context.name) df else df.limit(0)).createOrReplaceGlobalTempView(rt.toLowerCase)
       }
@@ -175,7 +183,10 @@ object SqlDifferential {
         frames(site.request("fhirType").str).createOrReplaceTempView(view)
         site.id -> RetrieveRelation(view, Some("conformance"))
       }.toMap
-      DataBinding(Some(DataBinding.Rule(RuleSchema, Some("conformance"))), bySite)
+      // DATA-MODEL-SUBSET: each type's shape is the columns its frame returns, read the way the client reads a
+      // bound relation's.
+      val shapes = frames.map { case (rt, df) => rt -> ResourceShape.parse(rt, df.schema.sql) }
+      DataBinding(Some(DataBinding.Rule(RuleSchema, Some("conformance"))), bySite, shapes)
     }.getOrElse(DataBinding(None, Map.empty))
     val layers: Seq[RetrieveRelation] = c.terminology.map { tp =>
       val key = base.valueSetKeyColumn
@@ -246,8 +257,20 @@ object SqlDifferential {
     * `(__subject_id, __val)`, one row per subject, while a grain-first list define is
     * `(__subject_id, __ordinal, __val)` assembled driver-side into an ordered (dedup-if-distinct) list.
     * Values render through the SAME [[Differential.UjsonResults]] as the proto path. */
-  private def collect(spark: SparkSession, lowered: SqlFrameLowering.SqlLoweredLibrary): Map[String, Map[String, ujson.Value]] = {
+  private def collect(spark: SparkSession, lowered: SqlFrameLowering.SqlLoweredLibrary,
+                      lib: Library): Map[String, Map[String, ujson.Value]] = {
     val rb = Differential.UjsonResults
+    // DATA-EXPORT: each define's CQL type, so a resource value renders by its type and `id`.
+    val typeCtx = TypeEncoding.ctxOf(lib)
+    val defineTypes: Map[String, com.databricks.cql.ir.CqlType] = lib.statements.collect {
+      case com.databricks.cql.ir.ExpressionDef(n, _, e) =>
+        n -> scala.util.Try(TypeEncoding.typeOf(e, typeCtx)).getOrElse(com.databricks.cql.ir.CqlType.AnyType)
+    }.toMap
+    def typeOf(n: String): com.databricks.cql.ir.CqlType = defineTypes.getOrElse(n, com.databricks.cql.ir.CqlType.AnyType)
+    def elementOf(n: String): com.databricks.cql.ir.CqlType = typeOf(n) match {
+      case com.databricks.cql.ir.CqlType.ListType(e) => e
+      case other                                     => other
+    }
     def q(id: String): String = "`" + id.replace("`", "``") + "`"
     val relNames    = lowered.names.filter(lowered.relationDefines.contains)
     val scalarNames = lowered.names.filterNot(relNames.contains)
@@ -260,7 +283,7 @@ object SqlDifferential {
     val scalarMaps: Map[String, Map[String, ujson.Value]] = scalarNames.map { n =>
       val rows = spark.sql(
         s"SELECT ${q(SystemColumns.SubjectId)}, ${q(SystemColumns.Val)} FROM ${q(SqlNames.obj(n))}").collect()
-      n -> rows.map(r => r.getString(0) -> rb.cell(r.get(1))).toMap
+      n -> rows.map(r => r.getString(0) -> rb.cell(r.get(1), typeOf(n))).toMap
     }.toMap
 
     val relMaps: Map[String, Map[String, ujson.Value]] = relNames.map { n =>
@@ -269,7 +292,7 @@ object SqlDifferential {
         s"SELECT ${q(SystemColumns.SubjectId)}, ${q(SystemColumns.Val)} FROM ${q(SqlNames.rel(n))} " +
           s"ORDER BY ${q(SystemColumns.SubjectId)}, ${q(SystemColumns.Ordinal)}").collect()
       val bySubj = mutable.LinkedHashMap.empty[String, mutable.ArrayBuffer[ujson.Value]]
-      rows.foreach(r => bySubj.getOrElseUpdate(r.getString(0), mutable.ArrayBuffer.empty) += rb.cell(r.get(1)))
+      rows.foreach(r => bySubj.getOrElseUpdate(r.getString(0), mutable.ArrayBuffer.empty) += rb.cell(r.get(1), elementOf(n)))
       n -> bySubj.map { case (s, vals) => s -> rb.list((if (distinct) vals.distinct else vals).toSeq) }.toMap
     }.toMap
 
@@ -360,7 +383,7 @@ object SqlDifferential {
       try spark.sql(s"DROP VIEW IF EXISTS $q") catch { case _: Throwable => () }
       spark.sql(SqlRender.render(s))
     }
-    val ours = collect(spark, lowered)
+    val ours = collect(spark, lowered, optimized)
     val runtimeMs = (System.nanoTime() - runtimeT0) / 1e6
     val totalWallMs = (System.nanoTime() - totalWallT0) / 1e6
 
@@ -479,7 +502,7 @@ object SqlDifferential {
       try spark.sql(s"UNCACHE TABLE IF EXISTS $q") catch { case _: Throwable => () }
       spark.sql(SqlRender.render(s))
     }
-    collect(spark, lowered)
+    collect(spark, lowered, optimized)
   }
 
   /** PIPELINE-PLAN entry (`PIPE-SQL-DAG-REUSE`), SERVER-FREE: lower `c` ONCE in pipeline-cut mode and cut
@@ -532,7 +555,7 @@ object SqlDifferential {
     }
     // Collect off the LOCAL objects the recipes produced — a dependent define's object was computed from
     // its sibling's PUBLISHED dataset (the cut path), so this is the cut result.
-    collect(spark, lowered)
+    collect(spark, lowered, optimized)
   }
 
   /** GENERATED-LIBRARY entry (CONF-GATE-PROPERTY, EXEC-SQL-BACKEND): lower an already-normalized `lib` in a
@@ -553,7 +576,7 @@ object SqlDifferential {
       try spark.sql(s"UNCACHE TABLE IF EXISTS $q") catch { case _: Throwable => () }
       spark.sql(SqlRender.render(s))
     }
-    collect(spark, lowered)
+    collect(spark, lowered, optimized)
   }
 
   /** THROUGHPUT-ONLY scale entry (no Java reference, no per-subject diff): lower via the SQL back end,

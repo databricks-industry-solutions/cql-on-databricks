@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from ..relation import SUBJECT_ID, literal, met_expr, quote, value_column
+from ..relation import SUBJECT_ID, literal, met_expr, patient_rows, quote, value_column
 from ..results import Execute, PinnedRelation, relation_columns, result_relation
 from .evaluation import ClosureSource, MetricsUnavailable, locate
 from .model import PROVENANCE_RUN, _clean
@@ -230,7 +230,7 @@ def cohort_flow(
     if usable:
         ctes, cte_of = _subject_ctes(usable, resolved, columns, suffix)
         if any(not (g.base and g.base_library) for g in usable):
-            ctes.insert(0, _evaluated_cte(patient_relation))
+            ctes.insert(0, _evaluated_cte(patient_rows(patient_relation, execute)))
         sql = _crosstab(usable, cte_of, ctes)
         rows = execute(sql) or []
         built = _read_rows(usable, rows)

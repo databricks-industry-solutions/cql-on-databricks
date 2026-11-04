@@ -65,7 +65,7 @@ object Differential {
     * representation for the SQL-path collector ([[SqlDifferential.collect]]), compared against the Java
     * reference via [[JsonNormalize]]. */
   object UjsonResults extends ResultBuilder[ujson.Value] {
-    def cell(raw: Any): ujson.Value = JsonNormalize.value(raw)
+    def cell(raw: Any, t: com.databricks.cql.ir.CqlType): ujson.Value = JsonNormalize.value(raw, t)
     def list(values: Seq[ujson.Value]): ujson.Value = ujson.Arr.from(values)
     def emptyList: ujson.Value = ujson.Arr()
     def nullValue: ujson.Value = ujson.Null

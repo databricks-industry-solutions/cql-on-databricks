@@ -2,6 +2,7 @@ package com.databricks.cql.transpiler.lower
 
 import com.databricks.cql.env.{Config, Context, DataBinding, RetrieveRelation, TerminologyBinding}
 import com.databricks.cql.error.UnsupportedNode
+import com.databricks.cql.spark.SystemColumns
 import com.databricks.cql.transpiler.emit.{SqlExpr, SqlNames, SqlRel}
 
 /** The SQL-target evaluation environment (EMIT-SQL-EXECUTE): the Spark-FREE twin of the compiler's
@@ -50,7 +51,7 @@ final case class SqlEvalEnv(
       * list define, from `passes.ChoiceDemand.analyze` (the SAME pure pass the compiler uses — Spark-free).
       * The SQL het-union encoding is the demand-pruned HANDLE BY DEFAULT (the locked decision): a
       * resource member slot carries `{__resource_type, __resource_id, <demand fields>}`, never the whole
-      * body (the boundary renders a resource by identity anyway, `JsonNormalize.isResourceStruct`). */
+      * body (the boundary renders a resource by identity anyway, `JsonNormalize.isResourceHandle`). */
     choiceDemand: Map[String, com.databricks.cql.passes.ChoiceDemand.Demand] = Map.empty,
     /** EMIT-SQL-RETRIEVE-DEMAND-BOUND: the projection demand per FHIR resource TYPE, from
       * `passes.RetrieveDemand.analyze` (the SAME pure Spark-free pass). A plain retrieve's scanned
@@ -70,13 +71,6 @@ final case class SqlEvalEnv(
       * re-inlining the mount call and its predicates. The object carries the SAME
       * `(__subject_id, __resource)` shape the inlined form produces, so every consumer is unaffected. */
     materializedReads: Map[com.databricks.cql.ir.Retrieve, String] = Map.empty,
-    /** BIND-CAPABILITY-OVERLAP: the customer binding's AVAILABLE capability per FHIR resource TYPE — the
-      * top-level physical field names its typed-subset struct declares (read at BIND time from the mount's
-      * schema, never a per-row `.schema` probe; `ARCH-NO-RUNTIME-SCHEMA`). A type ABSENT from the map has
-      * no declared subset → the full model is available → no gap check (the inert default). When present,
-      * a demanded field NOT in the set is a coverage gap: a loud bind-time error (CORE-NO-SILENT-MISLOWER)
-      * unless `Config.bindingGapLenient`. */
-    available: Map[String, Set[String]] = Map.empty,
     /** ARCH-SQL-CSE: the WITHIN-DEFINE hoist-column namer ([[SqlHoist]]). Reset to a fresh counter per
       * define by [[SqlFrameLowering]] so the `__h<N>` names a define's duplication-prone temporal/interval
       * operands hoist to are UNIQUE across every (possibly nested) projection level of that ONE define — a
@@ -167,29 +161,43 @@ final case class SqlEvalEnv(
   def siteOwner(lib: com.databricks.cql.ir.Library): Option[(String, String, String)] =
     currentDefine.map { d => val o = lib.ownerOf(d); (o.library, o.version, o.name) }
 
+  /** `DATA-MODEL-SUBSET`: the shape of each resource type the bound data returns, from the request. `None` when
+    * the lowering binds no data or only describes ([[describing]]): paths are then checked against FHIR R4
+    * alone, and every choice slot is read. */
+  def shapes: Option[Map[String, com.databricks.cql.sema.ResourceShape.Checked]] =
+    data.filterNot(_ eq SqlEvalEnv.DescribeData).map(_.shapes)
+
   /** BIND-CALL-SITE: this env with [[SqlEvalEnv.DescribeData]] and [[SqlEvalEnv.DescribeTerminology]], for a
     * lowering that only reports call sites and shape (`describe`) and runs nothing. */
   def describing: SqlEvalEnv =
     copy(data = Some(SqlEvalEnv.DescribeData), terminologyBinding = Some(SqlEvalEnv.DescribeTerminology))
 
-  /** The retrieve MOUNT for one retrieve call site (BIND-RELATION, BIND-CALL-SITE): the table or view the
-    * request binds to the site, read as `SELECT __subject_id, __resource FROM <name>`, so a column beyond the
+  /** The retrieve MOUNT for one retrieve call site (BIND-RELATION, BIND-CALL-SITE, BIND-CONTRACT): the table or view
+    * the request binds to the site, read as the engine's `(__subject_id, __resource)`. The relation returns the
+    * resource as its `resource` struct, and optionally `patient_id`, `min_date` and `max_date` (`DATA-SUBJECT-KEY`,
+    * `BIND-PREFILTER`); the engine reads its own columns from them here ([[contractMount]]), so a column beyond the
     * contract never reaches a join. The retrieve's predicates still re-apply ABOVE the relation (BIND-CAPABILITY),
     * so a relation that ignores its request is a correct un-pruned superset. The compiler names the relation and
-    * never bodies it (`ARCH-PURITY`). Every site is recorded for `describe` ([[callSites]]). */
+    * never bodies it (`ARCH-PURITY`). Every site is
+    * recorded for `describe` ([[callSites]]). A lowering that only describes reads its placeholder relations as
+    * the two engine columns, in SQL no one runs. */
   def retrieveMount(call: RetrieveCall, site: CallSite): SqlRel = {
     callSites.getOrElseUpdate(site.id, site)
     val binding = data.getOrElse(throw UnsupportedNode("Retrieve",
       s"retrieve site ${site.id} [${call.fhirType}] needs data, and the request binds none (BIND-CALL-SITE)"))
-    binding.relationFor(site.id, call.fhirType) match {
-      case Some(relation) =>
+    val relation = binding.relationFor(site.id, call.fhirType).getOrElse(throw UnsupportedNode("Retrieve",
+      s"retrieve site ${site.id} [${call.fhirType}] has no relation: the request's data has no rule and no " +
+        "entry for it (BIND-CALL-SITE)"))
+    shapes match {
+      case None =>
         SqlRel.Select(
-          projections = Seq(SqlRel.Proj(SqlExpr.Col(com.databricks.cql.spark.SystemColumns.SubjectId)),
-                            SqlRel.Proj(SqlExpr.Col(com.databricks.cql.spark.SystemColumns.Resource))),
+          projections = Seq(SqlRel.Proj(SqlExpr.Col(SystemColumns.SubjectId)), SqlRel.Proj(SqlExpr.Col(SystemColumns.Resource))),
           from = SqlRel.TableRef(relation.table))
-      case None => throw UnsupportedNode("Retrieve",
-        s"retrieve site ${site.id} [${call.fhirType}] has no relation: the request's data has no rule and no " +
-          "entry for it (BIND-CALL-SITE)")
+      case Some(s) =>
+        val shape = s.getOrElse(call.fhirType, throw UnsupportedNode("Retrieve",
+          s"retrieve site ${site.id} [${call.fhirType}] has no data shape: the request's data shapes cover " +
+            s"${if (s.isEmpty) "no type" else s.keys.toSeq.sorted.mkString(", ")} (DATA-MODEL-SUBSET)"))
+        SqlEvalEnv.contractMount(call, relation.table, shape)
     }
   }
 
@@ -244,6 +252,67 @@ final case class SqlEvalEnv(
 }
 
 object SqlEvalEnv {
+  import com.databricks.cql.sema.{FhirModel, ResourceShape}
+  import SqlExpr._
+
+  /** BIND-CONTRACT, DATA-SUBJECT-KEY, BIND-PREFILTER: a relation on the contract read as the engine's
+    * `(__subject_id, __resource)`.
+    *
+    * `__resource` is the relation's `resource` struct, passed through untouched: the mount renames it and never
+    * rebuilds it, so the warehouse plans no struct. It carries no lineage; lowering reads a resource's identity
+    * from its own `id` and its type from the retrieve (`DATA-EXPORT`). `__subject_id` is the row's patient_id
+    * (`DATA-SUBJECT-KEY`). On a Patient or a Patient-compartment type it is the root `patient_id` when the relation
+    * returns it, a stored key the warehouse can filter and cluster on; else `resource.id` for a Patient, or the id
+    * after the last `/` of the first of `subject`, `patient` and `beneficiary` whose `reference` the shape holds. A
+    * type with no patient context has none: its key is null, and a `patient_id` it returns is not read.
+    *
+    * Filter and refine: when the relation returns `min_date` and `max_date` and the retrieve carries a literal date
+    * range, the mount keeps only rows whose dates can meet it, `max_date >= low AND min_date <= high`, widened by a
+    * day on each side so no time zone drops a row. It is the coarse filter; the retrieve's own date test, above the
+    * mount, is the refine step and decides. */
+  private[lower] def contractMount(call: RetrieveCall, table: String, shape: ResourceShape.Checked): SqlRel = {
+    val rt = shape.resourceType
+    val resource = Col(ResourceShape.ResourceColumn)
+    def refOf(field: String): Boolean = shape.struct.field(field).exists(_.shape match {
+      case s: com.databricks.cql.sema.FhirShape.Struct => s.field("reference").isDefined
+      case _                                          => false
+    })
+    val subject: SqlExpr =
+      if (rt != "Patient" && !FhirModel.isPatientContext(rt)) Cast(Null, "STRING")
+      else if (shape.hasPatientId) Cast(Col(ResourceShape.PatientId), "STRING")
+      else if (rt == "Patient") Cast(Field(resource, "id"), "STRING")
+      else FhirModel.SubjectReferenceFields.filter(refOf) match {
+        case Seq() => throw UnsupportedNode("Retrieve",
+          s"the $rt data at $table has no patient key: return a `${ResourceShape.PatientId}` column, or the " +
+            s"${FhirModel.SubjectReferenceFields.filter(f => FhirModel.navType(rt, f).isDefined).mkString(" or ")} " +
+            "reference in `resource` (BIND-CONTRACT, DATA-SUBJECT-KEY)")
+        case refs =>
+          val ref = refs.map(f => Field(Field(resource, f), "reference"))
+          Call("substring_index", Seq(if (ref.size == 1) ref.head else Call("coalesce", ref), str("/"), Lit("-1")))
+      }
+    SqlRel.Select(
+      projections = Seq(SqlRel.Proj(subject, SystemColumns.SubjectId), SqlRel.Proj(resource, SystemColumns.Resource)),
+      from = SqlRel.TableRef(table),
+      where = coarseDates(call, shape))
+  }
+
+  private val IsoDay = "^(\\d{4}-\\d{2}-\\d{2}).*".r
+
+  /** BIND-PREFILTER: the coarse date filter, when the retrieve's range is a literal of day precision or finer and
+    * the relation returns both `min_date` and `max_date`. A range it cannot read as days gets no coarse filter, never a
+    * guessed one. */
+  private def coarseDates(call: RetrieveCall, shape: ResourceShape.Checked): Option[SqlExpr] =
+    if (!shape.hasDates) None
+    else (call.dateLow, call.dateHigh) match {
+      case (Some(IsoDay(lo)), Some(IsoDay(hi))) =>
+        val low  = java.time.LocalDate.parse(lo).minusDays(1)
+        val high = java.time.LocalDate.parse(hi).plusDays(1)
+        Some(Infix("AND",
+          Infix(">=", Col(ResourceShape.MaxDate), Lit(s"DATE'$low'")),
+          Infix("<=", Col(ResourceShape.MinDate), Lit(s"DATE'$high'"))))
+      case _ => None
+    }
+
   /** BIND-CALL-SITE: the schema of [[describing]]'s placeholder relations. No SQL naming it is run. */
   val DescribeSchema: String = "__describe"
 

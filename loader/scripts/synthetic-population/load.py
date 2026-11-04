@@ -13,7 +13,7 @@ their value sets in its stores, so the measures run over it, and refuses the dep
 default environment's. Run it with the repository venv, which has ``shipped_sources`` installed. It uploads the
 emitted ``<Type>.ndjson`` bulk-data files to a UC Volume in the environment's ``data_store``, under
 ``cohorts/<label>/``, gzipped as ``<Type>.ndjson.gz`` (the synthetic NDJSON shrinks about 38 times, so the upload is
-not the slow step), and lands them on the contract ``(__subject_id, __resource)`` (``DATA-CONTRACT``).
+not the slow step), and lands them on the data contract ``(resource, patient_id)``, the store's form (``DATA-CONTRACT``).
 
 The population is CUMULATIVE across measures: every load rebuilds each store table from the union of ALL cohort
 directories in the volume, so landing one measure's cohort beside another's yields one population holding both. The

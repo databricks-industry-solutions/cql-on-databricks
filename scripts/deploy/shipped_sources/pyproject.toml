@@ -35,7 +35,7 @@ databricks = ["databricks-connect"]
 where = ["src"]
 include = ["shipped_sources*"]
 
-# RUNTIME DATA. `population.py` reads `resource-schemas.json` for its `__resource` DDL — a committed copy of the
+# RUNTIME DATA. `population.py` reads `resource-schemas.json` for its `resource` DDL — a committed copy of the
 # compiler's resource schemas (CONTENT-IMPORTER-FHIR-SCHEMAS), refreshed by `./gradlew updateResourceSchemas`.
 [tool.setuptools.package-data]
 shipped_sources = ["*.json"]

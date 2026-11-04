@@ -100,7 +100,7 @@ class ResultStore(ABC):                         # CLIENT-RESULT-RESOLVER; Delta 
 
 | Kind | Names | Runs on |
 |---|---|---|
-| `TableRelation` | A Delta table or UC view holding `(__subject_id, __resource)` | Warehouse and Spark |
+| `TableRelation` | A Delta table or UC view returning the data contract, a `resource` struct per row (`BIND-CONTRACT`) | Warehouse and Spark |
 | `FunctionRelation` | A UC SQL function returning `(__subject_id, __resource)`, called with the request's arguments | Warehouse and Spark |
 | `VolumeRelation` | A volume folder of `<Type>.ndjson` or FHIR Bundles, read with `read_files` | Warehouse and Spark |
 | `DataFrameRelation` | A DataFrame; the client registers it as a temp view under a name it owns | Spark only |

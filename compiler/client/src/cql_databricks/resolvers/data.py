@@ -7,7 +7,7 @@
 | :class:`VolumeDataResolver` | per site | the type's ``<Type>.ndjson`` file, or the Bundles, in a volume folder | Warehouse and Spark |
 | :class:`DataFrameDataResolver` | per site | the DataFrame given for its type; for development, never reused or kept | Spark only |
 
-A table or view must return the contract ``(__subject_id, __resource)`` (`BIND-CONTRACT`). A volume folder or
+A table or view must return the contract, a ``resource`` struct per row (`BIND-CONTRACT`). A volume folder or
 DataFrame holds FHIR resources, which the client checks and reshapes (`BIND-RELATION`). Each resolver ignores every
 request field but the type, which is correct: the engine re-applies the filters (`BIND-CAPABILITY`). There is no
 function resolver: a table function is not a relation.

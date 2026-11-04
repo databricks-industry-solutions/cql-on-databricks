@@ -103,11 +103,7 @@ final case class Config(
       * plans stay byte-unchanged. The naming layer is always-on under the flag; the cost policy
       * ([[materializeMode]]) only decides which CTE-defs are additionally `localCheckpoint`-materialized
       * (kept temp/session-scoped, never persisted). Set `-Dcqldatabricks.cteDefs=false` to force inlining. */
-    cteDefs: Boolean = true,
-    /** BIND-CAPABILITY-OVERLAP: OFF by default. When true, a `DEMAND − AVAILABLE` binding-coverage gap is
-      * treated as a `null` field instead of a loud bind-time error — re-enabling SILENT gaps, so it is
-      * opt-in and labeled as such (CORE-NO-SILENT-MISLOWER is the default). */
-    bindingGapLenient: Boolean = false
+    cteDefs: Boolean = true
 ) {
 
   /** A stable, ordered key/value view of the resolved config, recorded with output for
@@ -130,8 +126,7 @@ final case class Config(
     "lower.grain_first"                     -> grainFirst.toString,
     "optimize.conditional_union"            -> optimizeConditionalUnion.toString,
     "optimize.conditional_union_max_depth"  -> conditionalUnionMaxDepth.toString,
-    "lower.cte_defs"                        -> cteDefs.toString,
-    "bind.gap_lenient"                      -> bindingGapLenient.toString
+    "lower.cte_defs"                        -> cteDefs.toString
   )
 }
 
@@ -234,8 +229,7 @@ object Config {
       optimizeConditionalUnion = bool("optimize.conditional_union", base.optimizeConditionalUnion),
       conditionalUnionMaxDepth = parsed("optimize.conditional_union_max_depth", "an integer")(v =>
           scala.util.Try(v.toInt).toOption).getOrElse(base.conditionalUnionMaxDepth),
-      cteDefs = bool("lower.cte_defs", base.cteDefs),
-      bindingGapLenient = bool("bind.gap_lenient", base.bindingGapLenient)
+      cteDefs = bool("lower.cte_defs", base.cteDefs)
     )
   }
 }

@@ -65,7 +65,7 @@ class SqlRetrieveBarrierSpec extends AnyFunSuite {
     // its rows came from an inlined mount call or from the read object.
     Seq(on, off).foreach { l =>
       val out = SqlRender.render(l.script)
-      assert(out.contains("__resource.__resource_id AS __ordinal"))
+      assert(out.contains("CAST(__resource.id AS STRING) AS __ordinal")) // DATA-EXPORT: the resource's own id
       assert(out.contains("__resource AS __val"))
     }
     assert(on.relationDefines == off.relationDefines)

@@ -17,13 +17,12 @@ def _s(*fields):
     return StructType([StructField(n, t) for n, t in fields])
 
 
-LINEAGE = (("__resource_type", StringType()), ("__resource_id", StringType()))
-PATIENT = ResourceSchema(fhir_type="Patient", struct=_s(("id", StringType()), ("birthDate", StringType()), *LINEAGE),
+PATIENT = ResourceSchema(fhir_type="Patient", struct=_s(("id", StringType()), ("birthDate", StringType())),
                          ddl="", patient_context=True)
 OBS = ResourceSchema(fhir_type="Observation",
                      struct=_s(("id", StringType()), ("status", StringType()),
                                ("subject", _s(("reference", StringType()))),
-                               ("valueQuantity", _s(("value", LongType()))), *LINEAGE),
+                               ("valueQuantity", _s(("value", LongType())))),
                      ddl="", patient_context=True)
 
 TABLES = {
@@ -36,9 +35,9 @@ TABLES = {
 }
 
 GOLDEN = f"""\
-CREATE OR REPLACE VIEW `acme_env`.`data`.`observation` AS SELECT nullif(regexp_extract(`__r`.`subject`.`reference`, '([^/:]+)$', 1), '') AS `__subject_id`, named_struct('id', `__r`.`id`, 'status', `__r`.`status`, 'subject', `__r`.`subject`, 'valueQuantity', CASE WHEN `__r`.`valueQuantity` IS NULL THEN NULL ELSE named_struct('value', CAST(`__r`.`valueQuantity`.`value` AS bigint)) END, '__resource_type', CAST(CASE WHEN true THEN 'Observation' END AS STRING), '__resource_id', CAST(`__r`.`id` AS STRING)) AS `__resource` FROM (SELECT struct(*) AS `__r` FROM `acme`.`silver`.`observation`);
+CREATE OR REPLACE VIEW `acme_env`.`data`.`observation` AS SELECT nullif(regexp_extract(`__r`.`subject`.`reference`, '([^/:]+)$', 1), '') AS `patient_id`, named_struct('id', `__r`.`id`, 'status', `__r`.`status`, 'subject', `__r`.`subject`, 'valueQuantity', CASE WHEN `__r`.`valueQuantity` IS NULL THEN NULL ELSE named_struct('value', CAST(`__r`.`valueQuantity`.`value` AS bigint)) END) AS `resource` FROM (SELECT struct(*) AS `__r` FROM `acme`.`silver`.`observation`);
 
-CREATE OR REPLACE VIEW `acme_env`.`data`.`patient` AS SELECT CAST(`__r`.`id` AS STRING) AS `__subject_id`, named_struct('id', `__r`.`id`, 'birthDate', `__r`.`birthDate`, '__resource_type', CAST(CASE WHEN true THEN 'Patient' END AS STRING), '__resource_id', CAST(`__r`.`id` AS STRING)) AS `__resource` FROM (SELECT struct(*) AS `__r` FROM `acme`.`silver`.`patient`);
+CREATE OR REPLACE VIEW `acme_env`.`data`.`patient` AS SELECT CAST(`__r`.`id` AS STRING) AS `patient_id`, named_struct('id', `__r`.`id`, 'birthDate', `__r`.`birthDate`) AS `resource` FROM (SELECT struct(*) AS `__r` FROM `acme`.`silver`.`patient`);
 """
 
 

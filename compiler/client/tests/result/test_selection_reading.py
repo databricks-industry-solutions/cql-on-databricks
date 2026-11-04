@@ -56,6 +56,8 @@ class Reader:
         assert "information_schema" not in statement
         assert "cql_completed_results" not in statement
         assert "COUNT(*)" not in statement
+        if statement.startswith("DESCRIBE synthetic.data.patient"):
+            return [("resource", "struct<id:string>", None)]  # BIND-CONTRACT: the Patient view's columns
         if "'__entered' AS c" in statement:
             return [(0, "__entered", 2, None), (0, "__reached", 0, None), (0, "__passed", 0, None),
                     (0, "__multiple", 0, None), (0, "c0", 2, 2)]

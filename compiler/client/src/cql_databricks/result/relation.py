@@ -45,6 +45,19 @@ ORDINAL = "__ordinal"
 #: served result, but it is a key either way and must never be mistaken for a define's value.
 RESERVED = frozenset({SUBJECT_ID, ORDINAL, "__enzyme__row__id__"})
 
+def patient_rows(view: str, execute) -> str:
+    """BIND-CONTRACT, DATA-SUBJECT-KEY: an environment's Patient view read as ``(__subject_id, __resource)``, the
+    subject key a result carries and the resource, as a subquery. The key follows the engine's rule: the view's
+    ``patient_id`` when it returns one, else ``resource.id``. The view's columns are read once with ``DESCRIBE``; a
+    view without ``resource`` fails, naming it."""
+    columns = {str(r[0]) for r in execute(f"DESCRIBE {view}") or [] if r and r[0] and not str(r[0]).startswith("#")}
+    if "resource" not in columns:
+        raise ValueError(f"the Patient view {view} returns no `resource` column; a data view returns the resource "
+                         f"as a struct `resource` (BIND-CONTRACT)")
+    key = "CAST(patient_id AS STRING)" if "patient_id" in columns else "CAST(resource.id AS STRING)"
+    return f"(SELECT {key} AS {SUBJECT_ID}, resource AS __resource FROM {view})"
+
+
 def quote(identifier: str) -> str:
     """Backtick-quote a column or relation identifier for Spark SQL."""
     return "`" + identifier.replace("`", "``") + "`"

@@ -19,8 +19,8 @@ from cql_databricks.resolvers.terminology import FolderTerminologyResolver, Tabl
 
 PATIENT = ResourceSchema(fhir_type="Patient",
                          struct=StructType([StructField(n, StringType()) for n in
-                                            ("id", "gender", "__resource_type", "__resource_id")]),
-                         ddl="id STRING, gender STRING, __resource_type STRING, __resource_id STRING",
+                                            ("id", "gender")]),
+                         ddl="id STRING, gender STRING",
                          patient_context=True)
 
 
@@ -28,12 +28,22 @@ def _schemas(types):
     return {t: PATIENT for t in types}
 
 
+#: DATA-MODEL-SUBSET: the shape every fake view and table reports: its columns, as Spark type text.
+SHAPE = "struct<`id`:string,`gender`:string>"
+
+
 class _Runner:
+    """Records every statement; answers the two shape reads (`DATA-MODEL-SUBSET`) as a catalog would."""
+
     def __init__(self):
         self.statements = []
 
     def __call__(self, statement, params=None):
         self.statements.append((statement, dict(params or {})))
+        if "information_schema.columns" in statement:
+            wanted = (params or {}).get("table")
+            return [{"table_name": t, "column_name": c, "full_data_type": "string"}
+                    for t in ("condition", "patient") if wanted in (None, t) for c in ("id", "gender")]
         return []
 
 
@@ -87,8 +97,14 @@ TERMS = TableTerminologyResolver("acme.terminology.valueset", _Runner())
 class BindTest(unittest.TestCase):
     def test_rules_need_no_call_sites(self):
         """BIND-CALL-SITE, BIND-PUBLISHED-VIEW: resolvers that bind by rule are sent as their rules."""
-        bound = bind(None, data=SchemaDataResolver("acme.data"), terminology=TERMS, run=_Runner(), schemas=_schemas)
-        self.assertEqual(bound.data, {"rule": {"schema": "acme.data", "identity": "acme.data"}})
+        run = _Runner()
+        bound = bind(None, data=SchemaDataResolver("acme.data"), terminology=TERMS, run=run, schemas=_schemas)
+        self.assertEqual(bound.data, {"rule": {"schema": "acme.data", "identity": "acme.data"},
+                                      "shapes": {"condition": SHAPE, "patient": SHAPE}})
+        # DATA-MODEL-SUBSET: every view's shape is read in one query over the catalog's information_schema.
+        self.assertEqual(run.statements, [(
+            "SELECT table_name, column_name, full_data_type FROM `acme`.information_schema.columns "
+            "WHERE table_schema = :schema ORDER BY table_name, ordinal_position", {"schema": "data"})])
         self.assertEqual(bound.terminology, {"rule": [{"table": "acme.terminology.valueset",
                                                        "identity": "acme.terminology"}]})
         self.assertEqual(bound.terminology_tables, ("acme.terminology.valueset",))
@@ -99,10 +115,51 @@ class BindTest(unittest.TestCase):
         data = _PerSite({"Condition": TableRelation(name="acme.fhir.condition")})
         sites = [_retrieve("retrieve_a", "Condition", "A"), _retrieve("retrieve_b", "Condition", "B"),
                  _value_set("valueset_c")]
-        bound = bind(sites, data=data, terminology=TERMS, run=_Runner(), schemas=_schemas)
+        run = _Runner()
+        bound = bind(sites, data=data, terminology=TERMS, run=run, schemas=_schemas)
         self.assertEqual(bound.data, {"sites": {
             "retrieve_a": {"table": "acme.fhir.condition", "identity": "acme.fhir"},
-            "retrieve_b": {"table": "acme.fhir.condition", "identity": "acme.fhir"}}})
+            "retrieve_b": {"table": "acme.fhir.condition", "identity": "acme.fhir"}},
+            "shapes": {"Condition": SHAPE}})
+        # DATA-MODEL-SUBSET: one table bound at two sites has its columns read once, from information_schema,
+        # which reports a long struct whole where DESCRIBE TABLE cuts it short.
+        self.assertEqual(run.statements, [(
+            "SELECT column_name, full_data_type FROM `acme`.information_schema.columns "
+            "WHERE table_schema = :schema AND table_name = :table ORDER BY ordinal_position",
+            {"schema": "fhir", "table": "condition"})])
+
+    def test_a_rule_schema_with_no_views_fails_naming_it(self):
+        """DATA-MODEL-SUBSET: no view means no shape to read; the run fails before it compiles."""
+        with self.assertRaisesRegex(ResolverError, "acme.data has no view"):
+            bind(None, data=SchemaDataResolver("acme.data"), terminology=None, run=lambda st, p=None: [],
+                 schemas=_schemas)
+
+    def test_one_type_bound_to_tables_of_different_shapes_fails(self):
+        """DATA-MODEL-SUBSET: one run reads one shape of a type."""
+        class _Two(_PerSite):
+            def retrieve(self, site):
+                return TableRelation(name=f"acme.fhir.{site.define.lower()}")
+
+        def run(statement, params=None):
+            return [{"column_name": "id", "full_data_type": "string"}] + (
+                [{"column_name": "gender", "full_data_type": "string"}] if params["table"] == "a" else [])
+        with self.assertRaisesRegex(ResolverError, "acme.fhir.a and acme.fhir.b, whose shapes differ"):
+            bind([_retrieve("retrieve_a", "Condition", "A"), _retrieve("retrieve_b", "Condition", "B")],
+                 data=_Two({"Condition": None}), terminology=None, run=run, schemas=_schemas)
+
+    def test_a_reshaped_relation_is_a_contract_view_with_the_models_shape(self):
+        """DATA-MODEL-SUBSET, BIND-RESHAPE, BIND-CONTRACT, DATA-SUBJECT-KEY: a volume is reshaped to the model's struct
+        as ``resource``, its subject key as ``patient_id``; that row is its shape."""
+        run = _Runner()
+        data = _PerSite({"Patient": VolumeRelation(path="/Volumes/c/s/v/fhir", fhir_type="Patient")})
+        bound = bind([_retrieve("retrieve_a", "Patient")], data=data, terminology=None, run=run, schemas=_schemas)
+        self.assertEqual(bound.data["shapes"],
+                         {"Patient": "struct<`patient_id`:string,`resource`:struct<id:string,gender:string>>"})
+        created = run.statements[0][0]
+        self.assertIn("'gender', `__r`.`gender`", created)
+        self.assertIn("END AS `resource`", created)
+        self.assertIn("get_json_object(`value`, '$.id') AS `patient_id`", created)
+        self.assertNotIn("AS `__resource`", created)
 
     def test_a_per_site_terminology_answers_each_value_set_site(self):
         bound = bind([_value_set("valueset_a", "A"), _value_set("valueset_b", "B")], data=None,
@@ -148,7 +205,9 @@ class BindTest(unittest.TestCase):
         self.assertEqual(frame.views, [bound.views[0]])
         created = [s for s, _ in run.statements if s.startswith("CREATE OR REPLACE TEMPORARY VIEW")]
         self.assertEqual(len(created), 1)
-        self.assertIn("named_struct(", created[0])
+        self.assertIn("'id', `__r`.`id`", created[0])
+        self.assertIn("AS `resource`", created[0])
+        self.assertIn("AS `patient_id`", created[0])
         self.assertFalse(bound.reusable)
 
     def test_a_volume_relation_reads_its_ndjson_through_the_reshape(self):
@@ -208,7 +267,23 @@ class ResolverBinderTest(unittest.TestCase):
         bound = bound_request(_library(binder, service), CompileRequest(cql="library X"))
         self.assertEqual(service.described, [])
         self.assertEqual(bound.data["rule"]["schema"], "acme.data")
-        self.assertEqual(bound.to_json()["data"], {"rule": {"identity": "acme.data", "schema": "acme.data"}})
+        self.assertEqual(bound.to_json()["data"], {"rule": {"identity": "acme.data", "schema": "acme.data"},
+                                                   "shapes": {"condition": SHAPE, "patient": SHAPE}})
+
+    def test_a_session_reads_its_data_shapes_once(self):
+        """DATA-MODEL-SUBSET: the binder keeps the shapes it read; forget_shapes reads them again."""
+        runner = _Runner()
+        binder = ResolverBinder(data=SchemaDataResolver("acme.data"), terminology=TERMS, run=lambda: runner,
+                                schemas=_schemas)
+        library = _library(binder, _Service(None))
+        reads = lambda: sum("information_schema" in st for st, _ in runner.statements)
+        first = bound_request(library, CompileRequest(cql="library X"))
+        second = bound_request(library, CompileRequest(cql="library Y"))
+        self.assertEqual(reads(), 1)
+        self.assertEqual(first.data["shapes"], second.data["shapes"])
+        binder.forget_shapes()
+        bound_request(library, CompileRequest(cql="library Z"))
+        self.assertEqual(reads(), 2)
 
     def test_a_per_site_resolver_asks_describe_with_the_compiles_own_request(self):
         service = _Service((_retrieve("retrieve_a", "Patient"),))

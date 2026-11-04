@@ -3,7 +3,7 @@ package com.databricks.cql.transpiler.lower
 import com.databricks.cql.error.UnsupportedNode
 import com.databricks.cql.ir.{Case => CqlCase, _}
 import com.databricks.cql.passes.RetrieveReads
-import com.databricks.cql.sema.{FhirModel, FhirSchema}
+import com.databricks.cql.sema.{FhirModel, ViewSlots}
 import com.databricks.cql.spark.SystemColumns
 import com.databricks.cql.transpiler.emit.{SqlExpr, SqlNames, SqlRel}
 import com.databricks.cql.transpiler.emit.SqlExpr._
@@ -288,7 +288,9 @@ object SqlQueryLowering {
   private val SubjectId  = SystemColumns.SubjectId
   private val ValueCol   = SystemColumns.Val
   private val Resource   = SystemColumns.Resource
-  private val ResourceId = SystemColumns.ResourceId
+
+  /** DATA-EXPORT: a resource's identity, read from its own `id`; a resource carries no lineage field. */
+  private def resourceIdOf(resource: SqlExpr): SqlExpr = Cast(Field(resource, "id"), "STRING")
 
   /** `{http://hl7.org/fhir}Encounter` -> `Encounter`. The single home for FHIR type-name localization
     * (mirrors `QueryLowering.localName`). */
@@ -299,7 +301,7 @@ object SqlQueryLowering {
   private def navPath(base: SqlExpr, path: String): SqlExpr =
     path.split("\\.").filter(_.nonEmpty).foldLeft(base)((b, seg) => Field(b, seg))
 
-  /** EMIT-SQL-RETRIEVE-DEMAND-BOUND: the physical top-level fields (identity lineage + demanded slots) a
+  /** EMIT-SQL-RETRIEVE-DEMAND-BOUND: the physical top-level fields (`id` + demanded slots) a
     * demand-bounded MOUNT of `rt` must carry — the union of every field navigated on this type in the
     * linked library, a `value[x]` base already expanded by `RetrieveDemand` to its typed slots. This is
     * the CONTRACT a narrow mount (the customer's typed subset, or a demand-pruned provider view) is built
@@ -311,7 +313,7 @@ object SqlQueryLowering {
     env.retrieveDemand.get(rt) match {
       case Some(com.databricks.cql.passes.RetrieveDemand.Narrow(fields)) =>
         Some(fields.toSeq.sorted.flatMap { f =>
-          val expanded = FhirModel.choiceSlots(rt, f)
+          val expanded = ViewSlots.choiceSlots(rt, f)
           if (expanded.nonEmpty) expanded else Seq(f)
         }.distinct)
       case _ => None
@@ -515,7 +517,7 @@ object SqlQueryLowering {
       // `USING (system, code)` (a hash join, not a nested loop), DISTINCT the matching ids, then equi-semi-join
       // the mount back on the id — two hash joins that scale linearly instead of the `exists`-lambda cartesian.
       case mount: SqlRel.TableRef =>
-        val idExpr = navPath(resourceExpr, ResourceId) // stable resource identity (`__resource.__resource_id`)
+        val idExpr = resourceIdOf(resourceExpr) // stable resource identity
         val exploded = SqlRel.Select(
           projections = Seq(
             SqlRel.Proj(idExpr, "__mid"),
@@ -677,7 +679,7 @@ object SqlQueryLowering {
     SqlRel.Select(
       projections = Seq(
         SqlRel.Proj(Col(SubjectId)),
-        SqlRel.Proj(navPath(Col(Resource), ResourceId), "__ordinal"),
+        SqlRel.Proj(resourceIdOf(Col(Resource)), "__ordinal"),
         SqlRel.Proj(Col(Resource), ValueCol)),
       from = asFrom(filteredRetrieve(r, rt, env, lib, typeOf), "__ret"))
   }
@@ -698,7 +700,7 @@ object SqlQueryLowering {
         projections = Seq(
           SqlRel.Proj(Col(SubjectId)),
           SqlRel.Proj(Col(Resource), alias),
-          SqlRel.Proj(navPath(Col(Resource), ResourceId), ordName(alias))),
+          SqlRel.Proj(resourceIdOf(Col(Resource)), ordName(alias))),
         from = asFrom(filteredRetrieve(r, rt, env, lib, typeOf), "__ret"))
     case ExpressionRef(name, None) if relDefs.contains(name) =>
       SqlRel.Select(
@@ -1517,7 +1519,7 @@ object SqlQueryLowering {
 
   /** The declared slot for `sysType` on choice element `path` of FHIR type `rt`, or `None`. */
   private def fhirSlotOn(rt: String, path: String, sysType: String): Option[String] = {
-    val declared = FhirModel.choiceSlots(rt, path)
+    val declared = ViewSlots.choiceSlots(rt, path)
     fhirSlotSuffixes(sysType).map(path + _).find(declared.contains)
   }
 
@@ -1621,7 +1623,7 @@ object SqlQueryLowering {
     def slot(alias: String, path: String, sysType: String): Option[String] =
       aliasTypes.get(alias).flatMap(rt => fhirSlotOn(rt, path, sysType))
     def choiceSlots(alias: String, path: String): Seq[String] =
-      aliasTypes.get(alias).toSeq.flatMap(rt => FhirModel.choiceSlots(rt, path))
+      aliasTypes.get(alias).toSeq.flatMap(rt => ViewSlots.choiceSlots(rt, path))
     def prop(alias: String, name: String): Expr = Property(None, Some(alias), name)
     def boolLit(b: Boolean): Expr = Literal(FhirChoiceBool, Some(b.toString))
 
@@ -1769,7 +1771,7 @@ object SqlQueryLowering {
   private[lower] def rewriteTypedChoiceValueX(e: Expr, stype: Expr => CqlType,
                                               letMap: Map[String, Expr] = Map.empty): Expr = {
     def declared(base: Expr, p: String): Seq[String] = stype(base) match {
-      case CqlType.NamedType(rt) => FhirModel.choiceSlots(rt, p)
+      case CqlType.NamedType(rt) => ViewSlots.choiceSlots(rt, p)
       case _                     => Nil
     }
     def slot(base: Expr, p: String, sysType: String): Option[String] = stype(base) match {
@@ -1840,13 +1842,13 @@ object SqlQueryLowering {
       case _ => None
     }
     def vxSlots(m: CqlType, p: String): Seq[String] = m match {
-      case CqlType.NamedType(rt) => FhirModel.choiceSlots(rt, p)
+      case CqlType.NamedType(rt) => ViewSlots.choiceSlots(rt, p)
       case _                     => Nil
     }
     def vxSlotFhir(m: CqlType, p: String, fhirType: String): Option[String] = m match {
       case CqlType.NamedType(rt) =>
         val s = p + localName(fhirType).capitalize
-        Option(s).filter(FhirModel.choiceSlots(rt, p).contains)
+        Option(s).filter(ViewSlots.choiceSlots(rt, p).contains)
       case _ => None
     }
     def hasField(m: CqlType, p: String): Boolean = m match {

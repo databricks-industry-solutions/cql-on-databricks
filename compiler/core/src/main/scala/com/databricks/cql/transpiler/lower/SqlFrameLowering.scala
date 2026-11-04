@@ -3,7 +3,7 @@ package com.databricks.cql.transpiler.lower
 import com.databricks.cql.error.UnsupportedNode
 import com.databricks.cql.ir.{Case => CqlCase, _}
 import com.databricks.cql.passes.{ChoiceDemand, Materialize, RetrieveDemand, RetrieveReads, Schedule, SchemaPaths, TypeEncoding}
-import com.databricks.cql.sema.FhirModel
+import com.databricks.cql.sema.{FhirModel, ViewSlots}
 import com.databricks.cql.spark.SystemColumns
 import com.databricks.cql.transpiler.emit.SqlExpr._
 import com.databricks.cql.transpiler.emit.{SqlExpr, SqlNames, SqlRel, SqlRender, SqlScript, SqlStmt}
@@ -75,8 +75,14 @@ object SqlFrameLowering {
   def lower(lib: Library, env0: SqlEvalEnv, target: Option[String] = None): SqlLoweredLibrary = {
     val tctx   = TypeEncoding.ctxOf(lib)
     val typeOf: Expr => CqlType = e => TypeEncoding.typeOf(e, tctx)
-    // DATA-PATH-IN-SCHEMA: an element the data model leaves out fails here, not when the SQL runs.
-    SchemaPaths.check(lib, typeOf)
+    // DATA-PATH-IN-SCHEMA, DATA-MODEL-SUBSET: an element the bound data's shape leaves out fails here, not when
+    // the SQL runs; choice dispatch below reads only the slots the shapes hold.
+    SchemaPaths.check(lib, typeOf, env0.shapes)
+    ViewSlots.withShapes(env0.shapes.map(_.values))(lowerChecked(lib, env0, target, typeOf))
+  }
+
+  private def lowerChecked(lib: Library, env0: SqlEvalEnv, target: Option[String],
+                           typeOf: Expr => CqlType): SqlLoweredLibrary = {
     // Thread the pure-IR materialization-policy inputs from the single source (`passes.Materialize`),
     // and the het-`Choice` demand (ARCH-RESOURCE-HANDLE) from `passes.ChoiceDemand` — both Spark-free.
     // DATA-RETRIEVE-BARRIER-OPT: the FILTERED reads to give their own object, under the optional
@@ -88,27 +94,10 @@ object SqlFrameLowering {
       skipUnfiltered = Materialize.skipUnfilteredNames(lib, env0.config),
       choiceDemand   = ChoiceDemand.analyze(lib, typeOf),
       // EMIT-SQL-RETRIEVE-DEMAND-BOUND: the fields navigated anywhere in the linked library (per resource
-      // TYPE — the mount is shared), used to bound a demand-pruned mount and to check binding coverage.
+      // TYPE — the mount is shared), used to bound a demand-pruned mount.
       retrieveDemand = RetrieveDemand.analyze(lib, typeOf),
       // Every node that reads a selected read resolves to that read's object at the retrieve seam.
       materializedReads = reads.flatMap(s => s.nodes.map(_ -> s.obj)).toMap)
-
-    // BIND-CAPABILITY-OVERLAP: fail loud on a coverage GAP (CORE-NO-SILENT-MISLOWER). For every resource
-    // type whose binding declares an AVAILABLE typed-subset, a demanded field NOT provided is a bind-time
-    // error naming the measure's need and the binding's coverage — never a silent mislowering. Inert when
-    // no subset is declared (`available` empty → full model), and downgraded to `null` only under the
-    // opt-in lenient override. The demand set already holds expanded physical slots (RetrieveDemand).
-    if (env.available.nonEmpty && !env.config.bindingGapLenient)
-      env.retrieveDemand.foreach {
-        case (rt, RetrieveDemand.Narrow(fields)) if env.available.contains(rt) =>
-          val missing = (fields -- env.available(rt)).toSeq.sorted
-          if (missing.nonEmpty)
-            throw UnsupportedNode("Retrieve",
-              s"binding for '$rt' does not provide demanded field(s) ${missing.mkString(", ")}; " +
-                s"it provides {${env.available(rt).toSeq.sorted.mkString(", ")}} " +
-                s"(set the lenient override to treat unsupported fields as null — re-enabling silent gaps)")
-        case _ => ()
-      }
 
     val contextNames = lib.contexts.map(_.name).toSet
     val defines = Schedule

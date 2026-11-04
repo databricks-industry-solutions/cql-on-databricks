@@ -25,7 +25,7 @@ final class BatchCompileSpec extends AnyFunSuite {
       val recipeCounts = for (year <- Seq(2025, 2026)) yield {
         val request = CompileRequest(cql = Some(root), depCql = deps, durable = true,
           measurementPeriod = Some(s"$year-01-01" -> s"$year-12-31"),
-          data = Some(DataBinding(Some(DataBinding.Rule("synthetic.data", Some("synthetic.data"))), Map.empty)),
+          data = Some(DataBinding(Some(DataBinding.Rule("synthetic.data", Some("synthetic.data"))), Map.empty, StockShapes.all)),
           terminology = Some(TerminologyBinding(Some(Seq(RetrieveRelation("synthetic.terminology.valueset",
             Some("synthetic.terminology")))), Map.empty)), udfSchema = Some("synthetic.runtime"))
         val legacy = request.copy(cql = None, elmJson = rootElm, depCql = Seq.empty, deps = depElms,

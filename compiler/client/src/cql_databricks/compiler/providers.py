@@ -130,8 +130,8 @@ RELATION = "relation"
 #: the resource struct rather than ``__val``. Only ever seen on a :class:`DatasetRecipe`, never on a define.
 RESOURCE = "resource"
 
-#: The payload column of a :data:`RESOURCE`-kind dataset (the FHIR resource struct, carrying the
-#: ``__resource_type`` / ``__resource_id`` identity lineage).
+#: The payload column of a :data:`RESOURCE`-kind dataset (the FHIR resource struct; its identity is its type and
+#: ``id``, `DATA-EXPORT`).
 RESOURCE_COLUMN = "__resource"
 
 
@@ -355,7 +355,7 @@ class LibraryGraph:
     terminology_version: Optional[str] = None
     # EMIT-DESCRIBE-ENCODING: the het-Choice carrier encoding ("variant"|"struct") the library was
     # lowered against, and the per-resource demanded fields (the minimum a typed-subset binding must
-    # supply, BIND-CAPABILITY-OVERLAP; ["*"] = whole-body/het-Choice). The runtime re-lowers against the
+    # supply, DATA-MODEL-SUBSET; ["*"] = whole-body/het-Choice). The runtime re-lowers against the
     # described encoding, so a mismatch is a correctness bug.
     encoding: str = "struct"
     retrieve_demand: Dict[str, List[str]] = field(default_factory=dict)
@@ -543,7 +543,7 @@ class CompileProvider(abc.ABC):
         raise NotImplementedError(f"{type(self).__name__} does not support resource_types()")
 
     def resource_schemas(self, types: Sequence[str]) -> Dict[str, "ResourceSchema"]:
-        """Each of ``types``' ``__resource`` struct, from the compiler's model (`CLIENT-RESOURCE-SCHEMA`). An
+        """Each of ``types``' ``resource`` struct, from the compiler's model (`CLIENT-RESOURCE-SCHEMA`). An
         unmodeled type raises, naming it. Optional capability."""
         raise NotImplementedError(f"{type(self).__name__} does not support resource_schemas()")
 
@@ -681,9 +681,9 @@ class RemoteProvider(_JsonProvider):
 
 @dataclass(frozen=True, kw_only=True)
 class ResourceSchema:
-    """One FHIR type's ``__resource`` struct in the compiler's model (`CLIENT-RESOURCE-SCHEMA`): the struct a
-    retrieve of that type returns (`BIND-CONTRACT`), as a PySpark ``StructType`` and as DDL text.
-    ``patient_context`` is whether the type is in the Patient compartment, which decides its ``__subject_id``
+    """One FHIR type's ``resource`` struct in the compiler's model (`CLIENT-RESOURCE-SCHEMA`): the struct a data
+    view of that type returns (`BIND-CONTRACT`), as a PySpark ``StructType`` and as DDL text.
+    ``patient_context`` is whether the type is in the Patient compartment, which decides its ``patient_id``
     (`DATA-SUBJECT-KEY`)."""
     fhir_type: str
     struct: object
