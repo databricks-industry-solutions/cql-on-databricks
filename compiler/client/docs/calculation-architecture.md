@@ -56,6 +56,7 @@ shipped ones read one schema each, in one statement:
 | `SchemaResultResolver(schema)` | your own: tables named with your digest that you own | nothing |
 | `SchemaResultResolver(schema, reuse="official")` | anyone's, the latest first | nothing |
 | `SchemaResultStore(schema)` | your own | your own, as you |
+| `SessionResultStore()` | this session's | this session's, as temporary tables (`CLIENT-SESSION-RESULTS`) |
 
 `Overlay(first, then)` layers them (`CLIENT-RESOLVER-OVERLAY`): `then` is asked only for what `first` did not find,
 and an overlay over a store writes through it. An environment's are two layers (`RUN-CLIENT-RESULT-OWNERSHIP`):
@@ -72,6 +73,7 @@ through a resolver and never compute on a miss.
 | `EnvironmentResolver.draft_store(env)` | the environment's `draft_results`, shared, each user's tables their own | the Designer |
 | `EnvironmentResolver.official_store(env)` | the environment's `results`, only for the environment's own content | the implementer's publishing Jobs |
 | `Overlay(SchemaResultStore((catalog, schema)), ...)` | a schema of your own | notebooks and Jobs |
+| `Overlay(SessionResultStore(), ...)` | the session's temporary tables, gone when it ends | notebooks and Jobs |
 
 ## Tables and tags
 

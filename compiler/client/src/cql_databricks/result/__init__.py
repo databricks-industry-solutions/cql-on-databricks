@@ -11,8 +11,10 @@ from .inline import InlineRun, run_inline
 from .durable import MaterializedResults, ResultsUnavailable, materialize, open_result_set, resolve_results
 # CLIENT-RESULT-RESOLVER: kept results in one schema, found and written, in Delta; layer them with Overlay.
 from .store import OFFICIAL, OWN, SchemaResultResolver, SchemaResultStore
+# CLIENT-SESSION-RESULTS: kept results that live as long as one SQL session, in temporary tables.
+from .session_store import SessionResultStore
 
-__all__ = ["SchemaResultResolver", "SchemaResultStore", "OWN", "OFFICIAL",
+__all__ = ["SchemaResultResolver", "SchemaResultStore", "SessionResultStore", "OWN", "OFFICIAL",
            "MaterializedResults", "ResultsUnavailable", "materialize", "open_result_set",
            "resolve_results",
            "PreparedCalculation", "prepare_calculation", "PlanObserver", "StepObserver", "StepRecord",

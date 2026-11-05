@@ -224,6 +224,24 @@ results.read("Initial Population").display()
 - `environments.draft_store(env)` is the same overlay over the environment's shared `draft_results`, as the
   Designer's runs use. It needs `CREATE TABLE` on that schema. `environments.results(env)` reads both layers and
   writes nothing.
+- `SessionResultStore(spark=spark)` (or `run=`) keeps results for the session only, as temporary tables
+  (`CLIENT-SESSION-RESULTS`). Nothing outside the session sees them, and they go when it ends.
+
+Pick what a run reuses and keeps by layering them. `official` is
+`SchemaResultResolver(env.address("results"), spark=spark, reuse=OFFICIAL)`, `own` is
+`SchemaResultResolver(env.address("draft_results"), spark=spark)`, and `session` is
+`SessionResultStore(spark=spark)`:
+
+| Reuse | Keep what is computed | `results=` |
+|---|---|---|
+| Your own, then official | in `draft_results` | `environments.draft_store(env)` |
+| Official only | nothing: read only, so `resolve_results`, inline runs and `cql()` | `official` |
+| Official, then this session's | for the session | `Overlay(session, official)` |
+| This session's only | for the session | `session` |
+| Your own, then this session's | for the session | `Overlay(session, own)` |
+
+A durable run needs a store to write what it computes, so "official only" works with `materialize` as
+"official, then this session's".
 - Table names carry the writer's digest, so two identities computing one result write two tables. Two runs of
   yours computing one result write the same table. Each looks the result up again just before it writes, and again
   if its write fails, and reuses it if another run finished it.

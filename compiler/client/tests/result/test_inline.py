@@ -174,6 +174,9 @@ class Kept(ResultResolver):
     def destination(self):
         return ("synthetic", "draft_results")
 
+    def columns(self, tables):
+        raise AssertionError("an inline run reads no column descriptors (CLIENT-RESULT-RESOLVER)")
+
     def holds(self, table):
         return True
 

@@ -359,6 +359,11 @@ class ResultResolver(abc.ABC):
     def holds(self, table: TableRef) -> bool:
         """Whether a result read from ``table`` could have come from this resolver."""
 
+    @abc.abstractmethod
+    def columns(self, tables: Sequence[TableRef]) -> Mapping[TableRef, Sequence[tuple[str, str]]]:
+        """CLIENT-RESULT-RESOLVER — each of ``tables``' columns, ``(name, type)`` in order, every one a table it holds.
+        A table it reports no columns for is left out."""
+
 
 class ResultWrites(abc.ABC):
     """The writes of one run into a :class:`ResultStore`, opened by :meth:`ResultStore.writes`. The store names each
@@ -541,6 +546,17 @@ class _ResultOverlay(Overlay, ResultResolver):
 
     def holds(self, table: TableRef) -> bool:
         return self.dev.holds(table) or self.base.holds(table)
+
+    def columns(self, tables: Sequence[TableRef]) -> Mapping[TableRef, Sequence[tuple[str, str]]]:
+        """Each table's columns, from the layer that holds it."""
+        mine = [t for t in tables if self.dev.holds(t)]
+        rest = [t for t in tables if not self.dev.holds(t)]
+        if any(not self.base.holds(t) for t in rest):
+            raise ValueError("columns were asked for a table neither layer holds")
+        found = dict(self.dev.columns(mine)) if mine else {}
+        if rest:
+            found.update(self.base.columns(rest))
+        return found
 
 
 class _ResultStoreOverlay(_ResultOverlay, ResultStore):

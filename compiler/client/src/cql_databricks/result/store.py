@@ -99,6 +99,25 @@ class SchemaResultResolver(ResultResolver):
     def holds(self, table: TableRef) -> bool:
         return (table.catalog, table.schema) == self.schema
 
+    def columns(self, tables: Sequence[TableRef]) -> Mapping[TableRef, Sequence[tuple[str, str]]]:
+        """CLIENT-RESULT-RESOLVER — every column of ``tables``, in one read of the catalog's ``information_schema``."""
+        if any(not self.holds(t) for t in tables):
+            raise ValueError(f"columns were asked for a table outside {'.'.join(self.schema)}")
+        if not tables:
+            return {}
+        rows = self.run("SELECT table_name, column_name, full_data_type FROM "
+                        f"{table_sql((self.schema[0], 'information_schema', 'columns'))} "
+                        "WHERE table_schema = :schema AND table_name IN "
+                        "(SELECT explode(from_json(:tables, 'ARRAY<STRING>'))) ORDER BY table_name, ordinal_position",
+                        {"schema": self.schema[1], "tables": json.dumps(sorted({t.table for t in tables}))})
+        by_name = {t.table: t for t in tables}
+        found: dict[TableRef, list[tuple[str, str]]] = {}
+        for row in rows:
+            if row["table_name"] not in by_name:
+                raise ValueError("catalog returned unrequested column descriptors")
+            found.setdefault(by_name[row["table_name"]], []).append((row["column_name"], row["full_data_type"]))
+        return found
+
     @property
     def owner(self) -> str:
         """RUN-CLIENT-RESULT-OWNERSHIP — the principal ``run`` acts as, read once."""
