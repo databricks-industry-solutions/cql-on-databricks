@@ -90,7 +90,12 @@ object Corpus {
   private def fhir(library: String, withTerminology: Boolean, label: String,
                    deviations: Seq[Differential.Deviation] = Nil, shapes: Map[String, String] = Map.empty,
                    access: Map[String, Seq[(String, String)]] = Map.empty): Entry =
-    Entry(label, () => {
+    Entry(label, () => fhirCase(library, withTerminology, deviations, shapes, access))
+
+  /** The [[Differential.Case]] of FHIR fixture `library` over `data/fhir/`, as [[fhir]] builds it. */
+  private[it] def fhirCase(library: String, withTerminology: Boolean, deviations: Seq[Differential.Deviation] = Nil,
+                           shapes: Map[String, String] = Map.empty,
+                           access: Map[String, Seq[(String, String)]] = Map.empty): Differential.Case = {
       val spark = SparkConnect.session()
       val dataDir = Paths.dataDir.getAbsolutePath
       val resources = Map(
@@ -104,7 +109,7 @@ object Corpus {
       val expansions =
         if (withTerminology)
           Pipeline().normalize(Paths.read(Paths.elm(library))).valueSets
-            .map(vs => vs.id -> readExpansion(vs.id)).toMap
+            .map(vs => vs.id -> readExpansion(vs.id, vs.version)).toMap
         else Map.empty[String, Set[(String, String)]]
       Differential.Case(
         library,
@@ -114,7 +119,7 @@ object Corpus {
         refEnv = GroundTruthRunner.RefEnv(resourcesByType = resources, expansions = expansions,
           extraLibrarySources = librarySources(library)),
         deviations = deviations)
-    })
+  }
 
   /** A QICore fixture over `data/qicore/` (shared by the small QICore fixtures, kept apart from `data/fhir/`
     * so their rows cannot move another fixture's answers). Every resource file there feeds both sides; the
@@ -259,6 +264,7 @@ object Corpus {
     fhir("FhirRetrieveRelation", withTerminology = true, "FhirRetrieveRelation: each retrieve reads the relation bound to its call site, the map's entry over the rule (BIND-RELATION/BIND-CALL-SITE)"),
     fhir("FhirRetrieveParameters", withTerminology = false, "FhirRetrieveParameters: a retrieve's request carries the constant parameters its define uses, read before parameters are inlined (BIND-RETRIEVE-REQUEST)"),
     fhir("FhirTerminologyLayers", withTerminology = true, "FhirTerminologyLayers: a value set is read from the first terminology relation that holds it (BIND-CALL-SITE/CLIENT-RESOLVER-OVERLAY)"),
+    fhir("FhirValueSetVersion", withTerminology = true, "FhirValueSetVersion: a declaration that pins a version reads only that version's codes (LANG-VALUESET-VERSION)"),
     fhir("FhirDatePushdown", withTerminology = false, "FhirDatePushdown: date-range pushdown over a FHIR date-typed property (ToDate) folds at Date precision and self-diffs clean (ARCH-PUSHDOWN/LANG-INTERVAL)"),
     fhir("FhirDateArithmetic", withTerminology = false, "FhirDateArithmetic: minimal isolation of a measure's temporal-arithmetic tower (birthDate + years / end-of-interval boundary) — the make_interval/date_format tower diffs clean (LANG-INTERVAL/ARCH-TEMPORAL-CSE)"),
     fhir("FhirPeriodWhere", withTerminology = false, "FhirPeriodWhere: a FHIR Period property in a temporal where (ToInterval -> Allen during) diffs clean (LANG-INTERVAL)"),
@@ -391,12 +397,14 @@ object Corpus {
   private def readLines(file: String): Seq[String] =
     Paths.read(new File(Paths.dataDir, file)).linesIterator.filter(_.trim.nonEmpty).toSeq
 
-  /** Read a value set's `(system, code)` expansion from `valueset-<lastUrlSegment>.ndjson`. */
-  private def readExpansion(valueSetId: String): Set[(String, String)] = {
-    val seg = valueSetId.split("/").last
-    readLines(s"valueset-$seg.ndjson").map { line =>
-      val o = ujson.read(line)
-      (o("system").str, o("code").str)
-    }.toSet
+  /** Read a value set's `(system, code)` expansion from `valueset-<lastUrlSegment>.ndjson`: the rows of the
+    * `version` the declaration pins, or every row when it pins none (LANG-VALUESET-VERSION). A value set with
+    * no file has no codes, as [[SparkTerminology]] reads it. */
+  private def readExpansion(valueSetId: String, version: Option[String]): Set[(String, String)] = {
+    val file = s"valueset-${valueSetId.split("/").last}.ndjson"
+    if (!new File(Paths.dataDir, file).exists) Set.empty
+    else readLines(file).map(ujson.read(_)).filter { o =>
+      version.forall(v => o.obj.get("version").flatMap(_.strOpt).contains(v))
+    }.map(o => (o("system").str, o("code").str)).toSet
   }
 }

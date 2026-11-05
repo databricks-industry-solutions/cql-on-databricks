@@ -136,10 +136,11 @@ object SqlDifferential {
     * reads another type. The rows are the case's injected sample data (the SAME `DataProvider` the reference
     * reads), a correct superset the plan re-filters above the relation (BIND-CAPABILITY).
     *
-    * Terminology is TWO layers by rule (`CLIENT-RESOLVER-OVERLAY`). The value sets are sorted by id. An
+    * Terminology is TWO layers by rule (`CLIENT-RESOLVER-OVERLAY`). The value sets with rows are sorted by id. An
     * even-indexed set's expansion is in the first layer, and the second layer holds, under its id, every code of
     * every value set. An odd-indexed set is only in the second layer. So reading a set from anything but the
-    * first layer that holds it changes the answer. */
+    * first layer that holds it changes the answer. Each row keeps its `version` (LANG-VALUESET-VERSION); a value
+    * set with no rows is in neither layer. */
   private[it] def providerEnv(spark: SparkSession, c: Differential.Case, optimized: Library,
                               base: SqlEvalEnv): SqlEvalEnv = {
     // BIND-RETRIEVE-REQUEST: the parameter scope is read off the library before parameters are inlined, as the
@@ -190,10 +191,13 @@ object SqlDifferential {
     }.getOrElse(DataBinding(None, Map.empty))
     val layers: Seq[RetrieveRelation] = c.terminology.map { tp =>
       val key = base.valueSetKeyColumn
+      val version = base.valueSetVersionColumn
       val sets = optimized.valueSets.map(_.id).distinct.sorted
-      val expansions = sets.map(id => id -> tp.expand(id).select("system", "code"))
+      // LANG-VALUESET-VERSION: a value set with no rows is in no layer, so a run reading it is refused.
+      val expansions = sets.map(id => id -> tp.expand(id).select("system", "code", version))
+        .filter { case (_, df) => !df.isEmpty }
       val everyCode = expansions.map(_._2).reduceOption(_ unionByName _)
-      def keyed(id: String, df: DataFrame) = df.withColumn(key, F.lit(id)).select(key, "system", "code")
+      def keyed(id: String, df: DataFrame) = df.withColumn(key, F.lit(id)).select(key, version, "system", "code")
       val first = expansions.zipWithIndex.collect { case ((id, df), i) if i % 2 == 0 => keyed(id, df) }
       val second = expansions.zipWithIndex.map {
         case ((id, df), i) => if (i % 2 == 0) keyed(id, everyCode.get) else keyed(id, df)
@@ -201,7 +205,8 @@ object SqlDifferential {
       val names = Seq("valuesets", "valuesets__base")
       Seq(first, second).zip(names).foreach { case (parts, name) =>
         parts.reduceOption(_ unionByName _).getOrElse(spark.sql(
-          s"SELECT CAST(NULL AS STRING) AS $key, CAST(NULL AS STRING) AS system, CAST(NULL AS STRING) AS code " +
+          s"SELECT CAST(NULL AS STRING) AS $key, CAST(NULL AS STRING) AS $version, CAST(NULL AS STRING) AS system, " +
+            "CAST(NULL AS STRING) AS code " +
             "WHERE false")).createOrReplaceTempView(name)
       }
       names.map(n => RetrieveRelation(n, Some("conformance-terminology")))
@@ -308,6 +313,30 @@ object SqlDifferential {
       s -> (scalarNames.map(n => n -> scalarMaps(n).getOrElse(s, rb.nullValue)).toMap ++
             relNames.map(n => n -> relMaps(n).getOrElse(s,
               if (nullSubjects.get(n).exists(_.contains(s))) rb.nullValue else rb.emptyList)).toMap)
+    }.toMap
+  }
+
+  /** LANG-VALUESET-VERSION: lower `c`, run its statements on `spark`, then read each of `defines`: the message it
+    * failed with, or none when it read. A barrier (`CACHE TABLE`) runs when it is registered, so a define that
+    * fails there is recorded there. For fixtures whose defines are expected to fail, which have no reference
+    * answer to diff. */
+  def failures(spark: SparkSession, c: Differential.Case, defines: Seq[String]): Map[String, Option[String]] = {
+    val config = Differential.evalConfig(c.library)
+    val optimized = Optimize.run(Differential.buildLibrary(c), config)
+    val lowered = SqlFrameLowering.lower(optimized, providerEnv(spark, c, optimized, SqlEvalEnv(c.context, config)))
+    def q(name: String) = "`" + name.replace("`", "``") + "`"
+    // The Connect client wraps the server's error: its message is in the cause chain.
+    def messages(e: Throwable): String =
+      Iterator.iterate(e)(_.getCause).takeWhile(_ != null).map(x => String.valueOf(x.getMessage)).mkString(" | ")
+    val failed = mutable.Map.empty[String, String]
+    lowered.script.statements.foreach { s =>
+      try spark.sql(s"DROP VIEW IF EXISTS ${q(s.name)}") catch { case _: Throwable => () }
+      try spark.sql(SqlRender.render(s)) catch { case e: Throwable => failed(s.name) = messages(e) }
+    }
+    defines.map { d =>
+      val name = SqlNames.obj(d)
+      d -> failed.get(name).orElse(
+        scala.util.Try(spark.sql(s"SELECT count(*) FROM ${q(name)}").collect()).failed.toOption.map(messages))
     }.toMap
   }
 

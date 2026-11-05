@@ -388,10 +388,18 @@ object SqlQueryLowering {
     env.retrieveMount(call, CallSite.retrieve(call, if (r.isEmpty) None else env.siteOwner(lib)))
   }
 
-  /** BIND-CALL-SITE: the value-set site for a membership test on `vsId` in the define being lowered. */
-  private[lower] def valueSetMount(vsId: String, lib: Library, env: SqlEvalEnv): SqlRel =
-    env.valueSetMount(vsId, CallSite.valueSet(vsId, lib.valueSets.find(_.id == vsId).flatMap(_.version),
-      env.siteOwner(lib)))
+  /** BIND-CALL-SITE: the value-set site for a membership test on `vsId` in the define being lowered, carrying the
+    * version the library's declaration pins (LANG-VALUESET-VERSION). Declarations of one value set that pin
+    * different versions, or one pinned and one not, fail: one membership reads one expansion, and picking a
+    * declaration would silently read the wrong one (CORE-NO-SILENT-MISLOWER). */
+  private[lower] def valueSetMount(vsId: String, lib: Library, env: SqlEvalEnv): SqlRel = {
+    val versions = lib.valueSets.filter(_.id == vsId).map(_.version).distinct
+    if (versions.size > 1)
+      throw UnsupportedNode("InValueSet", s"value set '$vsId' is declared with different versions " +
+        s"(${versions.map(_.getOrElse("none")).mkString(", ")}) in library ${lib.id}: " +
+        "declare it once (LANG-VALUESET-VERSION)")
+    env.valueSetMount(vsId, CallSite.valueSet(vsId, versions.headOption.flatten, env.siteOwner(lib)))
+  }
 
   /** BIND-RETRIEVE-REQUEST: what one retrieve call site asks its data binding for, as [[RetrieveCall]] holds it.
     * A relation takes no arguments. The compiled plan re-applies every filter above it (BIND-CAPABILITY), so a

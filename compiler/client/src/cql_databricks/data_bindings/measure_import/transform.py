@@ -63,7 +63,7 @@ class ValueSetExpansionRow:
     system: str
     code: str
     display: str | None
-    version: str | None        # expansion timestamp / ValueSet version
+    version: str | None        # ValueSet.version, the version a CQL declaration pins (LANG-VALUESET-VERSION)
     source_url: str            # canonical ValueSet URL
     source_package: str
     ingested_at: str

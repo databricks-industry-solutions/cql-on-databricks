@@ -65,9 +65,11 @@ def test_bundles_are_flattened_at_any_depth():
 
 
 def test_an_expansion_gives_its_codes_and_skips_abstract_groups():
+    """LANG-VALUESET-VERSION — the rows carry the ValueSet's version, which a CQL declaration pins, not the expansion's
+    timestamp."""
     rows = valueset_codes(VALUESET, source="s", now="t")
     assert [(r.code, r.display) for r in rows] == [("a", "A"), ("b", None)]
-    assert {(r.valueset_id, r.version, r.source_package) for r in rows} == {(VALUESET["url"], "2026-10-01", "s")}
+    assert {(r.valueset_id, r.version, r.source_package) for r in rows} == {(VALUESET["url"], "2", "s")}
 
 
 def test_a_compose_that_lists_concepts_is_its_codes():

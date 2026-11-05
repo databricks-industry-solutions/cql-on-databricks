@@ -201,30 +201,34 @@ final case class SqlEvalEnv(
     }
   }
 
-  /** The value-set MOUNT for `vsId` (BIND-CALL-SITE): a `(system, code)` relation selected out of the relations
-    * the request binds to the membership's site, keyed by the canonical value-set id — `SELECT system, code FROM
-    * <relation> WHERE valueset_id = '<vsId>'`. One relation holds every value set, the way a terminology export
-    * stores expansions. The SQL analog of `TerminologyProvider.expand`; fails loudly with no terminology. */
+  /** The value-set MOUNT for `vsId` (BIND-CALL-SITE, LANG-VALUESET-VERSION): the `(system, code)` rows of one
+    * expansion of the value set, selected out of the relations the request binds to the membership's site. One
+    * relation holds every value set, keyed by the canonical id, the way a terminology export stores expansions,
+    * with a `version` column. The site's request carries the version the CQL declaration pins, if any. The SQL
+    * analog of `TerminologyProvider.expand`; fails loudly with no terminology. */
   def valueSetMount(vsId: String, site: CallSite): SqlRel = {
     callSites.getOrElseUpdate(site.id, site)
     val binding = terminologyBinding.getOrElse(throw UnsupportedNode("InValueSet",
       s"value-set membership on '$vsId' needs terminology, and the request binds none (BIND-CALL-SITE)"))
-    layeredValueSet(vsId, binding.relationsFor(site.id).getOrElse(Nil))
+    val pinned = site.request.value.get("version").flatMap(_.strOpt)
+    versionedValueSet(vsId, pinned, binding.relationsFor(site.id).getOrElse(Nil))
   }
 
-  /** `SELECT system, code FROM <table> WHERE valueset_id = '<vsId>'`. */
+  /** `SELECT system, code, version FROM <table> WHERE valueset_id = '<vsId>'`. */
   private def valueSetFrom(vsId: String, table: String, extra: Seq[SqlRel.Proj] = Nil): SqlRel =
     SqlRel.Select(
-      projections = Seq(SqlRel.Proj(SqlExpr.Col("system"), "system"),
-                        SqlRel.Proj(SqlExpr.Col("code"), "code")) ++ extra,
+      projections = Seq(SqlRel.Proj(SqlExpr.Col("system"), "system"), SqlRel.Proj(SqlExpr.Col("code"), "code"),
+                        SqlRel.Proj(SqlExpr.Col(valueSetVersionColumn), valueSetVersionColumn)) ++ extra,
       from = SqlRel.TableRef(table),
       where = Some(SqlExpr.Infix("=", SqlExpr.Col(valueSetKeyColumn), SqlExpr.str(vsId))))
 
-  /** BIND-CALL-SITE: value set `vsId` read from the FIRST terminology relation that holds it, so an
-    * overlay's development set replaces its base's rather than merging with it (`CLIENT-RESOLVER-OVERLAY`).
-    * One relation reads it directly. Several are a `UNION ALL` tagged with each layer's position, kept to
-    * the rows of the lowest position present. No relation fails the membership (CORE-NO-SILENT-MISLOWER). */
+  /** BIND-CALL-SITE: every row of value set `vsId`, every version, from the FIRST terminology relation that holds
+    * it, so an overlay's development set replaces its base's rather than merging with it
+    * (`CLIENT-RESOLVER-OVERLAY`). One relation reads it directly. Several are a `UNION ALL` tagged with each
+    * layer's position, kept to the rows of the lowest position present. No relation fails the membership
+    * (CORE-NO-SILENT-MISLOWER). */
   private def layeredValueSet(vsId: String, layers: Seq[RetrieveRelation]): SqlRel = {
+    val v = valueSetVersionColumn
     layers.map(_.table) match {
       case Seq() => throw UnsupportedNode("InValueSet",
         s"value-set membership on '$vsId' needs terminology, and the request has none for it (BIND-CALL-SITE)")
@@ -236,19 +240,78 @@ final case class SqlEvalEnv(
           valueSetFrom(vsId, t, Seq(SqlRel.Proj(SqlExpr.int(i.toLong), layer))) })
         val ranked = SqlRel.Select(
           projections = Seq(SqlRel.Proj(SqlExpr.Col("system"), "system"), SqlRel.Proj(SqlExpr.Col("code"), "code"),
-            SqlRel.Proj(SqlExpr.Col(layer), layer),
+            SqlRel.Proj(SqlExpr.Col(v), v), SqlRel.Proj(SqlExpr.Col(layer), layer),
             SqlRel.Proj(SqlExpr.Over(SqlExpr.Call("min", Seq(SqlExpr.Col(layer))), Nil, Nil), first)),
           from = SqlRel.AliasRel(tagged, "__layers"))
         SqlRel.Select(
-          projections = Seq(SqlRel.Proj(SqlExpr.Col("system"), "system"), SqlRel.Proj(SqlExpr.Col("code"), "code")),
+          projections = Seq(SqlRel.Proj(SqlExpr.Col("system"), "system"), SqlRel.Proj(SqlExpr.Col("code"), "code"),
+            SqlRel.Proj(SqlExpr.Col(v), v)),
           from = SqlRel.AliasRel(ranked, "__ranked"),
           where = Some(SqlExpr.Infix("=", SqlExpr.Col(layer), SqlExpr.Col(first))))
     }
   }
 
+  /** LANG-VALUESET-VERSION: the `(system, code)` rows of ONE expansion of value set `vsId`, read from the layer
+    * [[layeredValueSet]] picks, or a statement that fails, naming the value set.
+    *
+    * CQL 1.5 Author's Guide, Valuesets: "If the binding specifies a valueset version, then the expansion set must
+    * be derived from that specific version", so a `pinned` declaration reads that version's rows and fails when
+    * the layer has none. With no version the expansion is "constructed using the most current published version
+    * of the valueset". A version here is free text with no order, so nothing here can tell which is most current:
+    * an unpinned value set must hold exactly one version (no version counts as one), and several fail rather
+    * than merge or guess. A value set no relation holds fails too, where it would otherwise match no code and
+    * silently under-count every population that retrieves through it.
+    *
+    * The rows are read through one global aggregate, which returns a row even over no input: it checks them and
+    * collects the codes in the same pass, and the codes are exploded back into rows. So the check runs with the
+    * read on every compute and for every relation a resolver binds, with no extra round trip, and no optimizer
+    * can drop it the way it drops a filter over a relation it proves empty (a view keyed by literals). It runs
+    * whenever the membership is evaluated over rows; with no rows to test, the value set cannot change an answer.
+    * The expansion is one row's array, as small as the broadcast side of the membership join it feeds. */
+  private def versionedValueSet(vsId: String, pinned: Option[String], layers: Seq[RetrieveRelation]): SqlRel = {
+    import SqlExpr.{Call, Col, Field, Infix, Lambda, Struct, int, str}
+    val v = Col(valueSetVersionColumn)
+    def fail(message: SqlExpr): SqlExpr = Call("raise_error", Seq(message))
+    val held = Call("array_join", Seq(Call("array_sort", Seq(Call("collect_set",
+      Seq(Call("coalesce", Seq(v, str("(no version)"))))))), str(", ")))
+    val absent = Infix("=", Call("count", Seq(Col("*"))), int(0)) ->
+      fail(str(s"value set '$vsId' is in no terminology relation the run binds " +
+        s"(${layers.map(_.table).mkString(", ")}) (LANG-VALUESET-VERSION)"))
+    val codeOf = (x: SqlExpr) => Struct(Seq("system" -> Field(x, "system"), "code" -> Field(x, "code")))
+    val (wrongVersion, codes) = pinned match {
+      case Some(p) =>
+        (Infix("=", Call("count_if", Seq(Infix("=", v, str(p)))), int(0)) ->
+          fail(Call("concat", Seq(str(s"value set '$vsId' has no version '$p': it holds "), held,
+            str(" (LANG-VALUESET-VERSION)")))),
+         Call("transform", Seq(
+           Call("filter", Seq(Call("collect_list", Seq(Struct(Seq("system" -> Col("system"), "code" -> Col("code"),
+             valueSetVersionColumn -> v)))), Lambda(Seq("x"), Infix("=", Field(Col("x"), valueSetVersionColumn), str(p))))),
+           Lambda(Seq("x"), codeOf(Col("x"))))))
+      case None =>
+        (Infix(">", Call("size", Seq(Call("collect_set", Seq(Call("coalesce", Seq(v, str(""))))))), int(1)) ->
+          fail(Call("concat", Seq(str(s"value set '$vsId' holds several versions, "), held,
+            str(", and its declaration pins none: pin one (valueset \"...\": '<url>' version '<version>') " +
+              "or bind terminology that holds one version (LANG-VALUESET-VERSION)")))),
+         Call("collect_list", Seq(Struct(Seq("system" -> Col("system"), "code" -> Col("code"))))))
+    }
+    val checked = SqlRel.Select(
+      projections = Seq(SqlRel.Proj(SqlExpr.Case(Seq(absent, wrongVersion), Some(codes)), "__codes")),
+      from = SqlRel.AliasRel(layeredValueSet(vsId, layers), "__vs_rows"))
+    SqlRel.Select(
+      projections = Seq(SqlRel.Proj(Field(Col("__code"), "system"), "system"),
+                        SqlRel.Proj(Field(Col("__code"), "code"), "code")),
+      from = SqlRel.LateralView(SqlRel.AliasRel(checked, "__vs_checked"), Call("explode", Seq(Col("__codes"))),
+        "__vs_codes", Seq("__code")))
+  }
+
   /** The key column of a value-set relation carrying the canonical value-set id each expansion row
     * belongs to (the URL/OID `vsId`), so a membership test filters its set out of the shared table. */
   val valueSetKeyColumn: String = "valueset_id"
+
+  /** The column of a value-set relation carrying the version of the expansion each row belongs to (FHIR
+    * `ValueSet.version`, the version a CQL declaration pins); null when the source gives none
+    * (LANG-VALUESET-VERSION). */
+  val valueSetVersionColumn: String = "version"
 }
 
 object SqlEvalEnv {

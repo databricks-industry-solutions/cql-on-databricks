@@ -111,6 +111,44 @@ class SqlQueryLoweringRelationSpec extends AnyFunSuite {
     assert(err.getMessage.contains("[Encounter] needs data"))
   }
 
+  /** LANG-VALUESET-VERSION: `filteredRetrieve`'s SQL for "RoutineEncounter" declared with `versions`. */
+  private def membershipWith(versions: Option[String]*): String = {
+    val declared = lib.copy(valueSets = versions.map(v => ValueSetDef("RoutineEncounter", "urn:oid:2.999.1.102", v)))
+    val r = retrieve(Encounter, codeProperty = Some("type"), codes = Some(ValueSetRef("RoutineEncounter", None)))
+    render(SqlQueryLowering.filteredRetrieve(r, "Encounter", env(), declared, _ => AnyType))
+  }
+
+  test("a pinned value set reads only that version's codes, and fails when the relation lacks it (LANG-VALUESET-VERSION)") {
+    val out = membershipWith(Some("2025"))
+    assert(out.contains("filter(collect_list(named_struct('system', system, 'code', code, 'version', version)), " +
+      "x -> (x.version = '2025'))"), out)
+    assert(out.contains("count_if((version = '2025'))"), out)
+    assert(out.contains("has no version ''2025''"), out)
+    assert(out.contains("raise_error("), out)
+  }
+
+  test("an unpinned value set reads every row but fails when they hold more than one version (LANG-VALUESET-VERSION)") {
+    val out = membershipWith(None)
+    assert(!out.contains("version = "), out)
+    assert(out.contains("ELSE collect_list(named_struct('system', system, 'code', code)) END AS __codes"), out)
+    assert(out.contains("LATERAL VIEW explode(__codes) __vs_codes AS __code"), out)
+    assert(out.contains("size(collect_set(coalesce(version, '')))"), out)
+    assert(out.contains("holds several versions"), out)
+  }
+
+  test("a value set no relation holds fails, naming the relations (LANG-VALUESET-VERSION)") {
+    val out = membershipWith(None)
+    assert(out.contains("(count(*) = 0)"), out)
+    assert(out.contains("is in no terminology relation the run binds (acme.terminology.valueset)"), out)
+  }
+
+  test("a value set declared with two versions fails at compile, naming both (LANG-VALUESET-VERSION)") {
+    val err = intercept[UnsupportedNode](membershipWith(Some("2025"), Some("2026")))
+    assert(err.getMessage.contains("declared with different versions (2025, 2026)"), err.getMessage)
+    val mixed = intercept[UnsupportedNode](membershipWith(Some("2025"), None))
+    assert(mixed.getMessage.contains("(2025, none)"), mixed.getMessage)
+  }
+
   test("a membership with no terminology binding fails (BIND-CALL-SITE)") {
     val r = retrieve(Encounter, codeProperty = Some("type"), codes = Some(ValueSetRef("RoutineEncounter", None)))
     val err = intercept[UnsupportedNode](

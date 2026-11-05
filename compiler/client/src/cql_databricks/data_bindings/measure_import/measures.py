@@ -73,7 +73,8 @@ def valueset_codes(valueset: Mapping[str, Any], *, source: str, now: str) -> lis
     url = valueset.get("url")
     if not url:
         raise ImportContentError(f"ValueSet {valueset.get('id', '(no id)')} has no url")
-    version = (valueset.get("expansion") or {}).get("timestamp") or valueset.get("version")
+    # LANG-VALUESET-VERSION: the version a CQL declaration pins is the ValueSet's own, never its expansion's timestamp.
+    version = valueset.get("version")
     codes: list[tuple[str, str, str | None]] = []
 
     def walk(contains: list[dict]) -> None:
