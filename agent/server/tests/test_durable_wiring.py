@@ -7,15 +7,16 @@ from types import SimpleNamespace
 import pytest
 
 from cql_databricks.agent.server import wiring
+from cql_databricks.resolvers.interfaces import ResultStore
 from agent.service.tests.durable_fixture import RESULT_SET, reference
 
 
 #: CLIENT-ENVIRONMENT — the catalog tags the caller can see: a default environment and one other.
 TAGS = [{"catalog": "synthetic", "tag": "cql_databricks_environment", "value": "synthetic", "comment": None},
-        {"catalog": "synthetic", "tag": "cql_databricks_environment_version", "value": "2", "comment": None},
+        {"catalog": "synthetic", "tag": "cql_databricks_environment_version", "value": "3", "comment": None},
         {"catalog": "synthetic", "tag": "cql_databricks_environment_default", "value": "true", "comment": None},
         {"catalog": "other_cat", "tag": "cql_databricks_environment", "value": "other", "comment": None},
-        {"catalog": "other_cat", "tag": "cql_databricks_environment_version", "value": "2", "comment": None}]
+        {"catalog": "other_cat", "tag": "cql_databricks_environment_version", "value": "3", "comment": None}]
 
 
 class Runner:
@@ -102,8 +103,10 @@ def test_the_tools_run_in_the_default_environment_or_the_one_the_drawer_passes(m
         saved = research.saved()
         assert saved.resolvers.data.identity() == "other_cat.data"
         # RUN-CLIENT-RESULT-OWNERSHIP — the user's own draft results, then the official ones; never written.
-        assert (saved.resolvers.results.own, saved.resolvers.results.official) == (
-            (("other_cat", "draft_results"),), (("other_cat", "results"),))
+        results = saved.resolvers.results
+        assert (results.dev.schema, results.dev.reuse, results.base.schema, results.base.reuse) == (
+            ("other_cat", "draft_results"), "own", ("other_cat", "results"), "official")
+        assert not isinstance(results, ResultStore)
     assert research.saved().resolvers.environment == "synthetic"
 
 

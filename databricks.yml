@@ -55,7 +55,7 @@ scripts:
     content: bash ./scripts/deploy/grant-maintenance-access.sh
   grant_app_access:
     content: ./scripts/deploy/grant-app-access.sh
-  # SVC-EXAMPLE-NOTEBOOKS — publish the example notebooks to /Shared/CqlDatabricks/examples, the one workspace
+  # SVC-EXAMPLE-NOTEBOOKS — publish the example notebooks to /Shared/cql_databricks/examples, the one workspace
   # path that is the same for every user. `bundle deploy` alone only lands them in the DEPLOYER's home
   # under .bundle/<target>/files/, which nobody else can reach. Same rationale as grant_app_access for
   # being a bundle SCRIPT rather than a resource: there is no DAB resource type for a workspace folder
@@ -73,6 +73,11 @@ scripts:
   # calls it directly, before step 8 tags the default environment.
   environment_tag_policies:
     content: bash ./scripts/deploy/environment-tag-policies.sh
+  # DEPLOY-BASE-ENVIRONMENT — publish the workspace base environment that carries the client wheel, and make it the
+  # workspace default when default_base_environment is true. A script because a bundle has no base-environment
+  # resource. deploy.sh (step 4.5) also calls it directly, after the wheels are in the runtime Volume.
+  base_environment:
+    content: bash ./scripts/deploy/base-environment.sh
 
 variables:
   compiler_token:
@@ -152,6 +157,12 @@ variables:
       admins can tag a catalog an environment or the default. false skips it, for an account with no room for three
       more tag policies (1,000 per account), and the deploy warns that the tags are not governed.
     default: true
+  default_base_environment:
+    description: >-
+      DEPLOY-BASE-ENVIRONMENT — true makes the "CQL on Databricks" base environment the workspace default for new
+      serverless notebooks, as a workspace admin. Workspace-wide, for every user, so false by default, which leaves
+      the default as it is; users then select the base environment in a notebook's Environment pane.
+    default: false
   workspace_users_group:
     description: >-
       DEPLOY-AGENT-SKILLS — the WORKSPACE group granted read on the workspace skills folder Genie Code loads. A workspace
@@ -414,6 +425,27 @@ resources:
       name: ${var.runtime_volume}
       volume_type: MANAGED
       comment: "CQL on Databricks runtime artifacts (JRE + jars + wheels). Populated by scripts/deploy/deploy.sh; read by the compiler App + the cql_* UC UDFs' java_dependencies."
+    # DATA-ENVIRONMENT-LAYOUT, DEPLOY-DEFAULT-ENVIRONMENT — the default environment's content as files, for a run that
+    # reads files instead of tables: the same patients, value sets and libraries, written by
+    # scripts/deploy/provision-examples.py. The users read them, as they read the schema's tables.
+    environment_data_files:
+      catalog_name: ${var.uc_catalog}
+      schema_name: ${resources.schemas.environment_data.name}
+      name: files
+      volume_type: MANAGED
+      comment: "The environment's data as files: fhir/<Type>.ndjson, one resource per line"
+      grants:
+        - principal: ${var.app_users_group}
+          privileges: [READ_VOLUME]
+    environment_knowledge_files:
+      catalog_name: ${var.uc_catalog}
+      schema_name: ${resources.schemas.environment_knowledge.name}
+      name: files
+      volume_type: MANAGED
+      comment: "The environment's knowledge as files: valuesets/<name>.json (FHIR ValueSet) and libraries/<Library>.cql"
+      grants:
+        - principal: ${var.app_users_group}
+          privileges: [READ_VOLUME]
 
   schemas:
     # The runtime LAYER schema (SVC-CATALOG-LAYOUT): the execution machinery — the cql_* UC Scala UDF catalog
@@ -441,34 +473,26 @@ resources:
     # DEPLOY-DEFAULT-ENVIRONMENT, DATA-ENVIRONMENT-LAYOUT — the default environment's schemas in uc_catalog, and every
     # schema grant the deploy makes on them. Bundle grants are the schema's whole grant list: a grant made on these
     # schemas by hand is revoked by the next deploy. The comments are shipped_sources.environment.SCHEMAS
-    # (test_deploy_requirements checks they match). scripts/deploy/provision-examples.py then fills them: the stores,
-    # the views over them and the catalog tags. Readers get SELECT on the published schemas only, never a store.
+    # (test_deploy_requirements checks they match). scripts/deploy/provision-examples.py then fills them: the data
+    # and knowledge tables, and the catalog tags. Readers get SELECT on every schema but draft_results.
     environment_data:
       catalog_name: ${var.uc_catalog}
       name: data
-      comment: "Published data: one view per FHIR type returning resource and patient_id (BIND-CONTRACT), and change_log"
+      comment: "Data: one table per FHIR type holding resource and patient_id (BIND-CONTRACT), and change_log"
       grants:
         - principal: ${var.app_users_group}
           privileges: [USE_SCHEMA, SELECT]
-    environment_data_store:
-      catalog_name: ${var.uc_catalog}
-      name: data_store
-      comment: "The data store the data views select"
     environment_knowledge:
       catalog_name: ${var.uc_catalog}
       name: knowledge
-      comment: "Published knowledge: the library, measure and valueset views"
+      comment: "Knowledge: the library, measure and valueset tables"
       grants:
         - principal: ${var.app_users_group}
           privileges: [USE_SCHEMA, SELECT]
         # KNOWLEDGE-LAKE-DIRECT — the Designer App's principal reads the knowledge and value sets it holds in memory,
-        # and nothing else: never a store or a result.
+        # and nothing else: never data or a result.
         - principal: ${resources.apps.cql_databricks_designer.service_principal_client_id}
           privileges: [USE_SCHEMA, SELECT]
-    environment_knowledge_store:
-      catalog_name: ${var.uc_catalog}
-      name: knowledge_store
-      comment: "The knowledge store the library, measure and valueset views select"
     environment_results:
       catalog_name: ${var.uc_catalog}
       name: results

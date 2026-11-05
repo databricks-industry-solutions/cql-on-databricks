@@ -49,20 +49,31 @@ The client doesn't watch your source data. Refresh when your data, value sets or
 ## Where results are found and written
 
 Every result is found, and written, through the result resolver or store you pass (`CLIENT-RESULT-RESOLVER`). The
-shipped one, `DeltaResultStore`, finds each result in one lookup, in two layers (`RUN-CLIENT-RESULT-OWNERSHIP`):
+shipped ones read one schema each, in one statement:
 
-1. **Your own**, in the store's destination and any other own schemas: tables named with your digest that you own.
+| Resolver | Reuses | Writes |
+|---|---|---|
+| `SchemaResultResolver(schema)` | your own: tables named with your digest that you own | nothing |
+| `SchemaResultResolver(schema, reuse="official")` | anyone's, the latest first | nothing |
+| `SchemaResultStore(schema)` | your own | your own, as you |
+| `SessionResultStore()` | this session's | this session's, as temporary tables (`CLIENT-SESSION-RESULTS`) |
+
+`Overlay(first, then)` layers them (`CLIENT-RESOLVER-OVERLAY`): `then` is asked only for what `first` did not find,
+and an overlay over a store writes through it. An environment's are two layers (`RUN-CLIENT-RESULT-OWNERSHIP`):
+
+1. **Your own**, in `draft_results` or the schema a store writes.
 2. **The official ones**, in the environment's `results`: anyone's. That schema is trusted by construction; the
-   implementer decides who may write it (`DEC-RESULT-SCOPE`).
+   implementer decides who may write it (`RUN-CLIENT-PUBLISHED`).
 
-What isn't found is computed and written to the destination, as you. A `DeltaResultResolver` finds the same way and
-writes nothing; `resolve_results()` and inline runs read through one and never compute on a miss.
+What isn't found is computed and written to the store's schema, as you. `resolve_results()` and inline runs read
+through a resolver and never compute on a miss.
 
 | Store | Destination | Who uses it |
 |---|---|---|
-| `EnvironmentResolver.draft_store(env)` | the environment's `draft_results`, shared, each user's tables their own | the Designer and the agent |
+| `EnvironmentResolver.draft_store(env)` | the environment's `draft_results`, shared, each user's tables their own | the Designer |
 | `EnvironmentResolver.official_store(env)` | the environment's `results`, only for the environment's own content | the implementer's publishing Jobs |
-| `DeltaResultStore((catalog, schema), ...)` | a schema of your own | notebooks and Jobs |
+| `Overlay(SchemaResultStore((catalog, schema)), ...)` | a schema of your own | notebooks and Jobs |
+| `Overlay(SessionResultStore(), ...)` | the session's temporary tables, gone when it ends | notebooks and Jobs |
 
 ## Tables and tags
 

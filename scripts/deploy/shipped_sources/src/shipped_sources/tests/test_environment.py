@@ -8,7 +8,7 @@ import pytest
 from shipped_sources import environment
 
 TAGS = [{"catalog": "other_cat", "tag": "cql_databricks_environment", "value": "other", "comment": None},
-        {"catalog": "other_cat", "tag": "cql_databricks_environment_version", "value": "2", "comment": None}]
+        {"catalog": "other_cat", "tag": "cql_databricks_environment_version", "value": "3", "comment": None}]
 
 
 def _build(tags, *, default=True, maintenance="maint-sp"):
@@ -28,23 +28,18 @@ def _build(tags, *, default=True, maintenance="maint-sp"):
     return statements, order[0], counts
 
 
-def test_schemas_come_first_then_the_content_then_views_tags_and_grants():
+def test_schemas_come_first_then_the_content_then_tags_and_grants():
     statements, loaded_at, counts = _build(TAGS)
     assert counts == {"Patient": 3}
     schemas = [s for s in statements if s.startswith("CREATE SCHEMA IF NOT EXISTS")]
-    assert [s.split("`")[3] for s in schemas] == ["data", "data_store", "knowledge", "knowledge_store", "results",
-                                                  "draft_results"]
+    # DATA-ENVIRONMENT-LAYOUT: no store schema, and no view: the content is the tables the load writes.
+    assert [s.split("`")[3] for s in schemas] == ["data", "knowledge", "results", "draft_results"]
     assert loaded_at == len(schemas)
-    views = statements[loaded_at:loaded_at + 3]
-    assert views == [
-        "CREATE OR REPLACE VIEW `env_cat`.`knowledge`.`valueset` AS "
-        "SELECT valueset_id, system, code, version FROM `env_cat`.`knowledge_store`.`valueset`",
-        "CREATE OR REPLACE VIEW `env_cat`.`knowledge`.`library` AS SELECT * FROM `env_cat`.`knowledge_store`.`library`",
-        "CREATE OR REPLACE VIEW `env_cat`.`knowledge`.`measure` AS SELECT * FROM `env_cat`.`knowledge_store`.`measure`"]
-    assert statements[loaded_at + 3] == (
+    assert not any("VIEW" in s for s in statements)
+    assert statements[loaded_at] == (
         "ALTER CATALOG `env_cat` SET TAGS ('cql_databricks_environment' = 'example', "
-        "'cql_databricks_environment_version' = '2', 'cql_databricks_environment_default' = 'true')")
-    assert statements[loaded_at + 4] == "COMMENT ON CATALOG `env_cat` IS 'It\\'s synthetic'"
+        "'cql_databricks_environment_version' = '3', 'cql_databricks_environment_default' = 'true')")
+    assert statements[loaded_at + 1] == "COMMENT ON CATALOG `env_cat` IS 'It\\'s synthetic'"
 
 
 def test_the_catalog_is_the_default_only_if_no_other_visible_catalog_is():
@@ -85,8 +80,7 @@ def test_filling_makes_no_schema_and_no_grant():
     counts = environment.fill(statements.append, lambda *a: TAGS, catalog="env_cat", name="example",
                               description="d", default=True, load=lambda: {"Patient": 3})
     assert counts == {"Patient": 3}
-    assert statements[:3] == environment.content_view_statements("env_cat")
-    assert [s.split(" ", 2)[:2] for s in statements[3:]] == [["ALTER", "CATALOG"], ["COMMENT", "ON"]]
+    assert [s.split(" ", 2)[:2] for s in statements] == [["ALTER", "CATALOG"], ["COMMENT", "ON"]]
 
 
 def test_the_grants_a_bundle_cannot_make():
@@ -106,8 +100,8 @@ def test_a_failing_statement_fails_the_build():
                           load=lambda: {}, users="u")
 
 
-def test_each_type_has_a_published_view_over_its_store_table():
-    """BIND-PUBLISHED-VIEW, BIND-CONTRACT, DATA-SUBJECT-KEY: the store holds the contract, so the view selects it."""
-    assert environment.data_view("c", "MedicationRequest") == (
-        "CREATE OR REPLACE VIEW `c`.`data`.`medicationrequest` AS "
-        "SELECT `patient_id`, `resource` FROM `c`.`data_store`.`medicationrequest`")
+def test_the_change_log_is_a_table_in_data():
+    """DATA-CHANGE-LOG-PERIODS: a whole-population reload logs one row with an empty map."""
+    assert environment.change_log_statement("c").startswith("CREATE TABLE IF NOT EXISTS `c`.`data`.`change_log` ")
+    assert environment.change_log_all_statement("c") == (
+        "INSERT INTO `c`.`data`.`change_log` VALUES (map(), current_timestamp())")

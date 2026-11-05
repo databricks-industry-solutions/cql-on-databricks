@@ -11,7 +11,7 @@ Idempotent: a skill whose published text is unchanged is left alone in both plac
 - **The workspace skills folder**, ``/Workspace/.assistant/skills/<name>/SKILL.md``, readable by the App users
   group. Genie Code loads workspace skills from here; it does not read UC skills. Only a workspace admin can create
   the folder, and a new one is readable by admins alone, so this creates it and grants the read. A deployer who is
-  not a workspace admin gets ``/Shared/CqlDatabricks/skills`` instead, with a loud warning that Genie Code won't
+  not a workspace admin gets ``/Shared/cql_databricks/skills`` instead, with a loud warning that Genie Code won't
   load skills from there.
 
 A Databricks Asset Bundle has no resource type for either place, so this runs as a bundle script, like the
@@ -36,7 +36,7 @@ import sys
 PUBLISHED_SKILLS = ("population-question", "experiment", "explain-cql", "cql-authoring", "import-quality-measures")
 
 WORKSPACE_SKILLS = "/Workspace/.assistant/skills"
-SHARED_SKILLS = "/Shared/CqlDatabricks/skills"
+SHARED_SKILLS = "/Shared/cql_databricks/skills"
 
 
 class PublishError(RuntimeError):

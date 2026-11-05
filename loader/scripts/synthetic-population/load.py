@@ -9,13 +9,14 @@ their own data, and it is built from the shipped sources' lander (``DEPLOY-SHIPP
 
 The large population is an environment of its own, in its own catalog, never the default (``DATA-SYNTH-LARGE``,
 ``CLIENT-ENVIRONMENT``): this builds it there (``shipped_sources.environment.build``) with the example measures and
-their value sets in its stores, so the measures run over it, and refuses the deployment's ``uc_catalog``, which is the
+their value sets in its knowledge, so the measures run over it, and refuses the deployment's ``uc_catalog``, which is the
 default environment's. Run it with the repository venv, which has ``shipped_sources`` installed. It uploads the
-emitted ``<Type>.ndjson`` bulk-data files to a UC Volume in the environment's ``data_store``, under
+emitted ``<Type>.ndjson`` bulk-data files to the UC Volume ``seed`` in the environment's ``data`` schema, which no
+reader is granted (``SELECT`` on a schema does not cover its volumes), under
 ``cohorts/<label>/``, gzipped as ``<Type>.ndjson.gz`` (the synthetic NDJSON shrinks about 38 times, so the upload is
-not the slow step), and lands them on the data contract ``(resource, patient_id)``, the store's form (``DATA-CONTRACT``).
+not the slow step), and lands them on the data contract ``(resource, patient_id)`` (``DATA-CONTRACT``).
 
-The population is CUMULATIVE across measures: every load rebuilds each store table from the union of ALL cohort
+The population is CUMULATIVE across measures: every load rebuilds each data table from the union of ALL cohort
 directories in the volume, so landing one measure's cohort beside another's yields one population holding both. The
 volume is the source of truth for what is in the population; re-landing a cohort label overwrites exactly that
 cohort's files and nothing else. Cohorts must be generated with distinct seeds â€” the patient id is
@@ -23,7 +24,7 @@ cohort's files and nothing else. Cohorts must be generated with distinct seeds â
 
 Everything structural is the shared lander's (``shipped_sources.population.land``, ``PROC-DRY``), the same one the
 example patients land through (``DATA-SYNTH-SMALL``). This script adds only what is particular to a large
-population: the cohorts live in a UC Volume, and the store tables are rebuilt from all of them.
+population: the cohorts live in a UC Volume, and the data tables are rebuilt from all of them.
 """
 from __future__ import annotations
 
@@ -108,11 +109,11 @@ def _landed_types(cohorts_path: str) -> set[str]:
 
 def load(*, profile: str | None, catalog: str, ndjson_dir: str, cohort: str, users_group: str,
          designer_app: str) -> dict[str, int]:
-    """Land one cohort under ``cohorts/<cohort>/`` and rebuild the environment's store tables from every landed
-    cohort, then its views, tags and grants. Returns per-type row counts (of the whole population)."""
+    """Land one cohort under ``cohorts/<cohort>/`` and rebuild the environment's data tables from every landed
+    cohort, then its tags and grants. Returns per-type row counts (of the whole population)."""
     from pathlib import Path
 
-    from cql_databricks.resolvers.environment import DATA_STORE
+    from cql_databricks.resolvers.environment import DATA
     from cql_databricks.data_bindings.runner import spark_runner
     from cql_databricks_common.workspace import service_principal_client
     from shipped_sources.environment import build, quote
@@ -124,11 +125,11 @@ def load(*, profile: str | None, catalog: str, ndjson_dir: str, cohort: str, use
     if not designer:
         raise RuntimeError(f"the App {designer_app} has no service principal")
     spark = _spark(profile)
-    cohorts_path = f"/Volumes/{catalog}/{DATA_STORE}/{SEED_VOLUME}/cohorts"
+    cohorts_path = f"/Volumes/{catalog}/{DATA}/{SEED_VOLUME}/cohorts"
     examples = Path(__file__).resolve().parents[3] / "examples"
 
-    def stores() -> dict[str, int]:
-        spark.sql(f"CREATE VOLUME IF NOT EXISTS {quote(catalog, DATA_STORE, SEED_VOLUME)}")
+    def content() -> dict[str, int]:
+        spark.sql(f"CREATE VOLUME IF NOT EXISTS {quote(catalog, DATA, SEED_VOLUME)}")
         _upload(ndjson_dir, f"{cohorts_path}/{cohort}", _generated_types(ndjson_dir))
         raw = {fhir_type: spark.read.text(f"{cohorts_path}/*/{fhir_type}.ndjson{GZIP_SUFFIX}")
                for fhir_type in sorted(_landed_types(cohorts_path))}
@@ -137,7 +138,7 @@ def load(*, profile: str | None, catalog: str, ndjson_dir: str, cohort: str, use
         return counts
 
     return build(spark.sql, spark_runner(spark), catalog=catalog, name=SYNTHETIC_LARGE_ENVIRONMENT,
-                 description=SYNTHETIC_LARGE_DESCRIPTION, default=False, load=stores, users=users_group,
+                 description=SYNTHETIC_LARGE_DESCRIPTION, default=False, load=content, users=users_group,
                  content_readers=[designer])
 
 

@@ -77,6 +77,9 @@ class CalculationEnv:
     warehouses: Callable[[], dict] = lambda: {"default": None, "warehouses": []}
     #: RUN-ADDRESS-LOCATION — reads a folder location as the signed-in user; built on the request thread.
     files: Callable[[], LibraryFiles] = user_workspace_files
+    #: CLIENT-ENVIRONMENT-CACHE — the signed-in user's environments on a runner; the App's is the process's cache
+    #: (``cql_databricks_common.environments.user_environments``). Built on the request thread.
+    environments: Callable[[Any], EnvironmentResolver] = EnvironmentResolver
 
 
 class CalculationRequest(RunRequest):
@@ -223,7 +226,7 @@ def router(*, compiler, env: CalculationEnv) -> APIRouter:
         DOC-ENVIRONMENT-PICKER — the environment is found as the user (`CLIENT-ENVIRONMENT-RESOLVER`), and its content
         is read as the user too."""
         run = env.user_session(warehouse).observed(observer)
-        environments = EnvironmentResolver(run)
+        environments = env.environments(run)
         picked = environments.resolve(environment)
         return Acting(env.settings(), run.rows, run, picked, environments.content(picked), env.files(), environments)
 

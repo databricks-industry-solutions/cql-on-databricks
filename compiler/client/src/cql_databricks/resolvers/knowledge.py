@@ -105,19 +105,16 @@ class FolderClosure:
 
 class TableKnowledgeResolver(KnowledgeStore):
     """CLIENT-KNOWLEDGE-RESOLVER: an environment's knowledge, read through ``content`` (a
-    :class:`~cql_databricks.data_bindings.ContentResolver` over the environment, `CLIENT-ENVIRONMENT`). With ``store``
-    and ``view``, each ``(catalog, schema)``, it is a store: :meth:`publish` writes ``store``'s tables through ``run``,
-    as ``run``'s identity, and reads the libraries back through ``view`` (`BIND-PUBLISHED-VIEW`)."""
+    :class:`~cql_databricks.data_bindings.ContentResolver` over the environment, `CLIENT-ENVIRONMENT`). With
+    ``schema``, ``(catalog, schema)``, it is a store: :meth:`publish` writes the schema's ``library`` and ``measure``
+    tables through ``run``, as ``run``'s identity (`BIND-PUBLISHED-VIEW`)."""
 
-    def __init__(self, content: Callable[[], Any], *, store: tuple[str, str] | None = None,
-                 view: tuple[str, str] | None = None, run=None) -> None:
-        if store is not None and (run is None or view is None):
-            raise ValueError("a knowledge store is written through a SQL runner and read back through its view: pass "
-                             "run= and view=")
+    def __init__(self, content: Callable[[], Any], *, schema: tuple[str, str] | None = None, run=None) -> None:
+        if schema is not None and run is None:
+            raise ValueError("a knowledge store is written through a SQL runner: pass run=")
         self._content_factory = content
         self._content = None
-        self.store = tuple(store) if store else None
-        self.view = tuple(view) if view else None
+        self.schema = tuple(schema) if schema else None
         self._run = run
 
     @property
@@ -160,10 +157,10 @@ class TableKnowledgeResolver(KnowledgeStore):
         """CLIENT-PUBLISH: write ``closure``'s library, and the folder includes that changed, into this store."""
         from cql_databricks.compiler.library_publish import publish_folder_library
 
-        if self.store is None:
-            raise ValueError("publish needs a store: TableKnowledgeResolver(content, store=..., view=..., run=...)")
+        if self.schema is None:
+            raise ValueError("publish needs a schema to write: TableKnowledgeResolver(content, schema=..., run=...)")
         return publish_folder_library(self.content, closure.files, closure.folder, closure.name, closure.version,
-                                      store=self.store, view=self.view, run=self._run, translate=closure.translate,
+                                      schema=self.schema, run=self._run, translate=closure.translate,
                                       base=closure.base)
 
 

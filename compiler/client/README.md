@@ -4,8 +4,10 @@
 through the Compiler Service App and returns lazy Spark DataFrames. The SQL runs on your cluster or SQL
 warehouse, as you. Results go where you put them.
 
-It needs Python 3.10 or later, and the bundle deployed ([deploy guide](../../docs/deploy.md)). The deploy
-publishes the wheels to a Volume. Install them in a notebook:
+It needs Python 3.10 or later, and the bundle deployed ([deploy guide](../../docs/deploy.md)). On serverless,
+pick the **CQL on Databricks** base environment in a notebook's Environment pane: the deploy builds it with the
+client in it (`DEPLOY-BASE-ENVIRONMENT`), so there is nothing to install. On other compute, install the wheel the
+deploy put in the runtime Volume:
 
 ```python
 %pip install /Volumes/<catalog>/runtime/artifacts/wheels/cql_databricks-*.whl
@@ -82,9 +84,8 @@ Every run is in one environment (`CLIENT-ENVIRONMENT`). An environment is a Unit
 
 | Schema | Holds |
 |---|---|
-| `data` | One view per FHIR type, named for the type in lower case (`condition`), returning the resource as a `resource` struct and optionally `patient_id`, `min_date` and `max_date` (`BIND-CONTRACT`), and optionally `change_log` |
-| `knowledge` | The views `library`, `measure` and `valueset(valueset_id, system, code, version)` |
-| `data_store`, `knowledge_store` | The tables the views select by default. Optional |
+| `data` | One table or view per FHIR type, named for the type in lower case (`condition`), returning the resource as a `resource` struct and optionally `patient_id`, `min_date` and `max_date` (`BIND-CONTRACT`), and optionally `change_log` |
+| `knowledge` | The tables `library`, `measure` and `valueset(valueset_id, system, code, version)` |
 | `results` | Published results |
 | `draft_results` | Each user's own results |
 
@@ -152,7 +153,8 @@ use_resolvers(data=VolumeDataResolver("/Volumes/acme/dev/tests/fhir"),
 - They live in the Python process: restarting Python drops them.
 - `results=` replaces where `exec()` reads kept results.
 - A client from `connect()` is not affected. Pass it its resolvers.
-- Notebook `07_test_files_in_a_volume` runs CQL over FHIR NDJSON and value sets in a Volume this way.
+- Notebook `getting_started/03_data_and_knowledge_resolution` runs one question over every source: the environment's tables, the same content
+  as files in its `files` volumes, and DataFrames.
 
 ## Publish data into an environment
 
@@ -197,27 +199,50 @@ Results are found and written through a result store you pass (`CLIENT-RESULT-RE
 ```python
 from cql_databricks.resolvers import EnvironmentResolver
 from cql_databricks.data_bindings import spark_runner
-from cql_databricks.result import DeltaResultStore, materialize
+from cql_databricks.resolvers import Overlay
+from cql_databricks.result import OFFICIAL, SchemaResultResolver, SchemaResultStore, materialize
 
 environments = EnvironmentResolver(spark_runner(spark))
 env = environments.default()
 query = client.cql(library="HypertensionBPControl") \
               .with_measurement_period("2026-01-01", "2026-12-31")
-# Your own schema; official results in the environment's `results` are found first if you don't have one.
-store = DeltaResultStore(("my_catalog", "my_results"), spark=spark, official=[env.address("results")])
+# Your own results in a schema of your own, then the official ones in the environment's `results`.
+store = Overlay(SchemaResultStore(("my_catalog", "my_results"), spark=spark),
+                SchemaResultResolver(env.address("results"), spark=spark, reuse=OFFICIAL))
 results = materialize(query, "Initial Population", "Numerator", spark=spark, results=store)
 results.read("Initial Population").display()
 ```
 
-- A store finds each result in two places, in one lookup: your own results first, in its schemas, then the
-  environment's official ones in its `results`, whoever wrote them (`RUN-CLIENT-RESULT-OWNERSHIP`). What isn't
-  found is computed and written to the store's own schema, as you. Another user's results are never reused.
+- Each result resolver reads one schema: `reuse="own"` (the default) reuses only your results there, and
+  `reuse="official"` anyone's. `Overlay(first, then)` asks `then` only for what `first` did not find, and writes
+  through `first` when it is a store (`CLIENT-RESOLVER-OVERLAY`). Here your own results come first, then the
+  environment's official ones (`RUN-CLIENT-RESULT-OWNERSHIP`). What isn't found is computed and written to the
+  store's schema, as you. Another user's results are reused only from a schema read with `reuse="official"`.
 - `results` is official by construction: whoever the implementer grants write access decides what is there. Its
   publishers write it with `environments.official_store(env)`, which takes only a library from the environment's
   own knowledge over its own data and terminology. CQL text, a folder library, a volume, a DataFrame or a custom
   resolver is refused before it computes (`RUN-CLIENT-DRAFT-RESULTS`).
-- `environments.draft_store(env)` writes the environment's shared `draft_results`, as the Designer and the agent do.
-  It needs `CREATE TABLE` on that schema.
+- `environments.draft_store(env)` is the same overlay over the environment's shared `draft_results`, as the
+  Designer's runs use. It needs `CREATE TABLE` on that schema. `environments.results(env)` reads both layers and
+  writes nothing.
+- `SessionResultStore(spark=spark)` (or `run=`) keeps results for the session only, as temporary tables
+  (`CLIENT-SESSION-RESULTS`). Nothing outside the session sees them, and they go when it ends.
+
+Pick what a run reuses and keeps by layering them. `official` is
+`SchemaResultResolver(env.address("results"), spark=spark, reuse=OFFICIAL)`, `own` is
+`SchemaResultResolver(env.address("draft_results"), spark=spark)`, and `session` is
+`SessionResultStore(spark=spark)`:
+
+| Reuse | Keep what is computed | `results=` |
+|---|---|---|
+| Your own, then official | in `draft_results` | `environments.draft_store(env)` |
+| Official only | nothing: read only, so `resolve_results`, inline runs and `cql()` | `official` |
+| Official, then this session's | for the session | `Overlay(session, official)` |
+| This session's only | for the session | `session` |
+| Your own, then this session's | for the session | `Overlay(session, own)` |
+
+A durable run needs a store to write what it computes, so "official only" works with `materialize` as
+"official, then this session's".
 - Table names carry the writer's digest, so two identities computing one result write two tables. Two runs of
   yours computing one result write the same table. Each looks the result up again just before it writes, and again
   if its write fails, and reuses it if another run finished it.

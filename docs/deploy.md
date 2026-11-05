@@ -46,6 +46,7 @@ cp databricks.local.yml.example databricks.local.yml
 | `app_users_group` | The account group allowed to use the Apps. It gets read access to the default environment and `CREATE TABLE` on its `draft_results`. Unity Catalog grants take account groups only, so a workspace-local group such as `users` fails the deploy. Required |
 | `admins` | Optional. The project's admins besides you: users by email, service principals by application ID, or groups, as a list. Every deploy adds each to the workspace and its `admins` group (`DEPLOY-PROJECT-ADMINS`), and lets each tag a catalog an environment or the default (`DEPLOY-ENVIRONMENT-TAG-POLICIES`). Empty by default |
 | `govern_environment_tags` | Optional, `true` by default: the deploy makes the environment tags governed tags (`DEPLOY-ENVIRONMENT-TAG-POLICIES`). An account holds at most 1,000 governed tags; if yours has no room for three more, set `false`, and the deploy warns that anyone who can tag a catalog can make it an environment |
+| `default_base_environment` | Optional, `false` by default: `true` makes the "CQL on Databricks" base environment the workspace default for new serverless notebooks (`DEPLOY-BASE-ENVIRONMENT`). It is workspace-wide, for every user. `false` leaves the default as it is; users then pick the base environment in a notebook's Environment pane |
 | `workspace_users_group` | The workspace group that may read the workspace skills folder Genie Code loads, such as the workspace's `users`. A workspace folder takes workspace groups; Unity Catalog takes account groups only, so the other groups can't serve. Required |
 | `run_log_readers_group` | The group allowed to read the Designer run log. Required |
 | `designer_catalog` | Optional. The catalog of the Designer's shared `designer` schema. Defaults to `uc_catalog` |
@@ -62,7 +63,7 @@ Never commit host names, profiles or tokens.
 ## Content
 
 The deploy builds the default environment in `uc_catalog` and loads the example measures and their patients from
-`examples/` into its stores itself (step 11 below, `DEPLOY-DEFAULT-ENVIRONMENT`, `CONTENT-EXAMPLE-PRELOAD`, with
+`examples/` into its `knowledge` and `data` tables itself (step 13 below, `DEPLOY-DEFAULT-ENVIRONMENT`, `CONTENT-EXAMPLE-PRELOAD`, with
 `scripts/deploy/shipped_sources`); there is nothing to import first. To import other measures, ask Genie Code or
 Genie One: the deploy publishes the agent's `import-quality-measures` skill (step 10 below, `CONTENT-IMPORT-SKILL`).
 
@@ -95,6 +96,9 @@ The script, in order:
    `SELECT` on `knowledge`. The Job's daily schedule deploys paused: unpause it after one run has
    been checked on the workspace.
 5. Uploads the compiler's JRE and jars, the runtime function jar, and the client and agent wheels to the Volume.
+   Then publishes the "CQL on Databricks" base environment over the client wheel and waits for Databricks to build
+   it (`scripts/deploy/base-environment.sh`, `DEPLOY-BASE-ENVIRONMENT`). With `default_base_environment` true it
+   becomes the workspace default for new serverless notebooks.
 6. Registers the `cql_*` runtime functions in Unity Catalog (`scripts/deploy/register-uc-udfs.sh`).
 7. Grants each App's service principal `USE CATALOG` on `uc_catalog`, and revokes the catalog-wide `USE SCHEMA` and
    `SELECT` an earlier deploy granted (`scripts/deploy/grant-app-access.sh`).
@@ -104,15 +108,16 @@ The script, in order:
 11. Publishes every skill from one definition (`scripts/deploy/publish-skills.sh`, `DEPLOY-AGENT-SKILLS`): as Unity
     Catalog skills, which Genie One loads, and to the workspace skills folder `/Workspace/.assistant/skills/`, which
     Genie Code loads. It creates that folder and lets `app_users_group` read it. Creating it needs a workspace
-    admin; for any other deployer the skills go to `/Shared/CqlDatabricks/skills`, and the deploy says Genie Code
+    admin; for any other deployer the skills go to `/Shared/cql_databricks/skills`, and the deploy says Genie Code
     won't load them from there. It then registers the agent under Unity Gateway (`scripts/deploy/register_agent_mcp.py`,
     `DEPLOY-AGENT-REGISTRATION`). See [The agent in Genie One](#the-agent-in-genie-one).
 12. Makes the three environment tags governed tags (`scripts/deploy/environment-tag-policies.sh`,
     `DEPLOY-ENVIRONMENT-TAG-POLICIES`), so only you and `admins` can tag a catalog an environment or the default.
     Creating a tag policy needs a workspace admin, unless an account admin changed who may.
 13. Fills the default environment's schemas (`scripts/deploy/provision-examples.py`, `DEPLOY-DEFAULT-ENVIRONMENT`):
-    the example measures and value sets in `knowledge_store`, through the import; the
-    synthetic small population in `data_store`; the views over them; and the catalog tags. Then the two grants the
+    the same examples as files in the `files` volumes of `data` and `knowledge`; the example measures and value
+    sets as tables in `knowledge`, through the import; the synthetic small population as tables in `data`; and
+    the catalog tags. Then the two grants the
     bundle can't make: `USE CATALOG` on `uc_catalog` to `app_users_group`, and `USE SCHEMA` and `MANAGE` on
     `draft_results` to the maintenance principal.
 
@@ -204,8 +209,9 @@ this HTTP connection instead.
 | Skills and MCP Service | Five UC skills and `cql_databricks` in `<agent_skills_schema>`; the same skills in `/Workspace/.assistant/skills` |
 | Agent connection | `mcp_cql_databricks_<workspace id>` |
 | Runtime schema and Volume | `<uc_catalog>.runtime`, Volume `artifacts` |
+| Base environment | "CQL on Databricks" (`workspace-base-environments/cql-on-databricks`), over `cql-databricks-env.yaml` in the Volume |
 | Designer shared schema | `<designer_catalog>.designer` |
-| Example notebooks | `/Shared/CqlDatabricks/examples` |
+| Example notebooks | `/Shared/cql_databricks/examples` |
 
 No App uses a database. Data sources, content and results are Unity Catalog tables found by tag.
 
@@ -221,14 +227,15 @@ own skips registration when `warehouse_id` is empty; `scripts/deploy/deploy.sh` 
 
 The Apps act as the signed-in user, so users need their own grants. The deploy grants `app_users_group`
 `CAN_USE` on the Apps and, in the default environment, `USE CATALOG`, `SELECT` on `data`, `knowledge` and
-`results`, and `USE SCHEMA` and `CREATE TABLE` on `draft_results` (`DEPLOY-DEFAULT-ENVIRONMENT`). No user gets
+`results`, `READ VOLUME` on the `files` volumes of `data` and `knowledge`, and `USE SCHEMA` and `CREATE TABLE` on
+`draft_results` (`DEPLOY-DEFAULT-ENVIRONMENT`). No user gets
 `SELECT` on `draft_results`: each reads only the tables they own (`RUN-CLIENT-DRAFT-RESULTS`). Grant the same group:
 
 | On | Grant | Why |
 |---|---|---|
 | The SQL warehouse | `CAN_USE` | Every App query runs on it as the user |
 | `<uc_catalog>.runtime` | `USE SCHEMA`, `EXECUTE` | The `cql_*` functions |
-| Volume `<uc_catalog>.runtime.artifacts` | `READ VOLUME` | Notebooks install the client wheel from it |
+| Volume `<uc_catalog>.runtime.artifacts` | `READ VOLUME` | Notebooks install the client wheel from it, through the base environment or a `%pip` cell |
 | Each other environment's catalog | The same grants the deploy makes in the default one | Its data, value sets, libraries and results |
 | `assistant_endpoint` | `CAN QUERY` | The assistant drawer |
 

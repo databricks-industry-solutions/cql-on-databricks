@@ -111,24 +111,16 @@ def _result(kept: KeptResult) -> CompletedResult:
                            artifact=CurrentArtifact(table=_parts(kept.table)))
 
 
-def _columns(run: SqlRunner, outcomes: Sequence[Outcome]) -> tuple[Outcome, ...]:
-    """One bulk column-descriptor read per result schema, not per-table verification.
-    A closure reusing results from another schema (an official result, `RUN-CLIENT-RESULT-OWNERSHIP`) reads that
-    schema too."""
-    columns: dict[tuple[str, str, str], list] = {}
-    for schema in dict.fromkeys(outcome.result.artifact.table[:2] for outcome in outcomes):
-        names = {o.result.artifact.table[2] for o in outcomes if o.result.artifact.table[:2] == schema}
-        rows = run("SELECT table_name, column_name, full_data_type FROM "
-                   f"{table_sql((schema[0], 'information_schema', 'columns'))} "
-                   "WHERE table_schema = :schema AND table_name IN "
-                   "(SELECT explode(from_json(:tables, 'ARRAY<STRING>'))) ORDER BY table_name, ordinal_position",
-                   {"schema": schema[1], "tables": json.dumps(sorted(names))})
-        found = {(*schema, name): [] for name in names}
-        for row in rows:
-            if (*schema, row["table_name"]) not in found:
-                raise ValueError("catalog returned unrequested column descriptors")
-            found[(*schema, row["table_name"])].append([row["column_name"], row["full_data_type"]])
-        columns.update(found)
+def _columns(results: ResultResolver, outcomes: Sequence[Outcome]) -> tuple[Outcome, ...]:
+    """CLIENT-RESULT-RESOLVER — every selected table's column descriptors, read through the result resolver that holds
+    it, not per-table verification: one read per result schema for a schema's tables, none for a session's. A closure
+    reusing results from another layer (an official result, `RUN-CLIENT-RESULT-OWNERSHIP`) reads that layer too."""
+    tables = list(dict.fromkeys(TableRef(catalog=o.result.artifact.table[0], schema=o.result.artifact.table[1],
+                                         table=o.result.artifact.table[2]) for o in outcomes))
+    read = results.columns(tables)
+    if any(table not in tables for table in read):
+        raise ValueError("catalog returned unrequested column descriptors")
+    columns = {(t.catalog, t.schema, t.table): [list(column) for column in read.get(t, ())] for t in tables}
     if any(not value for value in columns.values()):
         raise ResultsUnavailable("catalog did not return every selected table's column descriptors")
     return tuple(replace(outcome, result=replace(outcome.result, artifact=replace(
@@ -252,7 +244,7 @@ def execute(plan: PreparedPlan, targets: Sequence[str], *, results: ResultResolv
             decide(writes)
             _compute(computes, run=run, writes=writes, outcomes=outcomes, submitted=submitted, on_step=on_step,
                      on_start=on_start, parallelism=parallelism, done_meanwhile=done_meanwhile, reused=reused)
-    return _columns(run, tuple(outcomes[definition.key] for definition in planned))
+    return _columns(results, tuple(outcomes[definition.key] for definition in planned))
 
 
 def _compute(computes: Mapping[str, _Compute], *, run: SqlRunner, writes: ResultWrites,

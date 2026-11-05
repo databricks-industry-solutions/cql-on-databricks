@@ -10,7 +10,9 @@ library that header-less CQL joins (`SVC-NOTEBOOK-SESSION-SCOPE`); the ``version
 moves, so a compile cached against older cells is not reused.
 
 A write rebuilds the view from the rows: notebooks are single-threaded and the record is small. A read is one
-small query. The client writes no session conf. With no Spark session there is no record: reading one
+small query, and within one notebook operation, a ``%%cql`` cell or a ``cql()`` call (:func:`held_record`), the
+record is read at most once: the operation's later reads see what it read and what it wrote. Outside one, every read
+goes to the session. The client writes no session conf. With no Spark session there is no record: reading one
 finds nothing, and writing one raises. There is no in-memory stand-in.
 
 The session's resolvers (`CLIENT-SESSION-RESOLVERS`) are the one thing kept in the Python process instead: they are
@@ -18,13 +20,34 @@ Python objects, a DataFrame among them, which no view can hold.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Iterator, List, Mapping, Tuple
+from contextlib import contextmanager
+from typing import Any, Dict, Iterator, List, Mapping, Optional, Tuple
 
 VIEW = "__cqldatabricks_session"
 CELL, SCOPE, VERSION = "cell", "scope", "version"
 _SCHEMA = "kind STRING, name STRING, payload STRING"
 
 Row = Tuple[str, str, str]
+
+#: CLIENT-SESSION-STATE — the record's rows for the operation in progress, by Spark session (:func:`held_record`).
+_held: Dict[int, List[Row]] = {}
+_held_depth = 0
+
+
+@contextmanager
+def held_record() -> Iterator[None]:
+    """CLIENT-SESSION-STATE — within the block, each Spark session's record is read at most once: a later read returns
+    the rows the block read or last wrote. On Spark Connect each read is a round trip, and one cell looks the record up
+    several times, for its includes and to declare itself. Re-entrant; what is held is forgotten when the outermost
+    block ends, so the next operation reads the session again."""
+    global _held_depth
+    _held_depth += 1
+    try:
+        yield
+    finally:
+        _held_depth -= 1
+        if _held_depth == 0:
+            _held.clear()
 
 
 class SessionRecord:
@@ -59,19 +82,34 @@ class SessionRecord:
         spark = self._session()
         if spark is None:
             return []
+        held = _held.get(id(spark)) if _held_depth else None
+        if held is not None:
+            return list(held)
         try:
-            found = spark.table(VIEW).collect()
+            found = [(r["kind"], r["name"], r["payload"]) for r in spark.table(VIEW).collect()]
         except Exception as error:  # noqa: BLE001 — only "no such view" means empty; anything else is raised
-            if "TABLE_OR_VIEW_NOT_FOUND" in str(error):
-                return []
-            raise
-        return [(r["kind"], r["name"], r["payload"]) for r in found]
+            if "TABLE_OR_VIEW_NOT_FOUND" not in str(error):
+                raise
+            found = []
+        self._hold(spark, found)
+        return list(found)
+
+    @staticmethod
+    def _hold(spark, rows: Optional[List[Row]], *, wrote: bool = False) -> None:
+        """Keep ``rows`` as the session's record for the operation in progress, if there is one. A write forgets
+        everything held first, so no other handle on the same session can return what the write replaced."""
+        if _held_depth:
+            if wrote:
+                _held.clear()
+            _held[id(spark)] = list(rows or [])
 
     def write(self, rows: List[Row]) -> None:
         """Replace the record with ``rows``, moving its version."""
         body = [r for r in rows if r[0] != VERSION]
         body.append((VERSION, "", str(_version(rows) + 1)))
-        self.spark.createDataFrame(body, _SCHEMA).createOrReplaceTempView(VIEW)
+        spark = self.spark
+        spark.createDataFrame(body, _SCHEMA).createOrReplaceTempView(VIEW)
+        self._hold(spark, body, wrote=True)
 
     def version(self) -> int:
         return _version(self.rows())
@@ -85,7 +123,9 @@ class SessionRecord:
 
     def drop(self) -> None:
         """Remove the record itself. Safe when there is none."""
-        self.spark.catalog.dropTempView(VIEW)
+        spark = self.spark
+        spark.catalog.dropTempView(VIEW)
+        self._hold(spark, [], wrote=True)
 
 
 #: CLIENT-SESSION-RESOLVERS — the resolvers ``cql()`` and ``%%cql`` cells run through, by role. Replaced whole on

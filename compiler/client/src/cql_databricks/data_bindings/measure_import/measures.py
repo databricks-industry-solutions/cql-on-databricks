@@ -1,18 +1,18 @@
 """CONTENT-IMPORT-MEASURES — import quality measures into Unity Catalog. The one import path.
 
 The caller hands over FHIR resources it has already read: ``Measure``, ``Library`` and ``ValueSet`` resources, or
-``Bundle``s of them, plus any value-set codes it holds as rows. This module writes them to the store tables of the
-environment the caller names, ``<catalog>.knowledge_store`` (``DATA-ENVIRONMENT-LAYOUT``), and tags nothing: the environment's published views select the stores, so the Apps and
-``cql(library=...)`` find the measures there (``BIND-PUBLISHED-VIEW``). Where
+``Bundle``s of them, plus any value-set codes it holds as rows. This module writes them to the knowledge tables of
+the environment the caller names, ``<catalog>.knowledge`` (``DATA-ENVIRONMENT-LAYOUT``), and tags nothing: the Apps
+and ``cql(library=...)`` find the measures there (``BIND-PUBLISHED-VIEW``). Where
 the content comes from is the caller's business: nothing here reads a file or fetches anything. The deploy loads
 the content in ``examples/`` through it (``scripts/deploy/shipped_sources``), and the skill ``import-quality-measures``
 uses it for anything else (``CONTENT-IMPORT-SKILL``).
 
 Everything is checked before anything is written, and every problem is reported at once:
 
-- a ``Measure`` must name a ``Library`` that is in this import or already in the knowledge store
+- a ``Measure`` must name a ``Library`` that is in this import or already in the environment's knowledge
   (``CONTENT-MEASURE-LIBRARY-LINK``);
-- every value set a library declares must have codes, in this import or already in the knowledge store. A
+- every value set a library declares must have codes, in this import or already in the environment's knowledge. A
   measure run against a missing value set silently under-counts every population that retrieves through it
   (``CORE-NO-SILENT-MISLOWER``);
 - a ``ValueSet`` resource must carry its codes: an ``expansion``, or a ``compose`` that only lists concepts. One
@@ -130,21 +130,21 @@ def _existing(spark, fqtn: str, column: str) -> set[str]:
 def import_measures(spark, resources: Iterable[Mapping[str, Any]], *, catalog: str, source: str,
                     codes: Iterable[Mapping[str, Any]] = (), lineage: str = "import",
                     dry_run: bool = False) -> ImportSummary:
-    """CONTENT-IMPORT-MEASURES — import measures, libraries and value-set codes into the stores of the environment in
-    ``catalog`` (`DATA-ENVIRONMENT-LAYOUT`): ``knowledge_store.library``, ``.measure`` and ``.valueset``.
+    """CONTENT-IMPORT-MEASURES — import measures, libraries and value-set codes into the knowledge of the environment
+    in ``catalog`` (`DATA-ENVIRONMENT-LAYOUT`): ``knowledge.library``, ``.measure`` and ``.valueset``.
 
     ``resources`` are FHIR resources (``Measure``, ``Library``, ``ValueSet``, or ``Bundle``s of them); any other
     type is counted in ``skipped`` and not imported. ``codes`` are value-set codes already in rows:
     ``{valueset_id, system, code}``, with ``display`` and ``version`` optional. ``source`` names where this
     content came from, as provenance on every row. ``dry_run`` checks everything and writes nothing.
     """
-    from cql_databricks.resolvers.environment import KNOWLEDGE_STORE
+    from cql_databricks.resolvers.environment import KNOWLEDGE
 
     from .load import _qualify, ensure_valueset_table, load
 
     if not catalog:
-        raise ImportContentError("no catalog: an import writes an environment's stores, which are in its catalog")
-    schema = KNOWLEDGE_STORE
+        raise ImportContentError("no catalog: an import writes an environment's knowledge, which is in its catalog")
+    schema = KNOWLEDGE
     now = datetime.now(timezone.utc).isoformat()
     flat = flatten(resources)
 

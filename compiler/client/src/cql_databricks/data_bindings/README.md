@@ -40,7 +40,7 @@ use the same code. Every statement sent to a SQL warehouse goes through `warehou
 ## Importing measures
 
 `cql_databricks.data_bindings.measure_import.import_measures` (`CONTENT-IMPORT-MEASURES`) writes measures and
-libraries and value sets into the `knowledge_store` schema of the environment in the catalog the caller names. It takes FHIR `Measure`, `Library` and `ValueSet` resources (or Bundles) and value-set code rows the
+libraries and value sets into the `knowledge` schema of the environment in the catalog the caller names. It takes FHIR `Measure`, `Library` and `ValueSet` resources (or Bundles) and value-set code rows the
 caller has read. It reads no file and fetches nothing. The `import-quality-measures` skill is how a user brings
 content to it (`CONTENT-IMPORT-SKILL`), and the deploy loads `examples/` through it (`scripts/deploy/shipped_sources`).
 It needs a Spark session, so `cql_databricks.data_bindings` does not import it.

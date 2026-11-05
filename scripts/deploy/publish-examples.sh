@@ -18,8 +18,8 @@
 # The published copy is a DERIVED artifact, never a source of truth: `examples/tests/
 # test_example_notebooks.py` runs the REPO copy, so the notebooks are validated where they are authored.
 #
-# Idempotent: re-publishing overwrites in place. Runs AFTER the bundle deploy, which creates the runtime
-# Volume the notebooks install from.
+# Idempotent: re-publishing overwrites in place. Runs AFTER the base environment the notebooks name is built
+# (DEPLOY-BASE-ENVIRONMENT).
 #
 # Usage: scripts/deploy/publish-examples.sh [-t <target>] [-p <profile>]
 set -euo pipefail
@@ -37,71 +37,39 @@ esac; done
 if [ ${#profile_args[@]} -eq 0 ]; then _p="$(config_profile -t "$target")"; [ -z "$_p" ] || profile_args=(-p "$_p"); fi
 
 # The published root. Mirrored by EXAMPLES_PATH in designer/src/measures/model.ts, which links to it.
-shared_root="/Shared/CqlDatabricks/examples"
+shared_root="/Shared/cql_databricks/examples"
 src="$here/examples"
 
-# Everything in the directory, including `00_start_here` — the documentation-only index page that is the
-# folder's front door (SVC-EXAMPLE-INDEX). It is a notebook like the others as far as this script cares:
-# one `%md` cell, no code, numbered `00_` so the workspace listing sorts it first.
+# Everything in the directory: `start_here`, the documentation-only index page that is the folder's front door
+# (SVC-EXAMPLE-INDEX), one `%md` cell and no code, and a folder per group of notebooks, `getting_started` and
+# `scenarios`, published as the same folders.
 [ -d "$src" ] || { echo "!!! no examples directory at $src"; exit 1; }
-echo "==> publishing $(ls "$src"/*.py "$src"/*.ipynb | wc -l | tr -d ' ') notebooks (index + examples) + $(ls "$src"/*.png | wc -l | tr -d ' ') asset(s) -> $shared_root"
+echo "==> publishing $(ls "$src"/*.py "$src"/*/*.ipynb | wc -l | tr -d ' ') notebooks (index + examples) + $(ls "$src"/*.png | wc -l | tr -d ' ') asset(s) -> $shared_root"
 
-# SVC-EXAMPLE-NOTEBOOKS, SVC-PACKAGING — each notebook's `%pip` cell names the runtime Volume as the
-# `__CQL_DATABRICKS_ARTIFACT_VOLUME__` placeholder, because the Volume's catalog is the deployment's
-# `uc_catalog`. The published copy gets this deployment's path. Resolved from the bundle variables, as
-# deploy-runtime-artifacts.sh resolves it, so the notebooks install from the Volume that step filled.
-cfg="$(cd "$here" && databricks bundle validate -t "$target" ${profile_args[@]+"${profile_args[@]}"} -o json)"
-volume="$(printf '%s' "$cfg" | python3 -c "import sys,json;v=json.load(sys.stdin).get('variables') or {};f=lambda k:(v.get(k) or {}).get('value') or '';print('/Volumes/%s/%s/%s'%(f('uc_catalog'),f('uc_schema'),f('runtime_volume')))")"
-case "$volume" in *//*|*/) echo "!!! could not resolve the runtime Volume path from the bundle (got $volume)"; exit 1;; esac
-echo "==> runtime volume=$volume"
-staged="$(mktemp -d)"; trap 'rm -rf "$staged"' EXIT
-
+# SVC-EXAMPLE-NOTEBOOKS, DEPLOY-BASE-ENVIRONMENT — the notebooks hold nothing of this deployment: each example's
+# environment names the base environment the deploy published, by its workspace-wide name, so the repository copy
+# is the published copy and nothing is filled in.
 databricks workspace mkdirs "$shared_root" ${profile_args[@]+"${profile_args[@]}"}
 
-for f in "$src"/*.py; do
-  name="$(basename "$f" .py)"
-  echo "    -> $shared_root/$name"
-  CQL_DATABRICKS_ARTIFACT_VOLUME="$volume" python3 -c 'import os,sys;s=open(sys.argv[1]).read()
-open(sys.argv[2],"w").write(s.replace("__CQL_DATABRICKS_ARTIFACT_VOLUME__",os.environ["CQL_DATABRICKS_ARTIFACT_VOLUME"]))' \
-    "$f" "$staged/$name.py"
-  # PIPE-DEPLOY-NO-PLACEHOLDER-ENV — a placeholder that survives fails the notebook's first cell.
-  if grep -q '__CQL_[A-Z_]*__' "$staged/$name.py"; then
-    echo "!!! $name still holds an unsubstituted placeholder:"; grep -n '__CQL_[A-Z_]*__' "$staged/$name.py"; exit 1
+# FATAL on failure (no `|| true`): a half-published folder is worse than no folder, because a user would open a
+# stale copy from an earlier deploy beside a fresh one.
+_publish() {  # <file> <format> [<language>] — the file's path under examples/ is its path under $shared_root
+  local name; name="${1#"$src"/}"; name="${name%.*}"
+  # PIPE-DEPLOY-NO-PLACEHOLDER-ENV — a placeholder in a published notebook fails its first cell.
+  if grep -q '__CQL_[A-Z_]*__' "$1"; then
+    echo "!!! $name holds a placeholder, which nothing fills in:"; grep -n '__CQL_[A-Z_]*__' "$1"; exit 1
   fi
-  # SOURCE format + PYTHON language: the files carry the `# Databricks notebook source` header, so the
-  # workspace renders them as notebooks rather than plain files. FATAL on failure (no `|| true`): a
-  # half-published folder is worse than no folder, because a user would open a stale copy from an earlier
-  # deploy beside a fresh one.
-  databricks workspace import "$shared_root/$name" \
-    --file "$staged/$name.py" --format SOURCE --language PYTHON --overwrite \
-    ${profile_args[@]+"${profile_args[@]}"}
-done
-
-# SVC-EXAMPLE-NOTEBOOKS, SVC-PACKAGING — a `.ipynb` example carries the client wheel in its serverless
-# environment instead of a `%pip` cell, because only the Jupyter format stores a notebook's environment. An
-# environment dependency is one exact path, not a glob, so `__CQL_DATABRICKS_CLIENT_WHEEL__` becomes the one
-# `cql_databricks-*.whl` deploy-runtime-artifacts.sh left in the Volume. None, or more than one, is fatal.
-wheels="$(databricks fs ls "dbfs:$volume/wheels" ${profile_args[@]+"${profile_args[@]}"} | grep -E '^cql_databricks-[^-]+-py3-none-any\.whl$' || true)"
-[ "$(printf '%s' "$wheels" | grep -c .)" = "1" ] \
-  || { echo "!!! expected one cql_databricks wheel in $volume/wheels, found: ${wheels:-none}"; exit 1; }
-client_wheel="$volume/wheels/$wheels"
-echo "==> client wheel=$client_wheel"
-
-for f in "$src"/*.ipynb; do
-  [ -f "$f" ] || continue
-  name="$(basename "$f" .ipynb)"
   echo "    -> $shared_root/$name"
-  CQL_DATABRICKS_ARTIFACT_VOLUME="$volume" CQL_DATABRICKS_CLIENT_WHEEL="$client_wheel" python3 -c 'import os,sys;s=open(sys.argv[1]).read()
-s=s.replace("__CQL_DATABRICKS_CLIENT_WHEEL__",os.environ["CQL_DATABRICKS_CLIENT_WHEEL"])
-open(sys.argv[2],"w").write(s.replace("__CQL_DATABRICKS_ARTIFACT_VOLUME__",os.environ["CQL_DATABRICKS_ARTIFACT_VOLUME"]))' \
-    "$f" "$staged/$name.ipynb"
-  # PIPE-DEPLOY-NO-PLACEHOLDER-ENV — as for the source notebooks above.
-  if grep -q '__CQL_[A-Z_]*__' "$staged/$name.ipynb"; then
-    echo "!!! $name still holds an unsubstituted placeholder:"; grep -n '__CQL_[A-Z_]*__' "$staged/$name.ipynb"; exit 1
-  fi
-  databricks workspace import "$shared_root/$name" \
-    --file "$staged/$name.ipynb" --format JUPYTER --overwrite \
+  databricks workspace import "$shared_root/$name" --file "$1" --format "$2" ${3:+--language "$3"} --overwrite \
     ${profile_args[@]+"${profile_args[@]}"}
+}
+# The index page is the one source notebook: SOURCE format + PYTHON language, so the workspace renders it as a
+# notebook rather than a plain file. The examples are Jupyter, the one format that stores a notebook's environment.
+for f in "$src"/*.py; do _publish "$f" SOURCE PYTHON; done
+for group in "$src"/*/; do
+  ls "$group"*.ipynb >/dev/null 2>&1 || continue   # content and test folders hold no notebook
+  databricks workspace mkdirs "$shared_root/$(basename "$group")" ${profile_args[@]+"${profile_args[@]}"}
+  for f in "$group"*.ipynb; do _publish "$f" JUPYTER; done
 done
 
 # The index page's masthead (SVC-EXAMPLE-INDEX). A `%md` cell strips every `style` attribute, so the one
@@ -117,15 +85,16 @@ for f in "$src"/*.png; do
     ${profile_args[@]+"${profile_args[@]}"}
 done
 
-# The content directories (SVC-EXAMPLE-KNOWLEDGE): the CQL measures notebook 01 points `library_path` at, and
-# the FHIR data and value sets notebook 07 writes to a Volume. They have to land BESIDE the notebooks,
-# because both notebooks derive the path from their own notebook location rather than from a configured
-# root — the same reason the masthead above cannot live anywhere central.
+# The content directory (SVC-EXAMPLE-KNOWLEDGE): the CQL measures the notebooks point `library_path` at, a workspace
+# folder of libraries. It has to land BESIDE the notebooks, because a notebook derives the path from its own
+# notebook location rather than from a configured root — the same reason the masthead above cannot live anywhere
+# central. The patients and value sets are the default environment's, as tables and as files in its volumes
+# (DEPLOY-DEFAULT-ENVIRONMENT), so they are not published here.
 #
-# `import-dir` walks the tree, so each directory's structure is preserved. A `.cql` / `.ndjson` / `.json`
-# file has no notebook header, so it imports as a workspace FILE and stays byte-identical — which is what
-# makes it readable with a plain open() from a notebook via /Workspace.
-for d in measures data valuesets; do
+# `import-dir` walks the tree, so the directory's structure is preserved. A `.cql` or `.json` file has no notebook
+# header, so it imports as a workspace FILE and stays byte-identical — which is what makes it readable with a plain
+# open() from a notebook via /Workspace.
+for d in measures; do
   [ -d "$src/$d" ] || { echo "!!! missing content directory $src/$d — the notebooks cannot run without it"; exit 1; }
   echo "==> publishing content -> $shared_root/$d"
   databricks workspace import-dir "$src/$d" "$shared_root/$d" --overwrite \

@@ -1,4 +1,4 @@
-"""CLIENT-PUBLISH — publish a library from a workspace folder into a tagged knowledge store, as the caller.
+"""CLIENT-PUBLISH — publish a library from a workspace folder into an environment's knowledge, as the caller.
 
 Authoring happens in folders (`DOC-AUTHOR-IN-FOLDERS`); the client, Jobs and the agent read tagged knowledge. This is
 the one step between them, the same for a notebook, a Job and the Designer (`DEC-DESIGNER-PUBLISH`): each passes the
@@ -7,7 +7,7 @@ SQL runner and the compile it has, and the rows are written as whoever that runn
 What is written: the library's ``Library`` resource, carrying its CQL and the ELM compiled from it (the folder's own
 ``Library`` JSON when it has one, else one built as New builds it), and, for a measure, its ``Measure``. Its
 includes that resolve from the folder go with it, dependencies first; includes resolved from tagged knowledge are
-already published and are left alone. A library is written only when it changed: the store has no row for its
+already published and are left alone. A library is written only when it changed: the schema has no row for its
 ``(url, version)``, or that row's CQL is not the folder's, line endings aside, or, for the measure, its ``Measure``
 differs. So publishing a measure does not rewrite every shared library it includes.
 
@@ -87,18 +87,17 @@ class _Candidate:
 
 
 def publish_folder_library(content: ContentResolver, files: LibraryFiles, folder: str, name: str, version: str, *,
-                           store: tuple[str, str], view: tuple[str, str], run: SqlRunner, translate: Translate,
+                           schema: tuple[str, str], run: SqlRunner, translate: Translate,
                            base: str, lineage: str = "publish") -> PublishSummary:
-    """Publish library ``name`` ``version`` from ``folder`` into the knowledge ``store`` ``(catalog, schema)``, whose
-    tables the published ``view`` schema's ``library`` and ``measure`` views select (`BIND-PUBLISHED-VIEW`).
+    """Publish library ``name`` ``version`` from ``folder`` into the knowledge ``schema`` ``(catalog, schema)``: its
+    ``library`` and ``measure`` tables (`BIND-PUBLISHED-VIEW`). A ``library`` or ``measure`` that is a view fails the
+    write in the warehouse, naming it.
 
     ``content`` resolves includes not in the folder from the environment's knowledge; ``files`` reads the folder;
-    ``run`` reads and writes the store, as its identity; ``translate`` compiles (`resolve.Translate`); ``base`` is the
-    canonical base for a library whose folder holds no ``Library`` JSON with a URL. After the writes it reads the
-    written libraries back through ``view`` once; one the view does not show fails the publish."""
+    ``run`` reads and writes the schema, as its identity; ``translate`` compiles (`resolve.Translate`); ``base`` is the
+    canonical base for a library whose folder holds no ``Library`` JSON with a URL."""
     folder = folder.rstrip("/")
-    target = TaggedSchema(tag=KNOWLEDGE_TAG, name="store", catalog=store[0], schema=store[1])
-    published = TaggedSchema(tag=KNOWLEDGE_TAG, name="published", catalog=view[0], schema=view[1])
+    target = TaggedSchema(tag=KNOWLEDGE_TAG, name="knowledge", catalog=schema[0], schema=schema[1])
     where = f"{target.catalog}.{target.schema}"
     resolution = resolve(content, library=name, version=version, location=f"folder:{folder}", files=files)
     missing = resolution.unresolved_messages()
@@ -141,24 +140,7 @@ def publish_folder_library(content: ContentResolver, files: LibraryFiles, folder
             summary = PublishSummary(where, (*done, failed, *rest))
             raise PublishFailed(f"{c.name} {c.version} was not published: {e}", summary) from e
         done.append(PublishedLibrary(c.name, c.version, c.url, PUBLISHED, tuple(rows)))
-    summary = PublishSummary(where, tuple(done))
-    missing = _not_visible(run, published, [c for c in candidates if c.changed])
-    if missing:
-        raise PublishFailed(f"{published.catalog}.{published.schema}.library does not show {', '.join(missing)}, just "
-                            f"written to {where}: the view does not select the store (BIND-PUBLISHED-VIEW)", summary)
-    return summary
-
-
-def _not_visible(run: SqlRunner, published, written: list[_Candidate]) -> list[str]:
-    """BIND-PUBLISHED-VIEW: the libraries just written that one read of the published ``library`` view does not
-    show."""
-    if not written:
-        return []
-    pairs = " OR ".join(f"(url = :u{i} AND version = :v{i})" for i in range(len(written)))
-    params = {k: v for i, c in enumerate(written) for k, v in ((f"u{i}", c.url), (f"v{i}", c.version))}
-    shown = {(r["url"], r["version"]) for r in run(f"SELECT url, version FROM {published.table('library')} "
-                                                   f"WHERE {pairs}", params)}
-    return [f"{c.name} {c.version}" for c in written if (c.url, c.version) not in shown]
+    return PublishSummary(where, tuple(done))
 
 
 def _candidate(files: LibraryFiles, folder: str, name: str, version: str, cql: str, base: str, *,
@@ -171,7 +153,7 @@ def _candidate(files: LibraryFiles, folder: str, name: str, version: str, cql: s
 
 
 def _changed(run: SqlRunner, target, c: _Candidate) -> bool:
-    """The store has no row for ``c``'s ``(url, version)``, or its CQL (or, for a measure, its ``Measure``) is not
+    """The schema has no row for ``c``'s ``(url, version)``, or its CQL (or, for a measure, its ``Measure``) is not
     the folder's."""
     stored = _row(run, target.table("library"), c.url, c.version)
     if stored is None or _lines(cql_of(stored) or "") != _lines(c.cql):

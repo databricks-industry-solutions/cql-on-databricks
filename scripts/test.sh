@@ -97,18 +97,14 @@ if [ "$mode" = "integration" ] || [ "$mode" = "all" ]; then
   integration() {
     [ -x "$venv_py" ] || { echo "  venv absent — run: scripts/setup.sh"; return 1; }
     . "$here/scripts/lib/databricks-profile.sh"
-    local target="${DATABRICKS_BUNDLE_TARGET:-default}" profile cfg volume catalog warehouse app url token junit skipped
+    local target="${DATABRICKS_BUNDLE_TARGET:-default}" profile cfg catalog warehouse app url token junit skipped
     profile="$(config_profile -t "$target")"
     [ -n "$profile" ] || { echo "  no profile — set targets.$target.workspace.profile in databricks.local.yml"; return 1; }
     cfg="$(cd "$here" && databricks bundle validate -t "$target" -p "$profile" -o json)" || return 1
     jqpy() { printf '%s' "$cfg" | python3 -c "import sys,json;d=json.load(sys.stdin);$1"; }
-    volume="$(jqpy "v=d.get('variables') or {};f=lambda k:(v.get(k) or {}).get('value') or '';print('/Volumes/%s/%s/%s'%(f('uc_catalog'),f('uc_schema'),f('runtime_volume')))")"
-    case "$volume" in *//*|*/) echo "  could not resolve the runtime Volume path from the bundle (got $volume)"; return 1;; esac
     # BIND-PUBLISH: the live publish writes a scratch schema here, and drops it.
     catalog="$(jqpy "print(((d.get('variables') or {}).get('uc_catalog') or {}).get('value') or '')")"
     [ -n "$catalog" ] || { echo "  could not resolve uc_catalog from the bundle"; return 1; }
-    # CLIENT-SESSION-RESOLVERS: notebook 07 writes its test files under the runtime Volume, which the deployer can
-    # write, in a folder of its own.
     # The provider live tests run the Designer's and the agent's paths on this warehouse.
     warehouse="$(jqpy "print(((d.get('variables') or {}).get('warehouse_id') or {}).get('value') or '')")"
     [ -n "$warehouse" ] || { echo "  could not resolve warehouse_id from the bundle"; return 1; }
@@ -116,11 +112,11 @@ if [ "$mode" = "integration" ] || [ "$mode" = "all" ]; then
     url="$(databricks apps get "$app" -p "$profile" -o json | python3 -c "import sys,json;print(json.load(sys.stdin).get('url') or '')")"
     [ -n "$url" ] || { echo "  App $app has no URL — deploy it: scripts/deploy/deploy.sh"; return 1; }
     token="$(databricks auth token -p "$profile" | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")" || return 1
-    echo "  profile=$profile volume=$volume app=$app"
+    echo "  profile=$profile app=$app"
     junit="$(mktemp)"
     ( cd "$here" && DATABRICKS_CONFIG_PROFILE="$profile" CQL_DATABRICKS_LIVE=1 DATABRICKS_SERVERLESS=1 \
-        CQL_DATABRICKS_ARTIFACT_VOLUME="$volume" CQL_DATABRICKS_PUBLISH_CATALOG="$catalog" \
-        CQL_DATABRICKS_WAREHOUSE_ID="$warehouse" CQL_DATABRICKS_TEST_VOLUME="$volume/test-files/notebook-07" \
+        CQL_DATABRICKS_PUBLISH_CATALOG="$catalog" \
+        CQL_DATABRICKS_WAREHOUSE_ID="$warehouse" \
         CQL_DATABRICKS_ENDPOINT="$url" CQL_DATABRICKS_TOKEN="$token" \
         "$venv_py" -m pytest -q -rs --junitxml="$junit" examples/tests ) || { rm -f "$junit"; return 1; }
     # A skipped live test proved nothing, so it fails the run.

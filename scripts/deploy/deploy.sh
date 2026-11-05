@@ -5,17 +5,20 @@
 #   3. `databricks bundle deploy` — CREATES the runtime schema (SVC-CATALOG-LAYOUT) + volume, the Apps, perms.
 #   4. Populate the runtime volume: the compiler App's JRE + 3 oversized jars (SVC-PACKAGING) and the
 #      opaque-UDF catalog JAR.
+#   4.5 Publish the "CQL on Databricks" base environment over the client wheel just uploaded, and make it the
+#      workspace default when default_base_environment is true (DEPLOY-BASE-ENVIRONMENT).
 #   5. Register the opaque `cql_*` catalog as UC Scala UDFs on serverless (SVC-RUNTIME-UDF-UC) in one SQL
 #      session (needs `warehouse_id`; skipped with a notice if unset).
-#   6.7 Publish the example notebooks to /Shared/CqlDatabricks/examples (SVC-EXAMPLE-NOTEBOOKS) — the shared,
+#   6.7 Publish the example notebooks to /Shared/cql_databricks/examples (SVC-EXAMPLE-NOTEBOOKS) — the shared,
 #      every-user copy.
 #   5.8 Create the Designer run log tables and grant them, as the deployer (APP-RUN-LOG).
 #   7. `databricks bundle run` EVERY App the bundle declares (an App is not started by `deploy` alone).
 #   7.5 Publish every skill, from one definition, as a Unity Catalog skill and to the workspace skills folder
 #      (DEPLOY-AGENT-SKILLS).
 #   7.6 Register the agent App under Unity Gateway, per user, so Genie One can call it (DEPLOY-AGENT-REGISTRATION).
-#   8. Build the default environment in uc_catalog, as the deployer: its schemas, the example measures and patients
-#      from examples/ in its stores, its views, its tags and its grants (DEPLOY-DEFAULT-ENVIRONMENT).
+#   8. Fill the default environment in uc_catalog, as the deployer: the example measures and patients from examples/
+#      as tables in its knowledge and data schemas, its tags and the grants the bundle cannot make
+#      (DEPLOY-DEFAULT-ENVIRONMENT).
 # Before 2, the workspace settings set to true in databricks.local.yml are turned on (DEPLOY-WORKSPACE-SETTINGS), and
 # the maintenance principal is created and granted (RUN-CLIENT-MAINTENANCE): it is the run-as of the
 # cql-databricks-designer-maintenance Job the bundle deploys at 3.
@@ -206,6 +209,11 @@ echo "==> [3/7] validate + deploy the bundle to target=$target (creates the sche
 echo "==> [4/7] populate the runtime volume (JRE + jars)"
 "$here/scripts/deploy/deploy-runtime-artifacts.sh" -t "$target" ${profile_args[@]+"${profile_args[@]}"}
 
+echo "==> [4.5] publish the base environment that carries the client wheel (DEPLOY-BASE-ENVIRONMENT)"
+# After [4/7], which uploads the wheel its YAML names. FATAL on failure: a stale base environment installs the client
+# from before this deploy, with nothing failing to say so.
+bash "$here/scripts/deploy/base-environment.sh" -t "$target" ${profile_args[@]+"${profile_args[@]}"}
+
 echo "==> [5/7] register the cql_* catalog as UC Scala UDFs on serverless (SVC-RUNTIME-UDF-UC)"
 "$here/scripts/deploy/register-uc-udfs.sh" -t "$target" ${profile_args[@]+"${profile_args[@]}"}
 
@@ -226,7 +234,7 @@ _designer_app="$(jqpy "a=(d.get('resources') or {}).get('apps') or {};print((a.g
 )
 
 echo "==> [6.7/7] publish the example notebooks to /Shared (SVC-EXAMPLE-NOTEBOOKS)"
-# Runs after [3/7], which creates the runtime Volume the notebooks' %pip cells name. Overwrites in place, so
+# Runs after [4.5], which builds the base environment the notebooks name. Overwrites in place, so
 # each deploy restores the published copy to what the repo says it is.
 "$here/scripts/deploy/publish-examples.sh" -t "$target" ${profile_args[@]+"${profile_args[@]}"}
 

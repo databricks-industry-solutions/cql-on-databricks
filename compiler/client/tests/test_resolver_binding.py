@@ -130,7 +130,7 @@ class BindTest(unittest.TestCase):
 
     def test_a_rule_schema_with_no_views_fails_naming_it(self):
         """DATA-MODEL-SUBSET: no view means no shape to read; the run fails before it compiles."""
-        with self.assertRaisesRegex(ResolverError, "acme.data has no view"):
+        with self.assertRaisesRegex(ResolverError, "acme.data has no view or table"):
             bind(None, data=SchemaDataResolver("acme.data"), terminology=None, run=lambda st, p=None: [],
                  schemas=_schemas)
 

@@ -95,11 +95,12 @@ populations of more than a million patients and completed in minutes.
 
 ## Get started
 
-In a Databricks notebook, after deploying the bundle ([deploy guide](docs/deploy.md)), which publishes the
-client wheel to a Volume:
+In a serverless Databricks notebook, after deploying the bundle ([deploy guide](docs/deploy.md)), pick the
+**CQL on Databricks** base environment in the notebook's Environment pane. It has the client in it, so there is
+nothing to install. On other compute, install the wheel the deploy put in the runtime Volume:
+`%pip install /Volumes/<catalog>/runtime/artifacts/wheels/cql_databricks-*.whl`.
 
 ```python
-%pip install /Volumes/<catalog>/runtime/artifacts/wheels/cql_databricks-*.whl
 from cql_databricks.compiler import cql
 cql('define "Two": 2 + 2').exec("Two").display()
 ```

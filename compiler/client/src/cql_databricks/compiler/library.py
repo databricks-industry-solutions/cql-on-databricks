@@ -64,7 +64,7 @@ def measurement_period_literal(start: str, end: str, point_type: str = "DateTime
     return f"Interval[@{lo}, @{hi}]"
 
 
-# The Spark-conf keys read to build a settings map (there is no public "get all by prefix").
+# The Spark-conf keys read to build a settings map, out of every key the session sets (`_spark_conf`).
 _CONF_KEYS = [
     config.CONF_PROVIDER_KIND, config.CONF_PROVIDER_ENDPOINT, config.CONF_LIBRARY,
     config.CONF_LIBRARY_SOURCE,
@@ -392,17 +392,12 @@ def _read_text(path: str) -> str:
 
 
 def _spark_conf() -> Dict[str, str]:
+    """BUILD-RESOLVE — the Spark-conf tier: each of :data:`_CONF_KEYS` the active session sets. Read in one config
+    call (``getAll``) rather than one per key: on Spark Connect a per-key read is a round trip, and two for a key
+    that is not set, which serverless refuses for every key outside its allowlist, these among them."""
     from pyspark.sql import SparkSession  # lazy
-    spark = SparkSession.active()
-    out: Dict[str, str] = {}
-    for k in _CONF_KEYS:
-        try:
-            v = spark.conf.get(k, None)
-        except Exception:
-            v = None
-        if v is not None:
-            out[k] = v
-    return out
+    held = SparkSession.active().conf.getAll
+    return {k: held[k] for k in _CONF_KEYS if held.get(k) is not None}
 
 
 def _spark_conf_if_any() -> Dict[str, str]:

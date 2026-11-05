@@ -20,8 +20,8 @@ from cql_databricks.result.results import PinnedRelation, count_relations, relat
 from cql_databricks.result.selection_reading import (SelectedOutput, SelectionClosure, open_selection,
                                                         selection_address, selection_counts)
 from cql_databricks.resolvers.interfaces import Resolvers
-from cql_databricks.result.store import DeltaResultResolver, DeltaResultStore
-from test_catalog_runtime import DESTINATION, DRAFT, CatalogRunner
+from cql_databricks.result.store import OFFICIAL, SchemaResultResolver
+from test_catalog_runtime import DESTINATION, DRAFT, CatalogRunner, layered, store_over
 from test_durable_plan import plan
 
 
@@ -38,7 +38,7 @@ def selected():
     runner.columns = [("__subject_id", "string"), ("__val", "boolean")]
     compiled = plan()
     query = SimpleNamespace(compile_pipeline=lambda **kwargs: compiled, request={"environment": "synthetic-all"})
-    settings = dict(run=runner, results=DeltaResultStore(DRAFT, runner, official=[DESTINATION]), session_id="session")
+    settings = dict(run=runner, results=store_over(DRAFT, runner, [DESTINATION]), session_id="session")
     results = durable.materialize(query, "Base", "Output", **settings)
     return SimpleNamespace(results=results, backend=results._backend, compiled=compiled, runner=runner,
                            query=query, settings=settings)
@@ -223,12 +223,12 @@ def test_an_address_opens_only_through_a_resolver_addressed_by_its_destination(s
     refused before any SQL."""
     address = selection_address(selected.results)
     assert "purpose" not in address
-    official = Resolvers(data=None, terminology=None, results=DeltaResultResolver(selected.runner,
-                                                                                  official=[DESTINATION]))
+    official = Resolvers(data=None, terminology=None, results=SchemaResultResolver(DESTINATION, selected.runner,
+                                                                                   reuse=OFFICIAL))
     with pytest.raises(ValueError, match="this result resolver's are in synthetic_catalog.results"):
         open_selection(address, query=selected.query, run=selected.runner, resolvers=official)
-    reader = Resolvers(data=None, terminology=None, results=DeltaResultResolver(selected.runner, own=[DRAFT],
-                                                                                official=[DESTINATION]))
+    reader = Resolvers(data=None, terminology=None, results=layered(SchemaResultResolver(DRAFT, selected.runner),
+                                                                    selected.runner, [DESTINATION]))
     reopened = open_selection(address, query=selected.query, run=selected.runner, resolvers=reader)
     assert reopened.selection.selection_id == selected.results.selection.selection_id
 
@@ -249,4 +249,4 @@ def test_locator_does_not_turn_permission_failure_into_a_miss(selected):
     with pytest.raises(PermissionError, match="synthetic denied read"):
         open_selection(selection_address(selected.results), query=selected.query, run=denied,
                        resolvers=Resolvers(data=None, terminology=None,
-                                           results=DeltaResultResolver(denied, own=[DRAFT], official=[DESTINATION])))
+                                           results=layered(SchemaResultResolver(DRAFT, denied), denied, [DESTINATION])))

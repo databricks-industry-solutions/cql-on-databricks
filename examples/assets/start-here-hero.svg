@@ -1,4 +1,4 @@
-<!-- Source for examples/start-here-hero.png — the masthead of the 00_start_here
+<!-- Source for examples/start-here-hero.png — the masthead of the start_here
      index page (SVC-EXAMPLE-INDEX). A Databricks `%md` cell strips every `style` attribute, so the
      page's brand lives in this one raster; the rest of the page is plain markdown.
      Regenerate after editing:

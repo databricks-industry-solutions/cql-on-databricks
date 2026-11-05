@@ -30,10 +30,10 @@ SCOPE = {"environment": "synthetic", "library": "Synthetic", "version": "1",
 #: CLIENT-ENVIRONMENT — the environments the caller can see: the default one, and another.
 ENVIRONMENT_TAGS = [
     {"catalog": "synthetic_env", "tag": "cql_databricks_environment", "value": "synthetic", "comment": None},
-    {"catalog": "synthetic_env", "tag": "cql_databricks_environment_version", "value": "2", "comment": None},
+    {"catalog": "synthetic_env", "tag": "cql_databricks_environment_version", "value": "3", "comment": None},
     {"catalog": "synthetic_env", "tag": "cql_databricks_environment_default", "value": "true", "comment": None},
     {"catalog": "other_env", "tag": "cql_databricks_environment", "value": "other", "comment": None},
-    {"catalog": "other_env", "tag": "cql_databricks_environment_version", "value": "2", "comment": None}]
+    {"catalog": "other_env", "tag": "cql_databricks_environment_version", "value": "3", "comment": None}]
 
 
 @pytest.fixture
@@ -72,8 +72,9 @@ def setup(monkeypatch):
                 return [{"principal": owner}]
             if sql.startswith("SHOW TABLES"):
                 return [dict(tableName=t[2], isTemporary=False) for t in state.tables if t[:2] == tuple(parts)]
-            if sql.startswith("SELECT 'own' AS layer"):
-                # CLIENT-RESULT-RESOLVER: the caller's own tables in draft_results, then any in results.
+            if sql.startswith(("SELECT 'own' AS layer", "SELECT 'official' AS layer")):
+                # CLIENT-RESULT-RESOLVER: one layer's lookup, the caller's own tables in draft_results or any in
+                # results.
                 rows = []
                 for branch in sql.split(" UNION ALL "):
                     layer, index = re.search(r":(own|official)_(\d+)", branch).groups()

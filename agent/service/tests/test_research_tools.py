@@ -61,7 +61,7 @@ class Content:
 
 
 #: AGENT-DEFAULT-ENVIRONMENT: the environment the experiments run in.
-ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="2")
+ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="3")
 
 
 class Compiler:

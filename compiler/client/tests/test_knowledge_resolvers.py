@@ -59,7 +59,7 @@ class KnowledgeResolversTest(unittest.TestCase):
         self.assertIsInstance(TableKnowledgeResolver(lambda: None), KnowledgeStore)
         self.assertNotIsInstance(CellsKnowledgeResolver(cells={}), KnowledgeStore)
         with self.assertRaises(ValueError):
-            TableKnowledgeResolver(lambda: None, store=("acme", "knowledge_store"))  # needs a runner and a view
+            TableKnowledgeResolver(lambda: None, schema=("acme", "knowledge"))  # needs a runner
 
 
 class ClosureTest(unittest.TestCase):

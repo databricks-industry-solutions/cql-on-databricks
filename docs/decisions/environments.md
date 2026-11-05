@@ -25,8 +25,7 @@ default environment, so no business user is ever asked which one.
 |---|---|
 | Environment | A catalog tagged as one, with the standard schemas below |
 | Resolver | Anything that answers a role or picks an environment. The role interfaces are `DataResolver`, `TerminologyResolver`, `KnowledgeResolver` and `ResultResolver`; every implementation also ends in `Resolver`. `EnvironmentResolver` finds an environment and returns its four role resolvers. "Provider" is retired as a term |
-| Published | The read side: views that runs bind to. Business users and Genie read these |
-| Store | The write side: tables that publishing writes to. A published view selects its store by default |
+| Published | What runs bind to by name: the tables and views in `data` and `knowledge`. Business users and Genie read these |
 | Draft | A Designer library in a workspace folder, as now (`DOC-AUTHOR-IN-FOLDERS`, `DOC-AUTO-SAVE`) |
 
 ### The environment catalog
@@ -47,29 +46,28 @@ see are found. Two visible defaults fail, naming both; no visible default fails,
 
 | Schema | Holds | Who writes |
 |---|---|---|
-| `data` | Published views: one per FHIR type, named for the type in lower case (`condition`), returning the resource as a `resource` struct and optionally `patient_id`, `min_date` and `max_date` (`BIND-CONTRACT`, `DATA-SUBJECT-KEY`, `BIND-PREFILTER`), and `change_log` | The customer; the deploy for the default environment |
-| `data_store` | Store tables a view selects by default | Publishing, the synthetic loader |
-| `knowledge` | The published views `library`, `measure` and `valueset(valueset_id, system, code, version)` | As `data` |
-| `knowledge_store` | Their store tables | Publishing; the Designer's Publish writes `library` and `measure` |
+| `data` | One table or view per FHIR type, named for the type in lower case (`condition`), returning the resource as a `resource` struct and optionally `patient_id`, `min_date` and `max_date` (`BIND-CONTRACT`, `DATA-SUBJECT-KEY`, `BIND-PREFILTER`), and `change_log` | The customer; the deploy and the synthetic loader, as tables, for the environments this repository ships |
+| `knowledge` | `library`, `measure` and `valueset(valueset_id, system, code, version)` | The import and publishing, as tables; the Designer's Publish writes `library` and `measure` |
 | `results` | Official results, reused by every identity: runs that bind only the environment's own resolvers | Whoever the implementer grants: publishing Jobs |
 | `draft_results` | Each user's own results, in one shared schema | The Designer, as the user; the agent's tools read it |
 
 Terminology lives in `knowledge`, not in schemas of its own. A schema is the grant boundary, and value sets have
 the same readers and writers as libraries and measures, and no patient data. Patient data (`data`) and results,
 which derive from it and are written per user, stay apart. Where value sets have writers of their own, grant
-`MODIFY` on the store's tables rather than on the schema.
+`MODIFY` on the `valueset` table rather than on the schema.
 
-A store schema is optional. A customer may define every view over tables of their own and have no store. A run
-never checks a store. A run binds the published views by name and reads no `information_schema`; a view that is
-missing fails in the warehouse, naming it.
-
-Publishing writes to the store, then reads the written ids back through the published view, once per publish.
-If the view does not show them, the publish fails, saying the view does not select the store.
+There are no store schemas. Each relation a run reads is the one that is written: the deploy, the loader, the import
+and publishing write tables in `data` and `knowledge`. A view in front of a table, selecting it unchanged, added a
+second name for every relation and a read-back check on every publish, and bought nothing. A customer whose data or
+knowledge comes from elsewhere, or from several places, makes an environment of their own and defines views there,
+over tables in any catalog. Publishing into a view fails in the warehouse, naming it. A run binds the relations by
+name and reads no `information_schema` beyond the data shapes (`DATA-MODEL-SUBSET`); one that is missing fails in
+the warehouse, naming it.
 
 ### Results
 
 A result's identity is what it computes (`RUN-CLIENT-RESULT-IDENTITY`). A run finds results through its result
-resolver, in two layers, in one lookup (`RUN-CLIENT-RESULT-OWNERSHIP`, `CLIENT-RESULT-RESOLVER`):
+resolver, in two layers, in order (`RUN-CLIENT-RESULT-OWNERSHIP`, `CLIENT-RESULT-RESOLVER`):
 
 - **Its own.** The writer, a user or a service principal, owns each table it creates, and the name carries its
   digest: `<library>_<define>_<16 fingerprint hex>_<8 writer hex>`. In its own schemas a run reuses only tables its
@@ -168,8 +166,8 @@ With the renamed role IDs `CLIENT-DATA-RESOLVER`, `CLIENT-TERMINOLOGY-RESOLVER`,
 | `CLIENT-ENVIRONMENT` | An environment is a catalog with the tags and schemas above; every run is in exactly one |
 | `CLIENT-ENVIRONMENT-RESOLVER` | `EnvironmentResolver` finds environments by tag, picks the default or a named one, refuses an unsupported layout version, and fails on two defaults or none |
 | `CLIENT-RESOLVERS` | The role interfaces and their naming |
-| `DATA-ENVIRONMENT-LAYOUT` | The standard schemas, the published views and their optional stores |
-| `BIND-PUBLISHED-VIEW` | Published data, terminology and knowledge are bound by view name with no catalog queries; publishing writes the store and reads it back through the view once |
+| `DATA-ENVIRONMENT-LAYOUT` | The standard schemas and what each holds; no store schemas |
+| `BIND-PUBLISHED-VIEW` | Data, terminology and knowledge are bound by relation name; publishing writes the tables a run reads |
 | `BIND-CALL-SITE` | `describe` reports every call site with its context and request; each role in the compile request binds by a rule, a map by site id, or both, the map winning |
 | `RUN-CLIENT-DRAFT-RESULTS` | The shared `draft_results` schema, its grants, its expiry, and published-only writes to `results` |
 | `RUN-CLIENT-RESULT-OWNERSHIP` | A result belongs to the identity that computed it, and only that identity reuses it |

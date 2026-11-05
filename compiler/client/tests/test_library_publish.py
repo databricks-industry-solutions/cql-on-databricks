@@ -64,17 +64,11 @@ class _Store:
     """The store's rows by (table, url, version), read and MERGEd as publishing does. ``fail_on`` refuses the
     MERGE of that resource name."""
 
-    def __init__(self, rows=None, fail_on=None, view_selects_store=True):
-        self.rows, self.fail_on, self.merged = dict(rows or {}), fail_on, []
-        self.view_selects_store = view_selects_store
+    def __init__(self, rows=None, fail_on=None):
+        self.rows, self.fail_on, self.merged, self.statements = dict(rows or {}), fail_on, [], []
 
     def __call__(self, sql, params=None):
-        if sql.startswith("SELECT url, version FROM `k`.`knowledge`.`library`"):
-            # BIND-PUBLISHED-VIEW: the published view over the store's library table.
-            if not self.view_selects_store:
-                return []
-            return [{"url": url, "version": version} for (table, url, version) in self.rows
-                    if table.endswith("`library`")]
+        self.statements.append(sql)
         table = sql.split(" FROM ")[1].split(" WHERE")[0] if sql.startswith("SELECT") else \
             sql.split("MERGE INTO ")[1].split(" AS target")[0]
         if sql.startswith("SELECT"):
@@ -94,8 +88,8 @@ def _translate(cql, includes):
 
 
 def _publish(folder, run, **kw):
-    return publish_folder_library(_content(), folder, F, "Screening", "0.1.0", store=("k", "measures"),
-                                  view=("k", "knowledge"), run=run, translate=_translate, base=BASE, **kw)
+    return publish_folder_library(_content(), folder, F, "Screening", "0.1.0", schema=("k", "measures"),
+                                  run=run, translate=_translate, base=BASE, **kw)
 
 
 def _outcomes(summary):
@@ -163,12 +157,14 @@ class PublishLibraryTest(unittest.TestCase):
                          [("Shared", PUBLISHED), ("Other", REFUSED), ("Screening", NOT_WRITTEN)])
         self.assertIn("PERMISSION_DENIED", failed.exception.summary.libraries[1].detail[0])
 
-    def test_a_view_that_does_not_select_the_store_fails_the_publish(self):
-        """BIND-PUBLISHED-VIEW: one read of the published view after the writes; what it does not show fails."""
-        with self.assertRaises(PublishFailed) as failed:
-            _publish(_project(), _Store(view_selects_store=False))
-        self.assertIn("does not select the store", str(failed.exception))
-        self.assertEqual({lib.outcome for lib in failed.exception.summary.libraries}, {PUBLISHED})
+    def test_a_publish_writes_the_schema_a_run_reads_and_reads_nothing_back(self):
+        """BIND-PUBLISHED-VIEW, DATA-ENVIRONMENT-LAYOUT: the knowledge tables are written; there is no store or view
+        to check."""
+        run = _Store()
+        summary = _publish(_project(), run)
+        self.assertEqual(summary.store, "k.measures")
+        self.assertTrue(all("`k`.`measures`." in sql for sql in run.statements))
+        self.assertFalse(any(sql.startswith("SELECT url, version") for sql in run.statements))
 
     def test_a_folder_library_keeps_its_own_resource_and_url(self):
         folder = _project()
@@ -184,7 +180,7 @@ class PublishLibraryTest(unittest.TestCase):
 
 class NotebookPublishTest(unittest.TestCase):
     def test_a_notebook_publishes_into_its_environment_never_a_named_store(self):
-        """CLIENT-PUBLISH, CLIENT-ENVIRONMENT: the store is the environment's knowledge_store."""
+        """CLIENT-PUBLISH, CLIENT-ENVIRONMENT: a notebook publishes into its environment's knowledge."""
         from cql_databricks.compiler import publish_library
         with self.assertRaises(TypeError):
             publish_library("Screening", "0.1.0", folder=F, store="k.m", base=BASE, spark=object())

@@ -2,7 +2,7 @@
 opened from, as the signed-in user; and ``POST /api/libraries/new``: create one (New, Save As) in a workspace folder.
 An environment's knowledge is read-only in the Designer (`DOC-EDITABLE-IN-SCOPE`): both refuse a ``store:`` location.
 It changes only by ``POST /api/libraries/publish`` (`DOC-PUBLISH`), the client's publish into the environment's
-``knowledge_store``, run as the signed-in user (`CLIENT-PUBLISH`): 200 with the summary; 400 with it when nothing was written; 502 with it when a write failed
+``knowledge``, run as the signed-in user (`CLIENT-PUBLISH`): 200 with the summary; 400 with it when nothing was written; 502 with it when a write failed
 after others.
 
 The CQL is compiled first, with its includes resolved at the same location and then in the environment the Designer
@@ -31,7 +31,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from cql_databricks.resolvers.environment import KNOWLEDGE, KNOWLEDGE_STORE, EnvironmentLookupError, EnvironmentResolver
+from cql_databricks.resolvers.environment import KNOWLEDGE, EnvironmentLookupError
 from cql_databricks.compiler.folder_content import folder_library_resource, folder_measure
 from cql_databricks.compiler.libraries import with_identity
 from cql_databricks.compiler.library_publish import PublishFailed, PublishRefused, publish_folder_library
@@ -40,6 +40,7 @@ from cql_databricks.compiler.resolve import ResolutionError, resolve, translate_
 from cql_databricks.data_bindings import ContentResolver
 from cql_databricks_common import config
 from cql_databricks_common.compiler import CompilerClient, CompilerError
+from cql_databricks_common.environments import user_environments
 from cql_databricks_common.warehouse import user_session
 from cql_databricks_common.workspace import user_client
 
@@ -166,16 +167,15 @@ def router(*, compiler: CompilerClient, contents: EnvironmentContents, warehouse
 
     @router.post("/api/libraries/publish")
     def publish(body: PublishBody) -> Any:
-        """DOC-PUBLISH, BIND-PUBLISHED-VIEW — publish the folder library into the environment's ``knowledge_store``, as
-        the signed-in user, through the client, which reads it back through the environment's ``knowledge`` views."""
+        """DOC-PUBLISH, BIND-PUBLISHED-VIEW — publish the folder library into the environment's ``knowledge``
+        tables, as the signed-in user, through the client."""
         try:
             content = contents.get(body.environment)
             at = _folder(body.location)
             run = user_session(warehouse())
-            environment = EnvironmentResolver(run).resolve(body.environment)
+            environment = user_environments(run).resolve(body.environment)
             summary = publish_folder_library(content, files_for(body.location), at.path, body.name, body.version,
-                                             store=environment.address(KNOWLEDGE_STORE),
-                                             view=environment.address(KNOWLEDGE), run=run,
+                                             schema=environment.address(KNOWLEDGE), run=run,
                                              translate=compiler.translate, base=config.canonical_base())
         except PublishRefused as e:
             return JSONResponse(status_code=400, content={

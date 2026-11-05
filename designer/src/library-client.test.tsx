@@ -103,7 +103,7 @@ describe("publishLibrary (DOC-PUBLISH)", () => {
   });
 
   it("publishes into the picked environment (DOC-ENVIRONMENT-PICKER)", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ store: "k.knowledge_store", libraries: [] })));
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ store: "k.knowledge", libraries: [] })));
     vi.stubGlobal("fetch", fetcher);
     setCurrentEnvironment("example");
     try {

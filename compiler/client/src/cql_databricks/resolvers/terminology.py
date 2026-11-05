@@ -31,13 +31,12 @@ _PUBLISH_BATCH = 500
 
 class TableTerminologyResolver(TerminologyStore):
     """CLIENT-TERMINOLOGY-RESOLVER: the ``valueset(valueset_id, system, code, version)`` relation ``table``, read
-    through ``run``, as its identity. With ``store``, the table publishing writes, it is a store: :meth:`publish`
-    writes the store, then reads the written value sets back through ``table`` once (`BIND-PUBLISHED-VIEW`).
-    ``identity`` is ``table``'s schema unless given."""
+    through ``run``, as its identity. It is a store: :meth:`publish` writes ``table`` (`BIND-PUBLISHED-VIEW`), so a
+    ``table`` that is a view fails the publish in the warehouse, naming it. ``identity`` is ``table``'s schema unless
+    given."""
 
-    def __init__(self, table: str, run, *, store: str | None = None, identity: str | None = None) -> None:
+    def __init__(self, table: str, run, *, identity: str | None = None) -> None:
         self.table = table_name(table)
-        self.store = table_name(store) if store else None
         self._run = run
         self._identity = identity or self.table.rsplit(".", 1)[0]
 
@@ -56,15 +55,12 @@ class TableTerminologyResolver(TerminologyStore):
         return [CodeMatch(id=r["valueset_id"], version=r["version"], system=r["system"]) for r in rows]
 
     def publish(self, value_sets: Sequence[ValueSet]) -> PublishReport:
-        """Replace each value set's rows in the store, by ``(valueset_id, version)``, with its expansion, then check
-        the published view shows them. A value set with no codes is refused before anything is written: an expansion
-        that lists nothing is not one."""
-        if self.store is None:
-            raise ValueError(f"{self.table} has no store to publish into (BIND-PUBLISHED-VIEW)")
+        """Replace each value set's rows in ``table``, by ``(valueset_id, version)``, with its expansion. A value set
+        with no codes is refused before anything is written: an expansion that lists nothing is not one."""
         empty = [vs.id for vs in value_sets if not vs.codes]
         if empty:
             raise ValueError(f"value sets with no expansion: {', '.join(empty)} (CLIENT-TERMINOLOGY-RESOLVER)")
-        store = quote_name(self.store)
+        store = quote_name(self.table)
         written = []
         for vs in value_sets:
             self._run(f"DELETE FROM {store} WHERE valueset_id = :id AND version <=> :version",
@@ -74,19 +70,8 @@ class TableTerminologyResolver(TerminologyStore):
                                  f"{_literal(vs.version)})" for c in vs.codes[start:start + _PUBLISH_BATCH])
                 self._run(f"INSERT INTO {store} (valueset_id, system, code, version) VALUES {rows}")
             written.append(vs.id)
-        self._check_visible(value_sets)
-        log.info("published %d value sets to %s", len(written), self.store)
+        log.info("published %d value sets to %s", len(written), self.table)
         return PublishReport(written=tuple(written))
-
-    def _check_visible(self, value_sets: Sequence[ValueSet]) -> None:
-        """BIND-PUBLISHED-VIEW: one read of the published view for the value sets just written."""
-        ids = sorted({vs.id for vs in value_sets})
-        listed = ", ".join(_literal(i) for i in ids)
-        rows = self._run(f"SELECT DISTINCT valueset_id FROM {quote_name(self.table)} WHERE valueset_id IN ({listed})")
-        missing = sorted(set(ids) - {r["valueset_id"] for r in rows})
-        if missing:
-            raise ValueError(f"{self.table} does not show {', '.join(missing)}, just written to {self.store}: the view "
-                             f"does not select the store (BIND-PUBLISHED-VIEW)")
 
 
 class FolderTerminologyResolver(TerminologyResolver):

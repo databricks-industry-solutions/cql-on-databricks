@@ -36,7 +36,7 @@ class Content:
     generation = 1
 
 
-ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="2")
+ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="3")
 
 
 class Compiler:
@@ -173,6 +173,9 @@ class Kept(ResultResolver):
     @property
     def destination(self):
         return ("synthetic", "draft_results")
+
+    def columns(self, tables):
+        raise AssertionError("an inline run reads no column descriptors (CLIENT-RESULT-RESOLVER)")
 
     def holds(self, table):
         return True
