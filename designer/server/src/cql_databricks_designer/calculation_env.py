@@ -13,6 +13,7 @@ session (``cql_databricks_common.warehouse``), so the runtime functions' sandbox
 from __future__ import annotations
 
 from cql_databricks_common import config
+from cql_databricks_common.environments import user_environments
 from cql_databricks_common.warehouse import user_session
 from cql_databricks_common.workspace import forwarded_identity, user_client
 
@@ -77,4 +78,4 @@ def calculation_env() -> CalculationEnv:
     run_log = RunLog(app_sql_runner, config.designer_catalog)
     return CalculationEnv(user_session=lambda warehouse=None: user_session(_chosen(warehouse)),
                           settings=_settings, warehouses=_warehouses,
-                          run_context=_run_context, run_log=run_log.submit)
+                          run_context=_run_context, run_log=run_log.submit, environments=user_environments)

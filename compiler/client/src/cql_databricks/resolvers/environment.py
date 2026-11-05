@@ -13,18 +13,25 @@ run in the schemas of ``DATA-ENVIRONMENT-LAYOUT``:
 | ``results``, ``draft_results`` | kept results (`RUN-CLIENT-DRAFT-RESULTS`) |
 
 :class:`EnvironmentResolver` finds environments with one query of ``system.information_schema.catalog_tags``, as the
-caller, so only catalogs the caller can see are found. A run in an environment binds its published views by name,
-through rules (`BIND-PUBLISHED-VIEW`): one compiler call, and no other catalog query. No layout is checked at run time:
-a missing view fails in the warehouse, naming it.
+caller, so only catalogs the caller can see are found. The once-per-process governance check runs beside that query,
+not after it (`CLIENT-DISCOVERY-PARALLEL`). A run in an environment binds its published views by name, through rules
+(`BIND-PUBLISHED-VIEW`): one compiler call, and no other catalog query. No layout is checked at run time: a missing
+view fails in the warehouse, naming it.
+
+:class:`EnvironmentCache` keeps what each caller found for a process that serves many calls, an App, so a tool call or
+request does not find them again (`CLIENT-ENVIRONMENT-CACHE`).
 
 Part of the client core: SQL goes through the caller's SQL runner; nothing here imports Spark or a platform SDK.
 """
 from __future__ import annotations
 
+import contextvars
 import re
 import threading
+import time
 import warnings
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from .data import SchemaDataResolver
@@ -74,24 +81,40 @@ def check_governance(run) -> None:
     """CLIENT-ENVIRONMENT, DEPLOY-ENVIRONMENT-TAG-POLICIES: warn, once per process, when an environment tag is not a
     governed tag in the caller's account, naming it, or when ``system.tags.governed_tags`` cannot be read as the
     caller. It never refuses an environment: a workspace whose account cannot govern them still runs."""
+    if _claim_governance_check():
+        _warn(_governance_note(run))
+
+
+def _claim_governance_check() -> bool:
+    """True for the first caller in the process, which then runs the check; False for every later one."""
     global _governance_checked
     with _governance_lock:
         if _governance_checked:
-            return
+            return False
         _governance_checked = True
+        return True
+
+
+def _governance_note(run) -> str | None:
+    """The governance warning's text, or None when all three tags are governed. Reads, never warns, so it may run on
+    another thread and the warning still reaches the caller's (`CLIENT-DISCOVERY-PARALLEL`)."""
     try:
         governed = {row["tag_key"] for row in run(_GOVERNED)}
     except Exception as error:  # noqa: BLE001 — a read refused here is reported, never a failed run
-        warnings.warn(f"could not check that the environment tags are governed ({type(error).__name__}: "
-                      f"{str(error).splitlines()[0] if str(error) else ''}); if they are not, anyone who can tag a "
-                      f"catalog can make it an environment (DEPLOY-ENVIRONMENT-TAG-POLICIES)",
-                      UngovernedEnvironmentWarning, stacklevel=3)
-        return
+        return (f"could not check that the environment tags are governed ({type(error).__name__}: "
+                f"{str(error).splitlines()[0] if str(error) else ''}); if they are not, anyone who can tag a "
+                f"catalog can make it an environment (DEPLOY-ENVIRONMENT-TAG-POLICIES)")
     missing = [tag for tag in (NAME_TAG, VERSION_TAG, DEFAULT_TAG) if tag not in governed]
     if missing:
-        warnings.warn(f"the environment tags {', '.join(missing)} are not governed tags: anyone who can tag a "
-                      f"catalog can make it an environment or the default one; make them governed "
-                      f"(DEPLOY-ENVIRONMENT-TAG-POLICIES)", UngovernedEnvironmentWarning, stacklevel=3)
+        return (f"the environment tags {', '.join(missing)} are not governed tags: anyone who can tag a "
+                f"catalog can make it an environment or the default one; make them governed "
+                f"(DEPLOY-ENVIRONMENT-TAG-POLICIES)")
+    return None
+
+
+def _warn(note: str | None) -> None:
+    if note:
+        warnings.warn(note, UngovernedEnvironmentWarning, stacklevel=4)
 
 
 class EnvironmentLookupError(LookupError):
@@ -118,44 +141,96 @@ class Environment:
         return self.catalog, name
 
 
+def _read_environments(run) -> list[Environment]:
+    """CLIENT-ENVIRONMENT: the environments ``run`` can see, by name. Two catalogs with one name fail, naming both."""
+    tags: dict[str, dict[str, str]] = {}
+    comments: dict[str, str | None] = {}
+    for row in run(_ENVIRONMENTS):
+        tags.setdefault(row["catalog"], {})[row["tag"]] = row["value"]
+        comments[row["catalog"]] = row.get("comment")
+    found = []
+    for catalog, values in sorted(tags.items()):
+        if NAME_TAG not in values:
+            continue
+        found.append(Environment(name=values[NAME_TAG], catalog=catalog, version=values.get(VERSION_TAG, ""),
+                                 default=str(values.get(DEFAULT_TAG, "")).strip().lower() == "true",
+                                 description=comments.get(catalog)))
+    by_name: dict[str, list[Environment]] = {}
+    for env in found:
+        by_name.setdefault(env.name, []).append(env)
+    doubled = {name: envs for name, envs in by_name.items() if len(envs) > 1}
+    if doubled:
+        raise EnvironmentLookupError("; ".join(
+            f"environment {name!r} is tagged on catalogs {', '.join(e.catalog for e in envs)}"
+            for name, envs in sorted(doubled.items())) + " (CLIENT-ENVIRONMENT)")
+    return sorted(found, key=lambda e: e.name)
+
+
+@dataclass(frozen=True)
+class Discovery:
+    """What one discovery found: the environments, and the governance warning to give the caller, if any."""
+    environments: tuple[Environment, ...]
+    note: str | None = None
+
+    def emit(self) -> list[Environment]:
+        """The environments, after warning on the calling thread (`CLIENT-ENVIRONMENT`)."""
+        _warn(self.note)
+        return list(self.environments)
+
+
+def discover_environments(run) -> Discovery:
+    """CLIENT-DISCOVERY-PARALLEL: the environments ``run`` can see, with the process's one governance check run beside
+    the environment query, on its own thread, instead of after it. Warns nothing, so it may itself run off the caller's
+    thread; :meth:`Discovery.emit` warns. ``run`` is called from two threads at once on the first discovery, the
+    second in a copy of the caller's context, so a runner that reads the request's identity sees the caller's."""
+    if not _claim_governance_check():
+        return Discovery(tuple(_read_environments(run)))
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="cql-governance") as pool:
+        note = pool.submit(contextvars.copy_context().run, _governance_note, run)
+        found = _read_environments(run)
+        return Discovery(tuple(found), note.result())
+
+
+def find_environments(run) -> list[Environment]:
+    """CLIENT-ENVIRONMENT-RESOLVER: :func:`discover_environments`, warning on this thread."""
+    return discover_environments(run).emit()
+
+
 class EnvironmentResolver:
     """CLIENT-ENVIRONMENT-RESOLVER: the environments ``run`` (the caller's SQL runner) can see, and the resolvers of
-    each. The environments are read once, on first use."""
+    each. The environments are read once, on first use.
 
-    def __init__(self, run) -> None:
+    ``found`` replaces where the list comes from: an :class:`EnvironmentCache`, or a discovery already started
+    (`CLIENT-DISCOVERY-PARALLEL`). ``refresh``, when given, finds the list again; a name not in the list, or a default
+    that is missing or doubled, asks it once before failing, since a held list can be older than the catalog's tags
+    (`CLIENT-ENVIRONMENT-CACHE`)."""
+
+    def __init__(self, run, *, found: Callable[[], list[Environment]] | None = None,
+                 refresh: Callable[[], list[Environment]] | None = None) -> None:
         self._run = run
+        self._find = found if found is not None else (lambda: find_environments(run))
+        self._refresh = refresh
         self._found: list[Environment] | None = None
 
     def environments(self) -> list[Environment]:
         """Every environment the caller can see, by name. Two catalogs with one name fail, naming both."""
         if self._found is None:
-            tags: dict[str, dict[str, str]] = {}
-            comments: dict[str, str | None] = {}
-            for row in self._run(_ENVIRONMENTS):
-                tags.setdefault(row["catalog"], {})[row["tag"]] = row["value"]
-                comments[row["catalog"]] = row.get("comment")
-            found = []
-            for catalog, values in sorted(tags.items()):
-                if NAME_TAG not in values:
-                    continue
-                found.append(Environment(name=values[NAME_TAG], catalog=catalog, version=values.get(VERSION_TAG, ""),
-                                         default=str(values.get(DEFAULT_TAG, "")).strip().lower() == "true",
-                                         description=comments.get(catalog)))
-            by_name: dict[str, list[Environment]] = {}
-            for env in found:
-                by_name.setdefault(env.name, []).append(env)
-            doubled = {name: envs for name, envs in by_name.items() if len(envs) > 1}
-            if doubled:
-                raise EnvironmentLookupError("; ".join(
-                    f"environment {name!r} is tagged on catalogs {', '.join(e.catalog for e in envs)}"
-                    for name, envs in sorted(doubled.items())) + " (CLIENT-ENVIRONMENT)")
-            self._found = sorted(found, key=lambda e: e.name)
-            check_governance(self._run)
+            self._found = list(self._find())
         return self._found
+
+    def _refreshed(self) -> bool:
+        """Find the list again, once per resolver, when it has a ``refresh``. True when it did."""
+        if self._refresh is None:
+            return False
+        refresh, self._refresh = self._refresh, None
+        self._found = list(refresh())
+        return True
 
     def default(self) -> Environment:
         """The default environment. Two visible defaults fail, naming both; none fails, naming the tag."""
         defaults = [e for e in self.environments() if e.default]
+        if len(defaults) != 1 and self._refreshed():
+            defaults = [e for e in self.environments() if e.default]
         if len(defaults) > 1:
             raise EnvironmentLookupError(f"{len(defaults)} catalogs are tagged {DEFAULT_TAG} = true: "
                                    f"{', '.join(e.catalog for e in defaults)}; untag all but one "
@@ -168,12 +243,17 @@ class EnvironmentResolver:
 
     def get(self, name: str) -> Environment:
         """The environment named ``name``. One not found fails, naming those that are."""
-        for env in self.environments():
-            if env.name == name:
-                return _supported(env)
+        env = self._named(name)
+        if env is None and self._refreshed():
+            env = self._named(name)
+        if env is not None:
+            return _supported(env)
         visible = ", ".join(e.name for e in self.environments()) or "none"
         raise EnvironmentLookupError(f"no environment named {name!r} is visible to you; environments you can see: {visible} "
                                f"(CLIENT-ENVIRONMENT-RESOLVER)")
+
+    def _named(self, name: str) -> Environment | None:
+        return next((env for env in self.environments() if env.name == name), None)
 
     def resolve(self, name: str | None = None) -> Environment:
         """The environment named ``name``, or the default when None."""
@@ -246,6 +326,66 @@ class EnvironmentResolver:
 
         return DeltaResultStore(env.address(RESULTS), self._run, official=[env.address(RESULTS)],
                                 requires=official_identities(self, env))
+
+
+#: CLIENT-ENVIRONMENT-CACHE: how long an App keeps a caller's environments before finding them again.
+CACHE_MAX_AGE_SECONDS = 300.0
+
+
+class EnvironmentCache:
+    """CLIENT-ENVIRONMENT-CACHE: the environments each caller can see, kept for the process that holds the cache.
+
+    An App serves many calls for many users, and each call builds its resolvers anew, so a resolver's own once-only
+    read does not outlive the call. This keeps each caller's list, keyed by whatever names the caller to the holder
+    (an App keys by the signed-in user, as its held warehouse sessions are), never shared between callers, since
+    each sees only the catalogs Unity Catalog shows them. It holds environments, never a runner: a forwarded token
+    expires.
+
+    A list is found again when it is older than ``max_age`` seconds, when :meth:`drop` drops it, and once when a
+    resolver from :meth:`resolver` cannot find a name or a single default in it. A catalog retagged while its
+    old catalog still exists is seen at the latest after ``max_age``."""
+
+    def __init__(self, *, max_age: float = CACHE_MAX_AGE_SECONDS, clock: Callable[[], float] = time.monotonic) -> None:
+        self._max_age = max_age
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._held: dict[str, tuple[list[Environment], float]] = {}
+        self._generation = 0
+
+    @property
+    def generation(self) -> int:
+        """Moves when a caller's list changes or is dropped; reading it never finds anything."""
+        return self._generation
+
+    def resolver(self, caller: str, run) -> EnvironmentResolver:
+        """An :class:`EnvironmentResolver` on ``run`` whose list is ``caller``'s, held here."""
+        return EnvironmentResolver(run, found=lambda: self.environments(caller, run),
+                                   refresh=lambda: self.reload(caller, run))
+
+    def environments(self, caller: str, run) -> list[Environment]:
+        """``caller``'s held list, or the one ``run`` finds when none is held or it is too old."""
+        with self._lock:
+            held = self._held.get(caller)
+        if held is not None and self._clock() - held[1] < self._max_age:
+            return list(held[0])
+        return self.reload(caller, run)
+
+    def reload(self, caller: str, run) -> list[Environment]:
+        """Find ``caller``'s list through ``run`` and hold it. The lookup runs outside the lock: it takes seconds, and
+        another caller's must not wait on it."""
+        found = find_environments(run)
+        with self._lock:
+            before = self._held.get(caller)
+            self._held[caller] = (found, self._clock())
+            if before is None or before[0] != found:
+                self._generation += 1
+        return list(found)
+
+    def drop(self, caller: str) -> None:
+        """Forget ``caller``'s list; the next read finds it again."""
+        with self._lock:
+            self._held.pop(caller, None)
+            self._generation += 1
 
 
 def official_identities(environments: EnvironmentResolver, env: Environment) -> dict[str, frozenset[str]]:

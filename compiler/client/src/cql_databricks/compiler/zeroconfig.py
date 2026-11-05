@@ -23,6 +23,8 @@ the OSS client anticipates; the OSS core still imports no platform SDK (`APP-DEC
 """
 from __future__ import annotations
 
+from concurrent.futures import Future, ThreadPoolExecutor
+from contextvars import copy_context
 from typing import Iterable, Optional, Sequence
 
 from cql_databricks.compiler import CqlClient, CqlQuery
@@ -48,8 +50,9 @@ def connect(spark=None, *, app_name: Optional[str] = None, udf_schema: Optional[
     ``provider.kind`` selection). Call inside a Databricks notebook/job.
 
     Every run is in one environment (`CLIENT-ENVIRONMENT`): the one ``environment`` names, else
-    ``CQL_DATABRICKS_ENVIRONMENT``, else the default environment, found by its catalog tags as this user on first
-    compile (`CLIENT-ENVIRONMENT-RESOLVER`). Its published views serve the data and value sets, bound by rule, so a run
+    ``CQL_DATABRICKS_ENVIRONMENT``, else the default environment, found by its catalog tags as this user
+    (`CLIENT-ENVIRONMENT-RESOLVER`): the lookup starts here, in the background, and the first compile waits for it
+    (`CLIENT-DISCOVERY-PARALLEL`). Its published views serve the data and value sets, bound by rule, so a run
     makes one compiler call and reads no catalog (`BIND-PUBLISHED-VIEW`). ``data``, ``terminology`` and ``knowledge``
     replace the environment's resolver for that role (`CLIENT-RESOLVERS`); a resolver that binds per call site makes
     the run ask ``describe`` first (`BIND-CALL-SITE`). ``results`` replaces the environment's result resolver, through
@@ -70,14 +73,24 @@ def connect(spark=None, *, app_name: Optional[str] = None, udf_schema: Optional[
     (`DEC-ENGINE-SESSION-OPTIONS`); ``recompute=True`` reads no kept result."""
     conf = {CONF_APP_NAME: app_name} if app_name else {}
     session = spark if spark is not None else _active_spark()
-    provider = CqlDatabricksCompileProvider(make_provider(conf))
+    env = _environment(session, environment)
+    # CLIENT-DISCOVERY-PARALLEL: the environments and the runtime's location are read on the session in the
+    # background while the compiler App's endpoint is resolved here, so connect() waits for the slowest, not the sum.
+    # The environments are waited for on first use, and fail there, as when they were read then.
+    discovery = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cql-discovery")
+    try:
+        if session is not None and any(role is None for role in (data, terminology, knowledge, results)):
+            env.prefetch(discovery, session)
+        udf_found = None if udf_schema else discovery.submit(copy_context().run, discover_udf_schema, session)
+        provider = CqlDatabricksCompileProvider(make_provider(conf))
+        udf = udf_schema or udf_found.result()
+    finally:
+        discovery.shutdown(wait=False)
     # `.provider(...)` injects the discovered provider directly (bypasses endpoint/auth conf resolution).
     builder = CqlClient.builder().provider(provider)
-    udf = udf_schema or discover_udf_schema(session)
     builder = builder.udf_schema(udf)
     if spark is not None:
         builder = builder.spark(spark)
-    env = _environment(session, environment)
     # CLIENT-RESOLVERS: the environment's resolvers, each replaced by the one given for its role.
     builder = builder.data_binder(ResolverBinder(
         data=data if data is not None else lambda: env.resolver().data(env.get()),
@@ -110,18 +123,33 @@ def connect(spark=None, *, app_name: Optional[str] = None, udf_schema: Optional[
 
 
 class _SessionEnvironment:
-    """CLIENT-ENVIRONMENT — the environment a session runs in, found as this user on first use and kept."""
+    """CLIENT-ENVIRONMENT — the environment a session runs in, found as this user on first use and kept.
+
+    CLIENT-DISCOVERY-PARALLEL — :meth:`prefetch` starts finding the environments in the background at ``connect()``;
+    first use waits for that discovery and raises what it raised, on the caller's thread."""
 
     def __init__(self, spark, name: Optional[str]) -> None:
         self._spark, self.name = spark, name
         self._resolver = None
         self._env = None
+        self._found: Optional[Future] = None
+        self._run = None
+
+    def prefetch(self, pool: ThreadPoolExecutor, session) -> None:
+        from cql_databricks.resolvers.environment import discover_environments
+
+        self._run = _spark_runner(session)
+        self._found = pool.submit(copy_context().run, discover_environments, self._run)
 
     def resolver(self):
         if self._resolver is None:
             from cql_databricks.resolvers.environment import EnvironmentResolver
 
-            self._resolver = EnvironmentResolver(_spark_runner(_session(self._spark)))
+            if self._found is not None:
+                found = self._found
+                self._resolver = EnvironmentResolver(self._run, found=lambda: found.result().emit())
+            else:
+                self._resolver = EnvironmentResolver(_spark_runner(_session(self._spark)))
         return self._resolver
 
     def get(self):

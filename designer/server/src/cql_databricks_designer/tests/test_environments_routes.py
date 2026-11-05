@@ -8,15 +8,20 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from cql_databricks.resolvers.environment import Environment
+from cql_databricks.resolvers.environment import EnvironmentCache
+from cql_databricks_common.environments import process_environments, user_environments
 from cql_databricks_designer.data_bindings import EnvironmentContents
 from cql_databricks_designer.routes import environments as routes
 
 
-def _environments(user: str) -> list[Environment]:
-    return [Environment(name="example", catalog="example_cat", version="2", default=True,
-                        description="Synthetic patients"),
-            Environment(name=f"team_{user}", catalog=f"{user}_cat", version="2")]
+def _tags(user: str) -> list[dict]:
+    """The catalog tags ``user`` can see: the shared example environment and their own team's."""
+    about = "Synthetic patients"  # the catalog comment, on every row the join returns for the catalog
+    return [{"catalog": "example_cat", "tag": "cql_databricks_environment", "value": "example", "comment": about},
+            {"catalog": "example_cat", "tag": "cql_databricks_environment_version", "value": "2", "comment": about},
+            {"catalog": "example_cat", "tag": "cql_databricks_environment_default", "value": "true", "comment": about},
+            {"catalog": f"{user}_cat", "tag": "cql_databricks_environment", "value": f"team_{user}", "comment": None},
+            {"catalog": f"{user}_cat", "tag": "cql_databricks_environment_version", "value": "2", "comment": None}]
 
 
 class _Users:
@@ -25,27 +30,41 @@ class _Users:
     def __init__(self) -> None:
         self.current = "a@example.com"
         self.loads: list[str] = []
+        self.opened = 0
 
-    def load(self) -> list[Environment]:
-        self.loads.append(self.current)
-        return _environments(self.current.split("@")[0])
+    def runner(self):
+        """The signed-in user's SQL runner; opening one is counted, so a held list is seen to open none."""
+        self.opened += 1
+        user = self.current
+
+        def run(sql, params=None):
+            if "catalog_tags" in sql:
+                self.loads.append(user)
+                return _tags(user.split("@")[0])
+            return [{"tag_key": key} for key in ("cql_databricks_environment", "cql_databricks_environment_version",
+                                                 "cql_databricks_environment_default")]
+        return run
 
 
-def _client(cache: routes.EnvironmentCache) -> TestClient:
+def _client(cache: EnvironmentCache, users: _Users, caller=None) -> TestClient:
     app = FastAPI()
-    app.include_router(routes.router(environments=cache))
+    app.include_router(routes.router(environments=cache, caller=caller or (lambda: users.current),
+                                     runner=users.runner))
     return TestClient(app)
 
 
 def test_each_user_sees_their_own_environments_cached_until_their_reload():
+    """CLIENT-ENVIRONMENT-CACHE — the picker reads the process's cache, per user; a held list opens no session."""
     users = _Users()
-    cache = routes.EnvironmentCache(users.load, lambda: users.current)
-    client = _client(cache)
+    cache = EnvironmentCache()
+    client = _client(cache, users)
     listed = client.get("/api/environments").json()
     assert listed == [{"name": "example", "catalog": "example_cat", "version": "2", "default": True,
                        "description": "Synthetic patients"},
                       {"name": "team_a", "catalog": "a_cat", "version": "2", "default": False}]
+    opened = users.opened
     client.get("/api/environments")
+    assert users.opened == opened
     users.current = "b@example.com"
     assert [e["name"] for e in client.get("/api/environments").json()] == ["example", "team_b"]
     assert users.loads == ["a@example.com", "b@example.com"]
@@ -54,6 +73,16 @@ def test_each_user_sees_their_own_environments_cached_until_their_reload():
     assert cache.generation > generation
     client.get("/api/environments")
     assert users.loads == ["a@example.com", "b@example.com", "b@example.com"]
+
+
+def test_the_picker_and_a_run_share_one_list():
+    """CLIENT-ENVIRONMENT-CACHE — a run resolving through the process's cache finds what the picker already found."""
+    users = _Users()
+    cache = process_environments()
+    # Nothing is forwarded in a test, so the run's key is the local one, "" (SEC-LOCAL-IDENTITY); so is the picker's.
+    _client(cache, users, caller=lambda: "").get("/api/environments")
+    assert user_environments(users.runner()).get("team_a").catalog == "a_cat"
+    assert users.loads == ["a@example.com"]
 
 
 #: CLIENT-ENVIRONMENT — the catalog tags the App's principal can see.

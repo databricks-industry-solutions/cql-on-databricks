@@ -19,7 +19,8 @@ from .interfaces import (CallSite, Code, DataFrameRelation, DataResolver, Includ
 from .data import DataFrameDataResolver, SchemaDataResolver, TableDataResolver, VolumeDataResolver
 from .terminology import DataFrameTerminologyResolver, FolderTerminologyResolver, TableTerminologyResolver
 from .knowledge import CellsKnowledgeResolver, FolderKnowledgeResolver, TableKnowledgeResolver
-from .environment import Environment, EnvironmentLookupError, EnvironmentResolver, UngovernedEnvironmentWarning
+from .environment import (Environment, EnvironmentCache, EnvironmentLookupError, EnvironmentResolver,
+                          UngovernedEnvironmentWarning)
 
 __all__ = [
     # CLIENT-RESOLVERS: implement these to bring your own data, value sets, knowledge or results.
@@ -31,6 +32,7 @@ __all__ = [
     "SchemaDataResolver", "TableDataResolver", "VolumeDataResolver", "DataFrameDataResolver",
     "TableTerminologyResolver", "FolderTerminologyResolver", "DataFrameTerminologyResolver",
     "CellsKnowledgeResolver", "FolderKnowledgeResolver", "TableKnowledgeResolver",
-    # CLIENT-ENVIRONMENT-RESOLVER: the environments, and the resolvers each one builds.
-    "Environment", "EnvironmentResolver", "EnvironmentLookupError", "UngovernedEnvironmentWarning",
+    # CLIENT-ENVIRONMENT-RESOLVER: the environments, and the resolvers each one builds. CLIENT-ENVIRONMENT-CACHE: an
+    # App's environments, kept per caller.
+    "Environment", "EnvironmentResolver", "EnvironmentCache", "EnvironmentLookupError", "UngovernedEnvironmentWarning",
 ]

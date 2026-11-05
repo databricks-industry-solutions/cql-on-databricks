@@ -23,6 +23,7 @@ from cql_databricks_common import config
 from cql_databricks_designer.cache_stamp import CacheStamp, install as install_cache_revision
 from cql_databricks_common.compiler import CompilerClient, compile_provider
 from cql_databricks_designer.data_bindings import app_contents
+from cql_databricks_common.environments import process_environments
 from cql_databricks_common.warehouse import close_sessions
 from cql_databricks_common.workspace import install_forwarded_identity
 
@@ -71,8 +72,9 @@ def create_app() -> FastAPI:
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
     compiler = CompilerClient(config.compiler_endpoint(), config.compiler_token())
-    # DOC-ENVIRONMENT-PICKER — the environments, read as each signed-in user and cached per user.
-    environments = environments_routes.user_environments()
+    # DOC-ENVIRONMENT-PICKER, CLIENT-ENVIRONMENT-CACHE — the environments, read as each signed-in user and kept per
+    # user for the process; the picker, the runs and the assistant's tools share the one cache.
+    environments = process_environments()
     # KNOWLEDGE-LAKE-DIRECT — each environment's content, held per process; nothing is read until first asked.
     contents = app_contents()
 

@@ -22,6 +22,7 @@ from cql_databricks.result.insights import parse_scoring
 from cql_databricks.result.selection_reading import SelectedOutput, open_selection
 from cql_databricks_common import config
 from cql_databricks_common.compiler import compile_provider
+from cql_databricks_common.environments import user_environments
 from cql_databricks_common.warehouse import user_session
 from cql_databricks_common.workspace import user_client
 
@@ -60,8 +61,9 @@ def current_environment() -> str | None:
 
 def tool_environment(run) -> tuple[EnvironmentResolver, Environment]:
     """AGENT-DEFAULT-ENVIRONMENT — the environment the tools run in, the drawer's, else the default, found as the
-    caller through ``run`` in one query (`CLIENT-ENVIRONMENT-RESOLVER`), with the resolver that found it."""
-    environments = EnvironmentResolver(run)
+    caller through ``run`` in one query (`CLIENT-ENVIRONMENT-RESOLVER`), with the resolver that found it. The list is
+    the caller's in the process's cache, so a tool call finds none again (`CLIENT-ENVIRONMENT-CACHE`)."""
+    environments = user_environments(run)
     return environments, environments.resolve(_environment.get())
 
 
@@ -103,7 +105,7 @@ def assistant_server(*, contributed: ToolRegistry | None = None) -> FastMCP:
     def selected(address: dict):
         """RUN-CLIENT-REQUEST-REOPEN — a selection reopens in the environment its calculation ran in."""
         run = runner()
-        environments = EnvironmentResolver(run)
+        environments = user_environments(run)
         environment = environments.get(_named(address))
         return open_selection(address, run=run, resolvers=address_resolvers(environments, environment, address),
                               content=environments.content(environment),

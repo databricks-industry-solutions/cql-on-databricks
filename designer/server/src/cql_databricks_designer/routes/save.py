@@ -31,7 +31,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from cql_databricks.resolvers.environment import KNOWLEDGE, KNOWLEDGE_STORE, EnvironmentLookupError, EnvironmentResolver
+from cql_databricks.resolvers.environment import KNOWLEDGE, KNOWLEDGE_STORE, EnvironmentLookupError
 from cql_databricks.compiler.folder_content import folder_library_resource, folder_measure
 from cql_databricks.compiler.libraries import with_identity
 from cql_databricks.compiler.library_publish import PublishFailed, PublishRefused, publish_folder_library
@@ -40,6 +40,7 @@ from cql_databricks.compiler.resolve import ResolutionError, resolve, translate_
 from cql_databricks.data_bindings import ContentResolver
 from cql_databricks_common import config
 from cql_databricks_common.compiler import CompilerClient, CompilerError
+from cql_databricks_common.environments import user_environments
 from cql_databricks_common.warehouse import user_session
 from cql_databricks_common.workspace import user_client
 
@@ -172,7 +173,7 @@ def router(*, compiler: CompilerClient, contents: EnvironmentContents, warehouse
             content = contents.get(body.environment)
             at = _folder(body.location)
             run = user_session(warehouse())
-            environment = EnvironmentResolver(run).resolve(body.environment)
+            environment = user_environments(run).resolve(body.environment)
             summary = publish_folder_library(content, files_for(body.location), at.path, body.name, body.version,
                                              store=environment.address(KNOWLEDGE_STORE),
                                              view=environment.address(KNOWLEDGE), run=run,
