@@ -37,14 +37,14 @@ esac; done
 if [ ${#profile_args[@]} -eq 0 ]; then _p="$(config_profile -t "$target")"; [ -z "$_p" ] || profile_args=(-p "$_p"); fi
 
 # The published root. Mirrored by EXAMPLES_PATH in designer/src/measures/model.ts, which links to it.
-shared_root="/Shared/CqlDatabricks/examples"
+shared_root="/Shared/cql_databricks/examples"
 src="$here/examples"
 
-# Everything in the directory, including `00_start_here` — the documentation-only index page that is the
-# folder's front door (SVC-EXAMPLE-INDEX). It is a notebook like the others as far as this script cares:
-# one `%md` cell, no code, numbered `00_` so the workspace listing sorts it first.
+# Everything in the directory: `start_here`, the documentation-only index page that is the folder's front door
+# (SVC-EXAMPLE-INDEX), one `%md` cell and no code, and a folder per group of notebooks, `getting_started` and
+# `scenarios`, published as the same folders.
 [ -d "$src" ] || { echo "!!! no examples directory at $src"; exit 1; }
-echo "==> publishing $(ls "$src"/*.py "$src"/*.ipynb | wc -l | tr -d ' ') notebooks (index + examples) + $(ls "$src"/*.png | wc -l | tr -d ' ') asset(s) -> $shared_root"
+echo "==> publishing $(ls "$src"/*.py "$src"/*/*.ipynb | wc -l | tr -d ' ') notebooks (index + examples) + $(ls "$src"/*.png | wc -l | tr -d ' ') asset(s) -> $shared_root"
 
 # SVC-EXAMPLE-NOTEBOOKS, DEPLOY-BASE-ENVIRONMENT — the notebooks hold nothing of this deployment: each example's
 # environment names the base environment the deploy published, by its workspace-wide name, so the repository copy
@@ -53,8 +53,8 @@ databricks workspace mkdirs "$shared_root" ${profile_args[@]+"${profile_args[@]}
 
 # FATAL on failure (no `|| true`): a half-published folder is worse than no folder, because a user would open a
 # stale copy from an earlier deploy beside a fresh one.
-_publish() {  # <file> <format> [<language>]
-  local name; name="$(basename "${1%.*}")"
+_publish() {  # <file> <format> [<language>] — the file's path under examples/ is its path under $shared_root
+  local name; name="${1#"$src"/}"; name="${name%.*}"
   # PIPE-DEPLOY-NO-PLACEHOLDER-ENV — a placeholder in a published notebook fails its first cell.
   if grep -q '__CQL_[A-Z_]*__' "$1"; then
     echo "!!! $name holds a placeholder, which nothing fills in:"; grep -n '__CQL_[A-Z_]*__' "$1"; exit 1
@@ -66,7 +66,11 @@ _publish() {  # <file> <format> [<language>]
 # The index page is the one source notebook: SOURCE format + PYTHON language, so the workspace renders it as a
 # notebook rather than a plain file. The examples are Jupyter, the one format that stores a notebook's environment.
 for f in "$src"/*.py; do _publish "$f" SOURCE PYTHON; done
-for f in "$src"/*.ipynb; do _publish "$f" JUPYTER; done
+for group in "$src"/*/; do
+  ls "$group"*.ipynb >/dev/null 2>&1 || continue   # content and test folders hold no notebook
+  databricks workspace mkdirs "$shared_root/$(basename "$group")" ${profile_args[@]+"${profile_args[@]}"}
+  for f in "$group"*.ipynb; do _publish "$f" JUPYTER; done
+done
 
 # The index page's masthead (SVC-EXAMPLE-INDEX). A `%md` cell strips every `style` attribute, so the one
 # designed element on the page is this raster, referenced as `./start-here-hero.png` — a path the notebook
@@ -81,14 +85,16 @@ for f in "$src"/*.png; do
     ${profile_args[@]+"${profile_args[@]}"}
 done
 
-# The content directories (SVC-EXAMPLE-KNOWLEDGE): the CQL measures notebook 01 points `library_path` at, with
-# the FHIR data and value sets beside them. They have to land BESIDE the notebooks, because a notebook derives
-# the path from its own notebook location rather than from a configured root — the same reason the masthead above cannot live anywhere central.
+# The content directory (SVC-EXAMPLE-KNOWLEDGE): the CQL measures the notebooks point `library_path` at, a workspace
+# folder of libraries. It has to land BESIDE the notebooks, because a notebook derives the path from its own
+# notebook location rather than from a configured root — the same reason the masthead above cannot live anywhere
+# central. The patients and value sets are the default environment's, as tables and as files in its volumes
+# (DEPLOY-DEFAULT-ENVIRONMENT), so they are not published here.
 #
-# `import-dir` walks the tree, so each directory's structure is preserved. A `.cql` / `.ndjson` / `.json`
-# file has no notebook header, so it imports as a workspace FILE and stays byte-identical — which is what
-# makes it readable with a plain open() from a notebook via /Workspace.
-for d in measures data valuesets; do
+# `import-dir` walks the tree, so the directory's structure is preserved. A `.cql` or `.json` file has no notebook
+# header, so it imports as a workspace FILE and stays byte-identical — which is what makes it readable with a plain
+# open() from a notebook via /Workspace.
+for d in measures; do
   [ -d "$src/$d" ] || { echo "!!! missing content directory $src/$d — the notebooks cannot run without it"; exit 1; }
   echo "==> publishing content -> $shared_root/$d"
   databricks workspace import-dir "$src/$d" "$shared_root/$d" --overwrite \

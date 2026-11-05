@@ -108,7 +108,7 @@ The script, in order:
 11. Publishes every skill from one definition (`scripts/deploy/publish-skills.sh`, `DEPLOY-AGENT-SKILLS`): as Unity
     Catalog skills, which Genie One loads, and to the workspace skills folder `/Workspace/.assistant/skills/`, which
     Genie Code loads. It creates that folder and lets `app_users_group` read it. Creating it needs a workspace
-    admin; for any other deployer the skills go to `/Shared/CqlDatabricks/skills`, and the deploy says Genie Code
+    admin; for any other deployer the skills go to `/Shared/cql_databricks/skills`, and the deploy says Genie Code
     won't load them from there. It then registers the agent under Unity Gateway (`scripts/deploy/register_agent_mcp.py`,
     `DEPLOY-AGENT-REGISTRATION`). See [The agent in Genie One](#the-agent-in-genie-one).
 12. Makes the three environment tags governed tags (`scripts/deploy/environment-tag-policies.sh`,
@@ -211,7 +211,7 @@ this HTTP connection instead.
 | Runtime schema and Volume | `<uc_catalog>.runtime`, Volume `artifacts` |
 | Base environment | "CQL on Databricks" (`workspace-base-environments/cql-on-databricks`), over `cql-databricks-env.yaml` in the Volume |
 | Designer shared schema | `<designer_catalog>.designer` |
-| Example notebooks | `/Shared/CqlDatabricks/examples` |
+| Example notebooks | `/Shared/cql_databricks/examples` |
 
 No App uses a database. Data sources, content and results are Unity Catalog tables found by tag.
 

@@ -153,7 +153,7 @@ use_resolvers(data=VolumeDataResolver("/Volumes/acme/dev/tests/fhir"),
 - They live in the Python process: restarting Python drops them.
 - `results=` replaces where `exec()` reads kept results.
 - A client from `connect()` is not affected. Pass it its resolvers.
-- Notebook `07_resolution_paths` runs one question over every source: the environment's tables, the same content
+- Notebook `getting_started/03_data_and_knowledge_resolution` runs one question over every source: the environment's tables, the same content
   as files in its `files` volumes, and DataFrames.
 
 ## Publish data into an environment

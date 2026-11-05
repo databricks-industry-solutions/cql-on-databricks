@@ -16,9 +16,9 @@ import re
 import pytest
 
 EXAMPLES_DIR = pathlib.Path(__file__).resolve().parents[1]
-INDEX = "00_start_here.py"
+INDEX = "start_here.py"
 BASE_ENVIRONMENT = "workspace-base-environments/cql-on-databricks"
-NOTEBOOKS = sorted(p.name for p in EXAMPLES_DIR.glob("*.ipynb"))
+NOTEBOOKS = sorted(p.relative_to(EXAMPLES_DIR).as_posix() for p in EXAMPLES_DIR.glob("*/*.ipynb"))
 #: The one start every example has: the `%%cql` magic, and `cql()` (SVC-NOTEBOOK-CQL-MAGIC).
 START = "%reload_ext cql_databricks.compiler\nfrom cql_databricks.compiler import cql"
 
@@ -30,7 +30,20 @@ def test_every_example_is_a_jupyter_notebook_and_the_index_is_the_only_source_no
 
 
 def test_there_are_examples():
-    assert len(NOTEBOOKS) >= 8
+    assert len(NOTEBOOKS) >= 6
+
+
+def test_every_example_is_in_its_group_folder_and_the_index_beside_them():
+    """SVC-EXAMPLE-NOTEBOOKS, SVC-EXAMPLE-INDEX: `getting_started/<NN>_<subtopic>`, numbered in reading order, or
+    `scenarios/<subtopic>`, in snake_case; no notebook at the top, where the index is the one page."""
+    assert all(re.fullmatch(r"getting_started/\d\d_[a-z][a-z_]*\.ipynb|scenarios/[a-z][a-z_]*\.ipynb", nb)
+               for nb in NOTEBOOKS), NOTEBOOKS
+    numbers = [nb.split("/")[1][:2] for nb in NOTEBOOKS if nb.startswith("getting_started/")]
+    assert numbers == [f"{n:02d}" for n in range(1, len(numbers) + 1)], f"getting_started is numbered 01 on: {numbers}"
+    assert not list(EXAMPLES_DIR.glob("*.ipynb"))
+    index = (EXAMPLES_DIR / INDEX).read_text()
+    for nb in NOTEBOOKS:
+        assert f'href="$./{nb[:-len(".ipynb")]}"' in index, f"the index does not link to {nb}"
 
 
 @pytest.mark.parametrize("nb", NOTEBOOKS)

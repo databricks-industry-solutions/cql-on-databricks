@@ -55,7 +55,7 @@ scripts:
     content: bash ./scripts/deploy/grant-maintenance-access.sh
   grant_app_access:
     content: ./scripts/deploy/grant-app-access.sh
-  # SVC-EXAMPLE-NOTEBOOKS — publish the example notebooks to /Shared/CqlDatabricks/examples, the one workspace
+  # SVC-EXAMPLE-NOTEBOOKS — publish the example notebooks to /Shared/cql_databricks/examples, the one workspace
   # path that is the same for every user. `bundle deploy` alone only lands them in the DEPLOYER's home
   # under .bundle/<target>/files/, which nobody else can reach. Same rationale as grant_app_access for
   # being a bundle SCRIPT rather than a resource: there is no DAB resource type for a workspace folder

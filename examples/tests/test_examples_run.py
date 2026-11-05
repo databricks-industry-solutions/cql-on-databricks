@@ -37,15 +37,15 @@ import pytest
 # This test lives INSIDE the examples it runs (examples/tests/), so the notebooks are its parent.
 EXAMPLES_DIR = pathlib.Path(__file__).resolve().parents[1]
 # Every example is a `.ipynb` whose environment is the base environment (SVC-EXAMPLE-NOTEBOOKS), so each runs on
-# its own environment and the run needs no job environment. `00_start_here.py`, the index page (SVC-EXAMPLE-INDEX),
-# is one markdown cell with nothing to run, and is the one source notebook.
-NOTEBOOKS = sorted(p.name for p in EXAMPLES_DIR.glob("*.ipynb"))
+# its own environment and the run needs no job environment. `start_here.py`, the index page (SVC-EXAMPLE-INDEX), is
+# one markdown cell with nothing to run, and is the one source notebook. Each example is in its group's folder.
+NOTEBOOKS = sorted(p.relative_to(EXAMPLES_DIR).as_posix() for p in EXAMPLES_DIR.glob("*/*.ipynb"))
 
-# The content directories the notebooks read (SVC-EXAMPLE-KNOWLEDGE). The notebooks derive their
-# paths from their OWN notebook location, so they must be staged BESIDE them in the temp folder — exactly
-# as `scripts/deploy/publish-examples.sh` lands them beside the notebooks in /Shared. Staging the notebooks alone
-# would fail 03 at its first cell, which is the correct failure but a useless test.
-CONTENT_DIRS = ("measures", "data", "valuesets")
+# The content directory the notebooks read (SVC-EXAMPLE-KNOWLEDGE). The notebooks derive its path from their OWN
+# notebook location, one folder up, so it must be staged beside their group folders in the temp folder — exactly as
+# `scripts/deploy/publish-examples.sh` lands it in /Shared. Staging the notebooks alone would
+# fail every notebook that reads it, which is the correct failure but a useless test.
+CONTENT_DIRS = ("measures",)
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("CQL_DATABRICKS_LIVE", "").strip().lower() not in {"1", "true", "yes", "on"},
@@ -93,7 +93,9 @@ def dest_dir(ws):
 def test_example_notebook_runs(ws, dest_dir, nb):
     from databricks.sdk.service import jobs, workspace
 
-    wpath = f"{dest_dir}/{pathlib.Path(nb).stem}"
+    group, name = pathlib.PurePosixPath(nb).parent, pathlib.PurePosixPath(nb).stem
+    ws.workspace.mkdirs(f"{dest_dir}/{group}")
+    wpath = f"{dest_dir}/{group}/{name}"
     # The repository copy as it is: the published copy is the same file (SVC-EXAMPLE-NOTEBOOKS).
     ws.workspace.import_(
         path=wpath,

@@ -498,7 +498,7 @@ export interface TourFeature {
 /** SVC-EXAMPLE-NOTEBOOKS / SVC-EXAMPLE-INDEX — where every deploy publishes the runnable notebooks, and
  *  the index page that is the folder's front door. Mirrored by `scripts/deploy/publish-examples.sh` (which
  *  writes them); this is the second statement of the same address, and it is the one the product links to. */
-export const EXAMPLES_PATH = "/Shared/CqlDatabricks/examples/00_start_here";
+export const EXAMPLES_PATH = "/Shared/cql_databricks/examples/start_here";
 
 /** The browser URL of a workspace object — `https://<host>/#workspace<path>`. The host comes from the
  *  BFF (`GET /api/workspace-host`) because a Databricks App is served from `*.databricksapps.com`,

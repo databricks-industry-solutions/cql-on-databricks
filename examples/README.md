@@ -1,6 +1,8 @@
 # examples — notebooks and content
 
-Nine notebooks and three content directories that show how to run a CQL measure. They are published to `/Shared/CqlDatabricks/examples` in your workspace. See [`../README.md`](../README.md) for details on each notebook.
+An index page, `start_here`, and the example notebooks in two folders: `getting_started/` for learning the client
+and `scenarios/` for applied work. They are published to `/Shared/cql_databricks/examples` in your workspace, as the
+same folders, and the index page gives the reading order.
 
 The content directories are **your responsibility in a real deployment** — not part of the product:
 
@@ -10,8 +12,9 @@ valuesets/    the example value sets the measures use
 data/         a FHIR NDJSON dataset of 4,000 synthetic patients
 ```
 
-The directories are beside the notebooks so that each notebook can derive the path from its own location.
-The deploy loads all three into your workspace (`CONTENT-EXAMPLE-PRELOAD`).
+The deploy loads all three into the default environment, as tables and as files in its `files` volumes
+(`CONTENT-EXAMPLE-PRELOAD`). Only `measures/` is also published beside the notebooks, which read it as a workspace
+folder of libraries (`SVC-EXAMPLE-KNOWLEDGE`).
 
 ## measures/
 

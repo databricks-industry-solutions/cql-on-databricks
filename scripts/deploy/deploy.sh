@@ -9,7 +9,7 @@
 #      workspace default when default_base_environment is true (DEPLOY-BASE-ENVIRONMENT).
 #   5. Register the opaque `cql_*` catalog as UC Scala UDFs on serverless (SVC-RUNTIME-UDF-UC) in one SQL
 #      session (needs `warehouse_id`; skipped with a notice if unset).
-#   6.7 Publish the example notebooks to /Shared/CqlDatabricks/examples (SVC-EXAMPLE-NOTEBOOKS) — the shared,
+#   6.7 Publish the example notebooks to /Shared/cql_databricks/examples (SVC-EXAMPLE-NOTEBOOKS) — the shared,
 #      every-user copy.
 #   5.8 Create the Designer run log tables and grant them, as the deployer (APP-RUN-LOG).
 #   7. `databricks bundle run` EVERY App the bundle declares (an App is not started by `deploy` alone).

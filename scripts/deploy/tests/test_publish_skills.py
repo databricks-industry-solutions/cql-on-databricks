@@ -177,6 +177,6 @@ def test_the_workspace_folder_is_created_and_readable_by_the_app_users():
 def test_a_deployer_who_is_not_an_admin_publishes_to_shared_and_says_so(capsys):
     w = Workspace(workspace_admin=False)
     pub.publish(w, **ARGS)
-    assert "/Shared/CqlDatabricks/skills/experiment/SKILL.md" in w.folder
+    assert "/Shared/cql_databricks/skills/experiment/SKILL.md" in w.folder
     assert not any(c[0] == "acl" for c in w.calls)
     assert "Genie Code won't load" in capsys.readouterr().out
