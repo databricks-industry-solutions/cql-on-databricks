@@ -170,6 +170,13 @@ def test_the_bundle_makes_the_default_environments_schemas_and_their_grants():
         "knowledge": {users: ["USE_SCHEMA", "SELECT"], designer: ["USE_SCHEMA", "SELECT"]},
         "results": {users: ["USE_SCHEMA", "SELECT"]},
         "draft_results": {users: ["USE_SCHEMA", "CREATE_TABLE"]}}
+    # DATA-ENVIRONMENT-LAYOUT — the content as files: one `files` volume in data and in knowledge, read by the users.
+    volumes = yaml.safe_load((_ROOT / "databricks.yml").read_text())["resources"]["volumes"]
+    files = {r["schema_name"]: r for key, r in volumes.items() if key.startswith("environment_")}
+    assert files == {f"${{resources.schemas.environment_{schema}.name}}": dict(
+        catalog_name="${var.uc_catalog}", schema_name=f"${{resources.schemas.environment_{schema}.name}}", name="files",
+        volume_type="MANAGED", comment=files[f"${{resources.schemas.environment_{schema}.name}}"]["comment"],
+        grants=[{"principal": users, "privileges": ["READ_VOLUME"]}]) for schema in ("data", "knowledge")}
 
 
 def test_the_default_environment_and_its_maintenance_grant_ship_together():

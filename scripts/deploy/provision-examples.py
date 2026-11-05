@@ -5,7 +5,7 @@ Run by ``scripts/deploy/deploy.sh`` after the Apps start. The bundle has made th
 grants (``databricks.yml``). This fills them (``shipped_sources.environment.fill``): the example measures and their
 value sets in ``knowledge`` through the import (``CONTENT-IMPORT-MEASURES``) and the
 synthetic small population in ``data`` (``DATA-SYNTH-SMALL``), from ``examples/`` (``shipped_sources.examples``,
-``DEPLOY-SHIPPED-SOURCES``); and the catalog tags, default only if no catalog the
+``DEPLOY-SHIPPED-SOURCES``); the same content as files in each schema's ``files`` volume, first; and the catalog tags, default only if no catalog the
 deployer can see is the default already. Then the two grants a bundle cannot make: ``USE CATALOG`` for the App users'
 group, on a catalog the bundle does not hold, and ``MANAGE`` on ``draft_results`` for the maintenance principal, which
 ``deploy.sh`` creates.
@@ -40,18 +40,22 @@ def main(argv: list[str] | None = None) -> int:
     from cql_databricks.data_bindings.runner import spark_runner
     from databricks.connect import DatabricksSession
     from shipped_sources.environment import catalog_grant, fill, maintenance_grant
-    from shipped_sources.examples import load_examples
+    from databricks.sdk import WorkspaceClient
+    from shipped_sources.examples import load_examples, publish_example_files
     from shipped_sources.sources import SYNTHETIC_SMALL_DESCRIPTION, SYNTHETIC_SMALL_ENVIRONMENT
 
     profile = os.environ.get("DATABRICKS_CONFIG_PROFILE")
     builder = DatabricksSession.builder.profile(profile) if profile else DatabricksSession.builder
     spark = builder.serverless(True).getOrCreate()
+    # DEPLOY-DEFAULT-ENVIRONMENT — the files before the tables, so the catalog tags are still written last.
+    files = publish_example_files(WorkspaceClient(profile=profile).files, catalog=args.catalog, examples=args.examples)
     counts = fill(spark.sql, spark_runner(spark), catalog=args.catalog, name=SYNTHETIC_SMALL_ENVIRONMENT,
                   description=SYNTHETIC_SMALL_DESCRIPTION, default=True,
                   load=lambda: load_examples(spark, catalog=args.catalog, examples=args.examples,
                                              valid_from=EXAMPLE_VALID_FROM, valid_to=EXAMPLE_VALID_TO))
     spark.sql(catalog_grant(args.catalog, args.users_group))
     spark.sql(maintenance_grant(args.catalog, args.maintenance_principal))
+    counts.update(files)
     print(f"==> DEPLOY-DEFAULT-ENVIRONMENT: {SYNTHETIC_SMALL_ENVIRONMENT} in {args.catalog}: "
           f"{', '.join(f'{k}={v}' for k, v in sorted(counts.items()))}")
     return 0

@@ -115,8 +115,9 @@ The script, in order:
     `DEPLOY-ENVIRONMENT-TAG-POLICIES`), so only you and `admins` can tag a catalog an environment or the default.
     Creating a tag policy needs a workspace admin, unless an account admin changed who may.
 13. Fills the default environment's schemas (`scripts/deploy/provision-examples.py`, `DEPLOY-DEFAULT-ENVIRONMENT`):
-    the example measures and value sets as tables in `knowledge`, through the import; the
-    synthetic small population as tables in `data`; and the catalog tags. Then the two grants the
+    the same examples as files in the `files` volumes of `data` and `knowledge`; the example measures and value
+    sets as tables in `knowledge`, through the import; the synthetic small population as tables in `data`; and
+    the catalog tags. Then the two grants the
     bundle can't make: `USE CATALOG` on `uc_catalog` to `app_users_group`, and `USE SCHEMA` and `MANAGE` on
     `draft_results` to the maintenance principal.
 
@@ -226,7 +227,8 @@ own skips registration when `warehouse_id` is empty; `scripts/deploy/deploy.sh` 
 
 The Apps act as the signed-in user, so users need their own grants. The deploy grants `app_users_group`
 `CAN_USE` on the Apps and, in the default environment, `USE CATALOG`, `SELECT` on `data`, `knowledge` and
-`results`, and `USE SCHEMA` and `CREATE TABLE` on `draft_results` (`DEPLOY-DEFAULT-ENVIRONMENT`). No user gets
+`results`, `READ VOLUME` on the `files` volumes of `data` and `knowledge`, and `USE SCHEMA` and `CREATE TABLE` on
+`draft_results` (`DEPLOY-DEFAULT-ENVIRONMENT`). No user gets
 `SELECT` on `draft_results`: each reads only the tables they own (`RUN-CLIENT-DRAFT-RESULTS`). Grant the same group:
 
 | On | Grant | Why |

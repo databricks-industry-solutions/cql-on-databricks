@@ -21,8 +21,6 @@ SKIPS automatically unless the live prerequisites are present, so it is safe in 
   - env CQL_DATABRICKS_LIVE=1 — opt in (these submit real jobs and cost real compute).
   - Databricks auth resolvable by the SDK (DATABRICKS_CONFIG_PROFILE or the ambient config).
   - databricks-sdk importable.
-  - env CQL_DATABRICKS_TEST_VOLUME=/Volumes/<catalog>/<schema>/<volume>/<folder> — a Volume folder the caller can
-    write, which notebook 07 writes its test files to (`CLIENT-SESSION-RESOLVERS`). Required when live for 07.
 The workspace must be DEPLOYED (scripts/deploy/deploy.sh): the base environment the notebooks name
 (`DEPLOY-BASE-ENVIRONMENT`), the cql_* UC functions registered, and the Compiler Service App running
 (SVC-RUNTIME-UDF-UC, SVC-PACKAGING).
@@ -91,15 +89,6 @@ def dest_dir(ws):
         pass
 
 
-def _parameters(nb: str) -> dict[str, str] | None:
-    """A notebook's widgets: notebook 07 writes its test files to the Volume folder the caller names."""
-    if nb != "07_test_files_in_a_volume.ipynb":
-        return None
-    folder = os.environ.get("CQL_DATABRICKS_TEST_VOLUME", "").strip()
-    assert folder, "set CQL_DATABRICKS_TEST_VOLUME=/Volumes/<catalog>/<schema>/<volume>/<folder> (a folder you can write)"
-    return {"volume": folder}
-
-
 @pytest.mark.parametrize("nb", NOTEBOOKS)
 def test_example_notebook_runs(ws, dest_dir, nb):
     from databricks.sdk.service import jobs, workspace
@@ -113,7 +102,7 @@ def test_example_notebook_runs(ws, dest_dir, nb):
         overwrite=True)
     # No job environment: the run uses the notebook's own, the base environment (DEPLOY-BASE-ENVIRONMENT).
     task = jobs.SubmitTask(task_key="run", notebook_task=jobs.NotebookTask(notebook_path=wpath,
-                                                                           base_parameters=_parameters(nb)))
+                                                                           base_parameters=None))
 
     waiter = ws.jobs.submit(run_name=f"cql-databricks-nb-test-{nb}", tasks=[task])
     run_id = waiter.run_id

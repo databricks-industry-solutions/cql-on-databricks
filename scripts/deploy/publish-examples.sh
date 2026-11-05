@@ -81,10 +81,9 @@ for f in "$src"/*.png; do
     ${profile_args[@]+"${profile_args[@]}"}
 done
 
-# The content directories (SVC-EXAMPLE-KNOWLEDGE): the CQL measures notebook 01 points `library_path` at, and
-# the FHIR data and value sets notebook 07 writes to a Volume. They have to land BESIDE the notebooks,
-# because both notebooks derive the path from their own notebook location rather than from a configured
-# root — the same reason the masthead above cannot live anywhere central.
+# The content directories (SVC-EXAMPLE-KNOWLEDGE): the CQL measures notebook 01 points `library_path` at, with
+# the FHIR data and value sets beside them. They have to land BESIDE the notebooks, because a notebook derives
+# the path from its own notebook location rather than from a configured root — the same reason the masthead above cannot live anywhere central.
 #
 # `import-dir` walks the tree, so each directory's structure is preserved. A `.cql` / `.ndjson` / `.json`
 # file has no notebook header, so it imports as a workspace FILE and stays byte-identical — which is what

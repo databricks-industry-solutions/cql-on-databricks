@@ -425,6 +425,27 @@ resources:
       name: ${var.runtime_volume}
       volume_type: MANAGED
       comment: "CQL on Databricks runtime artifacts (JRE + jars + wheels). Populated by scripts/deploy/deploy.sh; read by the compiler App + the cql_* UC UDFs' java_dependencies."
+    # DATA-ENVIRONMENT-LAYOUT, DEPLOY-DEFAULT-ENVIRONMENT — the default environment's content as files, for a run that
+    # reads files instead of tables: the same patients, value sets and libraries, written by
+    # scripts/deploy/provision-examples.py. The users read them, as they read the schema's tables.
+    environment_data_files:
+      catalog_name: ${var.uc_catalog}
+      schema_name: ${resources.schemas.environment_data.name}
+      name: files
+      volume_type: MANAGED
+      comment: "The environment's data as files: fhir/<Type>.ndjson, one resource per line"
+      grants:
+        - principal: ${var.app_users_group}
+          privileges: [READ_VOLUME]
+    environment_knowledge_files:
+      catalog_name: ${var.uc_catalog}
+      schema_name: ${resources.schemas.environment_knowledge.name}
+      name: files
+      volume_type: MANAGED
+      comment: "The environment's knowledge as files: valuesets/<name>.json (FHIR ValueSet) and libraries/<Library>.cql"
+      grants:
+        - principal: ${var.app_users_group}
+          privileges: [READ_VOLUME]
 
   schemas:
     # The runtime LAYER schema (SVC-CATALOG-LAYOUT): the execution machinery — the cql_* UC Scala UDF catalog

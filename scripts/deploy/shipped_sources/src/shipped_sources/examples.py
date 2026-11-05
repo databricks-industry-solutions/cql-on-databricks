@@ -17,6 +17,11 @@ What it reads, and where each part lands in the environment in ``<catalog>``
 - ``examples/data/<Type>.ndjson`` — the synthetic population small (``DATA-SYNTH-SMALL``), in ``data``
   (``population.land``).
 
+The same content also lands as files, in each schema's ``files`` volume (``DATA-ENVIRONMENT-LAYOUT``), for a run that
+reads files instead of tables (:func:`volume_files`, :func:`sync_volume`): ``data/files/fhir/<Type>.ndjson``,
+``knowledge/files/valuesets/<name>.json`` (one FHIR ``ValueSet`` per file, its codes as its expansion) and
+``knowledge/files/libraries/<Library>.cql``.
+
 The Designer catalog and ``cql(library=...)`` find the measures there by name (``BIND-PUBLISHED-VIEW``).
 """
 from __future__ import annotations
@@ -125,4 +130,69 @@ def load_examples(spark, *, catalog: str, examples: Path, valid_from: str, valid
     raw = {fhir_type: spark.createDataFrame([(line,) for line in lines], "value STRING")
            for fhir_type, lines in content.patients.items()}
     counts.update(land(spark, catalog=catalog, raw_by_type=raw, valid_from=valid_from, valid_to=valid_to))
+    return counts
+
+
+#: DATA-ENVIRONMENT-LAYOUT — the volume each schema holds its files in.
+FILES_VOLUME = "files"
+#: When every example value set was expanded; fixed, so a redeploy writes the same files.
+EXPANDED_AT = "2026-01-01T00:00:00Z"
+
+
+def value_set_resource(name: str, rows: list[dict], source: str) -> dict:
+    """DATA-ENVIRONMENT-LAYOUT — one example value set's code rows as a FHIR ``ValueSet``, its codes the expansion,
+    since the engine expands nothing. A file holding rows of more than one value set fails, naming it."""
+    urls = sorted({row["valueset_id"] for row in rows})
+    if len(urls) != 1:
+        raise ExampleContentError(f"{source} holds {len(urls)} value sets ({', '.join(urls) or 'none'}); one per file")
+    contains = [{"system": r["system"], "code": r["code"], **({"display": r["display"]} if r.get("display") else {})}
+                for r in rows]
+    return {"resourceType": "ValueSet", "url": urls[0], "name": name, "status": "active",
+            "expansion": {"timestamp": EXPANDED_AT, "contains": contains}}
+
+
+def volume_files(examples: Path) -> dict[str, dict[str, bytes]]:
+    """DEPLOY-DEFAULT-ENVIRONMENT — what each schema's ``files`` volume holds, by schema then path in the volume, from
+    the same ``examples/`` the tables are loaded from."""
+    read_examples(examples)  # the same checks as the tables', before anything is written
+    data = {f"fhir/{path.name}": path.read_bytes() for path in sorted((examples / "data").glob("*.ndjson"))}
+    knowledge = {f"libraries/{path.name}": path.read_bytes()
+                 for path in sorted((examples / "measures").glob("*.cql"))}
+    for path in sorted((examples / "valuesets").glob("*.ndjson")):
+        rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+        knowledge[f"valuesets/{path.stem}.json"] = (
+            json.dumps(value_set_resource(path.stem, rows, str(path)), indent=1) + "\n").encode()
+    return {"data": data, "knowledge": knowledge}
+
+
+def sync_volume(files, root: str, contents: dict[str, bytes]) -> dict[str, int]:
+    """DEPLOY-DEFAULT-ENVIRONMENT — make the volume folder ``root`` hold exactly ``contents``, through ``files`` (the
+    SDK's Files API): every file written, overwriting, and every other file under ``root`` deleted, so the files match
+    the tables. Returns how many were written and deleted."""
+    import io
+
+    for path, body in sorted(contents.items()):
+        files.upload(f"{root}/{path}", io.BytesIO(body), overwrite=True)
+    stale = [path for path in _listed(files, root) if path[len(root) + 1:] not in contents]
+    for path in stale:
+        files.delete(path)
+    return {"written": len(contents), "deleted": len(stale)}
+
+
+def _listed(files, folder: str) -> list[str]:
+    """Every file under ``folder``, at any depth."""
+    found = []
+    for entry in files.list_directory_contents(folder):
+        found += _listed(files, entry.path.rstrip("/")) if entry.is_directory else [entry.path]
+    return found
+
+
+def publish_example_files(files, *, catalog: str, examples: Path) -> dict[str, int]:
+    """DEPLOY-DEFAULT-ENVIRONMENT — write ``examples/`` into the ``files`` volume of ``catalog``'s ``data`` and
+    ``knowledge`` schemas. Returns file counts by schema."""
+    counts = {}
+    for schema, contents in volume_files(examples).items():
+        done = sync_volume(files, f"/Volumes/{catalog}/{schema}/{FILES_VOLUME}", contents)
+        log.info("%s/%s: %d files written, %d removed", schema, FILES_VOLUME, done["written"], done["deleted"])
+        counts[f"{schema}_files"] = done["written"]
     return counts

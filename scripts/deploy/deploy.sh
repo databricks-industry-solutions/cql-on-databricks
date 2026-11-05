@@ -16,8 +16,9 @@
 #   7.5 Publish every skill, from one definition, as a Unity Catalog skill and to the workspace skills folder
 #      (DEPLOY-AGENT-SKILLS).
 #   7.6 Register the agent App under Unity Gateway, per user, so Genie One can call it (DEPLOY-AGENT-REGISTRATION).
-#   8. Build the default environment in uc_catalog, as the deployer: its schemas, the example measures and patients
-#      from examples/ in its stores, its views, its tags and its grants (DEPLOY-DEFAULT-ENVIRONMENT).
+#   8. Fill the default environment in uc_catalog, as the deployer: the example measures and patients from examples/
+#      as tables in its knowledge and data schemas, its tags and the grants the bundle cannot make
+#      (DEPLOY-DEFAULT-ENVIRONMENT).
 # Before 2, the workspace settings set to true in databricks.local.yml are turned on (DEPLOY-WORKSPACE-SETTINGS), and
 # the maintenance principal is created and granted (RUN-CLIENT-MAINTENANCE): it is the run-as of the
 # cql-databricks-designer-maintenance Job the bundle deploys at 3.

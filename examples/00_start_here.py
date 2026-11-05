@@ -128,18 +128,18 @@
 # MAGIC
 # MAGIC ---
 # MAGIC
-# MAGIC ### 07 · Test files in a Volume
-# MAGIC *FHIR NDJSON and value sets in a Volume · nothing loaded or published*
+# MAGIC ### 07 · Resolution paths
+# MAGIC *Tables, files in a Volume, DataFrames and cells · one answer from each*
 # MAGIC
-# MAGIC Run CQL over a folder of test files instead of the environment's data: the way a measure is checked against
-# MAGIC known cases before its results are trusted.
+# MAGIC Every role a run reads, from each place it can come from: the environment's tables, the same content as
+# MAGIC files in its volumes, or the notebook itself.
 # MAGIC
-# MAGIC - `use_resolvers` points this notebook's `cql()` calls and `%%cql` cells at the folder, for data and value sets
-# MAGIC - FHIR NDJSON, one file per type, read with `read_files` at each run
-# MAGIC - FHIR `ValueSet` JSON with its expansion
-# MAGIC - A published measure from the environment's knowledge, run over the test patients
+# MAGIC - Data and value sets from the tables, from FHIR NDJSON and `ValueSet` JSON files, and from DataFrames
+# MAGIC - A published measure's libraries from the environment, or from a folder of `.cql` files
+# MAGIC - `use_resolvers` sets a source for this notebook's `cql()` calls and `%%cql` cells; the rest stay the environment's
+# MAGIC - Results kept for the session only, in temporary tables, and reused by the next run
 # MAGIC
-# MAGIC <a href="$./07_test_files_in_a_volume">Open the notebook →</a>
+# MAGIC <a href="$./07_resolution_paths">Open the notebook →</a>
 # MAGIC
 # MAGIC ---
 # MAGIC
