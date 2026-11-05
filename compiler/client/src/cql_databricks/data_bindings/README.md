@@ -14,7 +14,7 @@ and imports measures into an environment. It is the `cql_databricks.data_binding
 | `resolver.py` | `ContentResolver`: one environment's knowledge, loaded once for a long-running caller |
 | `cql.py` | Reads a library's header, includes, value sets, retrieves and model from CQL text |
 | `runner.py` | The SQL runner every read goes through: `spark_runner` and `warehouse_session` |
-| `measure_import/` | `import_measures`: writes measures, libraries and value sets into an environment's stores |
+| `measure_import/` | `import_measures`: writes measures, libraries and value sets as files into a folder of the caller's own; `check_import`, its check |
 
 ## Environment layout
 
@@ -39,11 +39,13 @@ use the same code. Every statement sent to a SQL warehouse goes through `warehou
 
 ## Importing measures
 
-`cql_databricks.data_bindings.measure_import.import_measures` (`CONTENT-IMPORT-MEASURES`) writes measures and
-libraries and value sets into the `knowledge` schema of the environment in the catalog the caller names. It takes FHIR `Measure`, `Library` and `ValueSet` resources (or Bundles) and value-set code rows the
-caller has read. It reads no file and fetches nothing. The `import-quality-measures` skill is how a user brings
-content to it (`CONTENT-IMPORT-SKILL`), and the deploy loads `examples/` through it (`scripts/deploy/shipped_sources`).
-It needs a Spark session, so `cql_databricks.data_bindings` does not import it.
+`cql_databricks.data_bindings.measure_import.import_measures` (`CONTENT-IMPORT-MEASURES`) writes measures,
+libraries and value sets as files into a `/Volumes` or `/Workspace` folder of the caller's own, laid out as the folder
+resolvers read it, and never an environment's `knowledge` (`DEC-NO-CONTENT-PUBLISHING`). It takes FHIR `Measure`,
+`Library` and `ValueSet` resources (or Bundles) and value-set code rows the caller has read, and fetches nothing. The
+`import-quality-measures` skill is how a user brings content to it (`CONTENT-IMPORT-SKILL`). The deploy loads
+`examples/` into the default environment's `knowledge` tables after the same check, `check_import`
+(`scripts/deploy/shipped_sources/knowledge_tables.py`), which loads each table this way:
 
 | Table | Load |
 |---|---|

@@ -2,13 +2,13 @@
 
 **The Lakehouse stores the resource, its identity, and its provenance — nothing else**
 (``CONTENT-NO-DERIVED-COLUMNS``).  Everything computable from the resource — decoded CQL/ELM, the
-CQL-header identity, value-set references, the measure→library junction — is derived by the
-CONSUMER of the knowledge feed (``KNOWLEDGE-FEED-INGEST``), not persisted here.  The published
-tables stay faithful to the spec, base64 attachments included (``CONTENT-SHARE-FAITHFUL``).
+CQL-header identity, value-set references, the measure→library junction — is derived by whoever
+reads the tables, not persisted here.  The tables stay faithful to the spec, base64 attachments
+included (``CONTENT-SHARE-FAITHFUL``).
 
 The resource itself is carried as a JSON string and parsed into a ``VARIANT`` column at write time
-(``load.py``, ``CONTENT-FHIR-VARIANT``) — lossless, with no schema to maintain and no fields
-silently dropped.
+(the deploy's ``shipped_sources/knowledge_tables.py``, ``CONTENT-FHIR-VARIANT``) — lossless, with no
+schema to maintain and no fields silently dropped.
 
 Table shapes produced here:
 * ``measure`` — one row per (url, version): the FHIR Measure resource

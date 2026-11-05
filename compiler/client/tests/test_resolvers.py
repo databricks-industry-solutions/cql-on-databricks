@@ -11,7 +11,7 @@ import unittest
 from cql_databricks.compiler.libraries import LibraryRef, LibrarySource
 from cql_databricks.resolvers.interfaces import (CallSite, Code, DataFrameRelation, DataResolver, KnowledgeResolver,
                                                Layered, Overlay, RetrieveRequest, TableRelation, TerminologyResolver,
-                                               TerminologyStore, ValueSetRef, VolumeRelation, layers)
+                                               ValueSetRef, VolumeRelation, layers)
 
 
 def site(fhir_type: str, define: str | None = "D") -> CallSite:
@@ -173,10 +173,9 @@ class OverlayTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             Overlay(_Tables("a", ["Patient"]), _Terms("t", {}))
 
-    def test_an_overlay_is_not_a_store(self):
-        """CLIENT-RESOLVER-READ-WRITE: publishing goes to a store, never through an overlay."""
+    def test_a_terminology_overlay_only_reads(self):
+        """DEC-NO-CONTENT-PUBLISHING, CLIENT-RESOLVER-READ-WRITE: an overlay of terminology writes nothing."""
         overlay = Overlay(_Terms("dev", {}), _Terms("base", {}))
-        self.assertNotIsInstance(overlay, TerminologyStore)
         self.assertFalse(hasattr(overlay, "publish"))
 
 

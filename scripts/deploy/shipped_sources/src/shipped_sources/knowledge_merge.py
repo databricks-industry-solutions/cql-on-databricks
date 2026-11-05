@@ -1,8 +1,5 @@
-"""CONTENT-INCREMENTAL, CLIENT-PUBLISH — the one MERGE that writes a knowledge row, keyed on FHIR ``(url, version)``.
-
-The import stages rows in a Spark view; publishing a library (`library_publish.py`) stages one row as SQL parameters,
-on Spark or a warehouse. Both hand this the staged relation, so there is one statement for what a knowledge row is
-and how it is written. No Spark import here: a warehouse caller has none.
+"""CONTENT-INCREMENTAL — the one MERGE that writes a knowledge row, keyed on FHIR ``(url, version)``, for the deploy's
+writer of the ``knowledge`` tables (`knowledge_tables.py`), which stages its rows in a Spark view.
 
 A staged relation has the columns ``resource_json, source_package, source_year, source_lineage, ingested_at``.
 """
@@ -26,15 +23,9 @@ _SOURCE = """(
     )
 )"""
 
-#: One knowledge row as SQL parameters, the staged relation a single-row write passes.
-SINGLE_ROW = ("(SELECT :resource_json AS resource_json, :source_package AS source_package, "
-              "CAST(:source_year AS INT) AS source_year, :source_lineage AS source_lineage, "
-              ":ingested_at AS ingested_at)")
-
-
 def knowledge_merge_sql(table: str, staged: str) -> str:
     """The MERGE of ``staged`` into the knowledge ``table``: new versions insert, an existing version's payload and
-    provenance are replaced (`DEC-PUBLISH-IMMUTABLE`)."""
+    provenance are replaced, so the deploy can load the same content again (`CONTENT-INCREMENTAL`)."""
     replace = """
         WHEN MATCHED THEN UPDATE SET
           target.`resource` = source.`resource`,

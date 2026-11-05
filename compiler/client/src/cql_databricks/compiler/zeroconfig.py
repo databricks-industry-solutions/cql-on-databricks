@@ -319,33 +319,6 @@ def resolve_libraries(source: str, *, spark=None, environment: Optional[str] = N
     return resolve(_environment(spark, environment).content(), cql=source).require_complete().include_sources
 
 
-def publish_library(name: str, version: str, *, folder: str, base: str, spark=None,
-                    environment: Optional[str] = None, app_name: Optional[str] = None):
-    """Publish library ``name`` ``version`` from the workspace ``folder`` into the knowledge store of the environment
-    ``environment`` names, else ``CQL_DATABRICKS_ENVIRONMENT``, else the default, as this notebook's or Job's user
-    (`CLIENT-PUBLISH`, `BIND-PUBLISHED-VIEW`).
-
-    The library's includes held in ``folder`` go with it, dependencies first, and only what changed is written; see
-    :func:`cql_databricks.compiler.library_publish.publish_folder_library`, which the Designer's Publish calls too.
-    The folder is read from this session's ``/Workspace`` file system, includes not in it resolve from the
-    environment's knowledge, the CQL compiles through the Compiler Service App (as :func:`translate` does), and the
-    rows are written to the environment's ``knowledge`` tables through ``spark``. ``base`` is the canonical base
-    for a library whose folder holds no ``Library`` JSON with a URL. Returns the
-    :class:`~cql_databricks.compiler.library_publish.PublishSummary`; raises ``PublishRefused`` when nothing was
-    written and ``PublishFailed`` when a write failed after others."""
-    from cql_databricks.resolvers.environment import KNOWLEDGE
-    from .libraries import LocalLibraryFiles
-    from .library_publish import publish_folder_library
-
-    session = _session(spark)
-    env = _environment(session, environment)
-    provider = make_provider({CONF_APP_NAME: app_name} if app_name else {})
-    held = env.get()
-    return publish_folder_library(env.content(), LocalLibraryFiles(), folder, name, version,
-                                  schema=held.address(KNOWLEDGE),
-                                  run=_spark_runner(session), translate=provider.translate_result, base=base)
-
-
 def translate(source: str, *, includes: Sequence[str] = (), app_name: Optional[str] = None) -> str:
     """CQL → ELM JSON via the Compiler Service App's ``/translate`` endpoint (`EMIT-INTERCHANGE`).
 

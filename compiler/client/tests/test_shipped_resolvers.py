@@ -12,8 +12,8 @@ from cql_databricks.resolvers.data import (DataFrameDataResolver, SchemaDataReso
                                                     VolumeDataResolver)
 from cql_databricks.resolvers.environment import (DEFAULT_TAG, NAME_TAG, VERSION_TAG, Environment,
                                                  EnvironmentLookupError, EnvironmentResolver)
-from cql_databricks.resolvers.interfaces import (CallSite, Code, CodeMatch, DataFrameRelation, RetrieveRequest,
-                                               TableRelation, ValueSet, VolumeRelation)
+from cql_databricks.resolvers.interfaces import (CallSite, CodeMatch, DataFrameRelation, RetrieveRequest,
+                                               TableRelation, VolumeRelation)
 from cql_databricks.resolvers.terminology import (FolderTerminologyResolver, TableTerminologyResolver,
                                                            parse_value_set)
 
@@ -99,9 +99,9 @@ class EnvironmentResolverTest(unittest.TestCase):
         self.assertEqual(resolver.data(env).rule(), "cql_main.data")
         terminology = resolver.terminology(env)
         self.assertEqual(terminology.rule(), TableRelation(name="cql_main.knowledge.valueset"))
-        # DATA-ENVIRONMENT-LAYOUT: there is no store; publishing writes the relation a run reads.
+        # DATA-ENVIRONMENT-LAYOUT, DEC-NO-CONTENT-PUBLISHING: there is no store, and nothing here writes knowledge.
         self.assertFalse(hasattr(terminology, "store"))
-        self.assertEqual(resolver.knowledge(env).schema, ("cql_main", "knowledge"))
+        self.assertEqual(resolver.knowledge(env).identity(), "knowledge:cql_main")
         self.assertEqual(Environment(name="e", catalog="my-cat", version="3").schema("data"), "`my-cat`.data")
 
 
@@ -155,23 +155,9 @@ class TableTerminologyTest(unittest.TestCase):
         self.assertIn("`acme`.`terminology`.`valueset`", statement)
         self.assertEqual(params, {"code": "4548-4", "system": "http://loinc.org"})
 
-    def test_publish_writes_the_relation_it_reads(self):
-        """BIND-PUBLISHED-VIEW, DATA-ENVIRONMENT-LAYOUT: the value sets' rows are replaced in the table a run reads,
-        and nothing is read back."""
-        run = _Runner()
-        table = TableTerminologyResolver("acme.terminology.valueset", run)
-        report = table.publish([ValueSet(id="urn:vs:a", version="1",
-                                         codes=(Code(system="s", code="c1"), Code(system="s", code="c'2")))])
-        self.assertEqual(report.written, ("urn:vs:a",))
-        self.assertTrue(run.statements[0][0].startswith("DELETE FROM `acme`.`terminology`.`valueset`"))
-        self.assertIn("('urn:vs:a', 's', 'c\\'2', '1')", run.statements[1][0])
-        self.assertEqual(len(run.statements), 2)
-
-    def test_publish_refuses_a_value_set_with_no_expansion(self):
-        run = _Runner()
-        with self.assertRaises(ValueError):
-            TableTerminologyResolver("acme.terminology.valueset", run).publish([ValueSet(id="urn:vs:empty")])
-        self.assertEqual(run.statements, [])
+    def test_a_table_of_value_sets_is_only_read(self):
+        """DEC-NO-CONTENT-PUBLISHING: the client writes no terminology."""
+        self.assertFalse(hasattr(TableTerminologyResolver("acme.knowledge.valueset", _Runner()), "publish"))
 
 
 class FolderTerminologyTest(unittest.TestCase):

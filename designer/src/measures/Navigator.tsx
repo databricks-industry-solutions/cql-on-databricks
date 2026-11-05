@@ -25,7 +25,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Definition } from "../catalog.ts";
 import { fetchFolder, fetchLocations, type FolderListing, type Locations } from "../library-client.ts";
-import { ChevronLeft, ChevronDown, List, Plus, Search, Download, FileText, Library, Publish, Save } from "../icons.tsx";
+import { ChevronLeft, ChevronDown, List, Plus, Search, Download, FileText, Library, Save } from "../icons.tsx";
 
 type CatFilter = "all" | "measure" | "lib";
 
@@ -45,9 +45,8 @@ function pushRecent(id: string) {
 }
 
 /** DOC-OPEN-SAVE — what the action row asks the workspace to do. DOC-INCLUDE-NEW — `include`: create a library and
- *  include it in the open one. DOC-PUBLISH — `publish`: the open folder library into a tagged store. */
-export type FileAction = { kind: "new"; what: "measure" | "library" } | { kind: "include" } | { kind: "saveAs" }
-  | { kind: "publish" };
+ *  include it in the open one. */
+export type FileAction = { kind: "new"; what: "measure" | "library" } | { kind: "include" } | { kind: "saveAs" };
 
 /** The artifact-level file actions, in display order. `trailing` pushes an
  *  action to the row's right end — the divide between "make one" and "do something with this one". An action
@@ -58,7 +57,6 @@ const ARTIFACT_ACTIONS: { label: string; Icon: typeof Plus; act?: FileAction; tr
   { label: "Include a library…", Icon: Library, act: { kind: "include" } },
   { label: "Import CQL…", Icon: Download },
   { label: "Save as…", Icon: Save, act: { kind: "saveAs" }, trailing: true },
-  { label: "Publish…", Icon: Publish, act: { kind: "publish" } },
 ];
 
 /** RUN-ADDRESS-LOCATION — what the catalog calls a location: a store by its schema, a folder by its last segment. */
@@ -70,7 +68,7 @@ export function locationLabel(at: string | null): string {
 }
 
 export function Navigator({ definition, definitions, onOpenDefinition, dep, onBack, at = null, onOpenAt, onFileAction,
-                           includeBlocked = null, publishBlocked = null }: {
+                           includeBlocked = null }: {
   definition: Definition;
   /** The WHOLE catalog, the open artifact included — it renders marked `open`, never filtered out. */
   definitions: Definition[];
@@ -88,8 +86,6 @@ export function Navigator({ definition, definitions, onOpenDefinition, dep, onBa
   onFileAction?: (action: FileAction) => void;
   /** DOC-INCLUDE-NEW — why "Include a library…" cannot run on the open library now, or null when it can. */
   includeBlocked?: string | null;
-  /** DOC-PUBLISH — why "Publish…" cannot run on the open library now, or null when it can. */
-  publishBlocked?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -236,8 +232,7 @@ export function Navigator({ definition, definitions, onOpenDefinition, dep, onBa
                 They stay `disabled` so nothing FIRES that cannot happen. The reason is in the tooltip on
                 the wrapper, where a disabled control can still explain itself. */}
             {ARTIFACT_ACTIONS.map((a) => {
-              const blocked = a.act?.kind === "include" ? includeBlocked
-                : a.act?.kind === "publish" ? publishBlocked : null;
+              const blocked = a.act?.kind === "include" ? includeBlocked : null;
               return (
               <span key={a.label} className={"mw-navpop-act-wrap" + (a.trailing ? " trail" : "")}
                 title={blocked ?? (a.act && onFileAction ? undefined : `${a.label} — lands in a later phase`)}>

@@ -40,7 +40,6 @@ import { useSelectionDerivations } from "./selection-derivations.ts";
 import { Sparkle, EditCql } from "../icons.tsx";
 import { useAutoSave, writeLabel, writeTitle } from "./autoSave.ts";
 import { withInclude } from "./includeLibrary.ts";
-import { PublishForm } from "./PublishForm.tsx";
 import { ErrorBanner } from "./ErrorBanner.tsx";
 import type { NavScope } from "./ScopeNav.tsx";
 import { DefineEditContext, DefineEditor, LazyCqlEditor, type DefineEdit } from "./defineEdit.tsx";
@@ -349,11 +348,11 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   const libLocation = definition?.location ?? null;
   // DOC-CQL-EDIT — which library a compile belongs to, so one library's last good compile never renders another's.
   const libKey = `${libLocation ?? ""}\0${definition?.id ?? ""}`;
-  // DOC-EDITABLE-IN-SCOPE — a library from a tagged store is published and read-only here; it is edited as a copy in
+  // DOC-EDITABLE-IN-SCOPE — a library from an environment's knowledge is read-only here; it is edited as a copy in
   // a folder (Save As). Nothing is asked first: a folder write is the user's own, and Databricks refuses one they
   // cannot make.
   const readOnly = libLocation?.startsWith("store:")
-    ? "Published in a tagged store, which the Designer does not edit. Save a copy to a workspace folder to change it."
+    ? "In the environment's knowledge, which the Designer does not edit. Save a copy to a workspace folder to change it."
     : null;
 
   // PERF-DISCOVER-LIGHTWEIGHT — the discover endpoint omits CQL source; lazy-load it
@@ -990,11 +989,6 @@ export function MeasureWorkspace({ chrome, deepLink }: {
   const includeBlocked = readOnly
     ?? (inPlace ? "Close the define you are editing first."
         : includeElm ? null : "The CQL as edited must compile first: the include goes after its last include.");
-  // DOC-PUBLISH — Publish reads the library from its folder, so it waits until the latest edit is written there.
-  const publishBlocked = readOnly
-    ?? (unwritten ? "Wait until the latest edit is saved: Publish reads the library from its folder." : null);
-  const [publishing, setPublishing] = useState(false);
-  useEffect(() => { setPublishing(false); }, [definition?.id, libLocation]);
   const [includeProblem, setIncludeProblem] = useState<string | null>(null);
   useEffect(() => { setIncludeProblem(null); }, [definition?.id, libLocation]);
   // A new library opens in the CQL view, to be written; a copy opens where its original was read; a library made to
@@ -1148,11 +1142,9 @@ export function MeasureWorkspace({ chrome, deepLink }: {
                 else setParams({ at, open: null, crit: null });
               }}
               includeBlocked={includeBlocked}
-              publishBlocked={publishBlocked}
               onFileAction={(action) => {
                 if (action.kind === "new") { if (leaveEdit()) setFileForm(action); }
                 else if (action.kind === "include") { if (!includeBlocked) setFileForm(action); }
-                else if (action.kind === "publish") { if (!publishBlocked) setPublishing(true); }
                 else if (loadedSource !== null) setFileForm({ kind: "saveAs", definition, cql: edited ?? loadedSource });
               }} />
             {/* DOC-AUTO-SAVE — whether the latest edit is written where the library was opened, or why not. */}
@@ -1232,8 +1224,6 @@ export function MeasureWorkspace({ chrome, deepLink }: {
           )}
           {/* DOC-INCLUDE-NEW — the library was made but its include could not be placed. */}
           {includeProblem && <ErrorBanner message={includeProblem} onDismiss={() => setIncludeProblem(null)} />}
-          {publishing && <PublishForm definition={definition} environmentName={environment}
-                                         onClose={() => setPublishing(false)} />}
           {fileForm && (
             <NewLibraryForm key={fileForm.kind === "new" ? fileForm.what : fileForm.kind} target={fileForm} at={openAt}
               onCancel={() => setFileForm(null)} onCreated={created} />

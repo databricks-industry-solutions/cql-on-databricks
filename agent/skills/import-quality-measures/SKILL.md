@@ -1,6 +1,6 @@
 ---
 name: import-quality-measures
-description: "Import clinical quality measures (FHIR Measure and Library resources with their CQL, and the codes of the value sets they use) into Unity Catalog so CQL on Databricks can run them. Use when someone wants to load, add, upload or bring in a quality measure, measure package, CQL library or value-set codes, or asks where they can put measures they have."
+description: "Import clinical quality measures (FHIR Measure and Library resources with their CQL, and the codes of the value sets they use) into a folder of the user's own, so CQL on Databricks can run them from there. Use when someone wants to load, add, upload or bring in a quality measure, measure package, CQL library or value-set codes, or asks where they can put measures they have."
 ---
 
 <!--
@@ -10,11 +10,15 @@ description: "Import clinical quality measures (FHIR Measure and Library resourc
 
 # Import quality measures
 
-You help a user load quality measures into Unity Catalog for CQL on Databricks. A measure is a FHIR `Measure`
-resource, the `Library` resources that hold its CQL, and the codes of every value set that CQL names. One
-function writes all of it: `cql_databricks.data_bindings.measure_import.import_measures`. Your job is everything
-around that call: finding the content, getting the value-set codes, and choosing a target the user is allowed to
+You help a user load quality measures into a folder of their own, so CQL on Databricks can run them. A measure is a
+FHIR `Measure` resource, the `Library` resources that hold its CQL, and the codes of every value set that CQL names.
+One function writes all of it, as files: `cql_databricks.data_bindings.measure_import.import_measures`. Your job is
+everything around that call: finding the content, getting the value-set codes, and choosing a folder the user may
 write.
+
+The import never writes an environment's `knowledge` tables. What is there is the deployment's and the
+implementer's; making a measure official is their process, not this one. If the user asks to publish into an
+environment, say so, and import into their folder.
 
 Work in a notebook cell by cell. Show the user each cell that writes before you run it.
 
@@ -28,11 +32,11 @@ Ask what they want to import and where it is, unless they already said. Then loo
   codes, or only CQL text. Packages often ship each resource twice, as JSON and XML; read the JSON.
 - Measure content and code systems carry their own terms. Before you import, tell the user that the content's
   owner sets the terms, and ask them to confirm they may use it here. Don't copy it anywhere beyond the
-  import's target.
+  import's folder.
 
 If they only have CQL, each library needs a `Library` resource: the CQL as a `text/cql` attachment (base64),
-and a canonical `url`, `name` and `version`. Ask the user which canonical base to use. A library becomes a
-measure in the catalog only when a `Measure` resource names it.
+and a canonical `url`, `name` and `version`. Ask the user which canonical base to use. A library is a measure
+only when a `Measure` resource names it.
 
 ## 2. Install the import tools
 
@@ -46,8 +50,7 @@ WHERE comment LIKE 'CQL on Databricks runtime artifacts%';
 ```
 
 If there is one, install from it. If there are several, ask the user which deployment to use. If there are none,
-the user can't read it: ask them, or their admin, for its path. Its schema is the deployment's runtime schema,
-which you need in step 7.
+the user can't read it: ask them, or their admin, for its path.
 
 ```python
 %pip install /Volumes/<volume_catalog>/<volume_schema>/<volume_name>/wheels/cql_databricks-*.whl
@@ -69,76 +72,68 @@ needed = set().union(*(declared_valuesets(lib) for lib in libraries))
 
 ## 4. Get the value-set codes
 
-Every value set the libraries declare (`needed`) must have codes, in this import or already in the target's
-`valueset` table. A measure run without them under-counts silently, so the import refuses.
+Every value set the libraries declare (`needed`) must have codes, in this import or already in the folder's
+`valuesets/`. A measure run without them fails, so the import refuses.
 
-- Check which ones already have codes in the knowledge store you will use (step 5):
-  `SELECT DISTINCT valueset_id FROM <catalog>.<schema>.valueset`.
+- A folder imported into before already holds some: the `url` of each `valuesets/*.json` file.
 - For the rest, find out what the user has. A `ValueSet` resource with an `expansion`, or with a `compose` that
   only lists concepts, can be imported as is. One defined by filters or by other value sets must be expanded
   first, by a terminology service that can expand it (FHIR `ValueSet/$expand`). Ask the user which service
   they use and how they sign in to it. Their own key belongs in a secret scope, never in the notebook.
 - Codes the user already has as rows go in `codes=`: dicts with `valueset_id` (the canonical URL, no
-  `|version`), `system` and `code`, and optionally `display` and `version`.
+  `|version`), `system` and `code`, and optionally `display` and `version`. `version` is the ValueSet's own
+  version, the one a CQL declaration pins with `version '<v>'`; a value set with several versions needs each CQL
+  declaration of it to pin one, or the run fails.
 - Never write codes yourself or guess an expansion.
 
-## 5. Choose where it goes
+## 5. Choose the folder
 
-Measures go into an environment: a catalog tagged `cql_databricks_environment`, whose `knowledge` schema holds the
-tables `library`, `measure` and `valueset`. The import writes those tables. List the environments the user can see,
-and what they can do in each `knowledge` schema:
+The import writes files into a folder the user owns and can write: a folder in their workspace home
+(`/Workspace/Users/<their user name>/...`) or a Unity Catalog volume they have `WRITE VOLUME` on
+(`/Volumes/<catalog>/<schema>/<volume>/...`). Use a new folder per measure set, propose a name from what they are
+importing, and let the user choose. It holds:
 
-```sql
--- Environments: one row per tag of each catalog tagged as one
-SELECT catalog_name, tag_name, tag_value
-FROM system.information_schema.catalog_tags
-WHERE tag_name IN ('cql_databricks_environment', 'cql_databricks_environment_default');
+- `libraries/<Name>.cql`, each library's CQL;
+- `resources/library-<Name>-<version>.json` and `resources/measure-<Name>-<version>.json`, the resources as given;
+- `valuesets/<name>[-<version>].json`, one FHIR `ValueSet` per value set and version, its codes as its `expansion`.
 
--- What you can do in each knowledge schema (your own grants and your groups')
-SELECT catalog_name, schema_name, collect_set(privilege_type) AS privileges
-FROM system.information_schema.schema_privileges
-WHERE schema_name = 'knowledge'
-  AND (grantee = current_user() OR is_account_group_member(grantee))
-GROUP BY ALL;
-```
-
-An import works when the user can write the schema: `USE CATALOG`, `USE SCHEMA`, `CREATE TABLE`, `MODIFY` and
-`SELECT` on `knowledge` (`ALL PRIVILEGES` covers them). Propose the environment, with
-the reason, and let the user choose. The default environment is the one the Designer and Genie use unless someone
-picks another. Re-importing replaces a value set's codes whole, and merges measures and libraries on their canonical
-URL and version.
+Importing again replaces the files of the same library or value set and version. A library file holding another
+version of the library is refused, never overwritten: import that version into another folder.
 
 ## 6. Dry run, then import
 
 ```python
 from cql_databricks.data_bindings.measure_import import import_measures
 
-summary = import_measures(spark, resources, codes=codes, catalog="<the environment's catalog>",
-                          source="<a short name for where this came from>", dry_run=True)
+FOLDER = "<the folder>"
+summary = import_measures(resources, codes=codes, folder=FOLDER, dry_run=True)
 summary
 ```
 
 The function checks everything before it writes, and an `ImportContentError` lists every problem at once: a
 measure naming a library that isn't there, a value set without codes, a value set that still needs expanding.
-Fix them with the user, then run again. When the dry run is clean, show the summary, confirm the environment, and
-run the same call without `dry_run`.
+Fix them with the user, then run again. When the dry run is clean, show the summary, confirm the folder, and run
+the same call without `dry_run`.
 
 ## 7. Check it
 
 ```python
-from cql_databricks.compiler import connect
+from cql_databricks.compiler import cql, use_resolvers
+from cql_databricks.resolvers import FolderKnowledgeResolver, FolderTerminologyResolver
 
-client = connect(spark, environment="<the environment's name>")
-query = client.cql(library="<the measure's library name>")
+use_resolvers(knowledge=FolderKnowledgeResolver(FOLDER), terminology=FolderTerminologyResolver(f"{FOLDER}/valuesets"))
+query = cql(library="<the measure's library name>")
 query.populations()   # compiles the library with its includes, and lists the measure's populations
 ```
 
-If the user wants numbers, run it over the environment's data:
-`query.with_measurement_period("<start>", "<end>").exec()`.
+Its includes must be in the folder too, `FHIRHelpers` among them: import them with the measure. If the user wants
+numbers, run it over the environment's data: `query.with_measurement_period("<start>", "<end>").exec()`.
+`use_resolvers()` goes back to the environment's knowledge.
 
-Report what was imported: the measures, the libraries, how many value sets, and anything skipped. Then
+Report what was imported: the measures, the libraries, how many value sets, the folder, and anything skipped. Then
 explain how the rest of the deployment sees it:
 
-- In notebooks, `cql(library=...)` in that environment finds the libraries straight away.
-- The Designer shows them in that environment's catalog after its knowledge is reloaded, or the App restarts.
-- Genie and the agent's tools see them when it is the default environment.
+- In notebooks, `use_resolvers` as above runs it from the folder; the folder's owner decides who else may read it.
+- If it is a workspace folder, the Designer opens it there, as a library to edit.
+- It is not in any environment's knowledge, so Genie and the agent's tools don't find it by name, and its results
+  are never official. Putting it in an environment is the implementer's process.

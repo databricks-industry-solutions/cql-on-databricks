@@ -251,6 +251,27 @@ those principals only, typically one service principal that runs your publishing
 - Put on the result tables the row filters and column masks of the data they derive from, so each reader sees only
   their own rows of a shared result.
 
+## Official knowledge
+
+An environment's `knowledge` tables, `library`, `measure` and `valueset`, are the measures and value sets every run
+in it reads by name. Nothing a user runs in CQL on Databricks writes them: there is no Publish, and the measure import
+writes into the user's own folder (`DEC-NO-CONTENT-PUBLISHING`, `CONTENT-IMPORT-MEASURES`). The deploy loads the
+example measures into the default environment. Beyond that, how content becomes official is your process: decide who
+may write `knowledge`, and grant `MODIFY` on its tables to those principals only, typically the one service principal
+your own publication workflow runs as. Users keep `SELECT`.
+
+What you write must meet the contract runs read it by:
+
+- The tables' columns are those of `DATA-ENVIRONMENT-LAYOUT`. `valueset` is `(valueset_id, system, code, version)`,
+  one row per code.
+- `version` is the FHIR `ValueSet.version`, the version a CQL declaration pins with `version '<v>'`. A run reads only
+  the pinned version's codes. A value set its CQL declares with no version must hold exactly one version, or every
+  run of that CQL fails, naming it (`LANG-VALUESET-VERSION`). Keep several versions of a value set only when the CQL
+  that reads it pins one.
+- Don't change what a released `(url, version)` holds: release a new version instead. Kept results stay correct
+  either way, because a result's identity covers the codes it read (`CLIENT-RESOLVER-IDENTITY`), but reports and
+  people cite a measure by its version.
+
 The deploy makes the environment tags governed where the account allows it (`DEPLOY-ENVIRONMENT-TAG-POLICIES`), so
 only the principals it names can make a catalog an environment.
 

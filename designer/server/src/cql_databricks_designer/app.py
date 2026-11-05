@@ -115,7 +115,7 @@ def create_app() -> FastAPI:
     app.include_router(knowledge_routes.router(contents=contents))
     app.include_router(designer_routes.router(contents=contents))
     # DOC-OPEN-SAVE — save a library where it was opened, as the signed-in user.
-    app.include_router(save_routes.router(compiler=compiler, contents=contents, warehouse=environments_routes.warehouse))
+    app.include_router(save_routes.router(compiler=compiler, contents=contents))
     app.include_router(environments_routes.router(environments=environments))
     # RUN-CLIENT-MIGRATION — caller-owned durable calculations and complete-selection reads.
     app.include_router(runs_routes.router(

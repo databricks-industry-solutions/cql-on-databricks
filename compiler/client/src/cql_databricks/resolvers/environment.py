@@ -275,9 +275,10 @@ class EnvironmentResolver:
         return ContentResolver(runner or (lambda: self._run), env.catalog, env.name)
 
     def knowledge(self, env: Environment, content=None) -> TableKnowledgeResolver:
-        """BIND-PUBLISHED-VIEW: the environment's ``knowledge``, which publishing writes."""
+        """BIND-PUBLISHED-VIEW: the environment's ``knowledge``, which runs read and the client never writes
+        (`DEC-NO-CONTENT-PUBLISHING`)."""
         held = content if content is not None else self.content(env)
-        return TableKnowledgeResolver(lambda: held, schema=env.address(KNOWLEDGE), run=self._run)
+        return TableKnowledgeResolver(lambda: held)
 
     def resolvers(self, env: Environment, results=None) -> Resolvers:
         """CLIENT-RESOLVERS: a run's resolvers in ``env``: its data and terminology, and ``results``, one of

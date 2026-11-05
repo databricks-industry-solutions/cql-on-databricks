@@ -12,8 +12,6 @@ export {
   // DOC-CQL-EDIT, DOC-OPEN-SAVE — the CQL view's toggle and Save.
   CodeXml as EditCql,
   Save,
-  // DOC-PUBLISH — a folder library out to a tagged store.
-  Upload as Publish,
   FolderOpen,
   X,
   ChevronDown,

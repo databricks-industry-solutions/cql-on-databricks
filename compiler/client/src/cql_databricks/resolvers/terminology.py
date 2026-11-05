@@ -1,10 +1,10 @@
 """CLIENT-TERMINOLOGY-RESOLVER: the terminology resolvers the client ships.
 
-| Resolver | Reads | A store |
-|---|---|---|
-| :class:`TableTerminologyResolver` | a ``valueset(valueset_id, system, code, version)`` table or view; an environment's ``knowledge.valueset`` | yes, given its store table |
-| :class:`FolderTerminologyResolver` | FHIR ``ValueSet`` JSON, one per ``.json`` file, in a volume or workspace folder | no |
-| :class:`DataFrameTerminologyResolver` | a DataFrame of ``(valueset_id, version, system, code)`` rows; for development, Spark only | no |
+| Resolver | Reads |
+|---|---|
+| :class:`TableTerminologyResolver` | a ``valueset(valueset_id, system, code, version)`` table or view; an environment's ``knowledge.valueset`` |
+| :class:`FolderTerminologyResolver` | FHIR ``ValueSet`` JSON, one per ``.json`` file, in a volume or workspace folder |
+| :class:`DataFrameTerminologyResolver` | a DataFrame of ``(valueset_id, version, system, code)`` rows; for development, Spark only |
 
 All bind by rule: one relation serves every value set (`BIND-CALL-SITE`). A folder in a volume is read with
 ``read_files`` at each run, on a SQL warehouse or Spark; a workspace folder is read on the driver and handed to Spark
@@ -14,26 +14,19 @@ deep): one with only ``compose`` fails, naming it, because the engine expands no
 from __future__ import annotations
 
 import json
-import logging
 import os
 from collections.abc import Iterator, Sequence
 from typing import Any
 
 from cql_databricks.compiler.reshape import quote_name, table_name
-from .interfaces import (Code, CodeMatch, DataFrameRelation, PublishReport, Relation, TableRelation, TerminologyStore,
+from .interfaces import (Code, CodeMatch, DataFrameRelation, Relation, TableRelation,
                         TerminologyResolver, ValueSet, ValueSetRef, VolumeRelation)
 
-log = logging.getLogger(__name__)
-
-#: Rows per ``INSERT`` when a value set is published.
-_PUBLISH_BATCH = 500
 
 
-class TableTerminologyResolver(TerminologyStore):
+class TableTerminologyResolver(TerminologyResolver):
     """CLIENT-TERMINOLOGY-RESOLVER: the ``valueset(valueset_id, system, code, version)`` relation ``table``, read
-    through ``run``, as its identity. It is a store: :meth:`publish` writes ``table`` (`BIND-PUBLISHED-VIEW`), so a
-    ``table`` that is a view fails the publish in the warehouse, naming it. ``identity`` is ``table``'s schema unless
-    given."""
+    through ``run``. It only reads (`DEC-NO-CONTENT-PUBLISHING`). ``identity`` is ``table``'s schema unless given."""
 
     def __init__(self, table: str, run, *, identity: str | None = None) -> None:
         self.table = table_name(table)
@@ -53,25 +46,6 @@ class TableTerminologyResolver(TerminologyStore):
         rows = self._run(f"SELECT DISTINCT valueset_id, version, system FROM {quote_name(self.table)} "
                          f"WHERE {where} ORDER BY valueset_id, version, system", params)
         return [CodeMatch(id=r["valueset_id"], version=r["version"], system=r["system"]) for r in rows]
-
-    def publish(self, value_sets: Sequence[ValueSet]) -> PublishReport:
-        """Replace each value set's rows in ``table``, by ``(valueset_id, version)``, with its expansion. A value set
-        with no codes is refused before anything is written: an expansion that lists nothing is not one."""
-        empty = [vs.id for vs in value_sets if not vs.codes]
-        if empty:
-            raise ValueError(f"value sets with no expansion: {', '.join(empty)} (CLIENT-TERMINOLOGY-RESOLVER)")
-        store = quote_name(self.table)
-        written = []
-        for vs in value_sets:
-            self._run(f"DELETE FROM {store} WHERE valueset_id = :id AND version <=> :version",
-                      {"id": vs.id, "version": vs.version})
-            for start in range(0, len(vs.codes), _PUBLISH_BATCH):
-                rows = ", ".join(f"({_literal(vs.id)}, {_literal(c.system)}, {_literal(c.code)}, "
-                                 f"{_literal(vs.version)})" for c in vs.codes[start:start + _PUBLISH_BATCH])
-                self._run(f"INSERT INTO {store} (valueset_id, system, code, version) VALUES {rows}")
-            written.append(vs.id)
-        log.info("published %d value sets to %s", len(written), self.table)
-        return PublishReport(written=tuple(written))
 
 
 class FolderTerminologyResolver(TerminologyResolver):
@@ -176,9 +150,3 @@ def _files(path: str) -> Iterator[tuple[str, dict[str, Any]]]:
             where = f"{path}/{name}"
             with open(where, encoding="utf-8") as f:
                 yield where, json.load(f)
-
-
-def _literal(value: Any) -> str:
-    if value is None:
-        return "NULL"
-    return "'" + str(value).replace("\\", "\\\\").replace("'", "\\'") + "'"

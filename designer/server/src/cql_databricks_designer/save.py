@@ -15,7 +15,7 @@ New and Save As create one in a folder (`create_in_folder`): its CQL, a ``Librar
 ``Measure``. Each gets a canonical URL under the deployment's one base (`config.canonical_base`). A create writes
 nothing over anything: a folder that already holds one of its files refuses it.
 
-A tagged store changes only by publishing (`CLIENT-PUBLISH`, `DOC-PUBLISH`), which the client does.
+An environment's knowledge is never written here (`DOC-EDITABLE-IN-SCOPE`).
 The ``Library`` resource every write carries is the client's (`library_resource.py`).
 """
 from __future__ import annotations

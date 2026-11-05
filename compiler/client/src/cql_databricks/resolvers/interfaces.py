@@ -4,7 +4,8 @@ Each role is an interface with methods made for it: :class:`DataResolver` (`CLIE
 :class:`TerminologyResolver` (`CLIENT-TERMINOLOGY-RESOLVER`), :class:`KnowledgeResolver`
 (`CLIENT-KNOWLEDGE-RESOLVER`) and :class:`ResultResolver` (`CLIENT-RESULT-RESOLVER`). Every implementation's name
 ends in ``Resolver``. The client resolves everything through them, and nothing else. Reading and writing are separate
-interfaces (`CLIENT-RESOLVER-READ-WRITE`): ``publish`` is only on a store. ``Overlay(dev, base)`` composes two
+interfaces (`CLIENT-RESOLVER-READ-WRITE`): only a result store writes. Data, terminology and knowledge are read, never
+written (`DEC-NO-CONTENT-PUBLISHING`). ``Overlay(dev, base)`` composes two
 resolvers of one role (`CLIENT-RESOLVER-OVERLAY`).
 
 A resolver binds by rule, one answer for every call site, or per site (`BIND-CALL-SITE`): a data resolver answers a
@@ -222,18 +223,11 @@ class CodeMatch(ValueSetRef):
 
 @dataclass(frozen=True, kw_only=True)
 class ValueSet:
-    """A value set with its expansion, as published into a terminology store."""
+    """A value set with its expansion, as a folder of FHIR ``ValueSet`` JSON holds it."""
     id: str
     version: str | None = None
     name: str | None = None
     codes: tuple[Code, ...] = ()
-
-
-@dataclass(frozen=True, kw_only=True)
-class PublishReport:
-    """What a ``publish`` wrote and what it left because it was unchanged."""
-    written: tuple[str, ...] = ()
-    unchanged: tuple[str, ...] = ()
 
 
 class TerminologyResolver(abc.ABC):
@@ -261,15 +255,6 @@ class TerminologyResolver(abc.ABC):
         """The value sets that contain ``code``, in ``system`` when given (`AGENT-VALUE-SET-LOOKUP`)."""
 
 
-class TerminologyStore(TerminologyResolver):
-    """A terminology resolver that can be written: ``publish`` writes the store tables (`CLIENT-RESOLVER-READ-WRITE`,
-    `BIND-PUBLISHED-VIEW`)."""
-
-    @abc.abstractmethod
-    def publish(self, value_sets: Sequence[ValueSet]) -> PublishReport:
-        """Write ``value_sets``, each with its expansion."""
-
-
 # --------------------------------------------------------------------------------------------------
 # Knowledge
 # --------------------------------------------------------------------------------------------------
@@ -295,14 +280,6 @@ class KnowledgeResolver(abc.ABC):
     @abc.abstractmethod
     def libraries(self) -> Iterable[LibraryRef]:
         """Every library it holds."""
-
-
-class KnowledgeStore(KnowledgeResolver):
-    """A knowledge resolver that can be written (`CLIENT-RESOLVER-READ-WRITE`)."""
-
-    @abc.abstractmethod
-    def publish(self, closure: Any) -> Any:
-        """Write a folder library and the folder includes that changed (`CLIENT-PUBLISH`)."""
 
 
 # --------------------------------------------------------------------------------------------------

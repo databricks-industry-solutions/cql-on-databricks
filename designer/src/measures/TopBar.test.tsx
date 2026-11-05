@@ -181,7 +181,7 @@ describe("Navigator — the Open menu is the File surface (DESIGNER-TOP-BAR)", (
     const actions = Array.from(container.querySelectorAll<HTMLButtonElement>(".mw-navpop-act"));
     expect(actions.map((b) => [b.textContent, b.disabled])).toEqual([
       ["New measure", false], ["New library", false], ["Include a library…", false], ["Import CQL…", true],
-      ["Save as…", false], ["Publish…", false]]);
+      ["Save as…", false]]);
     expect(container.querySelector(".soon")).toBeNull();
     expect(actions[3]!.closest(".mw-navpop-act-wrap")?.getAttribute("title")).toMatch(/later phase/);
     // DOC-OPEN-SAVE — New and Save As go to the workspace, which owns the form.

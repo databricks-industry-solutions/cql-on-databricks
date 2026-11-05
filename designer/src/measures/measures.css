@@ -2860,10 +2860,3 @@
 .mw-newlib-fields label.wide input { font-family: var(--f-mono); }
 .mw-newlib-problem { margin: 0 0 8px; color: var(--tcrit, #b91c1c); }
 .mw-newlib-problem pre { margin: 4px 0 0; white-space: pre-wrap; font-size: 11.5px; }
-/* DOC-PUBLISH — what publishing did with each library: quiet ink for unchanged and not written, the critical ink
-   for a refusal, with its reason under it. */
-.mw-publish-result { margin: 4px 0 8px; padding-left: 18px; font-size: 12px; color: var(--tink-2); }
-.mw-publish-result li span { color: var(--tink-3); }
-.mw-publish-result li.published span { color: var(--tink); font-weight: 600; }
-.mw-publish-result li.refused span { color: var(--tcrit, #b91c1c); font-weight: 600; }
-.mw-publish-result pre { margin: 2px 0 4px; font-size: 11px; white-space: pre-wrap; color: var(--tcrit, #b91c1c); }

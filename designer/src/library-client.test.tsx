@@ -1,9 +1,8 @@
 // KNOWLEDGE-LAKE-DIRECT (PROC-TDD) — the SPA library client: record→Definition mapping + fetch.
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { toDefinition, fetchDefinitions, fetchDataRequirements, fetchDefineProfile, fetchLibrarySource, fetchMeasureMetrics, publishLibrary, peekDefineProfile } from "./library-client.ts";
+import { toDefinition, fetchDefinitions, fetchDataRequirements, fetchDefineProfile, fetchLibrarySource, fetchMeasureMetrics, peekDefineProfile } from "./library-client.ts";
 import { fetchResults } from "./run-client.ts";
 import type { ResultSetAddress } from "./wire.ts";
-import { setCurrentEnvironment } from "./environment.ts";
 
 const measure = {
   id: { name: "ExampleMeasure", version: "1.0.0" },
@@ -86,34 +85,6 @@ describe("figure reads (RUN-CLIENT-RESULT-SETS)", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "warehouse unavailable" }), { status: 500 })));
     await expect(fetchMeasureMetrics("Synthetic", "1", [], { ...scope, draft: "durable.fault" }))
       .rejects.toThrow("warehouse unavailable");
-  });
-});
-
-describe("publishLibrary (DOC-PUBLISH)", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
-  it("reads a refusal and a failed write apart, each with its summary", async () => {
-    const summary = { store: "k.m", libraries: [] };
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "no", summary }), { status: 400 })));
-    expect(await publishLibrary({ location: "folder:/x", name: "S", version: "1" }))
-      .toEqual({ kind: "refused", error: "no", summary });
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "denied", summary }), { status: 502 })));
-    expect(await publishLibrary({ location: "folder:/x", name: "S", version: "1" }))
-      .toEqual({ kind: "failed", error: "denied", summary });
-  });
-
-  it("publishes into the picked environment (DOC-ENVIRONMENT-PICKER)", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ store: "k.knowledge", libraries: [] })));
-    vi.stubGlobal("fetch", fetcher);
-    setCurrentEnvironment("example");
-    try {
-      await publishLibrary({ location: "folder:/x", name: "S", version: "1" });
-    } finally {
-      setCurrentEnvironment(null);
-    }
-    const init = (fetcher.mock.calls[0] as unknown as [string, RequestInit])[1];
-    expect(JSON.parse(String(init.body))).toEqual({ location: "folder:/x", name: "S", version: "1",
-                                                    environment: "example" });
   });
 });
 

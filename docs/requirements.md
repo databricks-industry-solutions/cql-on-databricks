@@ -24,18 +24,16 @@ What the product is for and who it serves.
 | `APP-CLINICAL-BOUNDARY` | Databricks provides the mechanics of trust and radical transparency; clinical authority stays with standards bodies, customer staff and publishers. |
 | `APP-COMMODITIZE` | The competitor is the incumbent specialized stack, not another tool; the accelerator collapses it onto Databricks, and ergonomic sharing is the amplifier. |
 | `APP-ERGONOMICS` | The path from connected data to installed pack to computed result to stepping into a patient must be rapid, ergonomic, convenient and effective on owned compute. |
-| `APP-FOCUS` | Execution of measures against customer data and mapping that data into pipelines are the primary value; measure authoring is secondary but a deliberate differentiator. |
+| `APP-FOCUS` | Execution of measures against customer data and mapping that data into pipelines are the primary value. Authoring is secondary and local: a user authors and runs in places of their own, and making content official in an environment is the implementer's, not the product's (`DEC-NO-CONTENT-PUBLISHING`). |
 | `APP-PLUGGABLE-CLINICAL` | Clinical judgment enters as pluggable, governed, versioned, attributed content authored by clinicians and publishers, including AI authoring instructions that steer NL guidance. |
 | `APP-VISION` | Two surfaces onto the engine in one workspace: runtime execution of measures on customer data, and authoring/discovery/editing/evaluation via natural language. |
 
 ## Sharing
 
-Sharing measures and results across organizations.
+Sharing FHIR data across organizations.
 
 | ID | Requirement |
 |---|---|
-| `APP-SHARE` | Share measures and libraries with other organizations on Databricks over the open sharing protocol; recipients read them live, without copying artifacts. |
-| `KNOWLEDGE-FEED-INGEST` | Lakehouse and serving tables are publisher and consumer; seam is knowledge feed over OpenSharing, not internal detail. Any recipient runs same derivation step. Published side optimizes for faithfulness; consumer side for use. |
 | `SHARE-BULK-FHIR` | Population FHIR data represented as Delta tables and shared over the open protocol survives intact for any recipient to run any measure. |
 | `SHARE-CANONICAL-LAYOUT` | Publish the standard FHIR-in-Delta layout and value-set-as-table convention as the canonical contract; recipients on this layout get zero-config data binding. |
 | `SHARE-ENLIST` | A data source is a configurable union of value-set views and logical mounts that decouples measures from physical shares; enlistment is explicit and UC-governed. |
@@ -119,7 +117,7 @@ Who a request runs as, and how Unity Catalog governs it.
 | `SEC-GOVERNANCE` | Bindings, value-set tables, the registry, and shared objects are ordinary Unity Catalog objects; access control, lineage, and audit are Unity Catalog's. |
 | `SEC-LOCAL-AUTH-PREFLIGHT` | Local runs settle Databricks auth before stack starts via `databricks auth token` (OS-keyring cache); interactive login runs only on failure. |
 | `SEC-LOCAL-IDENTITY` | Local target uses a single dev identity and local catalog (no OAuth on-behalf-of) — a dev convenience, not a production posture. |
-| `SEC-OBO` | The Designer's environment lookups, runs and publishes run as the signed-in user via OAuth on-behalf-of. The BFF builds a per-request user client from the forwarded token; service-principal client handles App plumbing and startup. Target detection, not fallback: missing token raises. |
+| `SEC-OBO` | The Designer's environment lookups, runs and saves run as the signed-in user via OAuth on-behalf-of. The BFF builds a per-request user client from the forwarded token; service-principal client handles App plumbing and startup. Target detection, not fallback: missing token raises. |
 | `SEC-OBO-SCOPE-GAP` | Jobs and pipelines scopes are not currently declarable in user_api_scopes. Interactive runs use service-principal client for orchestration. This is a documented cost, not mitigated. |
 | `SEC-WS-CLIENT-SHARED` | One Databricks SDK WorkspaceClient per process, built lazily behind a lock; reached only through service-principal-client. Never cached per-call; refresh is single and serialized. |
 
@@ -131,7 +129,7 @@ The data-source contract several features share, and data-source features no one
 |---|---|
 | `DATA-CONTRACT` | The customer data contract: an environment's `data` schema of tables or views, one per FHIR type, each returning the resource as a `resource` struct and optionally the root columns `patient_id`, `min_date` and `max_date` (`BIND-CONTRACT`, `DATA-SUBJECT-KEY`, `BIND-PREFILTER`, `DATA-ENVIRONMENT-LAYOUT`); value sets in its `knowledge.valueset`; optional `ConceptMap`. The compiler owns none of the data; the customer or their Databricks product implements them. |
 | `DATA-CROSSWALK` | The compiler owns versioned, shareable `ConceptMap` / crosswalk artifacts (code-to-code mapping, many-to-one, conditional `dependsOn`) that the customer's retrieve view applies. A governed content piece paired with the customer's view implementation. |
-| `DATA-ENVIRONMENT-LAYOUT` | An environment's catalog (`CLIENT-ENVIRONMENT`) holds these schemas, by these names. `data`: one table or view per FHIR type, named for the type in lower case (`condition`), each returning the contract (`BIND-CONTRACT`), and optionally `change_log` (`DATA-CHANGE-LOG-PERIODS`). `knowledge`: `library` and `measure`, with the columns the import writes (`CONTENT-IMPORT-MEASURES`), and `valueset(valueset_id, system, code, version)`. Terminology is knowledge: neither holds patient data, and they have the same readers and writers. `results` and `draft_results` (`RUN-CLIENT-DRAFT-RESULTS`). There is no store schema: the deploy and the loader write tables in `data` and `knowledge`, and publishing writes the `knowledge` tables. Optionally, each of `data` and `knowledge` holds a volume `files` with the same content as files, for a run whose resolver reads files (`CLIENT-DATA-RESOLVER`, `CLIENT-TERMINOLOGY-RESOLVER`, `CLIENT-KNOWLEDGE-RESOLVER`): `data/files/fhir/<Type>.ndjson`, one resource per line, and `knowledge/files/valuesets/<name>.json`, one FHIR `ValueSet` with its expansion, and `knowledge/files/libraries/<Library>.cql`. A run reads the tables unless its resolver names the files. A customer whose data or knowledge comes from elsewhere defines views in an environment of its own, over tables in any catalog; a view's readers need no grant on the tables under it, and such an environment takes no publish into a view. Readers get `SELECT` on `data`, `knowledge` and `results`, and `READ VOLUME` on the `files` volumes. Nothing checks the layout at run time (`BIND-PUBLISHED-VIEW`). |
+| `DATA-ENVIRONMENT-LAYOUT` | An environment's catalog (`CLIENT-ENVIRONMENT`) holds these schemas, by these names. `data`: one table or view per FHIR type, named for the type in lower case (`condition`), each returning the contract (`BIND-CONTRACT`), and optionally `change_log` (`DATA-CHANGE-LOG-PERIODS`). `knowledge`: `library` and `measure`, with the columns the deploy writes (`CONTENT-EXAMPLE-PRELOAD`), and `valueset(valueset_id, system, code, version)`. Terminology is knowledge: neither holds patient data, and they have the same readers and writers. `results` and `draft_results` (`RUN-CLIENT-DRAFT-RESULTS`). There is no store schema: the deploy and the loader write tables in `data`, the deploy writes the `knowledge` tables, and otherwise whoever the implementer grants writes them; nothing a user runs in this product writes `knowledge` (`DEC-NO-CONTENT-PUBLISHING`). Optionally, each of `data` and `knowledge` holds a volume `files` with the same content as files, for a run whose resolver reads files (`CLIENT-DATA-RESOLVER`, `CLIENT-TERMINOLOGY-RESOLVER`, `CLIENT-KNOWLEDGE-RESOLVER`): `data/files/fhir/<Type>.ndjson`, one resource per line, and `knowledge/files/valuesets/<name>.json`, one FHIR `ValueSet` with its expansion, and `knowledge/files/libraries/<Library>.cql`. A run reads the tables unless its resolver names the files. A customer whose data or knowledge comes from elsewhere defines views in an environment of its own, over tables in any catalog; a view's readers need no grant on the tables under it. Readers get `SELECT` on `data`, `knowledge` and `results`, and `READ VOLUME` on the `files` volumes. Nothing checks the layout at run time (`BIND-PUBLISHED-VIEW`). |
 | `DATA-OBSERVABILITY` | The compiler observes the view boundary, UC lineage, and direct queries to diagnose coverage, quality, and provenance. It describes, never remaps or prescribes structure. |
 | `DATA-PROVENANCE` | For any result value, the compiler traces retrieve view to source tables via UC lineage and optional LLM narration. Diagnostic only; describes and audits, never remaps. |
 | `DATA-PUSHDOWN-DIAG` | A diagnostic to verify binding pushdown: call the mount twice (hints populated vs. empty) and report the row-count delta. Secondary tool for implementers; not required by the engine's own gates. |
@@ -162,19 +160,13 @@ The example measures and patients in `examples/`.
 | `CONTENT-EXAMPLE-PRELOAD` | `examples/` is the one place that pre-loads a workspace with example measures. The deploy loads its CQL as FHIR `Library` resources and each example measure's authored `Measure` resource and its value sets into the default environment's `knowledge`, and the synthetic small population (`DATA-SYNTH-SMALL`) into its `data`, as tables and as files in their `files` volumes (`DEPLOY-DEFAULT-ENVIRONMENT`), with no expected results. Nothing outside `compiler/` reads the compiler's conformance corpus. The corpus keeps its own copy of each example measure's CQL and value sets, changed in lock step by hand, and unmodified copies of `FHIRHelpers.cql` in `cql/measures/` and `cql/fhir/`, changed in lock step with `examples/measures/FHIRHelpers.cql` (`LANG-FHIRHELPERS-FROM-CONTENT`). Its patients are its own: 48 hand-written patients and their answer keys. Nothing reads one copy from the other, so they may diverge. |
 | `CONTENT-EXAMPLE-STANDARDS` | The example measures in `examples/` follow the published FHIR quality measurement standards and use only open-source, license-free content. Each is written against QI-Core 6.0.0 and includes FHIRHelpers 4.0.1, which `examples/measures` distributes unmodified. Each has an authored FHIR `Measure` with proportion scoring, the CQF Measures populations (initial population, denominator, exclusions, exceptions, numerator), improvement notation and supplemental data, and takes the measurement period at run time. Its value sets are the repository's own, with codes only from code systems free to use (ICD-10-CM, ICD-10-PCS, HCPCS Level II, LOINC under its license, CVX, HL7 terminology) or local codes: no CPT, no SNOMED CT, and no published measure, value set or library. |
 
-## Library registry
+## Knowledge
 
-Measures and libraries as governed, versioned content.
+Measures, libraries and value sets as content the product reads.
 
 | ID | Requirement |
 |---|---|
 | `KNOWLEDGE-FAIL-LOUD` | Knowledge read failures propagate rather than returning empty results; failed loads are retried on next access and never cached. |
-| `REG-CRUD` | Draft → validate (clean diagnostics) → publish (immutable, indexed) → fork; performed as the signed-in user. |
-| `REG-CURATION` | Seed marketplace with trusted publishers (standards bodies, quality vendors, centers of excellence); open publication later once community trust is load-bearing. |
-| `REG-DISCOVERY` | Search/browse the Delta index by name/tags/resources/value sets/author/status; no separate search service. |
-| `REG-PACKS` | Clinical intelligence bundles measures + libraries (CQL/ELM), value sets, and authoring instructions; versioned, forkable, rateable. |
-| `REG-REGISTRY` | Libraries are CQL source plus metadata and discovery index; governed by Unity Catalog. |
-| `REG-VERSION` | Identity is (name, version); closure resolved for compilation; versions immutable. |
 
 ## Accelerator and compiler integration
 

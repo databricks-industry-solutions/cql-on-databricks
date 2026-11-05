@@ -8,9 +8,11 @@
 | The example measures, their libraries and value sets (`examples.py`, `CONTENT-EXAMPLE-PRELOAD`) | `<catalog>.example_measures` (knowledge and terminology) |
 | The example patients | The data source `synthetic-population-small` |
 
-The example measures go through the one import path, `cql_databricks.data_bindings.measure_import.import_measures`
-(`CONTENT-IMPORT-MEASURES`), in the client. Other measures are imported with the same function, through the
-`import-quality-measures` skill (`CONTENT-IMPORT-SKILL`).
+The example measures are written into the environment's `knowledge` tables by `knowledge_tables.py`, the only writer
+of those tables, after the client's import check, `cql_databricks.data_bindings.measure_import.check_import`
+(`CONTENT-IMPORT-MEASURES`), accepts them. Users import measures into a folder of their own with the client's
+`import_measures`, through the `import-quality-measures` skill (`CONTENT-IMPORT-SKILL`); nothing they run writes
+`knowledge` (`DEC-NO-CONTENT-PUBLISHING`).
 
 The repository ships no official measure content and no list of measures. Everything in `examples/` is
 written for this repository.

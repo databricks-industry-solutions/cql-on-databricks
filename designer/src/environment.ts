@@ -1,5 +1,5 @@
 // DOC-ENVIRONMENT-PICKER — the environment the Designer runs in: the one picked in the compute pill, or the
-// default until one is picked. Every knowledge read, compile, save, publish, run and assistant question names it,
+// default until one is picked. Every knowledge read, compile, save, run and assistant question names it,
 // so the server reads that environment's content (`CLIENT-ENVIRONMENT`). Held here, outside any component, because
 // the readers of knowledge are many and the picker is one; persisted so a reload reads the same environment.
 

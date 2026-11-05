@@ -1,8 +1,7 @@
 """DOC-OPEN-SAVE, DOC-AUTO-SAVE, DOC-EDITABLE-IN-SCOPE — saving a library back to its package folder; a tagged store is
 never written, only copied from.
 
-The folder is a dict standing in for the Workspace API; the store is a fake runner answering the row reads and MERGEs
-publishing runs (`DOC-PUBLISH`, `CLIENT-PUBLISH`, tested whole in the client). Every fixture is synthetic."""
+The folder is a dict standing in for the Workspace API. Every fixture is synthetic."""
 from __future__ import annotations
 
 import base64
@@ -155,9 +154,6 @@ def _corpus(measure=None):
 
 # ── the route ─────────────────────────────────────────────────────────────────────────────────────
 
-reloads: list[int] = []
-
-
 def _route(monkeypatch, folder, *, compiles=True):
     from types import SimpleNamespace
     from fastapi import FastAPI
@@ -168,10 +164,10 @@ def _route(monkeypatch, folder, *, compiles=True):
     monkeypatch.setattr(save_routes, "WorkspaceFolderWriter", lambda client: folder)
     compiler = SimpleNamespace(translate=lambda cql, includes: {
         "ok": compiles, "elm": ELM if compiles else None, "diagnostics": [] if compiles else ["Syntax error at 2:9"]})
-    content = SimpleNamespace(corpus=_corpus, knowledge_sources=lambda: [STORE], reload=lambda: reloads.append(1))
+    content = SimpleNamespace(corpus=_corpus, knowledge_sources=lambda: [STORE])
     contents = SimpleNamespace(get=lambda name: content)
     app = FastAPI()
-    app.include_router(save_routes.router(compiler=compiler, contents=contents, warehouse=lambda: "wh"))
+    app.include_router(save_routes.router(compiler=compiler, contents=contents))
     return TestClient(app)
 
 
@@ -202,7 +198,7 @@ def test_the_route_asks_before_deleting_and_saves_once_told(monkeypatch):
 
 
 def test_the_route_never_writes_a_tagged_store(monkeypatch):
-    # DOC-EDITABLE-IN-SCOPE — a store is published and read-only in the Designer; New and Save As go to a folder.
+    # DOC-EDITABLE-IN-SCOPE — an environment's knowledge is read-only in the Designer; New and Save As go to a folder.
     client = _route(monkeypatch, _package())
     saved = client.post("/api/libraries/save", json={**BODY, "location": "store:k.measures"})
     created = client.post("/api/libraries/new", json={"location": "store:k.measures", "name": "Screening",
@@ -347,70 +343,3 @@ def test_the_route_refuses_a_new_library_with_no_base(monkeypatch):
     monkeypatch.delenv("CQL_CANONICAL_BASE", raising=False)
     with pytest.raises(RuntimeError, match="canonical_base"):
         _route(monkeypatch, _Folder({})).post("/api/libraries/new", json=NEW_BODY)
-
-
-# ── Publish ──────────────────────────────────────────────────────────────────────────────────────
-
-#: CLIENT-ENVIRONMENT — the environment the caller can see, in catalog ``k``.
-ENVIRONMENT_TAGS = [{"catalog": "k", "tag": "cql_databricks_environment", "value": "k_env", "comment": None},
-                    {"catalog": "k", "tag": "cql_databricks_environment_version", "value": "3", "comment": None},
-                    {"catalog": "k", "tag": "cql_databricks_environment_default", "value": "true", "comment": None}]
-
-
-class _PublishStore:
-    """The knowledge tables' rows by (url, version), read and MERGEd as the client's publish does."""
-
-    def __init__(self, fail=False):
-        self.rows, self.fail, self.merged, self.written = {}, fail, [], []
-
-    def __call__(self, sql, params=None):
-        if "system.information_schema.catalog_tags" in sql:
-            return ENVIRONMENT_TAGS
-        if sql.startswith("SELECT"):
-            held = self.rows.get((params["url"], params["version"]))
-            return [{"resource": json.dumps(held)}] if held else []
-        if self.fail:
-            raise RuntimeError("PERMISSION_DENIED")
-        self.written.append(sql)
-        resource = json.loads(params["resource_json"])
-        self.rows[(resource["url"], resource["version"])] = resource
-        self.merged.append(resource["resourceType"])
-        return [{"num_affected_rows": 1}]
-
-
-def _publishing(monkeypatch, store):
-    from cql_databricks_designer.routes import save as save_routes
-    monkeypatch.setenv("CQL_CANONICAL_BASE", BASE)
-    monkeypatch.setattr(save_routes, "user_session", lambda warehouse: store)
-    folder = _package()
-    folder.files[f"{F}/resources/measure-Measure-1.0.0.json"] = json.dumps({**MEASURE, "url": f"{BASE}/Measure/M"})
-    reloads.clear()
-    return _route(monkeypatch, folder)
-
-
-PUBLISH = {"location": f"folder:{F}", "name": "Measure", "version": "1.0.0", "environment": "k_env"}
-
-
-def test_publish_writes_the_folder_library_into_the_knowledge_as_the_user(monkeypatch):
-    # DOC-PUBLISH — through the client's publish (CLIENT-PUBLISH), then the corpus is read again.
-    store = _PublishStore()
-    response = _publishing(monkeypatch, store).post("/api/libraries/publish", json=PUBLISH)
-    assert response.status_code == 200, response.json()
-    assert [(lib["name"], lib["outcome"]) for lib in response.json()["libraries"]] == [("Measure", "published")]
-    assert store.merged == ["Library", "Measure"] and reloads == [1]
-    # DOC-PUBLISH, DATA-ENVIRONMENT-LAYOUT — into the environment's knowledge tables, the ones a run reads.
-    merges = [sql for sql in store.written if sql.lstrip().startswith("MERGE")]
-    assert len(merges) == 2 and all("`k`.`knowledge`." in sql for sql in merges)
-    again = _publishing(monkeypatch, store).post("/api/libraries/publish", json=PUBLISH)
-    assert [lib["outcome"] for lib in again.json()["libraries"]] == ["unchanged"]
-
-
-def test_publish_says_what_was_refused_and_what_failed(monkeypatch):
-    client = _publishing(monkeypatch, _PublishStore())
-    refused = client.post("/api/libraries/publish", json={**PUBLISH, "environment": "missing"})
-    assert refused.status_code == 400 and "no environment named 'missing'" in refused.json()["error"]
-    from_store = client.post("/api/libraries/publish", json={**PUBLISH, "location": "store:k.measures"})
-    assert from_store.status_code == 400
-    failed = _publishing(monkeypatch, _PublishStore(fail=True)).post("/api/libraries/publish", json=PUBLISH)
-    assert failed.status_code == 502 and failed.json()["summary"]["libraries"][0]["outcome"] == "refused"
-    assert reloads == [1]
