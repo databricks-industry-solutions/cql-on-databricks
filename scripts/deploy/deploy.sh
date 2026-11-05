@@ -5,6 +5,8 @@
 #   3. `databricks bundle deploy` — CREATES the runtime schema (SVC-CATALOG-LAYOUT) + volume, the Apps, perms.
 #   4. Populate the runtime volume: the compiler App's JRE + 3 oversized jars (SVC-PACKAGING) and the
 #      opaque-UDF catalog JAR.
+#   4.5 Publish the "CQL on Databricks" base environment over the client wheel just uploaded, and make it the
+#      workspace default when default_base_environment is true (DEPLOY-BASE-ENVIRONMENT).
 #   5. Register the opaque `cql_*` catalog as UC Scala UDFs on serverless (SVC-RUNTIME-UDF-UC) in one SQL
 #      session (needs `warehouse_id`; skipped with a notice if unset).
 #   6.7 Publish the example notebooks to /Shared/CqlDatabricks/examples (SVC-EXAMPLE-NOTEBOOKS) — the shared,
@@ -206,6 +208,11 @@ echo "==> [3/7] validate + deploy the bundle to target=$target (creates the sche
 echo "==> [4/7] populate the runtime volume (JRE + jars)"
 "$here/scripts/deploy/deploy-runtime-artifacts.sh" -t "$target" ${profile_args[@]+"${profile_args[@]}"}
 
+echo "==> [4.5] publish the base environment that carries the client wheel (DEPLOY-BASE-ENVIRONMENT)"
+# After [4/7], which uploads the wheel its YAML names. FATAL on failure: a stale base environment installs the client
+# from before this deploy, with nothing failing to say so.
+bash "$here/scripts/deploy/base-environment.sh" -t "$target" ${profile_args[@]+"${profile_args[@]}"}
+
 echo "==> [5/7] register the cql_* catalog as UC Scala UDFs on serverless (SVC-RUNTIME-UDF-UC)"
 "$here/scripts/deploy/register-uc-udfs.sh" -t "$target" ${profile_args[@]+"${profile_args[@]}"}
 
@@ -226,7 +233,7 @@ _designer_app="$(jqpy "a=(d.get('resources') or {}).get('apps') or {};print((a.g
 )
 
 echo "==> [6.7/7] publish the example notebooks to /Shared (SVC-EXAMPLE-NOTEBOOKS)"
-# Runs after [3/7], which creates the runtime Volume the notebooks' %pip cells name. Overwrites in place, so
+# Runs after [4.5], which builds the base environment the notebooks name. Overwrites in place, so
 # each deploy restores the published copy to what the repo says it is.
 "$here/scripts/deploy/publish-examples.sh" -t "$target" ${profile_args[@]+"${profile_args[@]}"}
 

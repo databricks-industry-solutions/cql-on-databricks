@@ -87,7 +87,7 @@ up "$jar" "udf/$base"
 up "$rtjar" "udf/$rtbase"
 
 echo "==> [d] build + upload the client wheels -> volume wheels/ (SVC-PACKAGING, SVC-EXAMPLE-NOTEBOOKS)"
-# TWO consumers, both blocking: the example notebooks %pip-install these from the volume, and the CQL on Databricks
+# TWO consumers, both blocking: the base environment names the client wheel (DEPLOY-BASE-ENVIRONMENT), and the CQL on Databricks
 # App's requirements.txt installs cql_databricks-<version>-py3-none-any.whl from here (the package is not
 # on PyPI, SVC-PACKAGING). The skill that imports measures installs the client wheel too (CONTENT-IMPORT-SKILL).
 # Build with a Python that HAS setuptools (--no-build-isolation avoids PyPI, blocked
@@ -140,10 +140,10 @@ for pkg_dir in "$client_copy" "${agent_components[@]}"; do
 done
 # PRUNE BEFORE UPLOAD (SVC-WHEEL-VERSION, SVC-EXAMPLE-NOTEBOOKS). The upload is `cp --overwrite`, which
 # replaces a wheel of the SAME name and leaves every other one behind — so the directory accumulates one
-# file per version ever deployed. That is not merely untidy: the example notebooks install with a GLOB
-# (`cql_databricks-*.whl`), deliberately, so they never carry a version this repo would have to keep in
-# step. The moment a second version appears the glob expands to two files and pip fails the very first
-# cell with "Double requirement given" — which is exactly what the 0.0.0 -> 0.1.0 bump did.
+# file per version ever deployed. That is not merely untidy: the documented `%pip` install uses a GLOB
+# (`cql_databricks-*.whl`), so it never carries a version a reader would have to keep in step. The moment a
+# second version appears the glob expands to two files and pip fails with "Double requirement given" — which
+# is exactly what the 0.0.0 -> 0.1.0 bump did.
 #
 # So the directory must hold EXACTLY the current build. Clearing it is safe because it is derived: the
 # pyprojects are the source of truth, and the App's requirements.txt names the version stage-app.sh read

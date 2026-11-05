@@ -4,8 +4,10 @@
 through the Compiler Service App and returns lazy Spark DataFrames. The SQL runs on your cluster or SQL
 warehouse, as you. Results go where you put them.
 
-It needs Python 3.10 or later, and the bundle deployed ([deploy guide](../../docs/deploy.md)). The deploy
-publishes the wheels to a Volume. Install them in a notebook:
+It needs Python 3.10 or later, and the bundle deployed ([deploy guide](../../docs/deploy.md)). On serverless,
+pick the **CQL on Databricks** base environment in a notebook's Environment pane: the deploy builds it with the
+client in it (`DEPLOY-BASE-ENVIRONMENT`), so there is nothing to install. On other compute, install the wheel the
+deploy put in the runtime Volume:
 
 ```python
 %pip install /Volumes/<catalog>/runtime/artifacts/wheels/cql_databricks-*.whl

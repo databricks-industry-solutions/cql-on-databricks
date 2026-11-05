@@ -35,7 +35,7 @@ from .compile_shim import CqlDatabricksCompileProvider, discover_udf_schema
 from .provider import CONF_APP_NAME, make_provider
 from .session_libraries import session_provider
 from .session_scope import SessionScope
-from .session_state import SessionRecord, session_resolvers, set_session_resolvers
+from .session_state import SessionRecord, held_record, session_resolvers, set_session_resolvers
 
 
 def connect(spark=None, *, app_name: Optional[str] = None, udf_schema: Optional[str] = None,
@@ -266,7 +266,9 @@ def cql(source=None, *, spark=None, client=None, endpoint=None, **kwargs) -> Cql
     if _default_client is None or resolvers is not _default_resolvers:
         _default_client = connect(spark=spark, **resolvers)
         _default_resolvers = resolvers
-    return _default_client.cql(source, spark=spark, **kwargs)
+    # CLIENT-SESSION-STATE: binding reads the session record once, however many cells it resolves.
+    with held_record():
+        return _default_client.cql(source, spark=spark, **kwargs)
 
 
 def resolve_libraries(source: str, *, spark=None, environment: Optional[str] = None,

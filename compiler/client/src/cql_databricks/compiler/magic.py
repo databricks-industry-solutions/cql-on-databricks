@@ -32,6 +32,7 @@ from IPython.core.magic import Magics, cell_magic, magics_class
 from .libraries import identity_of
 from .zeroconfig import cql as _bind_cql
 from .session_libraries import register_cell
+from .session_state import held_record
 
 
 @magics_class
@@ -49,6 +50,12 @@ class CqlMagics(Magics):
                 "a Python cell: cql(library=\"<Name>\").exec(\"<define>\") for a cell with a `library` line, "
                 "cql().exec(\"<define>\") for one without (SVC-NOTEBOOK-CQL-MAGIC).")
         spark = self.shell.user_ns.get("spark")
+        # CLIENT-SESSION-STATE: the cell reads the session record once, for its includes and to declare itself.
+        with held_record():
+            self._declare(cell, spark)
+
+    @staticmethod
+    def _declare(cell, spark) -> None:
         name, _ = identity_of(cell)
         if name is None:
             # SVC-NOTEBOOK-SESSION-SCOPE: binding header-less CQL joins the session library, and it joins only

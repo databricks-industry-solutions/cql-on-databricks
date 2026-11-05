@@ -11,8 +11,8 @@
 # MAGIC what it is about to show and **exactly what the next cell should print**, so a module is worth reading
 # MAGIC even before you run it — and worth comparing against once you have. Everything runs in your own
 # MAGIC session against temporary views: nothing is written to a catalog, and no state is left behind. The one
-# MAGIC prerequisite is that CQL on Databricks is deployed in this workspace — the client libraries, the `cql_*` functions
-# MAGIC in Unity Catalog, and the Compiler Service.
+# MAGIC prerequisite is that CQL on Databricks is deployed in this workspace — the **CQL on Databricks** base
+# MAGIC environment each module runs on, the `cql_*` functions in Unity Catalog, and the Compiler Service.
 # MAGIC
 # MAGIC **Start with 01.** The rest assume you have seen it.
 # MAGIC
@@ -21,8 +21,7 @@
 # MAGIC ### 01 · Getting started
 # MAGIC *Setup · the two front doors · 10 minutes*
 # MAGIC
-# MAGIC Install the client, then learn the two ways to run CQL from a notebook and how each hands its results
-# MAGIC back to Python and SQL. Everything in the other modules uses one of them.
+# MAGIC Learn the two ways to run CQL from a notebook and how each hands its results back to Python and SQL. Everything in the other modules uses one of them.
 # MAGIC
 # MAGIC - `%%cql` — a cell whose first line is `%%cql` *is* CQL: no quoting, no Python wrapper
 # MAGIC - Cells with no `library` header share one session library: a later cell sees earlier defines, and
@@ -120,7 +119,7 @@
 # MAGIC A research question across three languages: do age, gender, palliative care and dialysis predict whether
 # MAGIC a patient with hypertension has controlled blood pressure?
 # MAGIC
-# MAGIC - The client comes from the notebook's environment, and one collapsible cell starts the engine
+# MAGIC - One collapsible cell starts the engine
 # MAGIC - One `%%cql` cell defines the cohort, the predictors and the outcome as standard definitions
 # MAGIC - A `%sql` cell shapes the result into an analysis table
 # MAGIC - A Python cell fits a logistic regression, scores it on held-out patients and bootstraps confidence intervals
@@ -141,3 +140,18 @@
 # MAGIC - A published measure from the environment's knowledge, run over the test patients
 # MAGIC
 # MAGIC <a href="$./07_test_files_in_a_volume">Open the notebook →</a>
+# MAGIC
+# MAGIC ---
+# MAGIC
+# MAGIC ### 08 · Mapping your data to FHIR
+# MAGIC *Your own table · SQL views to FHIR · checked against the source*
+# MAGIC
+# MAGIC Map patients and visits in an EHR's own shape to the FHIR resources CQL reads, run CQL over the mapping,
+# MAGIC and check the mapping: an independent SQL query over the source must give the same answers.
+# MAGIC
+# MAGIC - One SQL view per FHIR type returns the `resource` struct, with a crosswalk table from local codes to SNOMED CT
+# MAGIC - `use_resolvers` binds the mapped views as DataFrames, so nothing is written to a catalog
+# MAGIC - The CQL speaks only FHIR and SNOMED CT
+# MAGIC - The check fails, naming the patients, wherever CQL and the source disagree
+# MAGIC
+# MAGIC <a href="$./08_mapping_your_data">Open the notebook →</a>

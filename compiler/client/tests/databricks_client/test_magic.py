@@ -76,6 +76,25 @@ class CellMagicTest(unittest.TestCase):
         bind.return_value.exec.assert_not_called()
         self.assertEqual(self._declared(), ["DiabetesCommon|1.0.0"])
 
+    def test_a_library_cell_reads_the_session_record_once(self):
+        """CLIENT-SESSION-STATE — its compile looks up its includes (cells first) and declaring it reads the cells
+        again; on Spark Connect each read is a round trip, so the cell holds what it read."""
+        reads = []
+        table = self.spark.table
+        self.spark.table = lambda name: reads.append(name) or table(name)
+
+        def compile_looks_up_includes(cql, spark):
+            provider = session_mod.session_provider(spark=spark)
+            provider.declared()
+            provider.declared()
+            return mock.Mock()
+
+        with mock.patch("cql_databricks.compiler.magic._bind_cql", side_effect=compile_looks_up_includes):
+            self.magic.cql("", COMMON)
+
+        self.assertEqual(len(reads), 1)
+        self.assertEqual(self._declared(), ["DiabetesCommon|1.0.0"])
+
     def test_a_library_cell_that_fails_to_compile_declares_nothing(self):
         """The cell fails where the error is, and leaves the session as it was."""
         with mock.patch("cql_databricks.compiler.magic._bind_cql") as bind:

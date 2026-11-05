@@ -4,7 +4,7 @@ from unittest import mock
 
 from cql_databricks.compiler.relations import VIEW_PREFIX
 from cql_databricks.compiler.session_libraries import register_cell, session_provider
-from cql_databricks.compiler.session_state import SessionRecord, reset
+from cql_databricks.compiler.session_state import SessionRecord, held_record, reset
 
 COMMON = "library Common version '1.0.0'\ndefine \"X\": 1\n"
 
@@ -37,6 +37,82 @@ class _SessionSpark:
     def sql(self, statement):
         assert statement == "SHOW VIEWS IN global_temp"
         return mock.Mock(collect=lambda: [{"viewName": name, "isTemporary": True} for name in self.views])
+
+
+class _CountingSpark(_SessionSpark):
+    """Counts reads of the record: each is a Spark Connect round trip on a real session."""
+
+    def __init__(self):
+        super().__init__()
+        self.reads = 0
+
+    def table(self, name):
+        self.reads += 1
+        return super().table(name)
+
+
+class HeldRecordTests(unittest.TestCase):
+    """CLIENT-SESSION-STATE — one notebook operation reads the record at most once."""
+
+    def test_within_a_block_the_record_is_read_once_and_sees_its_own_writes(self):
+        spark = _CountingSpark()
+        with held_record():
+            self.assertEqual(session_provider(spark=spark).declared(), [])
+            register_cell(COMMON, spark=spark)
+            self.assertEqual([r.name for r in session_provider(spark=spark).declared()], ["Common"])
+            self.assertEqual(SessionRecord(spark).version(), 1)
+        self.assertEqual(spark.reads, 1)
+
+    def test_outside_a_block_every_read_goes_to_the_session(self):
+        spark = _CountingSpark()
+        session_provider(spark=spark).declared()
+        session_provider(spark=spark).declared()
+        self.assertEqual(spark.reads, 2)
+
+    def test_the_next_block_reads_the_session_again(self):
+        """Nothing is kept between operations: a write by anything else is seen by the next cell."""
+        spark = _CountingSpark()
+        with held_record():
+            session_provider(spark=spark).declared()
+        spark.views.clear()
+        register_cell(COMMON, spark=spark)
+        with held_record():
+            self.assertEqual([r.name for r in session_provider(spark=spark).declared()], ["Common"])
+        self.assertEqual(spark.reads, 3)
+
+    def test_blocks_nest_and_hold_until_the_outermost_ends(self):
+        spark = _CountingSpark()
+        with held_record():
+            with held_record():
+                session_provider(spark=spark).declared()
+            session_provider(spark=spark).declared()
+        self.assertEqual(spark.reads, 1)
+
+    def test_a_drop_within_a_block_leaves_nothing_to_read(self):
+        spark = _CountingSpark()
+        register_cell(COMMON, spark=spark)
+        with held_record():
+            SessionRecord(spark).drop()
+            self.assertEqual(session_provider(spark=spark).declared(), [])
+        self.assertEqual(spark.reads, 1)
+
+    def test_a_write_through_one_handle_is_what_another_handle_on_the_session_reads(self):
+        """Two Python objects for one Spark session: a write forgets what either held."""
+        spark = _CountingSpark()
+        other = mock.Mock(wraps=spark, views=spark.views)
+        with held_record():
+            self.assertEqual(session_provider(spark=other).declared(), [])
+            register_cell(COMMON, spark=spark)
+            self.assertEqual([r.name for r in session_provider(spark=other).declared()], ["Common"])
+
+    def test_a_failed_read_is_not_held(self):
+        spark = _CountingSpark()
+        spark.table = mock.Mock(side_effect=RuntimeError("[PERMISSION_DENIED] no"))
+        with held_record():
+            with self.assertRaisesRegex(RuntimeError, "PERMISSION_DENIED"):
+                SessionRecord(spark).rows()
+            with self.assertRaisesRegex(RuntimeError, "PERMISSION_DENIED"):
+                SessionRecord(spark).rows()
 
 
 class RecordTests(unittest.TestCase):

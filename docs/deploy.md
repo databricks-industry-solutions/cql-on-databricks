@@ -46,6 +46,7 @@ cp databricks.local.yml.example databricks.local.yml
 | `app_users_group` | The account group allowed to use the Apps. It gets read access to the default environment and `CREATE TABLE` on its `draft_results`. Unity Catalog grants take account groups only, so a workspace-local group such as `users` fails the deploy. Required |
 | `admins` | Optional. The project's admins besides you: users by email, service principals by application ID, or groups, as a list. Every deploy adds each to the workspace and its `admins` group (`DEPLOY-PROJECT-ADMINS`), and lets each tag a catalog an environment or the default (`DEPLOY-ENVIRONMENT-TAG-POLICIES`). Empty by default |
 | `govern_environment_tags` | Optional, `true` by default: the deploy makes the environment tags governed tags (`DEPLOY-ENVIRONMENT-TAG-POLICIES`). An account holds at most 1,000 governed tags; if yours has no room for three more, set `false`, and the deploy warns that anyone who can tag a catalog can make it an environment |
+| `default_base_environment` | Optional, `false` by default: `true` makes the "CQL on Databricks" base environment the workspace default for new serverless notebooks (`DEPLOY-BASE-ENVIRONMENT`). It is workspace-wide, for every user. `false` leaves the default as it is; users then pick the base environment in a notebook's Environment pane |
 | `workspace_users_group` | The workspace group that may read the workspace skills folder Genie Code loads, such as the workspace's `users`. A workspace folder takes workspace groups; Unity Catalog takes account groups only, so the other groups can't serve. Required |
 | `run_log_readers_group` | The group allowed to read the Designer run log. Required |
 | `designer_catalog` | Optional. The catalog of the Designer's shared `designer` schema. Defaults to `uc_catalog` |
@@ -95,6 +96,9 @@ The script, in order:
    `SELECT` on `knowledge`. The Job's daily schedule deploys paused: unpause it after one run has
    been checked on the workspace.
 5. Uploads the compiler's JRE and jars, the runtime function jar, and the client and agent wheels to the Volume.
+   Then publishes the "CQL on Databricks" base environment over the client wheel and waits for Databricks to build
+   it (`scripts/deploy/base-environment.sh`, `DEPLOY-BASE-ENVIRONMENT`). With `default_base_environment` true it
+   becomes the workspace default for new serverless notebooks.
 6. Registers the `cql_*` runtime functions in Unity Catalog (`scripts/deploy/register-uc-udfs.sh`).
 7. Grants each App's service principal `USE CATALOG` on `uc_catalog`, and revokes the catalog-wide `USE SCHEMA` and
    `SELECT` an earlier deploy granted (`scripts/deploy/grant-app-access.sh`).
@@ -204,6 +208,7 @@ this HTTP connection instead.
 | Skills and MCP Service | Five UC skills and `cql_databricks` in `<agent_skills_schema>`; the same skills in `/Workspace/.assistant/skills` |
 | Agent connection | `mcp_cql_databricks_<workspace id>` |
 | Runtime schema and Volume | `<uc_catalog>.runtime`, Volume `artifacts` |
+| Base environment | "CQL on Databricks" (`workspace-base-environments/cql-on-databricks`), over `cql-databricks-env.yaml` in the Volume |
 | Designer shared schema | `<designer_catalog>.designer` |
 | Example notebooks | `/Shared/CqlDatabricks/examples` |
 
@@ -228,7 +233,7 @@ The Apps act as the signed-in user, so users need their own grants. The deploy g
 |---|---|---|
 | The SQL warehouse | `CAN_USE` | Every App query runs on it as the user |
 | `<uc_catalog>.runtime` | `USE SCHEMA`, `EXECUTE` | The `cql_*` functions |
-| Volume `<uc_catalog>.runtime.artifacts` | `READ VOLUME` | Notebooks install the client wheel from it |
+| Volume `<uc_catalog>.runtime.artifacts` | `READ VOLUME` | Notebooks install the client wheel from it, through the base environment or a `%pip` cell |
 | Each other environment's catalog | The same grants the deploy makes in the default one | Its data, value sets, libraries and results |
 | `assistant_endpoint` | `CAN QUERY` | The assistant drawer |
 

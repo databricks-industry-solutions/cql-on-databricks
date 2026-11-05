@@ -119,7 +119,7 @@ if [ "$mode" = "integration" ] || [ "$mode" = "all" ]; then
     echo "  profile=$profile volume=$volume app=$app"
     junit="$(mktemp)"
     ( cd "$here" && DATABRICKS_CONFIG_PROFILE="$profile" CQL_DATABRICKS_LIVE=1 DATABRICKS_SERVERLESS=1 \
-        CQL_DATABRICKS_ARTIFACT_VOLUME="$volume" CQL_DATABRICKS_PUBLISH_CATALOG="$catalog" \
+        CQL_DATABRICKS_PUBLISH_CATALOG="$catalog" \
         CQL_DATABRICKS_WAREHOUSE_ID="$warehouse" CQL_DATABRICKS_TEST_VOLUME="$volume/test-files/notebook-07" \
         CQL_DATABRICKS_ENDPOINT="$url" CQL_DATABRICKS_TOKEN="$token" \
         "$venv_py" -m pytest -q -rs --junitxml="$junit" examples/tests ) || { rm -f "$junit"; return 1; }

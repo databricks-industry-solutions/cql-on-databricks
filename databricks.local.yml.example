@@ -40,6 +40,9 @@ targets:
       # DEPLOY-ENVIRONMENT-TAG-POLICIES — optional, true by default: false leaves the environment tags ungoverned, for an
       # account with no room for three more tag policies.
       # govern_environment_tags: false
+      # DEPLOY-BASE-ENVIRONMENT — optional, false by default: true makes the "CQL on Databricks" base environment, which
+      # carries the client wheel, the workspace default for new serverless notebooks. Workspace-wide, for every user.
+      # default_base_environment: true
       # DOC-OPEN-SAVE — the base of the canonical URL of every library and measure created in the Designer:
       # <base>/Library/<Name>. Defaults to http://example.org/fhir, the examples' base. Set your own before
       # anyone creates a library: the URL is an identity a library keeps.

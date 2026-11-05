@@ -1,10 +1,10 @@
-"""SVC-EXAMPLE-NOTEBOOKS, SVC-PACKAGING — every example notebook installs the client from the deployment's Volume.
+"""SVC-EXAMPLE-NOTEBOOKS, DEPLOY-BASE-ENVIRONMENT — every example notebook gets the client from the base environment.
 
-The runtime Volume is `/Volumes/<uc_catalog>/runtime/artifacts`, and `uc_catalog` is the deployment's choice. So a
-notebook names it only as the `__CQL_DATABRICKS_ARTIFACT_VOLUME__` placeholder, which `scripts/deploy/publish-examples.sh`
-fills in. A literal catalog in a `%pip` cell fails the first cell of every deployment that chose another catalog.
-A `.ipynb` example carries the wheel in its serverless environment instead, as the `__CQL_DATABRICKS_CLIENT_WHEEL__`
-placeholder, which the same script fills with the one wheel in the Volume.
+Each example is a `.ipynb` whose serverless environment names the base environment the deploy publishes,
+`workspace-base-environments/cql-on-databricks`, and nothing else: no install cell, no restart, no Volume path and no
+placeholder, so the repository copy is the published copy. Only the Jupyter format stores a notebook's environment,
+so the index page is the one source notebook, and it holds no code. Every example's first code cell is the same two
+lines: `%reload_ext cql_databricks.compiler` and `from cql_databricks.compiler import cql`.
 Offline: reads the repository copies only.
 """
 from __future__ import annotations
@@ -16,30 +16,42 @@ import re
 import pytest
 
 EXAMPLES_DIR = pathlib.Path(__file__).resolve().parents[1]
-PLACEHOLDER = "__CQL_DATABRICKS_ARTIFACT_VOLUME__"
-NOTEBOOKS = sorted(p.name for p in EXAMPLES_DIR.glob("*.py") if p.name != "00_start_here.py")
-JUPYTER_NOTEBOOKS = sorted(p.name for p in EXAMPLES_DIR.glob("*.ipynb"))
-WHEEL_PLACEHOLDER = "__CQL_DATABRICKS_CLIENT_WHEEL__"
-PIP_LINE = re.compile(r"^# MAGIC %pip install (.+)$", re.MULTILINE)
+INDEX = "00_start_here.py"
+BASE_ENVIRONMENT = "workspace-base-environments/cql-on-databricks"
+NOTEBOOKS = sorted(p.name for p in EXAMPLES_DIR.glob("*.ipynb"))
+#: The one start every example has: the `%%cql` magic, and `cql()` (SVC-NOTEBOOK-CQL-MAGIC).
+START = "%reload_ext cql_databricks.compiler\nfrom cql_databricks.compiler import cql"
+
+
+def test_every_example_is_a_jupyter_notebook_and_the_index_is_the_only_source_notebook():
+    assert [p.name for p in EXAMPLES_DIR.glob("*.py")] == [INDEX]
+    index = (EXAMPLES_DIR / INDEX).read_text()
+    assert "# COMMAND ----------" not in index, f"{INDEX} is one documentation cell (SVC-EXAMPLE-INDEX)"
+
+
+def test_there_are_examples():
+    assert len(NOTEBOOKS) >= 8
 
 
 @pytest.mark.parametrize("nb", NOTEBOOKS)
-def test_pip_cell_installs_from_the_volume_placeholder(nb):
-    installs = PIP_LINE.findall((EXAMPLES_DIR / nb).read_text())
-    assert installs, f"{nb} has no %pip install cell"
-    for line in installs:
-        paths = line.split()
-        assert all(p.startswith(PLACEHOLDER + "/") for p in paths), (
-            f"{nb}: every %pip path must start with {PLACEHOLDER}/, got {line!r}")
-        assert len(paths) == len(set(paths)), f"{nb}: a wheel is listed twice in {line!r}"
-
-
-@pytest.mark.parametrize("nb", JUPYTER_NOTEBOOKS)
-def test_jupyter_notebook_environment_installs_the_wheel_placeholder(nb):
+def test_the_environment_is_the_base_environment_and_nothing_else(nb):
     notebook = json.loads((EXAMPLES_DIR / nb).read_text())
     env = notebook["metadata"]["application/vnd.databricks.v1+notebook"]["environmentMetadata"]
-    assert env["dependencies"] == [WHEEL_PLACEHOLDER], (
-        f"{nb}: the environment must install exactly {WHEEL_PLACEHOLDER}, got {env['dependencies']!r}")
-    code = "".join("".join(c["source"]) for c in notebook["cells"] if c["cell_type"] == "code")
-    assert "%pip install" not in code, f"{nb}: the wheel comes from the environment, not a %pip cell"
-    assert "/Volumes/" not in code, f"{nb}: a literal Volume path names one deployment's catalog"
+    assert env == {"base_environment": BASE_ENVIRONMENT}, f"{nb}: the environment must be the base environment alone"
+
+
+@pytest.mark.parametrize("nb", NOTEBOOKS)
+def test_the_first_code_cell_loads_the_magic_and_imports_cql(nb):
+    cells = json.loads((EXAMPLES_DIR / nb).read_text())["cells"]
+    first = next("".join(c["source"]) for c in cells if c["cell_type"] == "code")
+    assert first == START, f"{nb}: the first code cell must be exactly {START!r}, got {first!r}"
+
+
+@pytest.mark.parametrize("nb", NOTEBOOKS)
+def test_no_cell_installs_restarts_or_names_a_deployment(nb):
+    text = (EXAMPLES_DIR / nb).read_text()
+    code = "".join("".join(c["source"]) for c in json.loads(text)["cells"] if c["cell_type"] == "code")
+    assert "%pip install" not in code, f"{nb}: the client comes from the base environment, not a %pip cell"
+    assert "restartPython" not in code, f"{nb}: nothing is installed, so nothing restarts"
+    assert not re.search(r"/Volumes/\w", code), f"{nb}: a literal Volume path names one deployment's catalog"
+    assert "__CQL_" not in text, f"{nb}: the repository copy is the published copy; no placeholder is filled in"
