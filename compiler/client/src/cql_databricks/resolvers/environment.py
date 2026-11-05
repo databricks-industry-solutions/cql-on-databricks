@@ -7,16 +7,15 @@ run in the schemas of ``DATA-ENVIRONMENT-LAYOUT``:
 
 | Schema | Holds |
 |---|---|
-| ``data`` | published views, one per FHIR type, named for the type in lower case, on the contract |
-| ``knowledge`` | the published views ``library``, ``measure`` and ``valueset(valueset_id, system, code, version)`` |
-| ``data_store``, ``knowledge_store`` | the store tables publishing writes; optional |
+| ``data`` | one table or view per FHIR type, named for the type in lower case, on the contract |
+| ``knowledge`` | the tables or views ``library``, ``measure`` and ``valueset(valueset_id, system, code, version)`` |
 | ``results``, ``draft_results`` | kept results (`RUN-CLIENT-DRAFT-RESULTS`) |
 
 :class:`EnvironmentResolver` finds environments with one query of ``system.information_schema.catalog_tags``, as the
 caller, so only catalogs the caller can see are found. The once-per-process governance check runs beside that query,
-not after it (`CLIENT-DISCOVERY-PARALLEL`). A run in an environment binds its published views by name, through rules
+not after it (`CLIENT-DISCOVERY-PARALLEL`). A run in an environment binds its relations by name, through rules
 (`BIND-PUBLISHED-VIEW`): one compiler call, and no other catalog query. No layout is checked at run time: a missing
-view fails in the warehouse, naming it.
+relation fails in the warehouse, naming it.
 
 :class:`EnvironmentCache` keeps what each caller found for a process that serves many calls, an App, so a tool call or
 request does not find them again (`CLIENT-ENVIRONMENT-CACHE`).
@@ -36,7 +35,7 @@ from dataclasses import dataclass
 
 from .data import SchemaDataResolver
 from .knowledge import TableKnowledgeResolver
-from .interfaces import Resolvers
+from .interfaces import Overlay, Resolvers
 from .terminology import TableTerminologyResolver
 
 #: CLIENT-ENVIRONMENT: the catalog tags that make a catalog an environment.
@@ -45,12 +44,11 @@ VERSION_TAG = "cql_databricks_environment_version"
 DEFAULT_TAG = "cql_databricks_environment_default"
 
 #: CLIENT-ENVIRONMENT: the layout version this client writes, and every version it reads.
-LAYOUT_VERSION = "2"
-SUPPORTED_LAYOUTS = ("2",)
+LAYOUT_VERSION = "3"
+SUPPORTED_LAYOUTS = ("3",)
 
 #: DATA-ENVIRONMENT-LAYOUT: the standard schema names.
 DATA, KNOWLEDGE = "data", "knowledge"
-DATA_STORE, KNOWLEDGE_STORE = "data_store", "knowledge_store"
 RESULTS, DRAFT_RESULTS = "results", "draft_results"
 
 _ENVIRONMENTS = f"""
@@ -262,14 +260,12 @@ class EnvironmentResolver:
     # ------------------------------------------------------------------ the resolvers of one environment
 
     def data(self, env: Environment) -> SchemaDataResolver:
-        """BIND-PUBLISHED-VIEW: the environment's ``data`` views, by rule."""
+        """BIND-PUBLISHED-VIEW: the environment's ``data`` relations, by rule."""
         return SchemaDataResolver(env.schema(DATA))
 
     def terminology(self, env: Environment) -> TableTerminologyResolver:
-        """BIND-PUBLISHED-VIEW: the environment's ``knowledge.valueset`` view, by rule; its store is
-        ``knowledge_store.valueset``."""
-        return TableTerminologyResolver(f"{env.schema(KNOWLEDGE)}.valueset", self._run,
-                                        store=f"{env.schema(KNOWLEDGE_STORE)}.valueset")
+        """BIND-PUBLISHED-VIEW: the environment's ``knowledge.valueset``, by rule, which publishing writes."""
+        return TableTerminologyResolver(f"{env.schema(KNOWLEDGE)}.valueset", self._run)
 
     def content(self, env: Environment, runner: Callable | None = None):
         """The environment's knowledge and terminology as a
@@ -279,53 +275,57 @@ class EnvironmentResolver:
         return ContentResolver(runner or (lambda: self._run), env.catalog, env.name)
 
     def knowledge(self, env: Environment, content=None) -> TableKnowledgeResolver:
-        """BIND-PUBLISHED-VIEW: the environment's ``knowledge`` views; its store is ``knowledge_store``."""
+        """BIND-PUBLISHED-VIEW: the environment's ``knowledge``, which publishing writes."""
         held = content if content is not None else self.content(env)
-        return TableKnowledgeResolver(lambda: held, store=env.address(KNOWLEDGE_STORE),
-                                      view=env.address(KNOWLEDGE), run=self._run)
+        return TableKnowledgeResolver(lambda: held, schema=env.address(KNOWLEDGE), run=self._run)
 
     def resolvers(self, env: Environment, results=None) -> Resolvers:
-        """CLIENT-RESOLVERS: a run's resolvers in ``env``: its data and terminology views, and ``results``, one of
+        """CLIENT-RESOLVERS: a run's resolvers in ``env``: its data and terminology, and ``results``, one of
         :meth:`results`, :meth:`draft_store` or :meth:`official_store`, when the run keeps or reuses results."""
         return Resolvers(data=self.data(env), terminology=self.terminology(env), results=results,
                          environment=env.name)
 
-    def results(self, env: Environment):
-        """CLIENT-RESULT-RESOLVER: the caller's own results in ``env``'s ``draft_results``, then the official ones in its
+    def results(self, env: Environment) -> Overlay:
+        """CLIENT-RESULT-RESOLVER: the caller's own results in ``env``'s ``draft_results`` over the official ones in its
         ``results`` (`RUN-CLIENT-RESULT-OWNERSHIP`). Writes nothing."""
-        from cql_databricks.result.store import DeltaResultResolver
+        from cql_databricks.result.store import SchemaResultResolver
 
-        return DeltaResultResolver(self._run, own=[env.address(DRAFT_RESULTS)], official=[env.address(RESULTS)])
+        return Overlay(SchemaResultResolver(env.address(DRAFT_RESULTS), self._run), self._official(env))
 
     def reader(self, env: Environment, destination) -> object:
         """RUN-CLIENT-REQUEST-REOPEN: the read-only result resolver a selection written to ``destination`` reopens
         through: :meth:`results` for ``env``'s ``draft_results``, and ``env``'s official ``results`` alone for a
         publisher's. Any other schema fails, naming it."""
-        from cql_databricks.result.store import DeltaResultResolver
-
         destination = tuple(destination)
         if destination == env.address(DRAFT_RESULTS):
             return self.results(env)
         if destination == env.address(RESULTS):
-            return DeltaResultResolver(self._run, official=[env.address(RESULTS)])
+            return self._official(env)
         raise ValueError(f"{'.'.join(destination)} is not a result schema of environment {env.name!r} "
                          f"({env.catalog}.{DRAFT_RESULTS} or {env.catalog}.{RESULTS})")
 
-    def draft_store(self, env: Environment, *, capacity: int | None = None):
-        """RUN-CLIENT-DRAFT-RESULTS: finds as :meth:`results` does and writes the caller's own results into ``env``'s
-        ``draft_results``: the Designer's and the agent's runs."""
-        from cql_databricks.result.store import DeltaResultStore
+    def draft_store(self, env: Environment, *, capacity: int | None = None) -> Overlay:
+        """RUN-CLIENT-DRAFT-RESULTS: the caller's own results in ``env``'s ``draft_results``, where it writes, over the
+        official ones in its ``results``: the Designer's runs."""
+        from cql_databricks.result.store import SchemaResultStore
 
-        return DeltaResultStore(env.address(DRAFT_RESULTS), self._run, official=[env.address(RESULTS)],
-                                capacity=capacity)
+        return Overlay(SchemaResultStore(env.address(DRAFT_RESULTS), self._run, capacity=capacity),
+                       self._official(env))
 
-    def official_store(self, env: Environment):
-        """RUN-CLIENT-DRAFT-RESULTS: writes ``env``'s official ``results``, for its publishers, and takes only a
-        calculation of ``env``'s own content: its data and terminology views, and a library from its knowledge."""
-        from cql_databricks.result.store import DeltaResultStore
+    def official_store(self, env: Environment) -> Overlay:
+        """RUN-CLIENT-DRAFT-RESULTS: the caller's own results in ``env``'s ``results``, where it writes, over any
+        writer's there, for its publishers. It takes only a calculation of ``env``'s own content: its data and
+        terminology, and a library from its knowledge."""
+        from cql_databricks.result.store import SchemaResultStore
 
-        return DeltaResultStore(env.address(RESULTS), self._run, official=[env.address(RESULTS)],
-                                requires=official_identities(self, env))
+        return Overlay(SchemaResultStore(env.address(RESULTS), self._run, requires=official_identities(self, env)),
+                       self._official(env))
+
+    def _official(self, env: Environment):
+        """RUN-CLIENT-RESULT-OWNERSHIP: any writer's results in ``env``'s ``results``, official by construction."""
+        from cql_databricks.result.store import OFFICIAL, SchemaResultResolver
+
+        return SchemaResultResolver(env.address(RESULTS), self._run, reuse=OFFICIAL)
 
 
 #: CLIENT-ENVIRONMENT-CACHE: how long an App keeps a caller's environments before finding them again.
@@ -390,10 +390,10 @@ class EnvironmentCache:
 
 def official_identities(environments: EnvironmentResolver, env: Environment) -> dict[str, frozenset[str]]:
     """RUN-CLIENT-DRAFT-RESULTS: the resolver identities a calculation of ``env``'s own content binds, by role: its data
-    and terminology views, and its knowledge, read by name or from its knowledge store."""
+    and terminology, and its knowledge, read by name or from its location ``store:<catalog>.knowledge``."""
     return {"data": frozenset({environments.data(env).identity()}),
             "terminology": frozenset({environments.terminology(env).identity()}),
-            "knowledge": frozenset({f"{env.catalog}.{KNOWLEDGE}", f"store:{env.catalog}.{KNOWLEDGE_STORE}"})}
+            "knowledge": frozenset({f"{env.catalog}.{KNOWLEDGE}", f"store:{env.catalog}.{KNOWLEDGE}"})}
 
 
 

@@ -63,7 +63,7 @@ Never commit host names, profiles or tokens.
 ## Content
 
 The deploy builds the default environment in `uc_catalog` and loads the example measures and their patients from
-`examples/` into its stores itself (step 11 below, `DEPLOY-DEFAULT-ENVIRONMENT`, `CONTENT-EXAMPLE-PRELOAD`, with
+`examples/` into its `knowledge` and `data` tables itself (step 13 below, `DEPLOY-DEFAULT-ENVIRONMENT`, `CONTENT-EXAMPLE-PRELOAD`, with
 `scripts/deploy/shipped_sources`); there is nothing to import first. To import other measures, ask Genie Code or
 Genie One: the deploy publishes the agent's `import-quality-measures` skill (step 10 below, `CONTENT-IMPORT-SKILL`).
 
@@ -115,8 +115,8 @@ The script, in order:
     `DEPLOY-ENVIRONMENT-TAG-POLICIES`), so only you and `admins` can tag a catalog an environment or the default.
     Creating a tag policy needs a workspace admin, unless an account admin changed who may.
 13. Fills the default environment's schemas (`scripts/deploy/provision-examples.py`, `DEPLOY-DEFAULT-ENVIRONMENT`):
-    the example measures and value sets in `knowledge_store`, through the import; the
-    synthetic small population in `data_store`; the views over them; and the catalog tags. Then the two grants the
+    the example measures and value sets as tables in `knowledge`, through the import; the
+    synthetic small population as tables in `data`; and the catalog tags. Then the two grants the
     bundle can't make: `USE CATALOG` on `uc_catalog` to `app_users_group`, and `USE SCHEMA` and `MANAGE` on
     `draft_results` to the maintenance principal.
 

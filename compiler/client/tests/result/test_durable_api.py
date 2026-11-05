@@ -6,16 +6,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from cql_databricks.result import DeltaResultResolver, DeltaResultStore, durable
+from cql_databricks.result import SchemaResultResolver, SchemaResultStore, durable
 from cql_databricks.result._catalog_reader import CatalogReader
 from cql_databricks.result._catalog_runtime import CurrentArtifact
-from test_catalog_runtime import DESTINATION, DRAFT, CatalogRunner
+from test_catalog_runtime import DESTINATION, DRAFT, CatalogRunner, layered, store_over
 from test_durable_plan import plan
 
 
 def execute(query=None, **kwargs):
     run = kwargs.pop("run", None) or CatalogRunner()
-    settings = dict(run=run, results=DeltaResultStore(DRAFT, run, official=[DESTINATION]))
+    settings = dict(run=run, results=store_over(DRAFT, run, [DESTINATION]))
     targets = kwargs.pop("targets", ("Output",))
     return durable.materialize(query or SimpleNamespace(compile_pipeline=lambda **opts: plan()),
                                *targets, **(settings | kwargs))
@@ -71,7 +71,7 @@ def test_actual_read_errors_propagate_without_probes_or_recomputation(condition)
     def fail(statement):
         statements.append(statement)
         raise SqlFailure(condition)
-    backend = CatalogReader(DeltaResultResolver(fail, own=[DESTINATION]), fail)
+    backend = CatalogReader(SchemaResultResolver(DESTINATION, fail), fail)
     artifact = CurrentArtifact(table=(*DESTINATION, "synthetic"), schema_ddl='[["__val","INT"]]')
     assert backend.usable(artifact) and not statements
     result = SimpleNamespace(result=SimpleNamespace(artifact=artifact))
@@ -84,7 +84,7 @@ def test_actual_read_errors_propagate_without_probes_or_recomputation(condition)
 def test_artifact_validation_is_local_and_rejects_wrong_destination():
     """RUN-CLIENT-OPTIMISTIC — external table modification is the customer's responsibility."""
     probe = lambda *args: pytest.fail("unexpected physical probe")  # noqa: E731
-    backend = CatalogReader(DeltaResultResolver(probe, own=[DESTINATION]), probe)
+    backend = CatalogReader(SchemaResultResolver(DESTINATION, probe), probe)
     artifact = CurrentArtifact(table=(*DESTINATION, "synthetic"), schema_ddl='[["__val","INT"]]')
     assert backend.usable(artifact)
     with pytest.raises(ValueError, match="outside the schemas"):
@@ -101,7 +101,7 @@ def test_published_catalog_errors_never_write(condition):
         raise SqlFailure(condition)
     with pytest.raises(SqlFailure, match=condition):
         durable.resolve_results(SimpleNamespace(compile_pipeline=lambda **opts: plan()), "Output",
-            run=run, results=DeltaResultResolver(run, own=[DRAFT], official=[DESTINATION]))
+            run=run, results=layered(SchemaResultResolver(DRAFT, run), run, [DESTINATION]))
     assert len(calls) == 1 and calls[0].startswith("SELECT")
 
 
@@ -111,7 +111,7 @@ def test_ambiguous_or_absent_sql_transport_is_rejected():
     query = SimpleNamespace(compile_pipeline=lambda **opts: plan())
     for transport in ({"run": None}, {"run": run, "spark": object()}):
         with pytest.raises(ValueError, match="exactly one"):
-            durable.materialize(query, "Output", results=DeltaResultStore(DRAFT, run), **transport)
+            durable.materialize(query, "Output", results=SchemaResultStore(DRAFT, run), **transport)
 
 
 def test_materialize_writes_only_through_a_store():
@@ -119,5 +119,5 @@ def test_materialize_writes_only_through_a_store():
     run = CatalogRunner()
     with pytest.raises(TypeError, match="ResultStore"):
         durable.materialize(SimpleNamespace(compile_pipeline=lambda **opts: plan()), "Output", run=run,
-                            results=DeltaResultResolver(run, own=[DRAFT]))
+                            results=SchemaResultResolver(DRAFT, run))
     assert not run.calls

@@ -3,9 +3,9 @@ deployer.
 
 Run by ``scripts/deploy/deploy.sh`` after the Apps start. The bundle has made the environment's schemas and their
 grants (``databricks.yml``). This fills them (``shipped_sources.environment.fill``): the example measures and their
-value sets in ``knowledge_store`` through the import (``CONTENT-IMPORT-MEASURES``) and the
-synthetic small population in ``data_store`` (``DATA-SYNTH-SMALL``), from ``examples/`` (``shipped_sources.examples``,
-``DEPLOY-SHIPPED-SOURCES``); the published views over them; and the catalog tags, default only if no catalog the
+value sets in ``knowledge`` through the import (``CONTENT-IMPORT-MEASURES``) and the
+synthetic small population in ``data`` (``DATA-SYNTH-SMALL``), from ``examples/`` (``shipped_sources.examples``,
+``DEPLOY-SHIPPED-SOURCES``); and the catalog tags, default only if no catalog the
 deployer can see is the default already. Then the two grants a bundle cannot make: ``USE CATALOG`` for the App users'
 group, on a catalog the bundle does not hold, and ``MANAGE`` on ``draft_results`` for the maintenance principal, which
 ``deploy.sh`` creates.
@@ -23,7 +23,7 @@ import os
 import sys
 from pathlib import Path
 
-#: The period the example patients' data covers (`DATA-CONTRACT` validity tags on each store table).
+#: The period the example patients' data covers (`DATA-CONTRACT` validity tags on each data table).
 EXAMPLE_VALID_FROM, EXAMPLE_VALID_TO = "2025-01-01", "2027-12-31"
 
 

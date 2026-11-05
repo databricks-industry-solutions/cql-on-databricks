@@ -92,21 +92,21 @@ def test_a_library_declares_its_value_sets_in_cql_requirements_and_dependencies(
                                        f"{BASE}/ValueSet/dep"}
 
 
-def test_an_import_writes_the_environments_stores(writes):
-    """CONTENT-IMPORT-MEASURES, DATA-ENVIRONMENT-LAYOUT — knowledge_store, value sets too; nothing is tagged."""
+def test_an_import_writes_the_environments_knowledge(writes):
+    """CONTENT-IMPORT-MEASURES, DATA-ENVIRONMENT-LAYOUT — knowledge, value sets too; nothing is tagged."""
     summary = import_measures(_FakeSpark(), [MEASURE, LIBRARY, VALUESET, {"resourceType": "Patient"}],
                               catalog="main", source="pkg")
     result, catalog, schema, valuesets = writes["load"]
-    assert (catalog, schema, valuesets) == ("main", "knowledge_store", "knowledge_store")
+    assert (catalog, schema, valuesets) == ("main", "knowledge", "knowledge")
     assert summary.rows == {"measure": 1, "library": 1, "valueset": 2}
     assert summary.skipped == {"Patient": 1}
-    assert summary.knowledge == "main.knowledge_store"
+    assert summary.knowledge == "main.knowledge"
 
 
-def test_codes_alone_go_to_the_knowledge_store(writes):
+def test_codes_alone_go_to_the_knowledge(writes):
     codes = [{"valueset_id": f"{BASE}/ValueSet/office-visit", "system": "http://example.org/codes", "code": "a"}]
     summary = import_measures(_FakeSpark(), [], codes=codes, catalog="main", source="pkg")
-    assert summary.knowledge == "main.knowledge_store" and summary.valuesets == [f"{BASE}/ValueSet/office-visit"]
+    assert summary.knowledge == "main.knowledge" and summary.valuesets == [f"{BASE}/ValueSet/office-visit"]
 
 
 def test_a_dry_run_checks_and_writes_nothing(writes):
@@ -127,8 +127,8 @@ def test_every_problem_is_reported_at_once_and_nothing_is_written(writes):
 
 def test_what_is_already_in_the_target_counts(writes):
     """A measure may name a library, and a library a value set, loaded by an earlier import."""
-    spark = _FakeSpark({"`main`.`knowledge_store`.`library`": [f"{BASE}/Library/Visits"],
-                        "`main`.`knowledge_store`.`valueset`": [f"{BASE}/ValueSet/office-visit"]})
+    spark = _FakeSpark({"`main`.`knowledge`.`library`": [f"{BASE}/Library/Visits"],
+                        "`main`.`knowledge`.`valueset`": [f"{BASE}/ValueSet/office-visit"]})
     summary = import_measures(spark, [MEASURE, LIBRARY], catalog="main", source="pkg")
     assert summary.rows["measure"] == 1
 

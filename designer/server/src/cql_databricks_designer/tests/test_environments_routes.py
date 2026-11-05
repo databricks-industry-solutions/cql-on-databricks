@@ -18,10 +18,10 @@ def _tags(user: str) -> list[dict]:
     """The catalog tags ``user`` can see: the shared example environment and their own team's."""
     about = "Synthetic patients"  # the catalog comment, on every row the join returns for the catalog
     return [{"catalog": "example_cat", "tag": "cql_databricks_environment", "value": "example", "comment": about},
-            {"catalog": "example_cat", "tag": "cql_databricks_environment_version", "value": "2", "comment": about},
+            {"catalog": "example_cat", "tag": "cql_databricks_environment_version", "value": "3", "comment": about},
             {"catalog": "example_cat", "tag": "cql_databricks_environment_default", "value": "true", "comment": about},
             {"catalog": f"{user}_cat", "tag": "cql_databricks_environment", "value": f"team_{user}", "comment": None},
-            {"catalog": f"{user}_cat", "tag": "cql_databricks_environment_version", "value": "2", "comment": None}]
+            {"catalog": f"{user}_cat", "tag": "cql_databricks_environment_version", "value": "3", "comment": None}]
 
 
 class _Users:
@@ -59,9 +59,9 @@ def test_each_user_sees_their_own_environments_cached_until_their_reload():
     cache = EnvironmentCache()
     client = _client(cache, users)
     listed = client.get("/api/environments").json()
-    assert listed == [{"name": "example", "catalog": "example_cat", "version": "2", "default": True,
+    assert listed == [{"name": "example", "catalog": "example_cat", "version": "3", "default": True,
                        "description": "Synthetic patients"},
-                      {"name": "team_a", "catalog": "a_cat", "version": "2", "default": False}]
+                      {"name": "team_a", "catalog": "a_cat", "version": "3", "default": False}]
     opened = users.opened
     client.get("/api/environments")
     assert users.opened == opened
@@ -87,10 +87,10 @@ def test_the_picker_and_a_run_share_one_list():
 
 #: CLIENT-ENVIRONMENT — the catalog tags the App's principal can see.
 TAGS = [{"catalog": "example_cat", "tag": "cql_databricks_environment", "value": "example", "comment": None},
-        {"catalog": "example_cat", "tag": "cql_databricks_environment_version", "value": "2", "comment": None},
+        {"catalog": "example_cat", "tag": "cql_databricks_environment_version", "value": "3", "comment": None},
         {"catalog": "example_cat", "tag": "cql_databricks_environment_default", "value": "true", "comment": None},
         {"catalog": "other_cat", "tag": "cql_databricks_environment", "value": "other", "comment": None},
-        {"catalog": "other_cat", "tag": "cql_databricks_environment_version", "value": "2", "comment": None}]
+        {"catalog": "other_cat", "tag": "cql_databricks_environment_version", "value": "3", "comment": None}]
 
 
 def test_content_is_held_per_environment_and_none_is_the_default():

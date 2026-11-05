@@ -33,7 +33,7 @@ class Content:
         return "synthetic.knowledge"
 
 
-ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="2")
+ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="3")
 
 
 class Compiler:

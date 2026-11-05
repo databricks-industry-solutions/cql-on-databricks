@@ -209,10 +209,10 @@ def load(spark: SparkSession, result: TransformResult, *,
     """Write a TransformResult into the authority's schema.  Returns row counts per table.
 
     ``catalog`` is the UC catalog; ``authority_schema`` is the content
-    schema (``knowledge_store`` in an environment, `DATA-ENVIRONMENT-LAYOUT`).
+    schema (``knowledge`` in an environment, `DATA-ENVIRONMENT-LAYOUT`).
     Together they produce ``<catalog>.<schema>.measure``, etc.
 
-    ValueSet expansions are written to ``valueset_schema`` (``knowledge_store`` in an environment,
+    ValueSet expansions are written to ``valueset_schema`` (``knowledge`` in an environment,
     `DATA-ENVIRONMENT-LAYOUT`).
     """
     _ensure_schema(spark, catalog, authority_schema)

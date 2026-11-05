@@ -11,7 +11,7 @@ from cql_databricks.resolvers.environment import (DEFAULT_TAG, NAME_TAG, VERSION
                                                    UngovernedEnvironmentWarning, check_governance)
 
 TAGS = [{"catalog": "env", "tag": NAME_TAG, "value": "example", "comment": None},
-        {"catalog": "env", "tag": VERSION_TAG, "value": "2", "comment": None},
+        {"catalog": "env", "tag": VERSION_TAG, "value": "3", "comment": None},
         {"catalog": "env", "tag": DEFAULT_TAG, "value": "true", "comment": None}]
 
 

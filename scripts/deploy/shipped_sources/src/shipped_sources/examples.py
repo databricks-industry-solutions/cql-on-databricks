@@ -4,21 +4,20 @@
 (``scripts/deploy/provision-examples.py``). Nothing here reads the compiler's conformance corpus, which is a
 separate, independent copy.
 
-What it reads, and where each part lands in the stores of the environment in ``<catalog>``
+What it reads, and where each part lands in the environment in ``<catalog>``
 (``DATA-ENVIRONMENT-LAYOUT``, ``DEPLOY-DEFAULT-ENVIRONMENT``):
 
 - ``examples/measures/<Library>.cql`` — every CQL library, as a FHIR ``Library`` resource (the CQL as a
-  ``text/cql`` attachment) in ``knowledge_store.library``.
+  ``text/cql`` attachment) in ``knowledge.library``.
 - ``examples/measures/<Library>.measure.json`` — the authored FHIR ``Measure`` resource of each example measure,
-  in ``knowledge_store.measure``. A library is a measure in the catalog only when a ``Measure`` references it
+  in ``knowledge.measure``. A library is a measure in the catalog only when a ``Measure`` references it
   (``CONTENT-MEASURE-LIBRARY-LINK``), so each one names its library's canonical URL.
 - ``examples/valuesets/*.ndjson`` — value-set expansion rows ``{valueset_id, system, code, display}``, in
-  ``knowledge_store.valueset``. Every value set a library declares must have codes here.
-- ``examples/data/<Type>.ndjson`` — the synthetic population small (``DATA-SYNTH-SMALL``), in ``data_store``
+  ``knowledge.valueset``. Every value set a library declares must have codes here.
+- ``examples/data/<Type>.ndjson`` — the synthetic population small (``DATA-SYNTH-SMALL``), in ``data``
   (``population.land``).
 
-The environment's published views select the stores, so the Designer catalog and ``cql(library=...)`` find the
-measures by name (``BIND-PUBLISHED-VIEW``).
+The Designer catalog and ``cql(library=...)`` find the measures there by name (``BIND-PUBLISHED-VIEW``).
 """
 from __future__ import annotations
 
@@ -107,7 +106,7 @@ def read_examples(examples: Path) -> ExampleContent:
 
 
 def import_example_measures(spark, *, catalog: str, examples: Path) -> dict[str, int]:
-    """CONTENT-IMPORT-MEASURES — the example measures and their value sets into the stores of the environment in
+    """CONTENT-IMPORT-MEASURES — the example measures and their value sets into the knowledge of the environment in
     ``catalog``, through the one import path. Returns row counts."""
     from cql_databricks.data_bindings.measure_import import import_measures
 
@@ -117,8 +116,8 @@ def import_example_measures(spark, *, catalog: str, examples: Path) -> dict[str,
 
 
 def load_examples(spark, *, catalog: str, examples: Path, valid_from: str, valid_to: str) -> dict[str, int]:
-    """Write ``examples/`` into the stores of the environment in ``catalog`` (see the module docstring), and its
-    patients' data views. Returns row counts."""
+    """Write ``examples/`` into the environment in ``catalog`` (see the module docstring): its knowledge and its
+    patients' data tables. Returns row counts."""
     from .population import land
 
     content = read_examples(examples)

@@ -9,9 +9,9 @@ from types import SimpleNamespace
 import pytest
 
 from cql_databricks.resolvers.interfaces import Resolvers
-from cql_databricks.result import DeltaResultStore, durable
+from cql_databricks.result import SchemaResultStore, durable
 from cql_databricks.result.selection_reading import open_selection, selection_address
-from test_catalog_runtime import CatalogRunner
+from test_catalog_runtime import CatalogRunner, store_over
 
 #: RUN-CLIENT-DRAFT-RESULTS — a run writes the environment's draft_results and finds official results in its results.
 DESTINATION = ("synthetic_catalog", "draft_results")
@@ -30,7 +30,7 @@ def calculation():
     run = CatalogRunner(destination=DESTINATION)
     compiled = plan()
     query = SimpleNamespace(compile_pipeline=lambda **options: compiled)
-    settings = dict(run=run, results=DeltaResultStore(DESTINATION, run, official=[RESULTS]), session_id="synthetic")
+    settings = dict(run=run, results=store_over(DESTINATION, run, [RESULTS]), session_id="synthetic")
     return SimpleNamespace(run=run, query=query, compiled=compiled, settings=settings)
 
 
@@ -107,8 +107,8 @@ def test_results_takes_only_a_published_calculation(calculation):
     own = {"data": "synthetic_catalog.data", "terminology": "synthetic_catalog.terminology",
            "knowledge": "synthetic_catalog.knowledge"}
     run = CatalogRunner(destination=RESULTS)
-    official = DeltaResultStore(RESULTS, run, official=[RESULTS],
-                                requires={role: frozenset({identity}) for role, identity in own.items()})
+    official = store_over(RESULTS, run, [RESULTS],
+                          requires={role: frozenset({identity}) for role, identity in own.items()})
     settings = dict(c.settings, run=run, results=official)
     with pytest.raises(PermissionError, match="only results of the environment's own published content"):
         durable.materialize(c.query, "Output", **settings)
@@ -151,12 +151,12 @@ def test_capacity_counts_distinct_tables_not_refreshes(calculation):
     """RUN-CLIENT-LIFECYCLE — replacing a table consumes no additional capacity."""
     c = calculation
     with pytest.raises(RuntimeError, match="capacity"):
-        durable.materialize(c.query, "Output", **(c.settings | {"results": DeltaResultStore(DESTINATION, c.run,
-                                                                                            capacity=1)}))
+        durable.materialize(c.query, "Output", **(c.settings | {"results": SchemaResultStore(DESTINATION, c.run,
+                                                                                             capacity=1)}))
     assert not c.run.writes
     for mode in ("skip_if_computed", "recompute"):
         durable.materialize(c.query, "Output", mode=mode,
-                            **(c.settings | {"results": DeltaResultStore(DESTINATION, c.run, capacity=2)}))
+                            **(c.settings | {"results": SchemaResultStore(DESTINATION, c.run, capacity=2)}))
     assert len(c.run.tables) == 2
 
 

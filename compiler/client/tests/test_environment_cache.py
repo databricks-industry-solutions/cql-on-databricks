@@ -18,7 +18,7 @@ def _tags(*environments: tuple[str, str, bool]) -> list[dict]:
     rows = []
     for name, catalog, default in environments:
         rows += [{"catalog": catalog, "tag": NAME_TAG, "value": name, "comment": None},
-                 {"catalog": catalog, "tag": VERSION_TAG, "value": "2", "comment": None}]
+                 {"catalog": catalog, "tag": VERSION_TAG, "value": "3", "comment": None}]
         if default:
             rows.append({"catalog": catalog, "tag": DEFAULT_TAG, "value": "true", "comment": None})
     return rows

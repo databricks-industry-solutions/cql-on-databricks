@@ -452,34 +452,26 @@ resources:
     # DEPLOY-DEFAULT-ENVIRONMENT, DATA-ENVIRONMENT-LAYOUT — the default environment's schemas in uc_catalog, and every
     # schema grant the deploy makes on them. Bundle grants are the schema's whole grant list: a grant made on these
     # schemas by hand is revoked by the next deploy. The comments are shipped_sources.environment.SCHEMAS
-    # (test_deploy_requirements checks they match). scripts/deploy/provision-examples.py then fills them: the stores,
-    # the views over them and the catalog tags. Readers get SELECT on the published schemas only, never a store.
+    # (test_deploy_requirements checks they match). scripts/deploy/provision-examples.py then fills them: the data
+    # and knowledge tables, and the catalog tags. Readers get SELECT on every schema but draft_results.
     environment_data:
       catalog_name: ${var.uc_catalog}
       name: data
-      comment: "Published data: one view per FHIR type returning resource and patient_id (BIND-CONTRACT), and change_log"
+      comment: "Data: one table per FHIR type holding resource and patient_id (BIND-CONTRACT), and change_log"
       grants:
         - principal: ${var.app_users_group}
           privileges: [USE_SCHEMA, SELECT]
-    environment_data_store:
-      catalog_name: ${var.uc_catalog}
-      name: data_store
-      comment: "The data store the data views select"
     environment_knowledge:
       catalog_name: ${var.uc_catalog}
       name: knowledge
-      comment: "Published knowledge: the library, measure and valueset views"
+      comment: "Knowledge: the library, measure and valueset tables"
       grants:
         - principal: ${var.app_users_group}
           privileges: [USE_SCHEMA, SELECT]
         # KNOWLEDGE-LAKE-DIRECT — the Designer App's principal reads the knowledge and value sets it holds in memory,
-        # and nothing else: never a store or a result.
+        # and nothing else: never data or a result.
         - principal: ${resources.apps.cql_databricks_designer.service_principal_client_id}
           privileges: [USE_SCHEMA, SELECT]
-    environment_knowledge_store:
-      catalog_name: ${var.uc_catalog}
-      name: knowledge_store
-      comment: "The knowledge store the library, measure and valueset views select"
     environment_results:
       catalog_name: ${var.uc_catalog}
       name: results

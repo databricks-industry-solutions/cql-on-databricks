@@ -154,8 +154,8 @@ def test_no_wheel_version_is_hard_coded_in_this_repo():
 
 def test_the_bundle_makes_the_default_environments_schemas_and_their_grants():
     """DEPLOY-DEFAULT-ENVIRONMENT, DEPLOY-APP-GRANTS, DATA-ENVIRONMENT-LAYOUT, RUN-CLIENT-DRAFT-RESULTS — every schema of
-    the layout is a bundle resource in uc_catalog with its comment; the users read the published schemas and create
-    tables in draft_results; the Designer's principal reads knowledge; no store is granted."""
+    the layout is a bundle resource in uc_catalog with its comment; the users read data, knowledge and results and
+    create tables in draft_results; the Designer's principal reads knowledge; there is no store schema."""
     import yaml
     from shipped_sources.environment import SCHEMAS
 
@@ -169,8 +169,7 @@ def test_the_bundle_makes_the_default_environments_schemas_and_their_grants():
         "data": {users: ["USE_SCHEMA", "SELECT"]},
         "knowledge": {users: ["USE_SCHEMA", "SELECT"], designer: ["USE_SCHEMA", "SELECT"]},
         "results": {users: ["USE_SCHEMA", "SELECT"]},
-        "draft_results": {users: ["USE_SCHEMA", "CREATE_TABLE"]},
-        "data_store": {}, "knowledge_store": {}}
+        "draft_results": {users: ["USE_SCHEMA", "CREATE_TABLE"]}}
 
 
 def test_the_default_environment_and_its_maintenance_grant_ship_together():

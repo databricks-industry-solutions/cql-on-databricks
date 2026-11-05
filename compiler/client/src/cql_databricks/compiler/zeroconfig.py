@@ -329,11 +329,11 @@ def publish_library(name: str, version: str, *, folder: str, base: str, spark=No
     :func:`cql_databricks.compiler.library_publish.publish_folder_library`, which the Designer's Publish calls too.
     The folder is read from this session's ``/Workspace`` file system, includes not in it resolve from the
     environment's knowledge, the CQL compiles through the Compiler Service App (as :func:`translate` does), and the
-    rows are written through ``spark``, then read back through the ``knowledge`` view. ``base`` is the canonical base
+    rows are written to the environment's ``knowledge`` tables through ``spark``. ``base`` is the canonical base
     for a library whose folder holds no ``Library`` JSON with a URL. Returns the
     :class:`~cql_databricks.compiler.library_publish.PublishSummary`; raises ``PublishRefused`` when nothing was
     written and ``PublishFailed`` when a write failed after others."""
-    from cql_databricks.resolvers.environment import KNOWLEDGE, KNOWLEDGE_STORE
+    from cql_databricks.resolvers.environment import KNOWLEDGE
     from .libraries import LocalLibraryFiles
     from .library_publish import publish_folder_library
 
@@ -342,7 +342,7 @@ def publish_library(name: str, version: str, *, folder: str, base: str, spark=No
     provider = make_provider({CONF_APP_NAME: app_name} if app_name else {})
     held = env.get()
     return publish_folder_library(env.content(), LocalLibraryFiles(), folder, name, version,
-                                  store=held.address(KNOWLEDGE_STORE), view=held.address(KNOWLEDGE),
+                                  schema=held.address(KNOWLEDGE),
                                   run=_spark_runner(session), translate=provider.translate_result, base=base)
 
 

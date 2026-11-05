@@ -9,10 +9,10 @@ from ._catalog_runtime import PlanObserver, StepObserver, StepRecord
 from .calculation import PreparedCalculation, prepare_calculation
 from .inline import InlineRun, run_inline
 from .durable import MaterializedResults, ResultsUnavailable, materialize, open_result_set, resolve_results
-# CLIENT-RESULT-RESOLVER: kept results, found in your own schemas then the official ones, and written, in Delta.
-from .store import DeltaResultResolver, DeltaResultStore
+# CLIENT-RESULT-RESOLVER: kept results in one schema, found and written, in Delta; layer them with Overlay.
+from .store import OFFICIAL, OWN, SchemaResultResolver, SchemaResultStore
 
-__all__ = ["DeltaResultResolver", "DeltaResultStore",
+__all__ = ["SchemaResultResolver", "SchemaResultStore", "OWN", "OFFICIAL",
            "MaterializedResults", "ResultsUnavailable", "materialize", "open_result_set",
            "resolve_results",
            "PreparedCalculation", "prepare_calculation", "PlanObserver", "StepObserver", "StepRecord",

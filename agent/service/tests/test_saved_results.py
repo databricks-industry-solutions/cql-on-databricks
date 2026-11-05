@@ -13,7 +13,7 @@ from cql_databricks.resolvers.environment import Environment
 from cql_databricks.resolvers.interfaces import Resolvers
 from cql_databricks.result import ResultsUnavailable
 
-ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="2")
+ENVIRONMENT = Environment(name="synthetic-population", catalog="synthetic", version="3")
 RESULTS = object()
 RESOLVERS = Resolvers(data=None, terminology=None, results=RESULTS, environment=ENVIRONMENT.name)
 

@@ -10,7 +10,8 @@ import pytest
 
 from cql_databricks.result._catalog_completion import writer_digest
 from cql_databricks.result._catalog_runtime import execute, table_name
-from cql_databricks.result.store import DeltaResultStore
+from cql_databricks.resolvers.interfaces import Overlay
+from cql_databricks.result.store import OFFICIAL, SchemaResultResolver, SchemaResultStore
 from cql_databricks.result._durable import ResultsUnavailable
 from cql_databricks.result._durable_plan import PreparedPlan
 from test_durable_plan import identity, plan
@@ -23,7 +24,7 @@ WRITER = writer_digest(OWNER)
 #: RUN-CLIENT-DRAFT-RESULTS — the synthetic environment the public calls run in, and where a private run writes.
 from cql_databricks.resolvers.environment import Environment  # noqa: E402
 
-ENVIRONMENT = Environment(name="synthetic", catalog="synthetic_catalog", version="2")
+ENVIRONMENT = Environment(name="synthetic", catalog="synthetic_catalog", version="3")
 DRAFT = ("synthetic_catalog", "draft_results")
 
 
@@ -73,7 +74,7 @@ class CatalogRunner:
             pytest.fail(sql)
 
     def _lookup(self, sql, params):
-        """CLIENT-RESULT-RESOLVER: the store's one lookup. The own layer is served from ``tables`` for the first own
+        """CLIENT-RESULT-RESOLVER: one layer's lookup. The own layer is served from ``tables`` for the first own
         schema in the destination's catalog, with each table's owner; the official layer from ``sources``, any
         writer's, by fingerprint digits."""
         rows = []
@@ -105,10 +106,22 @@ class CatalogRunner:
         return [sql for sql, _ in self.calls if sql.startswith("CREATE OR REPLACE")]
 
 
+def layered(first, run, official=()):
+    """CLIENT-RESOLVER-OVERLAY — ``first`` over any writer's results in each ``official`` schema, in order."""
+    for schema in official:
+        first = Overlay(first, SchemaResultResolver(schema, run, reuse=OFFICIAL))
+    return first
+
+
+def store_over(destination, run, official=(), **options):
+    """CLIENT-RESULT-RESOLVER — a store over ``destination``, layered over the ``official`` schemas."""
+    return layered(SchemaResultStore(destination, run, **options), run, official)
+
+
 def run_on(plan, targets, *, run, destination=DESTINATION, official=(), read_only=False, **options):
     """CLIENT-RESULT-RESOLVER — ``execute`` through a Delta store over ``destination``, finding official results in
     ``official``."""
-    return execute(plan, targets, results=DeltaResultStore(destination, run, official=official), run=run,
+    return execute(plan, targets, results=store_over(destination, run, official), run=run,
                    read_only=read_only, **options)
 
 

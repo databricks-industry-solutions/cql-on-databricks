@@ -84,9 +84,9 @@ Every value set the libraries declare (`needed`) must have codes, in this import
 
 ## 5. Choose where it goes
 
-Measures go into an environment: a catalog tagged `cql_databricks_environment`, whose `knowledge_store` tables
-its `knowledge` views select: `library`, `measure` and `valueset`. The import writes that store. List the
-environments the user can see, and what they can do in each store:
+Measures go into an environment: a catalog tagged `cql_databricks_environment`, whose `knowledge` schema holds the
+tables `library`, `measure` and `valueset`. The import writes those tables. List the environments the user can see,
+and what they can do in each `knowledge` schema:
 
 ```sql
 -- Environments: one row per tag of each catalog tagged as one
@@ -94,16 +94,16 @@ SELECT catalog_name, tag_name, tag_value
 FROM system.information_schema.catalog_tags
 WHERE tag_name IN ('cql_databricks_environment', 'cql_databricks_environment_default');
 
--- What you can do in each knowledge store (your own grants and your groups')
+-- What you can do in each knowledge schema (your own grants and your groups')
 SELECT catalog_name, schema_name, collect_set(privilege_type) AS privileges
 FROM system.information_schema.schema_privileges
-WHERE schema_name = 'knowledge_store'
+WHERE schema_name = 'knowledge'
   AND (grantee = current_user() OR is_account_group_member(grantee))
 GROUP BY ALL;
 ```
 
-An import works when the user can write the store: `USE CATALOG`, `USE SCHEMA`, `CREATE TABLE`, `MODIFY` and
-`SELECT` on `knowledge_store` (`ALL PRIVILEGES` covers them). Propose the environment, with
+An import works when the user can write the schema: `USE CATALOG`, `USE SCHEMA`, `CREATE TABLE`, `MODIFY` and
+`SELECT` on `knowledge` (`ALL PRIVILEGES` covers them). Propose the environment, with
 the reason, and let the user choose. The default environment is the one the Designer and Genie use unless someone
 picks another. Re-importing replaces a value set's codes whole, and merges measures and libraries on their canonical
 URL and version.

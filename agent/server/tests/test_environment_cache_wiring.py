@@ -16,7 +16,7 @@ def _runner(user: str, reads: list[str]):
         reads.append(user)
         catalog = ROWS[user]
         return [{"catalog": catalog, "tag": "cql_databricks_environment", "value": "example", "comment": None},
-                {"catalog": catalog, "tag": "cql_databricks_environment_version", "value": "2", "comment": None},
+                {"catalog": catalog, "tag": "cql_databricks_environment_version", "value": "3", "comment": None},
                 {"catalog": catalog, "tag": "cql_databricks_environment_default", "value": "true", "comment": None}]
     return run
 

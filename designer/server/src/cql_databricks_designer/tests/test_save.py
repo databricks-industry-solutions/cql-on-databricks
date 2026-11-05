@@ -353,24 +353,19 @@ def test_the_route_refuses_a_new_library_with_no_base(monkeypatch):
 
 #: CLIENT-ENVIRONMENT — the environment the caller can see, in catalog ``k``.
 ENVIRONMENT_TAGS = [{"catalog": "k", "tag": "cql_databricks_environment", "value": "k_env", "comment": None},
-                    {"catalog": "k", "tag": "cql_databricks_environment_version", "value": "2", "comment": None},
+                    {"catalog": "k", "tag": "cql_databricks_environment_version", "value": "3", "comment": None},
                     {"catalog": "k", "tag": "cql_databricks_environment_default", "value": "true", "comment": None}]
 
 
 class _PublishStore:
-    """The store's rows by (url, version), read and MERGEd as the client's publish does, and the published view over
-    them: ``hidden`` is a view that does not select the store."""
+    """The knowledge tables' rows by (url, version), read and MERGEd as the client's publish does."""
 
-    def __init__(self, fail=False, hidden=False):
-        self.rows, self.fail, self.hidden, self.merged, self.written = {}, fail, hidden, [], []
+    def __init__(self, fail=False):
+        self.rows, self.fail, self.merged, self.written = {}, fail, [], []
 
     def __call__(self, sql, params=None):
         if "system.information_schema.catalog_tags" in sql:
             return ENVIRONMENT_TAGS
-        if sql.startswith("SELECT url, version FROM"):
-            # BIND-PUBLISHED-VIEW: the read-back through the environment's knowledge view.
-            assert "`k`.`knowledge`.`library`" in sql
-            return [] if self.hidden else [{"url": u, "version": v} for u, v in self.rows]
         if sql.startswith("SELECT"):
             held = self.rows.get((params["url"], params["version"]))
             return [{"resource": json.dumps(held)}] if held else []
@@ -396,15 +391,16 @@ def _publishing(monkeypatch, store):
 PUBLISH = {"location": f"folder:{F}", "name": "Measure", "version": "1.0.0", "environment": "k_env"}
 
 
-def test_publish_writes_the_folder_library_into_the_store_as_the_user(monkeypatch):
+def test_publish_writes_the_folder_library_into_the_knowledge_as_the_user(monkeypatch):
     # DOC-PUBLISH — through the client's publish (CLIENT-PUBLISH), then the corpus is read again.
     store = _PublishStore()
     response = _publishing(monkeypatch, store).post("/api/libraries/publish", json=PUBLISH)
     assert response.status_code == 200, response.json()
     assert [(lib["name"], lib["outcome"]) for lib in response.json()["libraries"]] == [("Measure", "published")]
     assert store.merged == ["Library", "Measure"] and reloads == [1]
-    # DOC-PUBLISH — into the environment's knowledge store, not its published views.
-    assert all("`k`.`knowledge_store`." in sql for sql in store.written)
+    # DOC-PUBLISH, DATA-ENVIRONMENT-LAYOUT — into the environment's knowledge tables, the ones a run reads.
+    merges = [sql for sql in store.written if sql.lstrip().startswith("MERGE")]
+    assert len(merges) == 2 and all("`k`.`knowledge`." in sql for sql in merges)
     again = _publishing(monkeypatch, store).post("/api/libraries/publish", json=PUBLISH)
     assert [lib["outcome"] for lib in again.json()["libraries"]] == ["unchanged"]
 
@@ -418,5 +414,3 @@ def test_publish_says_what_was_refused_and_what_failed(monkeypatch):
     failed = _publishing(monkeypatch, _PublishStore(fail=True)).post("/api/libraries/publish", json=PUBLISH)
     assert failed.status_code == 502 and failed.json()["summary"]["libraries"][0]["outcome"] == "refused"
     assert reloads == [1]
-    hidden = _publishing(monkeypatch, _PublishStore(hidden=True)).post("/api/libraries/publish", json=PUBLISH)
-    assert hidden.status_code == 502 and "does not select the store" in hidden.json()["error"]

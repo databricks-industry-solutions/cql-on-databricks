@@ -140,9 +140,9 @@ def _struct(columns: Sequence[tuple[str, str]]) -> str:
 
 
 def rule_shapes(rule: str, run, cache: dict[str, dict[str, str]] | None = None) -> dict[str, str]:
-    """DATA-MODEL-SUBSET: the shape of every view in a rule's schema (``<catalog>.<schema>``), keyed by view name (the
-    type in lower case, `DATA-ENVIRONMENT-LAYOUT`): every column of every view, in one query over the catalog's
-    ``information_schema``, or from ``cache`` when it holds the rule. A schema with no view fails."""
+    """DATA-MODEL-SUBSET: the shape of every table and view in a rule's schema (``<catalog>.<schema>``), keyed by name
+    (the type in lower case, `DATA-ENVIRONMENT-LAYOUT`): every column of each, in one query over the catalog's
+    ``information_schema``, or from ``cache`` when it holds the rule. A schema with none fails."""
     if cache is not None and rule in cache:
         return cache[rule]
     catalog, _, schema = rule.rpartition(".")
@@ -151,8 +151,8 @@ def rule_shapes(rule: str, run, cache: dict[str, dict[str, str]] | None = None) 
     rows = run(f"SELECT table_name, column_name, full_data_type FROM {reshape.quote_name(catalog)}.information_schema."
                f"columns WHERE table_schema = :schema ORDER BY table_name, ordinal_position", {"schema": schema})
     if not rows:
-        raise ResolverError(f"{rule} has no view, so no data shape can be read (DATA-MODEL-SUBSET); publish its data "
-                            f"views first")
+        raise ResolverError(f"{rule} has no view or table, so no data shape can be read (DATA-MODEL-SUBSET); land "
+                            f"or publish its data first")
     columns: dict[str, list[tuple[str, str]]] = {}
     for r in rows:
         columns.setdefault(str(r["table_name"]), []).append((str(r["column_name"]), str(r["full_data_type"])))

@@ -1,19 +1,19 @@
 # Environment data
 
-An environment's data is its `data` schema (`DATA-ENVIRONMENT-LAYOUT`): one published view per FHIR type, named for
+An environment's data is its `data` schema (`DATA-ENVIRONMENT-LAYOUT`): one table or view per FHIR type, named for
 the type in lower case, returning the contract: the resource as a `resource` struct and optionally `patient_id`,
-`min_date` and `max_date` (`BIND-CONTRACT`). A run binds the views by name and reads no catalog metadata (`BIND-PUBLISHED-VIEW`). A retrieve of a type with no view fails in the warehouse,
-naming the view. The [client README](../README.md#environments) says what an environment is.
+`min_date` and `max_date` (`BIND-CONTRACT`). A run binds them by name (`BIND-PUBLISHED-VIEW`). A retrieve of a type
+with neither fails in the warehouse, naming it. The [client README](../README.md#environments) says what an environment is.
 
 ## What the schema holds
 
 | Object | Required | What it is |
 |---|---|---|
-| `<type>` (`patient`, `condition`, …) | one per type a measure retrieves | A view returning one FHIR type's resources |
+| `<type>` (`patient`, `condition`, …) | one per type a measure retrieves | A table or view returning one FHIR type's resources |
 | `change_log` | no | `(parameters, changed_at)`: which evaluation sets changed (`DATA-CHANGE-LOG-PERIODS`) |
 
-How your tables become FHIR is your logic, inside the views. By default each view selects its table in
-`data_store`. The compiler's side of the contract is in [data-binding.md](../../docs/data-binding.md).
+How your tables become FHIR is your logic, inside views, in an environment of your own. The default environment
+holds tables, which the deploy lands. The compiler's side of the contract is in [data-binding.md](../../docs/data-binding.md).
 
 If your tables already hold one FHIR type each, `publish_data_source` writes the views for you (`BIND-PUBLISH`,
 [client README](../README.md#publish-data-into-an-environment)).
@@ -25,8 +25,8 @@ changed (load time, commit time, `meta.lastUpdated`), never a clinical date. Del
 
 ## Value sets and knowledge
 
-Value-set expansions are the environment's `knowledge.valueset` view, and libraries its `knowledge.library` and
-`knowledge.measure` views. The import (`CONTENT-IMPORT-MEASURES`) writes their store tables.
+Value-set expansions are the environment's `knowledge.valueset`, and libraries its `knowledge.library` and
+`knowledge.measure`. The import (`CONTENT-IMPORT-MEASURES`) and publishing write those tables.
 
 ## Environments this repository ships
 

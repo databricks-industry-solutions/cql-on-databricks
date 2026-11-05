@@ -190,7 +190,7 @@ class DataResolver(abc.ABC):
 
     def types(self) -> frozenset[str] | None:
         """The FHIR types it serves; a retrieved type outside them fails before the run. None for a resolver that
-        binds by rule: a type its schema has no view for fails in the warehouse."""
+        binds by rule: a type its schema has no table or view for fails in the warehouse."""
         return None
 
     def retrieve(self, site: CallSite) -> Relation:
@@ -339,14 +339,14 @@ class KeptResult:
 
 
 class ResultResolver(abc.ABC):
-    """CLIENT-RESULT-RESOLVER: where kept results are found. A resolver owns its whole lookup: the caller's own results
-    first, then the environment's official results, then none, so the run computes (`RUN-CLIENT-RESULT-OWNERSHIP`).
-    A run never composes result layers itself."""
+    """CLIENT-RESULT-RESOLVER: where kept results are found. A resolver owns its whole lookup, and a run never
+    composes result layers itself: an environment's is an :class:`Overlay` of the caller's own results over the
+    official ones, then none, so the run computes (`RUN-CLIENT-RESULT-OWNERSHIP`)."""
 
     @abc.abstractmethod
     def find(self, keys: Sequence[ResultKey], *,
              computed_since: datetime | None = None) -> Mapping[str, KeptResult]:
-        """The completed result of each key that may be reused, by fingerprint, in one lookup. A result computed before
+        """The completed result of each key that may be reused, by fingerprint. A result computed before
         ``computed_since`` is not returned. A key with no result is left out."""
 
     @property
@@ -438,16 +438,18 @@ class Resolvers:
 
 class Overlay:
     """CLIENT-RESOLVER-OVERLAY: ``Overlay(dev, base)`` serves each thing from ``dev`` when it has it, else from
-    ``base``: per FHIR type for data, per value set for terminology, per library for knowledge. Both layers must play
-    the same role; the result plays it too. Its ``reusable`` is false when any layer's is, and its identity is its
-    layers' identities in order."""
+    ``base``: per FHIR type for data, per value set for terminology, per library for knowledge, per result key for
+    results. Both layers must play the same role; the result plays it too. Its ``reusable`` is false when any layer's
+    is, and its identity is its layers' identities in order. A results overlay over a store writes into the store."""
 
     def __new__(cls, dev, base):
         if cls is not Overlay:
             return super().__new__(cls)
         for role, overlay in ((DataResolver, _DataOverlay), (TerminologyResolver, _TerminologyOverlay),
-                              (KnowledgeResolver, _KnowledgeOverlay)):
+                              (KnowledgeResolver, _KnowledgeOverlay), (ResultResolver, _ResultOverlay)):
             if isinstance(dev, role) and isinstance(base, role):
+                if overlay is _ResultOverlay and isinstance(dev, ResultStore):
+                    overlay = _ResultStoreOverlay
                 return super().__new__(overlay)
         raise TypeError(f"Overlay needs two resolvers of one role, got {type(dev).__name__} and "
                         f"{type(base).__name__}")
@@ -518,3 +520,38 @@ class _KnowledgeOverlay(Overlay, KnowledgeResolver):
         found = list(self.dev.libraries())
         seen = set(found)
         return found + [ref for ref in self.base.libraries() if ref not in seen]
+
+
+class _ResultOverlay(Overlay, ResultResolver):
+    """Per result key: a key ``dev`` finds comes from ``dev``, and ``base`` is asked only for the rest
+    (`RUN-CLIENT-RESULT-OWNERSHIP`). A run is addressed by ``dev``'s destination."""
+
+    def find(self, keys: Sequence[ResultKey], *,
+             computed_since: datetime | None = None) -> Mapping[str, KeptResult]:
+        found = dict(self.dev.find(keys, computed_since=computed_since))
+        rest = [key for key in keys if key.fingerprint not in found]
+        if rest:
+            found.update((fingerprint, kept) for fingerprint, kept in
+                         self.base.find(rest, computed_since=computed_since).items() if fingerprint not in found)
+        return found
+
+    @property
+    def destination(self) -> tuple[str, str]:
+        return self.dev.destination
+
+    def holds(self, table: TableRef) -> bool:
+        return self.dev.holds(table) or self.base.holds(table)
+
+
+class _ResultStoreOverlay(_ResultOverlay, ResultStore):
+    """A results overlay whose ``dev`` is a store: it admits and writes as ``dev`` does, and lists ``dev``'s results
+    (``search``)."""
+
+    def admit(self, calculation: Any) -> None:
+        self.dev.admit(calculation)
+
+    def writes(self, keys: Sequence[ResultKey]) -> ResultWrites:
+        return self.dev.writes(keys)
+
+    def search(self, **options) -> tuple[KeptResult, ...]:
+        return self.dev.search(**options)

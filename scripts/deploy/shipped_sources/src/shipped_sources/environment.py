@@ -5,12 +5,11 @@ one (`CLIENT-ENVIRONMENT`). The default one is in ``uc_catalog``: its schemas an
 (``databricks.yml``), and the deploy fills them with :func:`fill`. The large synthetic population is an environment of
 its own, in a catalog the bundle does not hold (`DATA-SYNTH-LARGE`), so :func:`build` makes its schemas and grants too:
 
-1. the schemas (:func:`build` only), then the store tables the content is written to (the import and the population
-   lander);
-2. the published views, each selecting its store;
-3. the catalog tags and comment, last, once everything a run reads exists; ``default`` only if no catalog the
+1. the schemas (:func:`build` only), then the tables the content is written to, in ``data`` and ``knowledge`` (the
+   import and the population lander);
+2. the catalog tags and comment, last, once everything a run reads exists; ``default`` only if no catalog the
    deployer can see is the default already;
-4. the grants of ``DEPLOY-DEFAULT-ENVIRONMENT`` (:func:`build` only).
+3. the grants of ``DEPLOY-DEFAULT-ENVIRONMENT`` (:func:`build` only).
 
 Every statement is idempotent, and any failure raises, which fails the deploy.
 """
@@ -19,26 +18,23 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Iterable
 
-from cql_databricks.resolvers.environment import (DATA, DATA_STORE, DEFAULT_TAG, DRAFT_RESULTS, KNOWLEDGE,
-                                                  KNOWLEDGE_STORE, LAYOUT_VERSION, NAME_TAG, RESULTS, VERSION_TAG,
-                                                  EnvironmentResolver)
+from cql_databricks.resolvers.environment import (DATA, DEFAULT_TAG, DRAFT_RESULTS, KNOWLEDGE, LAYOUT_VERSION,
+                                                  NAME_TAG, RESULTS, VERSION_TAG, EnvironmentResolver)
 
 log = logging.getLogger("shipped_sources.environment")
 
 #: DATA-ENVIRONMENT-LAYOUT — every schema of an environment, and what each holds.
 SCHEMAS: dict[str, str] = {
-    DATA: "Published data: one view per FHIR type returning resource and patient_id (BIND-CONTRACT), and change_log",
-    DATA_STORE: "The data store the data views select",
-    KNOWLEDGE: "Published knowledge: the library, measure and valueset views",
-    KNOWLEDGE_STORE: "The knowledge store the library, measure and valueset views select",
+    DATA: "Data: one table per FHIR type holding resource and patient_id (BIND-CONTRACT), and change_log",
+    KNOWLEDGE: "Knowledge: the library, measure and valueset tables",
     RESULTS: "Published results, written by their publishers",
     DRAFT_RESULTS: "Each user's own results, one table per result, owned by its writer",
 }
 
-#: The schemas readers get SELECT on (`DATA-ENVIRONMENT-LAYOUT`): the published ones, never a store.
+#: The schemas readers get SELECT on (`DATA-ENVIRONMENT-LAYOUT`): every one but ``draft_results``.
 PUBLISHED = (DATA, KNOWLEDGE, RESULTS)
 
-#: DATA-CHANGE-LOG-PERIODS — the change log's name in ``data`` and in ``data_store``.
+#: DATA-CHANGE-LOG-PERIODS — the change log's name in ``data``.
 CHANGE_LOG = "change_log"
 
 
@@ -56,35 +52,23 @@ def schema_statements(catalog: str) -> list[str]:
             for schema, comment in SCHEMAS.items()]
 
 
-def data_view(catalog: str, fhir_type: str) -> str:
-    """BIND-PUBLISHED-VIEW, BIND-CONTRACT, DATA-SUBJECT-KEY — the published view of ``fhir_type`` over its store
-    table, which holds the contract itself: the subject key ``patient_id`` and the ``resource`` struct."""
-    name = fhir_type.lower()
-    return (f"CREATE OR REPLACE VIEW {quote(catalog, DATA, name)} AS "
-            f"SELECT `patient_id`, `resource` FROM {quote(catalog, DATA_STORE, name)}")
+def data_table(catalog: str, fhir_type: str) -> str:
+    """BIND-PUBLISHED-VIEW, BIND-CONTRACT, DATA-SUBJECT-KEY — ``fhir_type``'s table in ``data``, named for the type in
+    lower case, which holds the contract itself: the subject key ``patient_id`` and the ``resource`` struct."""
+    return quote(catalog, DATA, fhir_type.lower())
 
 
-def change_log_statements(catalog: str) -> list[str]:
-    """DATA-CHANGE-LOG-PERIODS — the store's change log, and the published view over it."""
-    return [f"CREATE TABLE IF NOT EXISTS {quote(catalog, DATA_STORE, CHANGE_LOG)} "
+def change_log_statement(catalog: str) -> str:
+    """DATA-CHANGE-LOG-PERIODS — the change log table in ``data``."""
+    return (f"CREATE TABLE IF NOT EXISTS {quote(catalog, DATA, CHANGE_LOG)} "
             f"(parameters MAP<STRING, STRING>, changed_at TIMESTAMP) "
             f"COMMENT 'DATA-CHANGE-LOG-PERIODS: which evaluation sets changed, by parameter value; an empty map is "
-            f"every open evaluation set'",
-            f"CREATE OR REPLACE VIEW {quote(catalog, DATA, CHANGE_LOG)} AS "
-            f"SELECT parameters, changed_at FROM {quote(catalog, DATA_STORE, CHANGE_LOG)}"]
+            f"every open evaluation set'")
 
 
 def change_log_all_statement(catalog: str) -> str:
     """One change-log row saying every open evaluation set changed now: what a whole-population reload logs."""
-    return f"INSERT INTO {quote(catalog, DATA_STORE, CHANGE_LOG)} VALUES (map(), current_timestamp())"
-
-
-def content_view_statements(catalog: str) -> list[str]:
-    """BIND-PUBLISHED-VIEW — the knowledge views, each selecting its store."""
-    return [f"CREATE OR REPLACE VIEW {quote(catalog, KNOWLEDGE, 'valueset')} AS "
-            f"SELECT valueset_id, system, code, version FROM {quote(catalog, KNOWLEDGE_STORE, 'valueset')}",
-            *(f"CREATE OR REPLACE VIEW {quote(catalog, KNOWLEDGE, table)} AS "
-              f"SELECT * FROM {quote(catalog, KNOWLEDGE_STORE, table)}" for table in ("library", "measure"))]
+    return f"INSERT INTO {quote(catalog, DATA, CHANGE_LOG)} VALUES (map(), current_timestamp())"
 
 
 def tag_statements(catalog: str, *, name: str, description: str, default: bool) -> list[str]:
@@ -114,8 +98,8 @@ def grant_statements(catalog: str, *, users: str, maintenance: str | None,
     ``users`` (the App users' group) read the published schemas and create their own tables in ``draft_results``,
     with no ``SELECT`` or ``MODIFY`` on it, so each reads only the tables they own. ``maintenance``, the maintenance
     Job's principal, gets ``MANAGE`` on ``draft_results`` to expire its tables (`RUN-CLIENT-MAINTENANCE`).
-    ``content_readers`` (the Designer App's service principal) read the knowledge views, whose libraries and value
-    sets it holds in memory (`KNOWLEDGE-LAKE-DIRECT`) and nothing else: never a store or a result."""
+    ``content_readers`` (the Designer App's service principal) read the knowledge tables, whose libraries and value
+    sets it holds in memory (`KNOWLEDGE-LAKE-DIRECT`) and nothing else: never data or a result."""
     statements = [catalog_grant(catalog, users),
                   *(f"GRANT USE SCHEMA, SELECT ON SCHEMA {quote(catalog, schema)} TO {quote(users)}"
                     for schema in PUBLISHED),
@@ -136,12 +120,10 @@ def other_defaults(run, catalog: str) -> list[str]:
 def fill(sql: Callable[[str], object], run, *, catalog: str, name: str, description: str, default: bool,
          load: Callable[[], dict[str, int]]) -> dict[str, int]:
     """DEPLOY-DEFAULT-ENVIRONMENT — fill the environment ``name`` in ``catalog``, whose schemas exist: ``load`` (which
-    writes the stores and the data views), the content views and the tags. ``sql`` runs a statement and ``run`` is a
+    writes the ``data`` and ``knowledge`` tables) and the tags. ``sql`` runs a statement and ``run`` is a
     SQL runner (``spark_runner``) for the one environment query. With ``default``, the catalog is tagged the default
     only when no other catalog the deployer can see is. Returns ``load``'s counts."""
     counts = load()
-    for statement in content_view_statements(catalog):
-        sql(statement)
     others = other_defaults(run, catalog) if default else []
     if others:
         log.warning("%s is not tagged the default environment: %s already is (CLIENT-ENVIRONMENT-RESOLVER)",

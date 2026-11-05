@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from cql_databricks.result import DeltaResultStore
+from cql_databricks.result import SchemaResultStore
 from cql_databricks.result.store import _kept
 from test_catalog_completion import completion
 from test_catalog_runtime import DESTINATION
@@ -22,7 +22,7 @@ def test_search_is_one_bounded_parameterized_query_without_manifest_probes():
         return [{"catalog_name": result.table[0], "schema_name": result.table[1], "table_name": result.table[2],
                  "tags_json": json.dumps(result.tags())}]
     cutoff = datetime(2026, 1, 2, tzinfo=timezone(timedelta(hours=3)))
-    found = DeltaResultStore(DESTINATION, run).search(fingerprint=result.fingerprint, completed_after=cutoff, limit=20)
+    found = SchemaResultStore(DESTINATION, run).search(fingerprint=result.fingerprint, completed_after=cutoff, limit=20)
     assert found == (_kept(result),)
     assert len(statements) == 1
     statement, params = statements[-1]
@@ -39,7 +39,7 @@ def test_search_without_a_fingerprint_lists_every_completed_result():
     def run(statement, params=None):
         statements.append((statement, params))
         return []
-    assert DeltaResultStore(DESTINATION, run).search() == ()
+    assert SchemaResultStore(DESTINATION, run).search() == ()
     [(statement, params)] = statements
     assert "cql_fingerprint'] =" not in statement and "current_user" not in statement
     assert params == {"schema": DESTINATION[1], "format": "cql-catalog-result-v3", "state": "complete"}
@@ -50,7 +50,7 @@ def test_search_without_a_fingerprint_lists_every_completed_result():
 def test_removed_search_filters_are_refused(removed):
     """RUN-CLIENT-RESULT-IDENTITY — these are no longer recorded on a result, so they cannot filter one."""
     with pytest.raises(TypeError, match=removed):
-        DeltaResultStore(DESTINATION, lambda *args: []).search(**{removed: "synthetic"})
+        SchemaResultStore(DESTINATION, lambda *args: []).search(**{removed: "synthetic"})
 
 
 def test_inconsistent_search_rows_are_rejected():
@@ -61,4 +61,4 @@ def test_inconsistent_search_rows_are_rejected():
         return [{"catalog_name": other.table[0], "schema_name": other.table[1], "table_name": other.table[2],
                  "tags_json": json.dumps(other.tags())}]
     with pytest.raises(ValueError, match="inconsistent"):
-        DeltaResultStore(DESTINATION, run).search(fingerprint=result.fingerprint)
+        SchemaResultStore(DESTINATION, run).search(fingerprint=result.fingerprint)

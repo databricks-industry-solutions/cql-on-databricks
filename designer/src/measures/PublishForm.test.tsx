@@ -20,7 +20,7 @@ beforeEach(() => {
 
 describe("DOC-PUBLISH PublishForm", () => {
   it("publishes the open folder library into the picked environment, and lists each library's outcome", async () => {
-    publishLibrary.mockResolvedValue({ kind: "published", summary: { store: "k.knowledge_store",
+    publishLibrary.mockResolvedValue({ kind: "published", summary: { store: "k.knowledge",
       libraries: [lib("Shared", "unchanged"), lib("Screening", "published")] } });
     render(<PublishForm definition={DEFINITION} environmentName="Example" onClose={() => {}} />);
     expect(screen.getByRole("dialog", { name: "Publish Screening" })).toHaveTextContent("into Example");
@@ -35,7 +35,7 @@ describe("DOC-PUBLISH PublishForm", () => {
 
   it("says nothing was published, and why each library was refused", async () => {
     publishLibrary.mockResolvedValue({ kind: "refused", error: "Shared does not compile",
-      summary: { store: "k.knowledge_store", libraries: [lib("Shared", "refused", ["Syntax error at 2:9"]),
+      summary: { store: "k.knowledge", libraries: [lib("Shared", "refused", ["Syntax error at 2:9"]),
                                                          lib("Screening", "not written")] } });
     render(<PublishForm definition={DEFINITION} environmentName="Example" onClose={() => {}} />);
     fireEvent.click(screen.getByRole("button", { name: "Publish" }));
