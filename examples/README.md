@@ -13,8 +13,8 @@ data/         a FHIR NDJSON dataset of 4,000 synthetic patients
 ```
 
 The deploy loads all three into the default environment, as tables and as files in its `files` volumes
-(`CONTENT-EXAMPLE-PRELOAD`). Only `measures/` is also published beside the notebooks, which read it as a workspace
-folder of libraries (`SVC-EXAMPLE-KNOWLEDGE`).
+(`CONTENT-EXAMPLE-PRELOAD`). Only the `.cql` libraries in `measures/` are also published beside the notebooks, which read them as a
+workspace folder of libraries (`SVC-EXAMPLE-KNOWLEDGE`).
 
 ## measures/
 

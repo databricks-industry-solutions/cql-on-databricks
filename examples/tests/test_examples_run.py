@@ -41,11 +41,12 @@ EXAMPLES_DIR = pathlib.Path(__file__).resolve().parents[1]
 # one markdown cell with nothing to run, and is the one source notebook. Each example is in its group's folder.
 NOTEBOOKS = sorted(p.relative_to(EXAMPLES_DIR).as_posix() for p in EXAMPLES_DIR.glob("*/*.ipynb"))
 
-# The content directory the notebooks read (SVC-EXAMPLE-KNOWLEDGE). The notebooks derive its path from their OWN
-# notebook location, one folder up, so it must be staged beside their group folders in the temp folder — exactly as
-# `scripts/deploy/publish-examples.sh` lands it in /Shared. Staging the notebooks alone would
-# fail every notebook that reads it, which is the correct failure but a useless test.
-CONTENT_DIRS = ("measures",)
+# The libraries the notebooks read (SVC-EXAMPLE-KNOWLEDGE): the `.cql` files of `examples/measures`, and nothing else
+# from it. The notebooks derive the folder's path from their OWN notebook location, one folder up, so it must be
+# staged beside their group folders in the temp folder — the same files `scripts/deploy/publish-examples.sh` lands in
+# /Shared. Staging the notebooks alone would fail every notebook that reads it, which is the correct failure but a
+# useless test.
+LIBRARIES = sorted((EXAMPLES_DIR / "measures").glob("*.cql"))
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("CQL_DATABRICKS_LIVE", "").strip().lower() not in {"1", "true", "yes", "on"},
@@ -67,20 +68,15 @@ def dest_dir(ws):
     path = f"/Users/{me}/_cql_databricks_nb_test"
     ws.workspace.mkdirs(path)
 
-    # Stage the content directories beside where the notebooks will land, preserving each tree. AUTO
-    # format keeps every file byte-identical as a workspace FILE, which is what a notebook's plain
-    # open() reads.
-    for d in CONTENT_DIRS:
-        root = EXAMPLES_DIR / d
-        for f in sorted(p for p in root.rglob("*") if p.is_file()):
-            rel = f.relative_to(root)
-            sub = rel.parent.as_posix()
-            ws.workspace.mkdirs(f"{path}/{d}/{sub}" if sub != "." else f"{path}/{d}")
-            ws.workspace.import_(
-                path=f"{path}/{d}/{rel.as_posix()}",
-                content=base64.b64encode(f.read_bytes()).decode(),
-                format=workspace.ImportFormat.AUTO,
-                overwrite=True)
+    # Stage the libraries beside where the notebooks will land. AUTO format keeps every file byte-identical as a
+    # workspace FILE, which is what a notebook's plain open() reads.
+    ws.workspace.mkdirs(f"{path}/measures")
+    for f in LIBRARIES:
+        ws.workspace.import_(
+            path=f"{path}/measures/{f.name}",
+            content=base64.b64encode(f.read_bytes()).decode(),
+            format=workspace.ImportFormat.AUTO,
+            overwrite=True)
 
     yield path
     try:
