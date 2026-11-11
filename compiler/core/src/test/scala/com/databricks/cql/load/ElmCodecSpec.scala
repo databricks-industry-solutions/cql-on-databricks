@@ -101,6 +101,20 @@ class ElmCodecSpec extends AnyFunSuite {
     }
   }
 
+  test("ELM string operators load as modeled nodes and round-trip (LANG-STRING)") {
+    def lib(expr: String) =
+      s"""{"library":{"identifier":{"id":"A","version":"1"},"statements":{"def":[
+         |  {"type":"ExpressionDef","name":"X","context":"Unfiltered","expression":$expr}]}}}""".stripMargin
+    val s = """{"type":"Literal","valueType":"{urn:hl7-org:elm-types:r1}String","value":"abc"}"""
+    Seq(s"""{"type":"Upper","operand":$s}""", s"""{"type":"Lower","operand":$s}""",
+        s"""{"type":"Length","operand":$s}""", s"""{"type":"StartsWith","operand":[$s,$s]}""",
+        s"""{"type":"EndsWith","operand":[$s,$s]}""").foreach { expr =>
+      val ir = ElmCodec.loadString(lib(expr))
+      assert(ir.collect { case u: UnknownExpr => u.elmType }.isEmpty, s"$expr loads as UnknownExpr")
+      assert(ElmCodec.loadString(ElmCodec.emitString(ir)) == ir)
+    }
+  }
+
   test("ELM IdentifierRef loads as IdentifierRef and round-trips") {
     val elm =
       """{"library":{"identifier":{"id":"R","version":"1"},
