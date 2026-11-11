@@ -1112,6 +1112,7 @@ object SqlColumnLowering {
       // String operators (LANG-STRING), each to the matching Spark function.
       case Upper(o)         => Call("upper", Seq(go(o)))             // CQL Reference, String Operators, Upper
       case Lower(o)         => Call("lower", Seq(go(o)))             // CQL Reference, String Operators, Lower
+      case Length(o) if isList(o) => throw UnsupportedNode("Length", "only Length of a String is supported")
       case Length(o)        => Call("length", Seq(go(o)))            // CQL Reference, String Operators, Length
       case StartsWith(s, p) => Call("startswith", Seq(go(s), go(p))) // CQL Reference, String Operators, StartsWith
       case EndsWith(s, x)   => Call("endswith", Seq(go(s), go(x)))   // CQL Reference, String Operators, EndsWith
