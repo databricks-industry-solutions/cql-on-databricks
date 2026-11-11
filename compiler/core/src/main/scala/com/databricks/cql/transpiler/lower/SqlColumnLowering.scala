@@ -1109,11 +1109,14 @@ object SqlColumnLowering {
           case _ => throw UnsupportedNode("Split", "only a constant string separator is supported")
         }
         Call("split", Seq(go(s), str(pattern)))
-      // String operators (LANG-STRING), each to the matching Spark function.
+      // String operators (LANG-STRING). All but Length are the matching Spark function.
       case Upper(o)         => Call("upper", Seq(go(o)))             // CQL Reference, String Operators, Upper
       case Lower(o)         => Call("lower", Seq(go(o)))             // CQL Reference, String Operators, Lower
       case Length(o) if isList(o) => throw UnsupportedNode("Length", "only Length of a String is supported")
-      case Length(o)        => Call("length", Seq(go(o)))            // CQL Reference, String Operators, Length
+      // CQL Reference, String Operators, Length. The Java CQF reference counts UTF-16 code units, so a character
+      // outside the Basic Multilingual Plane counts 2. Spark `length` counts code points, so halve the UTF-16 bytes.
+      case Length(o) =>
+        Cast(Infix("div", Call("octet_length", Seq(Call("encode", Seq(go(o), str("UTF-16BE"))))), int(2)), "INT")
       case StartsWith(s, p) => Call("startswith", Seq(go(s), go(p))) // CQL Reference, String Operators, StartsWith
       case EndsWith(s, x)   => Call("endswith", Seq(go(s), go(x)))   // CQL Reference, String Operators, EndsWith
       case Indexer(list, ix) => Call("get", Seq(go(list), go(ix)))
