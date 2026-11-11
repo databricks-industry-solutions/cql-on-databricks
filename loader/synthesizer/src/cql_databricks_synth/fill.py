@@ -45,7 +45,8 @@ _UCUM = "http://unitsofmeasure.org"
 _ENCOUNTER_DURATION = dt.timedelta(hours=1)
 
 #: The element that names the patient, where FHIR R4 does not call it ``subject``.
-PATIENT_REFERENCE = {"Immunization": "patient", "Coverage": "beneficiary"}
+PATIENT_REFERENCE = {"Immunization": "patient", "Coverage": "beneficiary",
+                     "AllergyIntolerance": "patient", "Device": "patient"}
 
 #: Temporal elements that are a plain dateTime, not a ``[x]`` choice, on the generic template.
 _PLAIN_TEMPORAL = frozenset({"authoredOn", "issued", "recordedDate", "dateWritten", "recorded"})
