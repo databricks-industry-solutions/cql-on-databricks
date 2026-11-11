@@ -222,10 +222,10 @@ environment (Developer's Guide, Libraries).
 ## 13. Strings — `LANG-STRING`
 
 The CQL string operators follow the CQL Reference, String Operators, operator by operator, including its null
-rules. `Upper`, `Lower`, `Length` of a string, `StartsWith` and `EndsWith` lower to Spark's `upper`, `lower`,
-`length`, `startswith` and `endswith`, and each is null when an operand is null, matching the CQF reference.
-`&` treats a null operand as the empty string, and `+` on strings returns null when either operand is null.
-Indexes are zero-based.
+rules. `Upper`, `Lower`, `Length` of a string, `StartsWith` and `EndsWith` are each null when an operand is
+null, matching the CQF reference. `Length` counts UTF-16 code units, as the reference does, so a character
+outside the Basic Multilingual Plane counts 2. `&` treats a null operand as the empty string, and `+` on strings
+returns null when either operand is null. Indexes are zero-based.
 
 Not built: `Substring`, `PositionOf` and concatenation with `&` or `+` fail at Normalize (`UnknownExpr`), loudly.
 `Length` of a list fails at lowering (`UnsupportedNode`).
