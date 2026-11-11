@@ -1,16 +1,21 @@
 library Strings version '1.0.0'
 
 // The CQL string operators (LANG-STRING), each on ordinary input, the empty string and null. The Java CQF
-// reference decides each operator's null and edge behaviour, including Length of a character outside the
-// Basic Multilingual Plane.
+// reference decides each operator's null and edge behaviour: Upper and Lower outside ASCII, and Length of a
+// character outside the Basic Multilingual Plane.
 
 define "UpperOrdinary": Upper('Hello World')
 define "UpperEmpty": Upper('')
 define "UpperNull": Upper(null as String)
+define "UpperSharpS": Upper('straße')
+define "UpperLigature": Upper('ﬁ')
 
 define "LowerOrdinary": Lower('Hello World')
 define "LowerEmpty": Lower('')
 define "LowerNull": Lower(null as String)
+define "LowerAccented": Lower('É')
+define "LowerDottedCapitalI": Lower('İ')
+define "LowerFinalSigma": Lower('ΟΔΟΣ')
 
 define "LengthOrdinary": Length('Hello World')
 define "LengthEmpty": Length('')
