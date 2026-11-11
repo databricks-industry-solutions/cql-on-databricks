@@ -12,8 +12,8 @@ Fill invariants the solver's slot algebra relies on (see solve.py):
 - Choice elements are point-valued (onsetDateTime / effectiveDateTime /
   performedDateTime), so temporal boundary helpers collapse to the point.
 - Vital-sign-profile observations always carry BOTH component values.
-- A resource names its patient in the element FHIR R4 gives it: ``subject``, or ``patient`` on Immunization and
-  ``beneficiary`` on Coverage.
+- A resource names its patient in the element FHIR R4 gives it: ``subject``, or ``patient`` on
+  AllergyIntolerance, Device and Immunization, and ``beneficiary`` on Coverage.
 
 Every resource is tagged synthetic — ``meta.security`` HTEST plus a generator-version
 ``meta.tag`` (SYNTH-PDS-SYNTHETIC-TAG) — so generated data can never pass as real.
@@ -44,8 +44,9 @@ _UCUM = "http://unitsofmeasure.org"
 
 _ENCOUNTER_DURATION = dt.timedelta(hours=1)
 
-#: The element that names the patient, where FHIR R4 does not call it ``subject``.
-PATIENT_REFERENCE = {"Immunization": "patient", "Coverage": "beneficiary"}
+#: The element that names the patient, where FHIR R4 does not call it ``subject`` (SYNTH-MODULE).
+PATIENT_REFERENCE = {"Immunization": "patient", "Coverage": "beneficiary",
+                     "AllergyIntolerance": "patient", "Device": "patient"}
 
 #: Temporal elements that are a plain dateTime, not a ``[x]`` choice, on the generic template.
 _PLAIN_TEMPORAL = frozenset({"authoredOn", "issued", "recordedDate", "dateWritten", "recorded"})
