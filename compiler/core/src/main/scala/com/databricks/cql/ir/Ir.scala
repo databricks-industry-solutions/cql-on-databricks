@@ -484,6 +484,23 @@ final case class Split(stringToSplit: Expr, separator: Expr) extends BinaryExpr 
   val elmType = "Split"; def left = stringToSplit; def right = separator
   protected def rebuild(l: Expr, r: Expr) = Split(l, r)
 }
+/** The CQL string operators (LANG-STRING; CQL Reference, String Operators). `Upper`, `Lower` and `Length` take
+  * one string; `StartsWith` and `EndsWith` take the string and then its prefix or suffix. */
+final case class Upper(operand: Expr) extends UnaryExpr {
+  val elmType = "Upper"; protected def rebuild(o: Expr) = Upper(o)
+}
+final case class Lower(operand: Expr) extends UnaryExpr {
+  val elmType = "Lower"; protected def rebuild(o: Expr) = Lower(o)
+}
+final case class Length(operand: Expr) extends UnaryExpr {
+  val elmType = "Length"; protected def rebuild(o: Expr) = Length(o)
+}
+final case class StartsWith(left: Expr, right: Expr) extends BinaryExpr {
+  val elmType = "StartsWith"; protected def rebuild(l: Expr, r: Expr) = StartsWith(l, r)
+}
+final case class EndsWith(left: Expr, right: Expr) extends BinaryExpr {
+  val elmType = "EndsWith"; protected def rebuild(l: Expr, r: Expr) = EndsWith(l, r)
+}
 /** ELM `In` — list membership `element in list` (3VL: null element -> null). */
 final case class In(element: Expr, list: Expr) extends BinaryExpr {
   val elmType = "In"; def left = element; def right = list

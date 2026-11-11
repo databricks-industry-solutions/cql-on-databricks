@@ -1109,6 +1109,12 @@ object SqlColumnLowering {
           case _ => throw UnsupportedNode("Split", "only a constant string separator is supported")
         }
         Call("split", Seq(go(s), str(pattern)))
+      // String operators (LANG-STRING), each to the matching Spark function.
+      case Upper(o)         => Call("upper", Seq(go(o)))             // CQL Reference, String Operators, Upper
+      case Lower(o)         => Call("lower", Seq(go(o)))             // CQL Reference, String Operators, Lower
+      case Length(o)        => Call("length", Seq(go(o)))            // CQL Reference, String Operators, Length
+      case StartsWith(s, p) => Call("startswith", Seq(go(s), go(p))) // CQL Reference, String Operators, StartsWith
+      case EndsWith(s, x)   => Call("endswith", Seq(go(s), go(x)))   // CQL Reference, String Operators, EndsWith
       case Indexer(list, ix) => Call("get", Seq(go(list), go(ix)))
       case In(point, iv) if isInterval(iv) =>
         val dm = ivIsDate(iv)
