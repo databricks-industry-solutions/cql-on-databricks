@@ -9,8 +9,8 @@ orchestrator or a state layer.
 because a 200 is cacheable and a plain reload re-served the empty list. `library_data_requirements` answers
 500 with the reason, so the section says why it is missing and the document around it still renders.
 
-**Knowledge is read-only here**, except through Publish (`DOC-PUBLISH`). An environment is declared by tagging its
-catalog, not by a record this App stores, so there is nothing to create, edit or delete.
+**Knowledge is read-only here**: nothing in the Designer writes an environment's knowledge. An environment is
+declared by tagging its catalog, not by a record this App stores, so there is nothing to create, edit or delete.
 
 RUN-ADDRESS-LOCATION, DOC-OPEN-SAVE — every library read takes an optional ``location``: the environment's knowledge
 (``store:<catalog>.knowledge``) or a folder (``folder:<path>``). A folder is read through the Workspace API as the
@@ -139,7 +139,7 @@ def router(*, contents: EnvironmentContents) -> APIRouter:
 
     @router.post("/api/knowledge/reload")
     def reload_knowledge() -> dict[str, Any]:
-        """KNOWLEDGE-LAKE-DIRECT — forget every held environment and corpus: newly published or tagged content
+        """KNOWLEDGE-LAKE-DIRECT — forget every held environment and corpus: content newly written or tagged
         appears after this (or a restart), never silently."""
         contents.reload()
         return {"ok": True}

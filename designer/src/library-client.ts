@@ -613,34 +613,6 @@ export async function saveLibrary(body: SaveBody): Promise<SaveOutcome> {
   return { kind: "refused", error };
 }
 
-/** DOC-PUBLISH — what publishing did with each library, dependencies first, the one published last
- *  (`CLIENT-PUBLISH`). */
-export interface PublishSummary {
-  store: string;
-  libraries: { name: string; version: string; url: string;
-               outcome: "published" | "unchanged" | "refused" | "not written"; detail: string[] }[];
-}
-
-/** `refused` wrote nothing; `failed` wrote the libraries the summary marks published, then stopped. */
-export type PublishOutcome =
-  | { kind: "published"; summary: PublishSummary }
-  | { kind: "refused" | "failed"; error: string; summary: PublishSummary | null };
-
-/** DOC-PUBLISH — publish the folder library at `location` into the picked environment's knowledge store, as the
- *  signed-in user (`DOC-ENVIRONMENT-PICKER`). */
-export async function publishLibrary(body: { location: string; name: string; version: string }):
-    Promise<PublishOutcome> {
-  // `mutate`: publishing moves the server's revision, which must clear what the page cached from the store.
-  const res = await mutate("/api/libraries/publish", {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ ...body, environment: currentEnvironment() }),
-  });
-  const answer = await res.json().catch(() => ({})) as Record<string, unknown>;
-  if (res.ok) return { kind: "published", summary: answer as unknown as PublishSummary };
-  return { kind: res.status === 400 ? "refused" : "failed", error: String(answer.error ?? `publish failed: ${res.status}`),
-           summary: (answer.summary as PublishSummary | null) ?? null };
-}
-
 /** DOC-OPEN-SAVE — New and Save As: create a library at `location`. New starts from the server's starting CQL
  *  (a measure gets a starting `Measure`); Save As sends the open library as `copyOf` and its CQL as edited. */
 export interface NewBody {

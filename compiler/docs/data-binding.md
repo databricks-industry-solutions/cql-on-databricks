@@ -220,8 +220,9 @@ result's fingerprint covers (`CLIENT-RESOLVER-IDENTITY`). `runtime.schema` quali
 ## Value sets — `BIND-CALL-SITE`
 
 A terminology rule or site entry is a list of relations of `(valueset_id, version, system, code)` rows, in
-precedence order. A membership test reads its set from the first relation that holds it,
-`WHERE valueset_id = '<id>'`, and lowers to a semi-join against it (`SqlQueryLowering.membershipSemiJoin`). So an
+precedence order. `version` is FHIR `ValueSet.version`. A membership test reads its set from the first relation that
+holds it, `WHERE valueset_id = '<id>'`, then the one version it needs (`LANG-VALUESET-VERSION`), and lowers to a
+semi-join against it (`SqlQueryLowering.membershipSemiJoin`). So an
 `Overlay` of a development terminology over a published one replaces a value set rather than merging it
 (`CLIENT-RESOLVER-OVERLAY`). A membership test with no terminology fails rather than emit a wrong plan
 (`CORE-NO-SILENT-MISLOWER`).

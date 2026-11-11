@@ -26,7 +26,9 @@ changed (load time, commit time, `meta.lastUpdated`), never a clinical date. Del
 ## Value sets and knowledge
 
 Value-set expansions are the environment's `knowledge.valueset`, and libraries its `knowledge.library` and
-`knowledge.measure`. The import (`CONTENT-IMPORT-MEASURES`) and publishing write those tables.
+`knowledge.measure`. The deploy writes those tables for the default environment, and otherwise whoever the implementer
+grants; nothing in the client writes them (`DEC-NO-CONTENT-PUBLISHING`). A user's own measures and value sets are
+files in a folder, imported with `CONTENT-IMPORT-MEASURES` and read with the folder resolvers.
 
 ## Environments this repository ships
 

@@ -85,20 +85,42 @@ for f in "$src"/*.png; do
     ${profile_args[@]+"${profile_args[@]}"}
 done
 
-# The content directory (SVC-EXAMPLE-KNOWLEDGE): the CQL measures the notebooks point `library_path` at, a workspace
-# folder of libraries. It has to land BESIDE the notebooks, because a notebook derives the path from its own
-# notebook location rather than from a configured root — the same reason the masthead above cannot live anywhere
-# central. The patients and value sets are the default environment's, as tables and as files in its volumes
-# (DEPLOY-DEFAULT-ENVIRONMENT), so they are not published here.
+# The example libraries (SVC-EXAMPLE-KNOWLEDGE): the `.cql` files in `examples/measures`, and nothing else from it —
+# the same files the deploy writes to the default environment's knowledge volume, under `libraries/`
+# (DEPLOY-DEFAULT-ENVIRONMENT). The notebooks read them as a workspace folder of libraries. They have to land BESIDE
+# the notebooks, because a notebook derives the path from its own notebook location rather than from a configured
+# root — the same reason the masthead above cannot live anywhere central. The `.measure.json` and `.synth.json`
+# files beside them are for the deploy's tables and the synthesizer, which read them from the repository.
 #
-# `import-dir` walks the tree, so the directory's structure is preserved. A `.cql` or `.json` file has no notebook
-# header, so it imports as a workspace FILE and stays byte-identical — which is what makes it readable with a plain
-# open() from a notebook via /Workspace.
-for d in measures; do
-  [ -d "$src/$d" ] || { echo "!!! missing content directory $src/$d — the notebooks cannot run without it"; exit 1; }
-  echo "==> publishing content -> $shared_root/$d"
-  databricks workspace import-dir "$src/$d" "$shared_root/$d" --overwrite \
+# A `.cql` file has no notebook header, so `--format AUTO` imports it as a workspace FILE, byte-identical — which is
+# what makes it readable with a plain open() from a notebook via /Workspace.
+measures="$shared_root/measures"
+libraries=("$src"/measures/*.cql)
+[ -e "${libraries[0]}" ] || { echo "!!! no CQL library in $src/measures — the notebooks cannot run without them"; exit 1; }
+echo "==> publishing ${#libraries[@]} libraries -> $measures"
+databricks workspace mkdirs "$measures" ${profile_args[@]+"${profile_args[@]}"}
+for f in "${libraries[@]}"; do
+  echo "    -> $measures/$(basename "$f")"
+  databricks workspace import "$measures/$(basename "$f")" --file "$f" --format AUTO --overwrite \
     ${profile_args[@]+"${profile_args[@]}"}
 done
+# Then everything else in the folder is removed. `--overwrite` never deletes, so a file an earlier publish left there
+# would stay beside the libraries; the folder holds exactly what this publish wrote.
+keep="$(for f in "${libraries[@]}"; do basename "$f"; done)"
+databricks workspace list "$measures" -o json ${profile_args[@]+"${profile_args[@]}"} \
+  | KEEP="$keep" python3 -c '
+import json, os, sys
+keep = set(os.environ["KEEP"].split("\n"))
+for entry in json.loads(sys.stdin.read() or "[]") or []:
+    if entry["path"].rsplit("/", 1)[-1] not in keep:
+        print(entry.get("object_type", ""), entry["path"])' \
+  | while read -r kind path; do
+      echo "    x  $path"
+      if [ "$kind" = DIRECTORY ]; then
+        databricks workspace delete "$path" --recursive ${profile_args[@]+"${profile_args[@]}"}
+      else
+        databricks workspace delete "$path" ${profile_args[@]+"${profile_args[@]}"}
+      fi
+    done
 
 echo "==> done. Examples published at $shared_root (readable + runnable by every workspace user)."

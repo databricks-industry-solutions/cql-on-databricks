@@ -1,10 +1,10 @@
 """CLIENT-KNOWLEDGE-RESOLVER: the knowledge resolvers the client ships, and the one closure walk over them.
 
-| Resolver | Holds | A store |
-|---|---|---|
-| :class:`CellsKnowledgeResolver` | the libraries ``%%cql`` cells declared in this Spark session (`SVC-NOTEBOOK-CELL-LIBRARY`) | no |
-| :class:`FolderKnowledgeResolver` | every library in a ``/Workspace`` or ``/Volumes`` folder, at any depth (`RUN-ADDRESS-LOCATION`) | no |
-| :class:`TableKnowledgeResolver` | an environment's ``knowledge`` views (`CLIENT-ENVIRONMENT`) | yes, given its store |
+| Resolver | Holds |
+|---|---|
+| :class:`CellsKnowledgeResolver` | the libraries ``%%cql`` cells declared in this Spark session (`SVC-NOTEBOOK-CELL-LIBRARY`) |
+| :class:`FolderKnowledgeResolver` | every library in a ``/Workspace`` or ``/Volumes`` folder, at any depth (`RUN-ADDRESS-LOCATION`) |
+| :class:`TableKnowledgeResolver` | an environment's ``knowledge`` tables (`CLIENT-ENVIRONMENT`) |
 
 A resolver only answers lookups. The include closure is walked in one place, :func:`library_provider`, which turns a
 resolver, or an ``Overlay`` chain of them (`CLIENT-RESOLVER-OVERLAY`), into the client core's
@@ -18,12 +18,11 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
 from typing import Any
 
 from cql_databricks.compiler.libraries import (FileLibraryProvider, LibraryFiles, LibraryProvider, LibraryRef,
                                                LibraryResolutionError, LibrarySource, LocalLibraryFiles, includes_of)
-from .interfaces import IncludeSite, KnowledgeResolver, KnowledgeStore, Overlay
+from .interfaces import IncludeSite, KnowledgeResolver, Overlay
 
 
 class CellsKnowledgeResolver(KnowledgeResolver):
@@ -90,32 +89,14 @@ class FolderKnowledgeResolver(KnowledgeResolver):
         return self.provider.search()
 
 
-@dataclass(frozen=True, kw_only=True)
-class FolderClosure:
-    """What :meth:`TableKnowledgeResolver.publish` writes: library ``name`` ``version`` in ``folder``, with the folder
-    includes that changed (`CLIENT-PUBLISH`). ``translate`` compiles each; ``base`` is the canonical base for a
-    library whose folder has no ``Library`` URL."""
-    folder: str
-    name: str
-    version: str
-    files: LibraryFiles
-    translate: Callable
-    base: str
-
-
-class TableKnowledgeResolver(KnowledgeStore):
+class TableKnowledgeResolver(KnowledgeResolver):
     """CLIENT-KNOWLEDGE-RESOLVER: an environment's knowledge, read through ``content`` (a
-    :class:`~cql_databricks.data_bindings.ContentResolver` over the environment, `CLIENT-ENVIRONMENT`). With
-    ``schema``, ``(catalog, schema)``, it is a store: :meth:`publish` writes the schema's ``library`` and ``measure``
-    tables through ``run``, as ``run``'s identity (`BIND-PUBLISHED-VIEW`)."""
+    :class:`~cql_databricks.data_bindings.ContentResolver` over the environment, `CLIENT-ENVIRONMENT`). It only reads
+    (`DEC-NO-CONTENT-PUBLISHING`)."""
 
-    def __init__(self, content: Callable[[], Any], *, schema: tuple[str, str] | None = None, run=None) -> None:
-        if schema is not None and run is None:
-            raise ValueError("a knowledge store is written through a SQL runner: pass run=")
+    def __init__(self, content: Callable[[], Any]) -> None:
         self._content_factory = content
         self._content = None
-        self.schema = tuple(schema) if schema else None
-        self._run = run
 
     @property
     def content(self):
@@ -152,16 +133,6 @@ class TableKnowledgeResolver(KnowledgeStore):
                 seen.add((lib.name, lib.version))
                 out.append(LibraryRef(lib.name, lib.version))
         return out
-
-    def publish(self, closure: FolderClosure):
-        """CLIENT-PUBLISH: write ``closure``'s library, and the folder includes that changed, into this store."""
-        from cql_databricks.compiler.library_publish import publish_folder_library
-
-        if self.schema is None:
-            raise ValueError("publish needs a schema to write: TableKnowledgeResolver(content, schema=..., run=...)")
-        return publish_folder_library(self.content, closure.files, closure.folder, closure.name, closure.version,
-                                      schema=self.schema, run=self._run, translate=closure.translate,
-                                      base=closure.base)
 
 
 def library_provider(source: KnowledgeResolver) -> LibraryProvider:

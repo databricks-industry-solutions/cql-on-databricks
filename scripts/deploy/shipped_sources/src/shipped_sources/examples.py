@@ -111,13 +111,14 @@ def read_examples(examples: Path) -> ExampleContent:
 
 
 def import_example_measures(spark, *, catalog: str, examples: Path) -> dict[str, int]:
-    """CONTENT-IMPORT-MEASURES — the example measures and their value sets into the knowledge of the environment in
-    ``catalog``, through the one import path. Returns row counts."""
-    from cql_databricks.data_bindings.measure_import import import_measures
+    """CONTENT-EXAMPLE-PRELOAD, DEPLOY-DEFAULT-ENVIRONMENT — the example measures and their value sets into the
+    knowledge tables of the environment in ``catalog``, checked as the import checks (``knowledge_tables``). Returns
+    row counts."""
+    from .knowledge_tables import load_knowledge
 
     content = read_examples(examples)
-    return dict(import_measures(spark, content.resources, codes=content.codes, catalog=catalog,
-                                source=SOURCE_PACKAGE, lineage=SOURCE_LINEAGE).rows)
+    return dict(load_knowledge(spark, content.resources, codes=content.codes, catalog=catalog,
+                               source=SOURCE_PACKAGE, lineage=SOURCE_LINEAGE))
 
 
 def load_examples(spark, *, catalog: str, examples: Path, valid_from: str, valid_to: str) -> dict[str, int]:

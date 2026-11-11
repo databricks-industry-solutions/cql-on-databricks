@@ -1,13 +1,14 @@
-"""CONTENT-IMPORT-MEASURES — the one import path: what it reads, what it refuses, what it writes. No Spark, no
-network: the content is made up here, and Spark is a fake that records what it is asked."""
+"""CONTENT-IMPORT-MEASURES — the one import path: what it reads, what it refuses, what it writes into the caller's
+folder. No Spark, no network: the content is made up here, and the folder is a temporary one."""
 from __future__ import annotations
 
 import base64
+import json
 
 import pytest
 
-from cql_databricks.data_bindings.measure_import.measures import (ImportContentError, declared_valuesets, flatten, import_measures,
-                                     valueset_codes)
+from cql_databricks.data_bindings.measure_import.measures import (ImportContentError, check_import, declared_valuesets,
+                                                                  flatten, import_measures, valueset_codes)
 
 BASE = "http://example.org/fhir"
 CQL = ("library Visits version '1.0.0'\nusing FHIR version '4.0.1'\n"
@@ -24,40 +25,6 @@ VALUESET = {"resourceType": "ValueSet", "url": f"{BASE}/ValueSet/office-visit", 
                  "contains": [{"system": "http://example.org/codes", "code": "b"}]}]}}
 
 
-class _FakeSpark:
-    """Tables that exist, with the rows a ``SELECT DISTINCT`` returns; records every statement."""
-
-    def __init__(self, tables: dict[str, list[str]] | None = None):
-        self.tables = tables or {}
-        self.statements: list[str] = []
-        self.catalog = self
-
-    def tableExists(self, fqtn: str) -> bool:
-        return fqtn in self.tables
-
-    def sql(self, statement: str):
-        self.statements.append(statement)
-        fqtn = statement.rsplit(" FROM ", 1)[-1]
-        return type("Rows", (), {"collect": lambda _self: [(v,) for v in self.tables.get(fqtn, [])]})()
-
-
-@pytest.fixture
-def writes(monkeypatch):
-    """Stand in for the Spark writers; records what would be written."""
-    from cql_databricks.data_bindings.measure_import import load as load_module
-
-    seen: dict = {}
-
-    def fake_load(spark, result, *, catalog, authority_schema, valueset_schema):
-        seen["load"] = (result, catalog, authority_schema, valueset_schema)
-        return {"measure": len(result.measures), "library": len(result.libraries),
-                "valueset": len(result.valueset_expansions)}
-
-    monkeypatch.setattr(load_module, "load", fake_load)
-    monkeypatch.setattr(load_module, "ensure_valueset_table", lambda spark, **kw: seen.setdefault("ensure", kw))
-    return seen
-
-
 def test_bundles_are_flattened_at_any_depth():
     inner = {"resourceType": "Bundle", "entry": [{"resource": VALUESET}]}
     outer = {"resourceType": "Bundle", "entry": [{"resource": MEASURE}, {"resource": inner}, {"fullUrl": "x"}]}
@@ -65,9 +32,11 @@ def test_bundles_are_flattened_at_any_depth():
 
 
 def test_an_expansion_gives_its_codes_and_skips_abstract_groups():
+    """LANG-VALUESET-VERSION — the rows carry the ValueSet's version, which a CQL declaration pins, not the expansion's
+    timestamp."""
     rows = valueset_codes(VALUESET, source="s", now="t")
     assert [(r.code, r.display) for r in rows] == [("a", "A"), ("b", None)]
-    assert {(r.valueset_id, r.version, r.source_package) for r in rows} == {(VALUESET["url"], "2026-10-01", "s")}
+    assert {(r.valueset_id, r.version, r.source_package) for r in rows} == {(VALUESET["url"], "2", "s")}
 
 
 def test_a_compose_that_lists_concepts_is_its_codes():
@@ -92,53 +61,89 @@ def test_a_library_declares_its_value_sets_in_cql_requirements_and_dependencies(
                                        f"{BASE}/ValueSet/dep"}
 
 
-def test_an_import_writes_the_environments_knowledge(writes):
-    """CONTENT-IMPORT-MEASURES, DATA-ENVIRONMENT-LAYOUT — knowledge, value sets too; nothing is tagged."""
-    summary = import_measures(_FakeSpark(), [MEASURE, LIBRARY, VALUESET, {"resourceType": "Patient"}],
-                              catalog="main", source="pkg")
-    result, catalog, schema, valuesets = writes["load"]
-    assert (catalog, schema, valuesets) == ("main", "knowledge", "knowledge")
-    assert summary.rows == {"measure": 1, "library": 1, "valueset": 2}
-    assert summary.skipped == {"Patient": 1}
-    assert summary.knowledge == "main.knowledge"
+def test_an_import_writes_the_folder_layout_the_folder_resolvers_read(tmp_path):
+    """CONTENT-IMPORT-MEASURES, DEC-NO-CONTENT-PUBLISHING — files in the caller's folder, never a table."""
+    summary = import_measures([MEASURE, LIBRARY, VALUESET, {"resourceType": "Patient"}], folder=str(tmp_path))
+    written = sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*") if p.is_file())
+    assert written == ["libraries/Visits.cql", "resources/library-Visits-1.0.0.json",
+                       "resources/measure-Visits-1.0.0.json", "valuesets/office-visit-2.json"]
+    assert (tmp_path / "libraries" / "Visits.cql").read_text() == CQL
+    assert json.loads((tmp_path / "resources" / "measure-Visits-1.0.0.json").read_text())["url"] == MEASURE["url"]
+    valueset = json.loads((tmp_path / "valuesets" / "office-visit-2.json").read_text())
+    assert (valueset["url"], valueset["version"]) == (VALUESET["url"], "2")
+    assert [c["code"] for c in valueset["expansion"]["contains"]] == ["a", "b"]
+    assert summary.skipped == {"Patient": 1} and len(summary.files) == 4 and summary.folder == str(tmp_path)
 
 
-def test_codes_alone_go_to_the_knowledge(writes):
+def test_what_the_import_writes_the_folder_resolvers_read(tmp_path):
+    """RUN-ADDRESS-LOCATION, CLIENT-KNOWLEDGE-RESOLVER — the library and its measure resolve from the folder."""
+    from cql_databricks.resolvers.knowledge import FolderKnowledgeResolver
+    from cql_databricks.resolvers.terminology import parse_value_set
+
+    import_measures([MEASURE, LIBRARY, VALUESET], folder=str(tmp_path))
+    folder = FolderKnowledgeResolver(str(tmp_path))
+    assert folder.library("Visits", "1.0.0").name == "Visits"
+    assert folder.measure(MEASURE["url"], "1.0.0")["url"] == MEASURE["url"]
+    path = tmp_path / "valuesets" / "office-visit-2.json"
+    assert [c.code for c in parse_value_set(json.loads(path.read_text()), str(path)).codes] == ["a", "b"]
+
+
+def test_codes_alone_become_a_value_set_file(tmp_path):
     codes = [{"valueset_id": f"{BASE}/ValueSet/office-visit", "system": "http://example.org/codes", "code": "a"}]
-    summary = import_measures(_FakeSpark(), [], codes=codes, catalog="main", source="pkg")
-    assert summary.knowledge == "main.knowledge" and summary.valuesets == [f"{BASE}/ValueSet/office-visit"]
+    summary = import_measures([], codes=codes, folder=str(tmp_path))
+    assert summary.valuesets == [f"{BASE}/ValueSet/office-visit"]
+    assert json.loads((tmp_path / "valuesets" / "office-visit.json").read_text())["expansion"]["contains"] == [
+        {"system": "http://example.org/codes", "code": "a"}]
 
 
-def test_a_dry_run_checks_and_writes_nothing(writes):
-    summary = import_measures(_FakeSpark(), [MEASURE, LIBRARY, VALUESET], catalog="main", source="pkg", dry_run=True)
-    assert summary.measures == [f"{BASE}/Measure/Visits|1.0.0"] and summary.rows == {}
-    assert "load" not in writes
+def test_a_dry_run_checks_and_writes_nothing(tmp_path):
+    summary = import_measures([MEASURE, LIBRARY, VALUESET], folder=str(tmp_path), dry_run=True)
+    assert summary.measures == [f"{BASE}/Measure/Visits|1.0.0"] and summary.files == []
+    assert not any(tmp_path.iterdir())
 
 
-def test_every_problem_is_reported_at_once_and_nothing_is_written(writes):
+def test_every_problem_is_reported_at_once_and_nothing_is_written(tmp_path):
     measure = dict(MEASURE, library=[f"{BASE}/Library/Missing"])
     bad = {"resourceType": "ValueSet", "url": f"{BASE}/ValueSet/bad", "compose": {"include": [{"valueSet": ["x"]}]}}
     with pytest.raises(ImportContentError) as e:
-        import_measures(_FakeSpark(), [measure, LIBRARY, bad], catalog="main", source="pkg")
+        import_measures([measure, LIBRARY, bad], folder=str(tmp_path))
     message = str(e.value)
     assert "Library/Missing" in message and "office-visit" in message and "ValueSet/bad" in message
-    assert "load" not in writes
+    assert not any(tmp_path.iterdir())
 
 
-def test_what_is_already_in_the_target_counts(writes):
-    """A measure may name a library, and a library a value set, loaded by an earlier import."""
-    spark = _FakeSpark({"`main`.`knowledge`.`library`": [f"{BASE}/Library/Visits"],
-                        "`main`.`knowledge`.`valueset`": [f"{BASE}/ValueSet/office-visit"]})
-    summary = import_measures(spark, [MEASURE, LIBRARY], catalog="main", source="pkg")
-    assert summary.rows["measure"] == 1
+def test_what_is_already_in_the_folder_counts(tmp_path):
+    """A measure may name a library, and a library a value set, an earlier import wrote to the folder."""
+    import_measures([LIBRARY, VALUESET], folder=str(tmp_path))
+    summary = import_measures([MEASURE], folder=str(tmp_path))
+    assert summary.measures == [f"{BASE}/Measure/Visits|1.0.0"]
 
 
-def test_nothing_to_import_fails():
+def test_a_library_file_of_another_version_is_never_overwritten(tmp_path):
+    """CONTENT-IMPORT-MEASURES — the folder's ``Visits.cql`` at 1.0.0 is not replaced by an import of 2.0.0."""
+    import_measures([LIBRARY, VALUESET], folder=str(tmp_path))
+    cql = CQL.replace("version '1.0.0'", "version '2.0.0'", 1)
+    newer = dict(LIBRARY, version="2.0.0",
+                 content=[{"contentType": "text/cql", "data": base64.b64encode(cql.encode()).decode()}])
+    with pytest.raises(ImportContentError, match="holds Visits version 1.0.0"):
+        import_measures([newer], folder=str(tmp_path))
+    assert (tmp_path / "libraries" / "Visits.cql").read_text() == CQL
+
+
+def test_two_versions_of_a_value_set_are_two_files(tmp_path):
+    """LANG-VALUESET-VERSION — each version keeps its own codes, so a pinned declaration finds its own."""
+    older = dict(VALUESET, version="1", expansion={"contains": [{"system": "http://example.org/codes", "code": "z"}]})
+    import_measures([VALUESET, older], folder=str(tmp_path))
+    assert sorted(p.name for p in (tmp_path / "valuesets").iterdir()) == ["office-visit-1.json", "office-visit-2.json"]
+
+
+def test_check_import_is_what_the_deploy_loads_its_tables_through():
+    """DEPLOY-DEFAULT-ENVIRONMENT — the check writes nothing and hands back the rows."""
+    checked = check_import([MEASURE, LIBRARY, VALUESET], source="examples", lineage="example", where="main.knowledge")
+    assert (len(checked.content.measures), len(checked.content.libraries)) == (1, 1)
+    assert {r.source_package for r in checked.content.valueset_expansions} == {"examples"}
+
+
+def test_nothing_to_import_fails(tmp_path):
     with pytest.raises(ImportContentError, match="nothing to import"):
-        import_measures(_FakeSpark(), [{"resourceType": "Patient"}], catalog="main", source="pkg")
-
-
-def test_no_catalog_fails():
-    with pytest.raises(ImportContentError, match="no catalog"):
-        import_measures(_FakeSpark(), [MEASURE], catalog="", source="pkg")
-
+        import_measures([{"resourceType": "Patient"}], folder=str(tmp_path))

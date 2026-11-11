@@ -1,25 +1,32 @@
-"""CONTENT-IMPORT-MEASURES — import quality measures into Unity Catalog. The one import path.
+"""CONTENT-IMPORT-MEASURES — import quality measures into a folder of the caller's own. The one import path.
 
 The caller hands over FHIR resources it has already read: ``Measure``, ``Library`` and ``ValueSet`` resources, or
-``Bundle``s of them, plus any value-set codes it holds as rows. This module writes them to the knowledge tables of
-the environment the caller names, ``<catalog>.knowledge`` (``DATA-ENVIRONMENT-LAYOUT``), and tags nothing: the Apps
-and ``cql(library=...)`` find the measures there (``BIND-PUBLISHED-VIEW``). Where
-the content comes from is the caller's business: nothing here reads a file or fetches anything. The deploy loads
-the content in ``examples/`` through it (``scripts/deploy/shipped_sources``), and the skill ``import-quality-measures``
-uses it for anything else (``CONTENT-IMPORT-SKILL``).
+``Bundle``s of them, plus any value-set codes it holds as rows. :func:`import_measures` writes them as files into a
+``/Volumes`` or ``/Workspace`` folder the caller names and may write, laid out the way the folder resolvers read a
+folder (`RUN-ADDRESS-LOCATION`, `CLIENT-KNOWLEDGE-RESOLVER`, `CLIENT-TERMINOLOGY-RESOLVER`):
 
-Everything is checked before anything is written, and every problem is reported at once:
+- ``libraries/<Name>.cql`` — each library's CQL;
+- ``resources/library-<Name>-<version>.json`` and ``resources/measure-<Name>-<version>.json`` — each ``Library``, and
+  the ``Measure`` whose primary library is ``<Name>``, as given, where a measure package keeps them;
+- ``valuesets/<name>[-<version>].json`` — one FHIR ``ValueSet`` per value set and version, its codes as its
+  ``expansion``.
 
-- a ``Measure`` must name a ``Library`` that is in this import or already in the environment's knowledge
+It writes nothing else and never an environment's ``knowledge``, which only the deploy and the implementer write
+(`DEC-NO-CONTENT-PUBLISHING`). Where the content comes from is the caller's business: nothing here fetches anything.
+The skill ``import-quality-measures`` uses it (``CONTENT-IMPORT-SKILL``).
+
+Everything is checked before anything is written, and every problem is reported at once (:func:`check_import`, which
+the deploy's loader of the example tables shares):
+
+- a ``Measure`` must name a ``Library`` that is in this import or already in the folder
   (``CONTENT-MEASURE-LIBRARY-LINK``);
-- every value set a library declares must have codes, in this import or already in the environment's knowledge. A
-  measure run against a missing value set silently under-counts every population that retrieves through it
-  (``CORE-NO-SILENT-MISLOWER``);
+- every value set a library declares must have codes, in this import or already in the folder. A measure run against
+  a missing value set fails (``LANG-VALUESET-VERSION``);
 - a ``ValueSet`` resource must carry its codes: an ``expansion``, or a ``compose`` that only lists concepts. One
   defined by filters or by other value sets has to be expanded first.
 
-A value set's codes replace that value set's earlier codes whole (``CONTENT-INCREMENTAL``); measures and libraries
-merge on their canonical ``(url, version)``.
+A file the import writes replaces the file of the same library or value set and version. A library file in the folder
+whose CQL declares another version is refused, never overwritten.
 """
 from __future__ import annotations
 
@@ -29,9 +36,11 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
-from .transform import TransformResult, ValueSetExpansionRow, _decode_content, transform_resources
+from .transform import (_CQL_HEADER_RE, TransformResult, ValueSetExpansionRow, _decode_content,
+                        transform_resources)
 
 log = logging.getLogger("cql_databricks.data_bindings.measure_import.measures")
 
@@ -41,20 +50,32 @@ _CQL_VALUESET_RE = re.compile(r"""^\s*(?:public\s+|private\s+)?valueset\s+"[^"]*
 #: How many names an error lists before it says how many more there are.
 _LISTED = 20
 
+#: The folder's subfolders (see the module docstring).
+LIBRARIES, RESOURCES, VALUESETS = "libraries", "resources", "valuesets"
+
 
 class ImportContentError(ValueError):
     """The content cannot be imported as given. Nothing was written."""
 
 
 @dataclass(frozen=True)
+class CheckedImport:
+    """Content :func:`check_import` accepted: its rows, and the ``ValueSet`` resources it was given by url|version."""
+    content: TransformResult
+    valuesets: list[str]                                   # each value set given codes
+    skipped: dict[str, int] = field(default_factory=dict)  # resourceType -> resources not imported
+    given: dict[tuple[str, str | None], dict] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class ImportSummary:
     """What an import wrote, or would write on a dry run."""
-    knowledge: str                     # catalog.schema of the measures, libraries and value-set codes
+    folder: str                        # the folder written
     measures: list[str]                # canonical url|version of each Measure
     libraries: list[str]               # canonical url|version of each Library
     valuesets: list[str]               # each value set given codes
     skipped: dict[str, int] = field(default_factory=dict)  # resourceType -> resources not imported
-    rows: dict[str, int] = field(default_factory=dict)     # table -> rows written; empty on a dry run
+    files: list[str] = field(default_factory=list)         # every file written, in the folder; empty on a dry run
 
 
 def flatten(resources: Iterable[Mapping[str, Any]]) -> list[dict]:
@@ -73,7 +94,8 @@ def valueset_codes(valueset: Mapping[str, Any], *, source: str, now: str) -> lis
     url = valueset.get("url")
     if not url:
         raise ImportContentError(f"ValueSet {valueset.get('id', '(no id)')} has no url")
-    version = (valueset.get("expansion") or {}).get("timestamp") or valueset.get("version")
+    # LANG-VALUESET-VERSION: the version a CQL declaration pins is the ValueSet's own, never its expansion's timestamp.
+    version = valueset.get("version")
     codes: list[tuple[str, str, str | None]] = []
 
     def walk(contains: list[dict]) -> None:
@@ -120,31 +142,13 @@ def _listed(names: Iterable[str]) -> str:
     return ", ".join(names[:_LISTED]) + more
 
 
-def _existing(spark, fqtn: str, column: str) -> set[str]:
-    """The distinct values of ``column`` already in ``fqtn``; empty when the table does not exist yet."""
-    if not spark.catalog.tableExists(fqtn):
-        return set()
-    return {row[0] for row in spark.sql(f"SELECT DISTINCT {column} FROM {fqtn}").collect()}
-
-
-def import_measures(spark, resources: Iterable[Mapping[str, Any]], *, catalog: str, source: str,
-                    codes: Iterable[Mapping[str, Any]] = (), lineage: str = "import",
-                    dry_run: bool = False) -> ImportSummary:
-    """CONTENT-IMPORT-MEASURES — import measures, libraries and value-set codes into the knowledge of the environment
-    in ``catalog`` (`DATA-ENVIRONMENT-LAYOUT`): ``knowledge.library``, ``.measure`` and ``.valueset``.
-
-    ``resources`` are FHIR resources (``Measure``, ``Library``, ``ValueSet``, or ``Bundle``s of them); any other
-    type is counted in ``skipped`` and not imported. ``codes`` are value-set codes already in rows:
-    ``{valueset_id, system, code}``, with ``display`` and ``version`` optional. ``source`` names where this
-    content came from, as provenance on every row. ``dry_run`` checks everything and writes nothing.
-    """
-    from cql_databricks.resolvers.environment import KNOWLEDGE
-
-    from .load import _qualify, ensure_valueset_table, load
-
-    if not catalog:
-        raise ImportContentError("no catalog: an import writes an environment's knowledge, which is in its catalog")
-    schema = KNOWLEDGE
+def check_import(resources: Iterable[Mapping[str, Any]], *, codes: Iterable[Mapping[str, Any]] = (),
+                 source: str = "import", lineage: str = "import", known_libraries: Iterable[str] = (),
+                 known_valuesets: Iterable[str] = (), where: str) -> CheckedImport:
+    """CONTENT-IMPORT-MEASURES — read and check what an import would write (see the module docstring), writing
+    nothing. ``known_libraries`` and ``known_valuesets`` are the canonical URLs ``where`` already holds, so a
+    ``Measure`` may name a library, and a library declare a value set, held there. ``source`` and ``lineage`` are
+    the provenance the rows carry. Raises :class:`ImportContentError` listing every problem."""
     now = datetime.now(timezone.utc).isoformat()
     flat = flatten(resources)
 
@@ -163,9 +167,11 @@ def import_measures(spark, resources: Iterable[Mapping[str, Any]], *, catalog: s
 
     problems: list[str] = []
     expansions: list[ValueSetExpansionRow] = []
+    given: dict[tuple[str, str | None], dict] = {}
     for vs in (r for r in flat if r.get("resourceType") == "ValueSet"):
         try:
             expansions.extend(valueset_codes(vs, source=source, now=now))
+            given[(vs["url"], vs.get("version"))] = vs
         except ImportContentError as e:
             problems.append(str(e))
     for i, row in enumerate(codes):
@@ -179,37 +185,128 @@ def import_measures(spark, resources: Iterable[Mapping[str, Any]], *, catalog: s
     if not (knowledge.measures or knowledge.libraries or expansions or problems):
         raise ImportContentError("nothing to import: no Measure, no Library with CQL or ELM, and no value-set codes")
 
-    knowledge_fqn = _qualify(catalog, schema, "library")
-    valueset_fqn = _qualify(catalog, schema, "valueset")
-    libraries = {r.url for r in knowledge.libraries} | _existing(spark, knowledge_fqn, "url")
+    libraries = {r.url for r in knowledge.libraries} | set(known_libraries)
     for m in knowledge.measures:
         unknown = [ref for ref in json.loads(m.resource_json).get("library") or []
                    if ref.split("|", 1)[0] not in libraries]
         if unknown:
             problems.append(f"Measure {m.url}|{m.version} names {_listed(unknown)}, which is not in this import "
-                            f"or in {catalog}.{schema}")
+                            f"or in {where}")
     declared = set()
     for lib in knowledge.libraries:
         declared |= declared_valuesets(json.loads(lib.resource_json))
     loaded = {row.valueset_id.split("|", 1)[0] for row in expansions}
-    without_codes = declared - loaded - _existing(spark, valueset_fqn, "valueset_id")
+    without_codes = declared - loaded - set(known_valuesets)
     if without_codes:
         problems.append(f"{len(without_codes)} value set(s) the libraries declare have no codes in this import or "
-                        f"in {catalog}.{schema}: {_listed(without_codes)}")
+                        f"in {where}: {_listed(without_codes)}")
     if problems:
         raise ImportContentError("cannot import:\n- " + "\n- ".join(problems))
+    return CheckedImport(content=TransformResult(measures=knowledge.measures, libraries=knowledge.libraries,
+                                                 valueset_expansions=expansions),
+                         valuesets=sorted(loaded), skipped=skipped, given=given)
 
-    summary = dict(
-        knowledge=f"{catalog}.{schema}",
-        measures=[f"{m.url}|{m.version}" for m in knowledge.measures],
-        libraries=[f"{lib.url}|{lib.version}" for lib in knowledge.libraries],
-        valuesets=sorted(loaded), skipped=skipped)
+
+def import_measures(resources: Iterable[Mapping[str, Any]], *, folder: str, codes: Iterable[Mapping[str, Any]] = (),
+                    dry_run: bool = False) -> ImportSummary:
+    """CONTENT-IMPORT-MEASURES — write measures, libraries and value-set codes as files into ``folder``, a
+    ``/Volumes`` or ``/Workspace`` folder of the caller's own, read and written as this process's user (see the module
+    docstring for the layout).
+
+    ``resources`` are FHIR resources (``Measure``, ``Library``, ``ValueSet``, or ``Bundle``s of them); any other
+    type is counted in ``skipped`` and not imported. ``codes`` are value-set codes already in rows:
+    ``{valueset_id, system, code}``, with ``display`` and ``version`` optional. ``dry_run`` checks everything and
+    writes nothing. The folder is then read with ``FolderKnowledgeResolver(folder)`` and
+    ``FolderTerminologyResolver(f"{folder}/valuesets")``.
+    """
+    if not folder:
+        raise ImportContentError("no folder: an import writes files into a folder of your own")
+    root = Path(folder)
+    checked = check_import(resources, codes=codes, known_libraries=_folder_libraries(root),
+                           known_valuesets=_folder_valuesets(root), where=folder)
+    files = _files(checked, root)
+    summary = dict(folder=folder,
+                   measures=[f"{m.url}|{m.version}" for m in checked.content.measures],
+                   libraries=[f"{lib.url}|{lib.version}" for lib in checked.content.libraries],
+                   valuesets=checked.valuesets, skipped=checked.skipped)
     if dry_run:
         return ImportSummary(**summary)
+    for path, body in files.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+    log.info("imported into %s: %d files", folder, len(files))
+    return ImportSummary(**summary, files=sorted(str(p) for p in files))
 
-    rows = load(spark, TransformResult(measures=knowledge.measures, libraries=knowledge.libraries,
-                                       valueset_expansions=expansions),
-                catalog=catalog, authority_schema=schema, valueset_schema=schema)
-    ensure_valueset_table(spark, catalog=catalog, valueset_schema=schema)
-    log.info("imported into %s: %s", summary["knowledge"], ", ".join(f"{k}={v}" for k, v in sorted(rows.items())))
-    return ImportSummary(**summary, rows=rows)
+
+def _files(checked: CheckedImport, root: Path) -> dict[Path, str]:
+    """Every file the import writes under ``root``, path to text. Refuses a library file holding another version and
+    two measures of one library."""
+    out: dict[Path, str] = {}
+    problems: list[str] = []
+    names: dict[str, str] = {}
+    by_url: dict[str, str] = {}
+    for lib in checked.content.libraries:
+        resource = json.loads(lib.resource_json)
+        cql = _decode_content(resource, "text/cql")
+        header = _CQL_HEADER_RE.search(cql or "")
+        if header is None:
+            problems.append(f"Library {lib.url}|{lib.version} carries no CQL with a library header to write")
+            continue
+        name, version = header.group(1).strip('"'), header.group(2)
+        cql_path = root / LIBRARIES / f"{name}.cql"
+        held = _CQL_HEADER_RE.search(cql_path.read_text(encoding="utf-8")) if cql_path.is_file() else None
+        if held is not None and held.group(2) != version:
+            problems.append(f"{cql_path} holds {name} version {held.group(2)}; this import has version {version}")
+        if names.get(name, version) != version:
+            problems.append(f"this import has two versions of library {name}: {names[name]} and {version}")
+        names[name] = version
+        by_url[lib.url] = name
+        out[cql_path] = cql
+        out[root / RESOURCES / f"library-{name}-{lib.version}.json"] = json.dumps(resource, indent=1) + "\n"
+    for m in checked.content.measures:
+        resource = json.loads(m.resource_json)
+        primary = (resource.get("library") or [""])[0].split("|", 1)[0]
+        name = by_url.get(primary) or primary.rstrip("/").rsplit("/", 1)[-1]
+        path = root / RESOURCES / f"measure-{name}-{m.version}.json"
+        if path in out:
+            problems.append(f"this import has two measures of library {name} at version {m.version}")
+        out[path] = json.dumps(resource, indent=1) + "\n"
+    rows: dict[tuple[str, str | None], list[ValueSetExpansionRow]] = {}
+    for row in checked.content.valueset_expansions:
+        rows.setdefault((row.valueset_id, row.version), []).append(row)
+    for (url, version), codes in sorted(rows.items(), key=lambda kv: (kv[0][0], kv[0][1] or "")):
+        stem = re.sub(r"[^A-Za-z0-9._-]+", "_", url.rstrip("/").rsplit("/", 1)[-1])
+        resource = dict(checked.given.get((url, version)) or {"resourceType": "ValueSet", "url": url})
+        if version is not None:
+            resource["version"] = version
+        resource["expansion"] = {"contains": [
+            {"system": r.system, "code": r.code, **({"display": r.display} if r.display else {})} for r in codes]}
+        name = f"{stem}-{version}.json" if version else f"{stem}.json"
+        out[root / VALUESETS / name] = json.dumps(resource, indent=1) + "\n"
+    if problems:
+        raise ImportContentError("cannot import:\n- " + "\n- ".join(problems))
+    return out
+
+
+def _folder_libraries(root: Path) -> set[str]:
+    """The canonical URLs of the ``Library`` resources the folder already holds."""
+    return {r["url"] for r in _resources(root / RESOURCES, "Library") if r.get("url")}
+
+
+def _folder_valuesets(root: Path) -> set[str]:
+    """The canonical URLs of the ``ValueSet`` resources the folder already holds."""
+    return {r["url"] for r in _resources(root / VALUESETS, "ValueSet") if r.get("url")}
+
+
+def _resources(folder: Path, kind: str) -> list[dict]:
+    if not folder.is_dir():
+        return []
+    out = []
+    for path in sorted(folder.glob("*.json")):
+        try:
+            resource = json.loads(path.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        if isinstance(resource, dict) and resource.get("resourceType") == kind:
+            out.append(resource)
+    return out

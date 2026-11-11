@@ -47,7 +47,7 @@ see are found. Two visible defaults fail, naming both; no visible default fails,
 | Schema | Holds | Who writes |
 |---|---|---|
 | `data` | One table or view per FHIR type, named for the type in lower case (`condition`), returning the resource as a `resource` struct and optionally `patient_id`, `min_date` and `max_date` (`BIND-CONTRACT`, `DATA-SUBJECT-KEY`, `BIND-PREFILTER`), and `change_log` | The customer; the deploy and the synthetic loader, as tables, for the environments this repository ships |
-| `knowledge` | `library`, `measure` and `valueset(valueset_id, system, code, version)` | The import and publishing, as tables; the Designer's Publish writes `library` and `measure` |
+| `knowledge` | `library`, `measure` and `valueset(valueset_id, system, code, version)` | The deploy, as tables, for the environment this repository ships; otherwise whoever the implementer grants. Nothing a user runs in the product writes it (`DEC-NO-CONTENT-PUBLISHING`) |
 | `results` | Official results, reused by every identity: runs that bind only the environment's own resolvers | Whoever the implementer grants: publishing Jobs |
 | `draft_results` | Each user's own results, in one shared schema | The Designer, as the user; the agent's tools read it |
 
@@ -56,11 +56,11 @@ the same readers and writers as libraries and measures, and no patient data. Pat
 which derive from it and are written per user, stay apart. Where value sets have writers of their own, grant
 `MODIFY` on the `valueset` table rather than on the schema.
 
-There are no store schemas. Each relation a run reads is the one that is written: the deploy, the loader, the import
-and publishing write tables in `data` and `knowledge`. A view in front of a table, selecting it unchanged, added a
-second name for every relation and a read-back check on every publish, and bought nothing. A customer whose data or
+There are no store schemas. Each relation a run reads is the one that is written: the deploy and the loader write
+tables in `data` and `knowledge`. A view in front of a table, selecting it unchanged, added a second name for every
+relation and a read-back check on every write, and bought nothing. A customer whose data or
 knowledge comes from elsewhere, or from several places, makes an environment of their own and defines views there,
-over tables in any catalog. Publishing into a view fails in the warehouse, naming it. A run binds the relations by
+over tables in any catalog. A run binds the relations by
 name and reads no `information_schema` beyond the data shapes (`DATA-MODEL-SUBSET`); one that is missing fails in
 the warehouse, naming it.
 
@@ -167,7 +167,7 @@ With the renamed role IDs `CLIENT-DATA-RESOLVER`, `CLIENT-TERMINOLOGY-RESOLVER`,
 | `CLIENT-ENVIRONMENT-RESOLVER` | `EnvironmentResolver` finds environments by tag, picks the default or a named one, refuses an unsupported layout version, and fails on two defaults or none |
 | `CLIENT-RESOLVERS` | The role interfaces and their naming |
 | `DATA-ENVIRONMENT-LAYOUT` | The standard schemas and what each holds; no store schemas |
-| `BIND-PUBLISHED-VIEW` | Data, terminology and knowledge are bound by relation name; publishing writes the tables a run reads |
+| `BIND-PUBLISHED-VIEW` | Data, terminology and knowledge are bound by relation name; nothing in the client writes the knowledge a run reads |
 | `BIND-CALL-SITE` | `describe` reports every call site with its context and request; each role in the compile request binds by a rule, a map by site id, or both, the map winning |
 | `RUN-CLIENT-DRAFT-RESULTS` | The shared `draft_results` schema, its grants, its expiry, and published-only writes to `results` |
 | `RUN-CLIENT-RESULT-OWNERSHIP` | A result belongs to the identity that computed it, and only that identity reuses it |
@@ -185,6 +185,6 @@ With the renamed role IDs `CLIENT-DATA-RESOLVER`, `CLIENT-TERMINOLOGY-RESOLVER`,
 | `CLIENT-ENVIRONMENT-RESOLVER` | Discovery, layout version check, binding by view name (`DATA-ENVIRONMENT-LAYOUT`, `BIND-PUBLISHED-VIEW`) | `CLIENT-RESOLVERS`, `BIND-CALL-SITE` |
 | `RUN-CLIENT-DRAFT-RESULTS` | The shared draft schema, ownership and reuse by identity (`RUN-CLIENT-RESULT-OWNERSHIP`), table names, grants, maintenance, the value-set code digest: measure its query on the warehouse before building on it, and report | `CLIENT-ENVIRONMENT-RESOLVER` |
 | `DEPLOY-DEFAULT-ENVIRONMENT` | Deploy the default environment; move the workspace's large population to its own catalog | `CLIENT-ENVIRONMENT-RESOLVER` |
-| `DOC-ENVIRONMENT-PICKER` | The Designer's picker, draft runs, Publish to the knowledge store; the agent's default (`AGENT-DEFAULT-ENVIRONMENT`) | `RUN-CLIENT-DRAFT-RESULTS`, `DEPLOY-DEFAULT-ENVIRONMENT` |
+| `DOC-ENVIRONMENT-PICKER` | The Designer's picker and draft runs; the agent's default (`AGENT-DEFAULT-ENVIRONMENT`) | `RUN-CLIENT-DRAFT-RESULTS`, `DEPLOY-DEFAULT-ENVIRONMENT` |
 | `CLIENT-ENVIRONMENT-REMOVALS` | Remove everything in "What this replaces", and what `CLIENT-PROVIDER-REMOVALS` listed | `DOC-ENVIRONMENT-PICKER` |
 | `CLIENT-ENVIRONMENT-DOCS` | Client README, notebooks, deploy docs | `CLIENT-ENVIRONMENT-REMOVALS` |

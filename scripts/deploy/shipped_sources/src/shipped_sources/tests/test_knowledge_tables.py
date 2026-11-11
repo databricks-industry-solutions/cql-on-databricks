@@ -1,10 +1,10 @@
-"""Unit tests for load (CONTENT-FHIR-VARIANT) — no Spark, no network."""
+"""DEPLOY-DEFAULT-ENVIRONMENT, CONTENT-FHIR-VARIANT — the deploy's writer of the knowledge tables; no Spark, no network."""
 from __future__ import annotations
 
 import pytest
 
-from cql_databricks.data_bindings.measure_import.knowledge_merge import SINGLE_ROW, knowledge_merge_sql
-from cql_databricks.data_bindings.measure_import.load import (
+from shipped_sources.knowledge_merge import knowledge_merge_sql
+from shipped_sources.knowledge_tables import (
     _KNOWLEDGE_TABLE_DDL,
     DeltaFeaturesError,
     StaleKnowledgeTableError,
@@ -102,18 +102,10 @@ def test_variant_navigation_is_portable():
     assert "parsed:" not in sql
 
 
-def test_one_merge_serves_a_staged_view_and_a_single_parameterized_row():
-    """DOC-OPEN-SAVE — the import and the Designer's Save write a knowledge row with the same statement."""
-    staged = knowledge_merge_sql("k.m.library", "stg")
-    row = knowledge_merge_sql("k.m.library", SINGLE_ROW)
-    assert staged.replace("FROM stg", "") == row.replace(f"FROM {SINGLE_ROW}", "")
-    assert ":resource_json" in row
-
-
 def test_a_version_already_there_is_replaced():
-    """DEC-PUBLISH-IMMUTABLE — the import and publishing both replace a published (url, version)."""
-    row = knowledge_merge_sql("k.m.library", SINGLE_ROW)
-    assert "WHEN MATCHED THEN UPDATE" in row and "WHEN NOT MATCHED THEN INSERT" in row
+    """CONTENT-INCREMENTAL — the deploy loads the same (url, version) again by replacing it."""
+    sql = knowledge_merge_sql("k.m.library", "stg")
+    assert "WHEN MATCHED THEN UPDATE" in sql and "WHEN NOT MATCHED THEN INSERT" in sql
 
 
 # ── Delta features on a new table ────────────────────────────────────────────
@@ -137,3 +129,55 @@ def test_a_table_that_refuses_the_delta_features_fails_loudly():
     message = str(excinfo.value)
     assert "acme.quality_measures.valueset" in message
     assert "DELTA_NOT_A_DELTA_TABLE" in message
+
+
+# ── The deploy's load of the example knowledge ───────────────────────────────
+
+class _CatalogSpark:
+    """Tables that exist, with the rows a ``SELECT DISTINCT`` returns."""
+    def __init__(self, tables=None):
+        self.tables = tables or {}
+        self.catalog = self
+
+    def tableExists(self, fqtn):
+        return fqtn in self.tables
+
+    def sql(self, statement):
+        fqtn = statement.rsplit(" FROM ", 1)[-1]
+        return type("Rows", (), {"collect": lambda _self: [(v,) for v in self.tables.get(fqtn, [])]})()
+
+
+def _library(base, cql):
+    import base64
+    return {"resourceType": "Library", "url": f"{base}/Library/Visits", "version": "1.0.0", "name": "Visits",
+            "content": [{"contentType": "text/cql", "data": base64.b64encode(cql.encode()).decode()}]}
+
+
+def test_the_deploy_checks_as_the_import_does_then_writes_the_knowledge_tables(monkeypatch):
+    """DEPLOY-DEFAULT-ENVIRONMENT, CONTENT-IMPORT-MEASURES — what the import's check accepts lands in knowledge; a
+    value set already in the table counts."""
+    from shipped_sources import knowledge_tables
+
+    base = "http://example.org/fhir"
+    cql = (f"library Visits version '1.0.0'\nvalueset \"Office Visit\": '{base}/ValueSet/office-visit'\n"
+           "define \"X\": true\n")
+    seen = {}
+    monkeypatch.setattr(knowledge_tables, "load", lambda spark, result, **kw: seen.setdefault("load", (result, kw))
+                        and {"library": len(result.libraries)})
+    monkeypatch.setattr(knowledge_tables, "ensure_valueset_table", lambda spark, **kw: None)
+    spark = _CatalogSpark({"`main`.`knowledge`.`valueset`": [f"{base}/ValueSet/office-visit"]})
+    rows = knowledge_tables.load_knowledge(spark, [_library(base, cql)], catalog="main", source="examples")
+    result, kw = seen["load"]
+    assert rows == {"library": 1} and kw["authority_schema"] == "knowledge" and kw["catalog"] == "main"
+    assert {r.source_package for r in result.libraries} == {"examples"}
+
+
+def test_the_deploy_refuses_content_the_import_refuses(monkeypatch):
+    from cql_databricks.data_bindings.measure_import import ImportContentError
+    from shipped_sources import knowledge_tables
+
+    monkeypatch.setattr(knowledge_tables, "load", lambda *a, **kw: pytest.fail("nothing may be written"))
+    cql = "library Visits version '1.0.0'\nvalueset \"Office Visit\": 'http://example.org/vs/x'\n"
+    with pytest.raises(ImportContentError, match="no codes"):
+        knowledge_tables.load_knowledge(_CatalogSpark(), [_library("http://example.org/fhir", cql)], catalog="main",
+                                        source="examples")

@@ -115,6 +115,17 @@ Value sets are expanded outside the compiler and read as semi-joins against the 
 per-row service calls (`DATA-TERMINOLOGY-ADAPTER`). Value sets can be passed as function arguments; the
 binding survives inlining (`LANG-FUNCTION-TERMINOLOGY`).
 
+`LANG-VALUESET-VERSION`: a membership reads one expansion. The CQL Author's Guide (Valuesets) says that "if the
+binding specifies a valueset version, then the expansion set must be derived from that specific version", so a
+declaration with `version '<v>'` reads only the rows whose `version` is `<v>`. With no version the guide says to use
+"the most current published version". A version is free text with no order here, so the compiler cannot tell which
+version is most current: an unpinned value set must hold one version, and several fail the run rather than merge
+their codes or guess. A value set no relation holds fails the run too; otherwise it would match no code and
+under-count every population that retrieves through it. The check is in the emitted SQL: the rows are read through
+one aggregate that checks them and collects the codes, so it holds on every compute and for every relation, with
+no extra statement. It fires whenever the membership is evaluated over data rows; with none, the value set cannot
+change an answer.
+
 ## 6. Choice types — `LANG-CHOICE`
 
 A `Choice<T1, T2, …>` holds a value of one of several known types. Choices come from conditionals with

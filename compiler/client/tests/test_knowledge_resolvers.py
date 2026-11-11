@@ -11,7 +11,7 @@ from cql_databricks.compiler.knowledge_libraries import FolderThenKnowledge
 from cql_databricks.resolvers.knowledge import (CellsKnowledgeResolver, FolderKnowledgeResolver,
                                                          TableKnowledgeResolver, library_provider)
 from cql_databricks.compiler.libraries import LibraryRef, LibraryResolutionError, LibrarySource
-from cql_databricks.resolvers.interfaces import KnowledgeResolver, KnowledgeStore, Overlay
+from cql_databricks.resolvers.interfaces import KnowledgeResolver, Overlay
 from cql_databricks.compiler.session_libraries import SessionLibraryProvider
 
 
@@ -54,12 +54,13 @@ class KnowledgeResolversTest(unittest.TestCase):
             self.assertIsNone(folder.library("Missing", None))
             self.assertEqual(folder.identity(), f"folder:{d}")
 
-    def test_only_the_environments_knowledge_publishes(self):
-        """CLIENT-RESOLVER-READ-WRITE: cells and folders are read only; an environment's knowledge is a store."""
-        self.assertIsInstance(TableKnowledgeResolver(lambda: None), KnowledgeStore)
-        self.assertNotIsInstance(CellsKnowledgeResolver(cells={}), KnowledgeStore)
-        with self.assertRaises(ValueError):
-            TableKnowledgeResolver(lambda: None, schema=("acme", "knowledge"))  # needs a runner
+    def test_no_knowledge_resolver_writes(self):
+        """DEC-NO-CONTENT-PUBLISHING, CLIENT-RESOLVER-READ-WRITE: cells, folders and an environment's knowledge are
+        read, never written."""
+        with tempfile.TemporaryDirectory() as d:
+            for resolver in (TableKnowledgeResolver(lambda: None), CellsKnowledgeResolver(cells={}),
+                             FolderKnowledgeResolver(d)):
+                self.assertFalse(hasattr(resolver, "publish"), type(resolver).__name__)
 
 
 class ClosureTest(unittest.TestCase):

@@ -1,5 +1,5 @@
-// DOC-OPEN-SAVE — New and Save As: name a library and the workspace folder it is created in. A tagged store is
-// published and read-only in the Designer (DOC-EDITABLE-IN-SCOPE), so nothing is created there, and Save As from a
+// DOC-OPEN-SAVE — New and Save As: name a library and the workspace folder it is created in. An environment's
+// knowledge is read-only in the Designer (DOC-EDITABLE-IN-SCOPE), so nothing is created there, and Save As from a
 // store copies into a folder. With a folder open as the scope (DOC-SCOPE-OPEN) the folder starts as that scope, so the library lands in
 // its `cql/` and `resources/` beside the scope's others; with none it starts as `<my folder>/<Name>` and follows the
 // name until it is edited. Nothing is written over anything: a name already there is refused, and the form says why.

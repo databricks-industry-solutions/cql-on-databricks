@@ -1,4 +1,7 @@
-"""Spark I/O for the measure import tables (CONTENT-INCREMENTAL).
+"""DEPLOY-DEFAULT-ENVIRONMENT, CONTENT-EXAMPLE-PRELOAD, CONTENT-INCREMENTAL — the deploy's writer of an environment's
+``knowledge`` tables. Only the deploy writes them; nothing in the client does (`DEC-NO-CONTENT-PUBLISHING`). It writes
+what the client's import check accepted (`cql_databricks.data_bindings.measure_import.check_import`), so the deploy's
+example content and a user's import are checked the same way.
 
 **The Lakehouse publishes standards** (``CONTENT-LAKEHOUSE-STANDARD-ONLY``): a table in the
 authority schema is a standardized FHIR resource type or it does not belong there.  Each row is
@@ -30,10 +33,10 @@ from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType
 
 from .knowledge_merge import knowledge_merge_sql
-from .transform import (MeasureRow, LibraryRow, ValueSetExpansionRow,
+from cql_databricks.data_bindings.measure_import.transform import (MeasureRow, LibraryRow, ValueSetExpansionRow,
                         TransformResult)
 
-log = logging.getLogger("cql_databricks.data_bindings.measure_import.load")
+log = logging.getLogger("shipped_sources.knowledge_tables")
 
 
 # ── Staging schemas ──────────────────────────────────────────────────────────
@@ -251,3 +254,30 @@ def ensure_valueset_table(spark: SparkSession, *, catalog: str | None,
         _enable_delta_features(spark, fqtn)
         log.info("created empty valueset table %s", fqtn)
     return fqtn
+
+
+def _existing(spark: SparkSession, fqtn: str, column: str) -> set[str]:
+    """The distinct values of ``column`` already in ``fqtn``; empty when the table does not exist yet."""
+    if not spark.catalog.tableExists(fqtn):
+        return set()
+    return {row[0] for row in spark.sql(f"SELECT DISTINCT {column} FROM {fqtn}").collect()}
+
+
+def load_knowledge(spark: SparkSession, resources, *, catalog: str, source: str, codes=(),
+                   lineage: str = "example") -> dict[str, int]:
+    """DEPLOY-DEFAULT-ENVIRONMENT — check ``resources`` and ``codes`` as the import does, against what
+    ``<catalog>.knowledge`` already holds, then write them into its ``library``, ``measure`` and ``valueset``
+    tables. Returns rows written by table."""
+    from cql_databricks.data_bindings.measure_import import check_import
+    from cql_databricks.resolvers.environment import KNOWLEDGE
+
+    if not catalog:
+        raise ValueError("no catalog: the deploy writes an environment's knowledge, which is in its catalog")
+    where = f"{catalog}.{KNOWLEDGE}"
+    checked = check_import(resources, codes=codes, source=source, lineage=lineage, where=where,
+                           known_libraries=_existing(spark, _qualify(catalog, KNOWLEDGE, "library"), "url"),
+                           known_valuesets=_existing(spark, _qualify(catalog, KNOWLEDGE, "valueset"), "valueset_id"))
+    rows = load(spark, checked.content, catalog=catalog, authority_schema=KNOWLEDGE, valueset_schema=KNOWLEDGE)
+    ensure_valueset_table(spark, catalog=catalog, valueset_schema=KNOWLEDGE)
+    log.info("loaded into %s: %s", where, ", ".join(f"{k}={v}" for k, v in sorted(rows.items())))
+    return rows

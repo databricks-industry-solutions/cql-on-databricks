@@ -59,14 +59,12 @@ from .library import Library, load_library, measurement_period_bounds, measureme
 # The Databricks layer (`SVC-DISCOVERY-PLUGIN`, `SVC-ZERO-CONFIG-NOTEBOOK`). `cql` here SHADOWS the core
 # binder deliberately: on a workspace, zero-config is the correct default, and it still honors an explicit
 # `client=` / `endpoint=` so nothing is taken away.
-from .zeroconfig import connect, cql, publish_library, resolve_libraries, translate, use_resolvers
+from .zeroconfig import connect, cql, resolve_libraries, translate, use_resolvers
 from .provider import make_provider
 from .session_libraries import register_cell
 # CLIENT-SESSION-RESET / BIND-RESHAPE: a clean session, and raw FHIR JSON as a source.
 from .session_state import reset
 from .reshape import FhirJson
-# CLIENT-PUBLISH: a folder library into an environment's knowledge store.
-from .library_publish import PublishFailed, PublishRefused, PublishSummary, publish_folder_library
 # BIND-PUBLISH: an environment's published data views over tables.
 from .publish import PublishPlan, publish_data_source
 from .providers import (
@@ -100,7 +98,7 @@ __all__ = [
     "CqlClient", "CqlClientBuilder", "CqlQuery",
     "cql", "cql_explicit", "describe", "compile_pipeline", "load_library", "Library",
     # SVC-ZERO-CONFIG-NOTEBOOK: the Databricks surface.
-    "connect", "use_resolvers", "publish_library", "resolve_libraries", "translate", "make_provider", "register_cell",
+    "connect", "use_resolvers", "resolve_libraries", "translate", "make_provider", "register_cell",
     "measurement_period_bounds",
     "measurement_period_literal",
     # BUILD-LIBRARY-PROVIDER: the library SOURCE seam. Implement `LibraryProvider` and inject it with
@@ -112,7 +110,6 @@ __all__ = [
     "reset", "FhirJson",
     # BIND-PUBLISH: write an environment's published data views over tables, for review or to run.
     "publish_data_source", "PublishPlan",
-    "publish_folder_library", "PublishSummary", "PublishRefused", "PublishFailed",
     # CLIENT-RESOLVERS, CLIENT-PACKAGE-SPLIT: the resolvers and the environments are `cql_databricks.resolvers`.
     "CompileProvider", "RemoteProvider", "CompileRequest", "CompileError",
     "SqlCompileResult", "SqlStatement",

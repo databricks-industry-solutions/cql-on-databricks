@@ -271,7 +271,7 @@ final class CompilerRouter(service: CompileService, token: Option[String],
 
   /** CQL -> ELM (authoring). Fail-loud: `ok:false` + diagnostics, never a silent pass
     * (`CORE-NO-SILENT-MISLOWER`). `includes` are extra library sources so cross-library `include`s
-    * resolve (the registry supplies these, `REG-SOURCE-PROVIDER`). */
+    * resolve (the client's include resolution supplies these, `KNOWLEDGE-RESOLVE-API`). */
   private def translate(body: String): HttpResult = {
     val o = ujson.read(if (body.isEmpty) "{}" else body)
     val cql = o.obj.get("cql").flatMap(_.strOpt).getOrElse("")

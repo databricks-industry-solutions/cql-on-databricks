@@ -62,7 +62,6 @@ EXPECTED: dict[tuple[str, str], str] = {
     ("/api/libraries/save", "POST"): "save_library",
     # DOC-OPEN-SAVE — New and Save As: create a library at a location, as the signed-in user.
     ("/api/libraries/new", "POST"): "new_library",
-    ("/api/libraries/publish", "POST"): "publish",
     ("/api/libraries/{name}/{version}/defines/{define}/profile", "POST"): "define_profile",
     ("/api/libraries/{name}/{version}/metrics", "POST"): "measure_metrics",
     ("/api/libraries/{name}/{version}/reads", "POST"): "read_metrics",

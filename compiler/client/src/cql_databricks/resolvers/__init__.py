@@ -13,8 +13,8 @@ Part of the client core: SQL goes through the caller's SQL runner; nothing here 
 import cql_databricks.compiler  # noqa: F401
 
 from .interfaces import (CallSite, Code, DataFrameRelation, DataResolver, IncludeSite, KeptResult, KnowledgeResolver,
-                         KnowledgeStore, Overlay, PublishReport, ResultKey, ResultResolver, Resolvers, ResultStore,
-                         ResultWrites, RetrieveRequest, TableRef, TableRelation, TerminologyResolver, TerminologyStore,
+                         Overlay, ResultKey, ResultResolver, Resolvers, ResultStore,
+                         ResultWrites, RetrieveRequest, TableRef, TableRelation, TerminologyResolver,
                          ValueSet, ValueSetRef, VolumeRelation)
 from .data import DataFrameDataResolver, SchemaDataResolver, TableDataResolver, VolumeDataResolver
 from .terminology import DataFrameTerminologyResolver, FolderTerminologyResolver, TableTerminologyResolver
@@ -24,10 +24,10 @@ from .environment import (Environment, EnvironmentCache, EnvironmentLookupError,
 
 __all__ = [
     # CLIENT-RESOLVERS: implement these to bring your own data, value sets, knowledge or results.
-    "DataResolver", "TerminologyResolver", "TerminologyStore", "KnowledgeResolver", "KnowledgeStore",
+    "DataResolver", "TerminologyResolver", "KnowledgeResolver",
     "ResultResolver", "ResultStore", "ResultWrites", "ResultKey", "KeptResult", "Resolvers", "Overlay",
     "RetrieveRequest", "CallSite", "IncludeSite", "Code", "TableRelation", "VolumeRelation", "DataFrameRelation",
-    "ValueSetRef", "ValueSet", "PublishReport", "TableRef",
+    "ValueSetRef", "ValueSet", "TableRef",
     # The shipped ones.
     "SchemaDataResolver", "TableDataResolver", "VolumeDataResolver", "DataFrameDataResolver",
     "TableTerminologyResolver", "FolderTerminologyResolver", "DataFrameTerminologyResolver",
