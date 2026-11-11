@@ -44,7 +44,7 @@ _UCUM = "http://unitsofmeasure.org"
 
 _ENCOUNTER_DURATION = dt.timedelta(hours=1)
 
-#: The element that names the patient, where FHIR R4 does not call it ``subject``.
+#: The element that names the patient, where FHIR R4 does not call it ``subject`` (SYNTH-MODULE).
 PATIENT_REFERENCE = {"Immunization": "patient", "Coverage": "beneficiary",
                      "AllergyIntolerance": "patient", "Device": "patient"}
 
