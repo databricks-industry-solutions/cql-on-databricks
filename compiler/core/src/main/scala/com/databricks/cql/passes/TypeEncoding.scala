@@ -172,7 +172,7 @@ object TypeEncoding {
       case Count(_)               => IntegerType
       case AggregateFunction(op, src) => aggregateType(op, elementOf(go(src)))
       case _: Split              => ListType(StringType) // split a string -> List<String>
-      // Upper and Lower return a String, Length the number of characters in one (LANG-STRING).
+      // Upper and Lower return a String, and Length an Integer (LANG-STRING).
       case _: Upper | _: Lower    => StringType
       case _: Length              => IntegerType
       // List set operators yield a list whose element type unifies the two operands' elements.
