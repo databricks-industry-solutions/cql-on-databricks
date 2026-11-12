@@ -59,4 +59,6 @@ Avoid these forms. They fail, or give a wrong answer with no error:
 - `sort by` a choice element or a fluent call on `$this`.
 - Two functions with one name and different argument types.
 - `year from X`. Use interval arithmetic on the period.
-- `Upper(...)` and string concatenation with `+`.
+- String operators other than `Upper`, `Lower`, `Length`, `StartsWith`, `EndsWith` and `Split` on a constant
+  separator: `Substring`, `PositionOf`, concatenation with `&` or `+` and the rest. Indexing a string
+  (`'abc'[0]`) fails too.

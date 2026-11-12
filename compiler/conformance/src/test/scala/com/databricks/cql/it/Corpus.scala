@@ -201,6 +201,7 @@ object Corpus {
     scalar("TrivialBoolean", "TrivialBoolean: scalar define DAG (ExpressionRef) diffs clean end-to-end"),
     scalar("Parameters", "Parameters: defaulted parameters bind as broadcast scalars and diff clean (LANG-PARAMETER)"),
     scalar("Lists", "Lists: ordered list operators diff clean (LANG-LIST)"),
+    scalar("Strings", "Strings: Upper, Lower, Length, StartsWith and EndsWith on ordinary input, the empty string, null and Unicode edge cases diff clean (LANG-STRING)"),
     scalar("Queries", "Queries: single-source where/return queries diff clean (LANG-QUERY)"),
     scalar("LetQueryInline", "LetQueryInline: correlated singleton-source let-query inlines (body[a:=e]) in Normalize (LANG-QUERY/ARCH-TYPE-ATTR)"),
     scalar("QueryLet", "QueryLet: query `let` clause — iteration-scoped named bindings (source-alias + earlier-let deps) feeding where/return incl. a singleton conditional-return chain (LANG-QUERY-LET)"),

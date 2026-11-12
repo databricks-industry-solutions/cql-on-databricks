@@ -218,3 +218,19 @@ environment (Developer's Guide, Libraries).
   FHIRHelpers 1.0.2 to 4.0.1 from the jar.
 - The compiler lowers each `FHIRHelpers.<function>` call directly, by name. It does not read the library's
   function bodies, and `LibraryLinker` never merges FHIRHelpers. A closure of only FHIRHelpers is not linked.
+
+## 13. Strings — `LANG-STRING`
+
+The CQL string operators follow the CQL Reference, String Operators, operator by operator, including its null
+rules. `Upper`, `Lower`, `Length` of a string, `StartsWith` and `EndsWith` are each null when an operand is
+null, as the spec says. The CQF reference agrees, except for `Length` of a null computed by another expression
+(`Length(Lower(null as String))`): it raises `InvalidOperatorArgument`. The harness has no deviation kind for a
+reference error (`CONF-REF-DEVIATION`), so the fixture checks only `Length(null as String)`. `Length` counts
+UTF-16 code units, as the reference does, so a character outside the Basic Multilingual Plane counts 2. `&`
+treats a null operand as the empty string, and `+` on strings returns null when either operand is null. Indexes
+are zero-based.
+
+Not built: `Substring`, `PositionOf`, `LastPositionOf`, `Combine`, `Matches`, `ReplaceMatches`, `SplitOnMatches`
+and concatenation with `&` or `+` fail at Normalize (`UnknownExpr`), loudly. Indexing a string (`'abc'[0]`)
+fails in Spark at run time (`DATATYPE_MISMATCH`). `Split` takes only a constant separator. `Length` of a list
+fails at lowering (`UnsupportedNode`).

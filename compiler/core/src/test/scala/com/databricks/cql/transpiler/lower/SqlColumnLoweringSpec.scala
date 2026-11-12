@@ -194,6 +194,18 @@ class SqlColumnLoweringSpec extends AnyFunSuite {
     assert(ex.getMessage.toLowerCase.contains("relationship") || ex.getMessage.contains("with/without"))
   }
 
+  test("Length of a List fails loudly: only Length of a String is built (LANG-STRING)") {
+    val list = ListExpr(Seq(lit("Integer", "1")))
+    val ex = intercept[com.databricks.cql.error.UnsupportedNode](
+      SqlColumnLowering.lower(Length(list), typeOf = { case `list` => ListType(IntegerType); case _ => IntegerType }))
+    assert(ex.getMessage.contains("Length"))
+  }
+
+  test("Length of a String counts UTF-16 code units, as a 32-bit Integer (LANG-STRING)") {
+    assert(sql(Length(lit("String", "Hello World")), _ => StringType) ==
+      "CAST((octet_length(encode('Hello World', 'UTF-16BE')) div 2) AS INT)")
+  }
+
   test("ELM Instance of Quantity builds the canonical {value,unit} struct (LANG-INSTANCE)") {
     val inst = InstanceExpr("{urn:hl7-org:elm-types:r1}Quantity",
       Seq(TupleElement("value", lit("Decimal", "7")), TupleElement("unit", lit("String", "d"))))

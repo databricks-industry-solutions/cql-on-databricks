@@ -132,6 +132,8 @@ object ElmCodec {
     "Divide" -> (Divide(_, _)), "TruncatedDivide" -> (TruncatedDivide(_, _)),
     "Modulo" -> (Modulo(_, _)), "Power" -> (Power(_, _)), "Log" -> (Log(_, _)),
     "Indexer" -> (Indexer(_, _)),
+    // String operators (LANG-STRING) — binary, `operand` array of [string, prefix or suffix].
+    "StartsWith" -> (StartsWith(_, _)), "EndsWith" -> (EndsWith(_, _)),
     // List set operators (LANG-LIST) — binary, `operand` array of two lists.
     "Union" -> (Union(_, _)), "Intersect" -> (Intersect(_, _)), "Except" -> (Except(_, _)),
     // Interval (Allen-relation) operators (LANG-INTERVAL) — binary, `operand` array of two.
@@ -161,6 +163,8 @@ object ElmCodec {
     "Abs" -> (Abs(_)), "Floor" -> (Floor(_)), "Ceiling" -> (Ceiling(_)), "Truncate" -> (Truncate(_)),
     "Predecessor" -> (Predecessor(_)), "Successor" -> (Successor(_)), "Ln" -> (Ln(_)), "Exp" -> (Exp(_)),
     "Precision" -> (Precision(_)),
+    // String operators (LANG-STRING) — unary, single `operand`.
+    "Upper" -> (Upper(_)), "Lower" -> (Lower(_)), "Length" -> (Length(_)),
     // Interval accessors (LANG-INTERVAL) — unary, `operand` carries the interval.
     "Start" -> (Start(_)), "End" -> (End(_)), "Width" -> (Width(_)),
     // Temporal conversions (LANG-INTERVAL) — unary, single `operand`.

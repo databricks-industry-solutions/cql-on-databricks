@@ -53,6 +53,7 @@ The compiler's requirements, including its client (`cql-databricks`). Requiremen
 | `LANG-NO-IMPLICIT-INCLUDE` | The compiler translates a library exactly as written and accepts it when the reference translator does; no added includes. The reference translator is given the same library sources and no library from its classpath (`LANG-FHIRHELPERS-FROM-CONTENT`). | `language-semantics.md` |
 | `LANG-FHIRHELPERS-FROM-CONTENT` | FHIRHelpers is content, not part of the compiler. `include FHIRHelpers version 'v'` resolves like any include: from the library sources the caller supplies (cells, the library folder, the environment's knowledge), by name and exact version. The compiler bundles no library and never consults a library source on its classpath (the cqframework `quick` jar's `FhirLibrarySourceProvider`). An include that no supplied source declares fails the translation, naming the library and version. | `language-semantics.md` |
 | `LANG-RETRIEVE-PROFILE` | A profile-specific retrieve narrows to resources conforming to that profile, tested at the scan against `meta.profile`. | `language-semantics.md` |
+| `LANG-STRING` | The CQL string operators follow the HL7 CQL Reference, String Operators, operator by operator, including its null rules: `&` treats a null operand as the empty string, and `+` on strings returns null when either operand is null. Indexes are zero-based. | `language-semantics.md` |
 
 ## ARCH — engine/compiler architecture
 

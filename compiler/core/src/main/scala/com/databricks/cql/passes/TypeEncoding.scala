@@ -119,6 +119,8 @@ object TypeEncoding {
       case _: Before | _: After | _: Overlaps                             => BooleanType
       case _: Includes | _: IncludedIn | _: Starts | _: Ends              => BooleanType
       case _: SameAs | _: SameOrBefore | _: SameOrAfter                   => BooleanType
+      // String prefix and suffix tests are boolean-valued (LANG-STRING).
+      case _: StartsWith | _: EndsWith                                    => BooleanType
 
       // -- Arithmetic. CQL `/` is always Decimal (CQL Reference section Decimal); the others widen.
       //    Quantity arithmetic keeps the (left) operand's unit (LANG-QUANTITY). --
@@ -170,6 +172,9 @@ object TypeEncoding {
       case Count(_)               => IntegerType
       case AggregateFunction(op, src) => aggregateType(op, elementOf(go(src)))
       case _: Split              => ListType(StringType) // split a string -> List<String>
+      // Upper and Lower return a String, and Length an Integer (LANG-STRING).
+      case _: Upper | _: Lower    => StringType
+      case _: Length              => IntegerType
       // List set operators yield a list whose element type unifies the two operands' elements.
       case Union(a, b)            => ListType(CqlType.join(elementOf(go(a)), elementOf(go(b))))
       case Intersect(a, b)        => ListType(CqlType.join(elementOf(go(a)), elementOf(go(b))))
