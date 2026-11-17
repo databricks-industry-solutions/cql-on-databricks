@@ -37,13 +37,13 @@ import pytest
 # This test lives INSIDE the examples it runs (examples/tests/), so the notebooks are its parent.
 EXAMPLES_DIR = pathlib.Path(__file__).resolve().parents[1]
 # Every example is a `.ipynb` whose environment is the base environment (SVC-EXAMPLE-NOTEBOOKS), so each runs on
-# its own environment and the run needs no job environment. `start_here.py`, the index page (SVC-EXAMPLE-INDEX), is
-# one markdown cell with nothing to run, and is the one source notebook. Each example is in its group's folder.
-NOTEBOOKS = sorted(p.relative_to(EXAMPLES_DIR).as_posix() for p in EXAMPLES_DIR.glob("*/*.ipynb"))
+# its own environment and the run needs no job environment. `00_start_here.py`, the index page (SVC-EXAMPLE-INDEX), is
+# one markdown cell with nothing to run, and is the one source notebook. Every example is at the top of `examples/`.
+NOTEBOOKS = sorted(p.name for p in EXAMPLES_DIR.glob("*.ipynb"))
 
 # The libraries the notebooks read (SVC-EXAMPLE-KNOWLEDGE): the `.cql` files of `examples/measures`, and nothing else
-# from it. The notebooks derive the folder's path from their OWN notebook location, one folder up, so it must be
-# staged beside their group folders in the temp folder — the same files `scripts/deploy/publish-examples.sh` lands in
+# from it. The notebooks derive the folder's path from their OWN notebook location, as the folder beside them, so it
+# must be staged beside them in the temp folder — the same files `scripts/deploy/publish-examples.sh` lands in
 # /Shared. Staging the notebooks alone would fail every notebook that reads it, which is the correct failure but a
 # useless test.
 LIBRARIES = sorted((EXAMPLES_DIR / "measures").glob("*.cql"))
@@ -89,9 +89,7 @@ def dest_dir(ws):
 def test_example_notebook_runs(ws, dest_dir, nb):
     from databricks.sdk.service import jobs, workspace
 
-    group, name = pathlib.PurePosixPath(nb).parent, pathlib.PurePosixPath(nb).stem
-    ws.workspace.mkdirs(f"{dest_dir}/{group}")
-    wpath = f"{dest_dir}/{group}/{name}"
+    wpath = f"{dest_dir}/{pathlib.PurePosixPath(nb).stem}"
     # The repository copy as it is: the published copy is the same file (SVC-EXAMPLE-NOTEBOOKS).
     ws.workspace.import_(
         path=wpath,

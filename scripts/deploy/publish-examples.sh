@@ -16,9 +16,10 @@
 # copy to what the repo says it is. Local edits are not preserved, by design.
 #
 # The published copy is a DERIVED artifact, never a source of truth: `examples/tests/
-# test_example_notebooks.py` runs the REPO copy, so the notebooks are validated where they are authored.
+# test_examples_run.py` runs the REPO copy, so the notebooks are validated where they are authored.
 #
-# Idempotent: re-publishing overwrites in place. Runs AFTER the base environment the notebooks name is built
+# Idempotent: re-publishing overwrites in place, and the folder ends holding exactly what this publish wrote: a notebook
+# or folder an earlier publish left at the top, or under `measures/`, is removed. Runs AFTER the base environment the notebooks name is built
 # (DEPLOY-BASE-ENVIRONMENT).
 #
 # Usage: scripts/deploy/publish-examples.sh [-t <target>] [-p <profile>]
@@ -40,11 +41,11 @@ if [ ${#profile_args[@]} -eq 0 ]; then _p="$(config_profile -t "$target")"; [ -z
 shared_root="/Shared/cql_databricks/examples"
 src="$here/examples"
 
-# Everything in the directory: `start_here`, the documentation-only index page that is the folder's front door
-# (SVC-EXAMPLE-INDEX), one `%md` cell and no code, and a folder per group of notebooks, `getting_started` and
-# `scenarios`, published as the same folders.
+# Everything at the top of the directory: `00_start_here`, the documentation-only index page that is the folder's front
+# door (SVC-EXAMPLE-INDEX), one `%md` cell and no code, and the numbered example notebooks beside it, published at the
+# same names.
 [ -d "$src" ] || { echo "!!! no examples directory at $src"; exit 1; }
-echo "==> publishing $(ls "$src"/*.py "$src"/*/*.ipynb | wc -l | tr -d ' ') notebooks (index + examples) + $(ls "$src"/*.png | wc -l | tr -d ' ') asset(s) -> $shared_root"
+echo "==> publishing $(ls "$src"/*.py "$src"/*.ipynb | wc -l | tr -d ' ') notebooks (index + examples) + $(ls "$src"/*.png | wc -l | tr -d ' ') asset(s) -> $shared_root"
 
 # SVC-EXAMPLE-NOTEBOOKS, DEPLOY-BASE-ENVIRONMENT — the notebooks hold nothing of this deployment: each example's
 # environment names the base environment the deploy published, by its workspace-wide name, so the repository copy
@@ -66,11 +67,7 @@ _publish() {  # <file> <format> [<language>] — the file's path under examples/
 # The index page is the one source notebook: SOURCE format + PYTHON language, so the workspace renders it as a
 # notebook rather than a plain file. The examples are Jupyter, the one format that stores a notebook's environment.
 for f in "$src"/*.py; do _publish "$f" SOURCE PYTHON; done
-for group in "$src"/*/; do
-  ls "$group"*.ipynb >/dev/null 2>&1 || continue   # content and test folders hold no notebook
-  databricks workspace mkdirs "$shared_root/$(basename "$group")" ${profile_args[@]+"${profile_args[@]}"}
-  for f in "$group"*.ipynb; do _publish "$f" JUPYTER; done
-done
+for f in "$src"/*.ipynb; do _publish "$f" JUPYTER; done
 
 # The index page's masthead (SVC-EXAMPLE-INDEX). A `%md` cell strips every `style` attribute, so the one
 # designed element on the page is this raster, referenced as `./start-here-hero.png` — a path the notebook
@@ -104,23 +101,29 @@ for f in "${libraries[@]}"; do
   databricks workspace import "$measures/$(basename "$f")" --file "$f" --format AUTO --overwrite \
     ${profile_args[@]+"${profile_args[@]}"}
 done
-# Then everything else in the folder is removed. `--overwrite` never deletes, so a file an earlier publish left there
-# would stay beside the libraries; the folder holds exactly what this publish wrote.
-keep="$(for f in "${libraries[@]}"; do basename "$f"; done)"
-databricks workspace list "$measures" -o json ${profile_args[@]+"${profile_args[@]}"} \
-  | KEEP="$keep" python3 -c '
+# Then everything else in each folder is removed. `--overwrite` never deletes, so a notebook or file an earlier publish
+# left there would stay beside this one's: a notebook renamed since, or a folder of an earlier layout. Each folder
+# holds exactly what this publish wrote (SVC-EXAMPLE-NOTEBOOKS, SVC-EXAMPLE-KNOWLEDGE).
+_remove_others() {  # <folder> <names to keep, one per line>
+  databricks workspace list "$1" -o json ${profile_args[@]+"${profile_args[@]}"} \
+    | KEEP="$2" python3 -c '
 import json, os, sys
 keep = set(os.environ["KEEP"].split("\n"))
 for entry in json.loads(sys.stdin.read() or "[]") or []:
     if entry["path"].rsplit("/", 1)[-1] not in keep:
         print(entry.get("object_type", ""), entry["path"])' \
-  | while read -r kind path; do
-      echo "    x  $path"
-      if [ "$kind" = DIRECTORY ]; then
-        databricks workspace delete "$path" --recursive ${profile_args[@]+"${profile_args[@]}"}
-      else
-        databricks workspace delete "$path" ${profile_args[@]+"${profile_args[@]}"}
-      fi
-    done
+    | while read -r kind path; do
+        echo "    x  $path"
+        if [ "$kind" = DIRECTORY ]; then
+          databricks workspace delete "$path" --recursive ${profile_args[@]+"${profile_args[@]}"}
+        else
+          databricks workspace delete "$path" ${profile_args[@]+"${profile_args[@]}"}
+        fi
+      done
+}
+_remove_others "$measures" "$(for f in "${libraries[@]}"; do basename "$f"; done)"
+# A notebook's workspace name has no extension; the masthead keeps its own.
+_remove_others "$shared_root" "$(for f in "$src"/*.py "$src"/*.ipynb; do n="$(basename "$f")"; echo "${n%.*}"; done
+                                 for f in "$src"/*.png; do basename "$f"; done; echo measures)"
 
 echo "==> done. Examples published at $shared_root (readable + runnable by every workspace user)."

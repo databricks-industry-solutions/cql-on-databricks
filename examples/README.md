@@ -1,8 +1,8 @@
 # examples — notebooks and content
 
-An index page, `start_here`, and the example notebooks in two folders: `getting_started/` for learning the client
-and `scenarios/` for applied work. They are published to `/Shared/cql_databricks/examples` in your workspace, as the
-same folders, and the index page gives the reading order.
+An index page, `00_start_here`, and the example notebooks beside it, numbered in reading order: `01` to `06` for
+learning the client, then the scenarios, `07_quality_measurement` and `08_clinical_research`. They are published to
+`/Shared/cql_databricks/examples` in your workspace under the same names, and the index page links to each.
 
 The content directories are **your responsibility in a real deployment** — not part of the product:
 

@@ -16,9 +16,9 @@ import re
 import pytest
 
 EXAMPLES_DIR = pathlib.Path(__file__).resolve().parents[1]
-INDEX = "start_here.py"
+INDEX = "00_start_here.py"
 BASE_ENVIRONMENT = "workspace-base-environments/cql-on-databricks"
-NOTEBOOKS = sorted(p.relative_to(EXAMPLES_DIR).as_posix() for p in EXAMPLES_DIR.glob("*/*.ipynb"))
+NOTEBOOKS = sorted(p.relative_to(EXAMPLES_DIR).as_posix() for p in EXAMPLES_DIR.glob("*.ipynb"))
 #: The one start every example has: the `%%cql` magic, and `cql()` (SVC-NOTEBOOK-CQL-MAGIC).
 START = "%reload_ext cql_databricks.compiler\nfrom cql_databricks.compiler import cql"
 
@@ -33,17 +33,27 @@ def test_there_are_examples():
     assert len(NOTEBOOKS) >= 6
 
 
-def test_every_example_is_in_its_group_folder_and_the_index_beside_them():
-    """SVC-EXAMPLE-NOTEBOOKS, SVC-EXAMPLE-INDEX: `getting_started/<NN>_<subtopic>`, numbered in reading order, or
-    `scenarios/<subtopic>`, in snake_case; no notebook at the top, where the index is the one page."""
-    assert all(re.fullmatch(r"getting_started/\d\d_[a-z][a-z_]*\.ipynb|scenarios/[a-z][a-z_]*\.ipynb", nb)
-               for nb in NOTEBOOKS), NOTEBOOKS
-    numbers = [nb.split("/")[1][:2] for nb in NOTEBOOKS if nb.startswith("getting_started/")]
-    assert numbers == [f"{n:02d}" for n in range(1, len(numbers) + 1)], f"getting_started is numbered 01 on: {numbers}"
-    assert not list(EXAMPLES_DIR.glob("*.ipynb"))
+def test_every_example_is_numbered_at_the_top_and_the_index_links_to_each_in_order():
+    """SVC-EXAMPLE-NOTEBOOKS, SVC-EXAMPLE-INDEX: every example at the top of `examples/`, named `<NN>_<subtopic>` in
+    snake_case and numbered 01 on in reading order, after the index, `00_start_here`; no notebook in a folder. The
+    index links to every example, in the order of their numbers."""
+    assert all(re.fullmatch(r"\d\d_[a-z][a-z0-9_]*\.ipynb", nb) for nb in NOTEBOOKS), NOTEBOOKS
+    numbers = [nb[:2] for nb in NOTEBOOKS]
+    assert numbers == [f"{n:02d}" for n in range(1, len(numbers) + 1)], f"the examples are numbered 01 on: {numbers}"
+    assert not list(EXAMPLES_DIR.glob("*/**/*.ipynb")), "an example notebook is in a folder"
     index = (EXAMPLES_DIR / INDEX).read_text()
-    for nb in NOTEBOOKS:
-        assert f'href="$./{nb[:-len(".ipynb")]}"' in index, f"the index does not link to {nb}"
+    links = re.findall(r'href="\$\./([^"]+)"', index)
+    assert links == [nb[:-len(".ipynb")] for nb in NOTEBOOKS], f"the index links {links}"
+
+
+@pytest.mark.parametrize("nb", NOTEBOOKS)
+def test_the_title_and_the_exit_name_the_notebook(nb):
+    """SVC-EXAMPLE-NOTEBOOKS: the title starts with the notebook's number, and the exit payload names the notebook."""
+    notebook = json.loads((EXAMPLES_DIR / nb).read_text())
+    cells = notebook["cells"]
+    assert "".join(cells[0]["source"]).startswith(f"# {nb[:2]} "), f"{nb}: the title starts with its number"
+    assert f'"notebook": "{nb[:-len(".ipynb")]}"' in "".join(cells[-1]["source"]), f"{nb}: the exit names it"
+    assert notebook["metadata"]["application/vnd.databricks.v1+notebook"]["notebookName"] == nb[:-len(".ipynb")]
 
 
 @pytest.mark.parametrize("nb", NOTEBOOKS)

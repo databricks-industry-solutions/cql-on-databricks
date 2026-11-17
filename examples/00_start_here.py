@@ -14,26 +14,25 @@
 # MAGIC prerequisite is that CQL on Databricks is deployed in this workspace — the **CQL on Databricks** base
 # MAGIC environment each module runs on, the `cql_*` functions in Unity Catalog, and the Compiler Service.
 # MAGIC
-# MAGIC **Start with Getting Started / Overview.** The rest assume you have seen it.
+# MAGIC **Start with 01 Getting Started.** The rest assume you have seen it. The numbers are the reading order.
 # MAGIC
 # MAGIC ---
 # MAGIC
-# MAGIC ## Getting Started
+# MAGIC ## Learning the client
 # MAGIC
-# MAGIC ### Overview
-# MAGIC *Setup · the two front doors · libraries · and it's inspectable*
+# MAGIC ### 01 Getting Started
+# MAGIC *Setup · the two front doors · results in Python and SQL*
 # MAGIC
-# MAGIC The two ways to run CQL from a notebook, how each hands its results back to Python and SQL, how a library is written in cells and published, and how a compiled measure is read without running it.
+# MAGIC The two ways to run CQL from a notebook, and how each hands its results back to Python and SQL.
 # MAGIC
 # MAGIC - `%%cql` — a cell whose first line is `%%cql` *is* CQL; it declares, like a Python `def`, and runs nothing
 # MAGIC - `cql(...)` — the Python API: a lazy handle you can inspect, parameterize and run; `exec()` returns DataFrames
 # MAGIC - Every define also lands as a session temp view, so a plain `%sql` cell can query it
-# MAGIC - A cell with a `library` header is a library a later cell can `include`; write it to a folder and it runs by name
-# MAGIC - And it's inspectable: the define graph, the ELM and the Spark plan, with no data read
+# MAGIC - One session library across cells, and parameters bound from Python
 # MAGIC
-# MAGIC <a href="$./getting_started/01_overview">Open the notebook →</a>
+# MAGIC <a href="$./01_getting_started">Open the notebook →</a>
 # MAGIC
-# MAGIC ### CQL Language Tour
+# MAGIC ### 02 CQL Language Tour
 # MAGIC *Mostly data-free · one idea per cell*
 # MAGIC
 # MAGIC What the language can express, and why it is not SQL with clinical vocabulary.
@@ -43,9 +42,32 @@
 # MAGIC - Quantities with UCUM units, lists, parameters, and terminology filtering
 # MAGIC - Polymorphic choice types — FHIR `value[x]` and `Choice<Encounter, Condition>`
 # MAGIC
-# MAGIC <a href="$./getting_started/02_cql_language_tour">Open the notebook →</a>
+# MAGIC <a href="$./02_cql_language_tour">Open the notebook →</a>
 # MAGIC
-# MAGIC ### Data and Knowledge Resolution
+# MAGIC ### 03 Authoring Libraries
+# MAGIC *Libraries in cells · edited in place · published to a folder*
+# MAGIC
+# MAGIC A library and a measure written in cells, run over FHIR data, edited, and published to a folder of `.cql` files.
+# MAGIC
+# MAGIC - A cell with a `library` header is a library a later cell can `include`
+# MAGIC - The draft runs by name from Python, for any measurement period
+# MAGIC - Re-running a cell replaces the library it declared, and every measure that includes it follows
+# MAGIC - Write it to a folder and it runs by name; mount a Git Folder of your measures the same way
+# MAGIC
+# MAGIC <a href="$./03_authoring_libraries">Open the notebook →</a>
+# MAGIC
+# MAGIC ### 04 Inspection
+# MAGIC *The define graph · ELM · the Spark plan · no data read*
+# MAGIC
+# MAGIC How a compiled measure is read without running it.
+# MAGIC
+# MAGIC - The neutral define DAG: defines, dependencies, populations and materialization boundaries
+# MAGIC - The ELM, HL7's interchange form for CQL logic
+# MAGIC - The Spark physical plan, over typed stubs instead of clinical data
+# MAGIC
+# MAGIC <a href="$./04_inspection">Open the notebook →</a>
+# MAGIC
+# MAGIC ### 05 Data and Knowledge Resolution
 # MAGIC *Tables, files in a Volume, DataFrames, cells and folders · one answer from each*
 # MAGIC
 # MAGIC Every role a run reads, from each place it can come from: the environment's tables, the same content as files in its volumes, the notebook itself, or a workspace folder.
@@ -55,9 +77,9 @@
 # MAGIC - `use_resolvers` sets a source for this notebook's `cql()` calls and `%%cql` cells; the rest stay the environment's
 # MAGIC - Results kept for the session only, in temporary tables, and reused by the next run
 # MAGIC
-# MAGIC <a href="$./getting_started/03_data_and_knowledge_resolution">Open the notebook →</a>
+# MAGIC <a href="$./05_data_and_knowledge_resolution">Open the notebook →</a>
 # MAGIC
-# MAGIC ### Mapping Your Data
+# MAGIC ### 06 Mapping Your Data
 # MAGIC *Your own table · SQL views to FHIR · checked against the source*
 # MAGIC
 # MAGIC Map patients and visits in an EHR's own shape to the FHIR resources CQL reads, run CQL over the mapping, and check it: nothing unmapped or lost, and the same answers as an independent SQL query over the source.
@@ -67,13 +89,13 @@
 # MAGIC - Completeness checks: unmapped local codes, empty required fields, rows the mapping dropped
 # MAGIC - The answers check fails, naming the patients, wherever CQL and the source disagree
 # MAGIC
-# MAGIC <a href="$./getting_started/04_mapping_your_data">Open the notebook →</a>
+# MAGIC <a href="$./06_mapping_your_data">Open the notebook →</a>
 # MAGIC
 # MAGIC ---
 # MAGIC
 # MAGIC ## Scenarios
 # MAGIC
-# MAGIC ### Quality Measurement
+# MAGIC ### 07 Quality Measurement
 # MAGIC *Synthetic FHIR · 4,000 patients · nothing authored in the notebook*
 # MAGIC
 # MAGIC A published example measure run by name from the environment's knowledge.
@@ -83,9 +105,9 @@
 # MAGIC - A follow-up question asked of the *same* library the measure uses
 # MAGIC - The same measure over a different measurement period
 # MAGIC
-# MAGIC <a href="$./scenarios/quality_measurement">Open the notebook →</a>
+# MAGIC <a href="$./07_quality_measurement">Open the notebook →</a>
 # MAGIC
-# MAGIC ### Clinical Research
+# MAGIC ### 08 Clinical Research
 # MAGIC *One CQL cell · SQL · Python · the default environment, nothing loaded*
 # MAGIC
 # MAGIC A research question across three languages: do age, gender, palliative care and dialysis predict whether blood pressure is controlled?
@@ -94,4 +116,4 @@
 # MAGIC - A `%sql` cell shapes the result into an analysis table
 # MAGIC - A Python cell fits a logistic regression, scores it on held-out patients and bootstraps confidence intervals
 # MAGIC
-# MAGIC <a href="$./scenarios/clinical_research">Open the notebook →</a>
+# MAGIC <a href="$./08_clinical_research">Open the notebook →</a>
